@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.png" />
+    <title>PeerTube Channels</title>
+  </head>
+  <body>
+    <div id="app" class="channels-app">
+      <header class="channels-header">
+        <div>
+          <p class="eyebrow">PeerTube channels</p>
+          <h1>Channel catalog</h1>
+          <p class="subtitle">Filter and sort channels straight from the database.</p>
+        </div>
+        <nav class="header-nav">
+          <a class="nav-link active" href="/channels.html">Channels</a>
+          <a class="nav-link" href="/">Home</a>
+          <a class="nav-link" href="/about.html">About</a>
+        </nav>
+      </header>
+
+      <main class="channels-main">
+        <section class="controls-top">
+          <button id="clear-filters" class="ghost-button" type="button">Reset</button>
+        </section>
+        <section class="controls">
+          <label class="control">
+            <span>Search</span>
+            <input id="filter-search" type="search" placeholder="Name, domain..." />
+          </label>
+          <label class="control">
+            <span>Instance</span>
+            <input id="filter-instance" type="text" placeholder="e.g. peertube.example" />
+          </label>
+          <label class="control">
+            <span>Min followers</span>
+            <input id="filter-followers" type="number" min="0" step="1" placeholder="0" />
+          </label>
+          <label class="control">
+            <span>Min videos</span>
+            <input id="filter-videos" type="number" min="0" step="1" placeholder="0" />
+          </label>
+          <label class="control">
+            <span>Max videos</span>
+            <input id="filter-videos-max" type="number" min="0" step="1" placeholder="∞" />
+          </label>
+        </section>
+
+        <section class="summary">
+          <div>
+            <div id="summary-counts">Загрузка...</div>
+            <div id="summary-meta" class="summary-meta"></div>
+          </div>
+          <div class="pager">
+            <button id="page-prev" class="ghost-button" type="button">Prev</button>
+            <div id="page-status" class="page-status">1 / 1</div>
+            <button id="page-next" class="ghost-button" type="button">Next</button>
+            <label class="page-size">
+              <span>Rows</span>
+              <select id="page-size">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="200">200</option>
+                <option value="500">500</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="table-wrap">
+          <table class="channels-table">
+            <thead>
+              <tr>
+                <th scope="col" class="avatar-col">Avatar</th>
+                <th scope="col">
+                  <button type="button" data-sort="name">Channel</button>
+                </th>
+                <th scope="col">
+                  <button type="button" data-sort="instance">Instance</button>
+                </th>
+                <th scope="col" class="num">
+                  <button type="button" data-sort="videos">Videos</button>
+                </th>
+                <th scope="col" class="num">
+                  <button type="button" data-sort="followers">Followers</button>
+                </th>
+                <th scope="col" class="num">
+                  <button type="button" data-sort="checked">Checked</button>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="channels-body"></tbody>
+          </table>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/src/pages/channels/index.ts"></script>
+  </body>
+</html>

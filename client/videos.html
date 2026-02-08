@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.png" />
+    <title>Home</title>
+  </head>
+  <body>
+    <div id="app" class="videos-app">
+      <header class="videos-header">
+        <div>
+          <p class="eyebrow">PeerTube videos</p>
+          <h1>Home</h1>
+          <p class="subtitle"></p>
+        </div>
+        <nav class="header-nav">
+          <a class="nav-link" href="/channels.html">Channels</a>
+          <a class="nav-link active" href="/">Home</a>
+          <a class="nav-link" href="/about.html">About</a>
+        </nav>
+      </header>
+
+      <main class="videos-main">
+        <section class="summary" hidden>
+          <div>
+            <div id="summary-counts"></div>
+            <div id="summary-meta" class="summary-meta"></div>
+          </div>
+          <div class="summary-actions">
+            <a id="reset-feed" class="ghost-link" href="/">Back to recommended</a>
+            <button id="reset-profile" class="ghost-button" type="button">Reset profile</button>
+            <button id="show-profile" class="ghost-button" type="button">My likes</button>
+            <button id="show-recommendations" class="ghost-button" type="button">Recommendations</button>
+            <button id="show-random" class="ghost-button" type="button">Random</button>
+          </div>
+        </section>
+
+        <section id="video-cards" class="cards-grid"></section>
+        <div id="feed-sentinel" class="feed-sentinel" aria-hidden="true"></div>
+      </main>
+    </div>
+
+    <div id="profile-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-modal-close></div>
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+        <header class="modal-header">
+          <h2 id="profile-modal-title">User likes</h2>
+          <button id="profile-modal-close" class="ghost-button" type="button">Close</button>
+        </header>
+        <p class="modal-subtitle">Most recent likes.</p>
+        <div id="profile-modal-body" class="modal-body likes-grid" tabindex="0"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/pages/videos/index.ts"></script>
+  </body>
+</html>

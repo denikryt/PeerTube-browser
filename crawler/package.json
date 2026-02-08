@@ -1,0 +1,28 @@
+{
+  "name": "peertube-crawler",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "help": "node -e \"console.log('Commands:\\n- npm run build                         # Compile TypeScript to dist/\\n- npm run crawl:instances               # Discover instances\\n- npm run crawl:instances:health        # Check instance health and set status in instances\\n- npm run crawl:channels                # Collect channel list + basic channel metadata\\n- npm run crawl:channels:health         # Check channels and write errors to channels\\n- npm run crawl:channels:videos-count   # Fetch videos_count per channel (errors stored per channel)\\n- npm run crawl:videos                  # Crawl channels with videos_count >= 1 and save video metadata to videos\\n- npm run crawl:videos:tags             # Update video tags via /api/v1/videos/:uuid\\n- npm run crawl:videos:comments         # Update comments_count via /api/v1/videos/:uuid\\n- npm run build-ann-index               # Build FAISS ANN index from server DB\\n\\nTip: pass flags after --, e.g. npm run crawl:channels -- --help');\"",
+    "build": "node node_modules/typescript/bin/tsc -p tsconfig.json",
+    "crawl:instances": "node dist/instances-cli.js",
+    "crawl:instances:health": "node dist/instances-health-cli.js",
+    "crawl:channels": "node dist/channels-cli.js",
+    "crawl:channels:health": "node dist/channels-cli.js --check-health",
+    "crawl:channels:videos-count": "node dist/channels-videos-count-cli.js",
+    "crawl:videos": "node dist/videos-cli.js",
+    "crawl:videos:tags": "node dist/videos-cli.js --tags",
+    "crawl:videos:comments": "node dist/videos-cli.js --comments",
+    "build-ann-index": "python3 ../server/db/jobs/build-ann-index.py"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "better-sqlite3": "^9.4.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.11.5",
+    "@types/better-sqlite3": "^7.6.8"
+  }
+}

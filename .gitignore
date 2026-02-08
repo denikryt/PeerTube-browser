@@ -1,0 +1,19 @@
+node_modules/
+*.log
+.DS_Store
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Local data files
+*.db
+*.db-shm
+*.db-wal
+*.db.bak
+*.db.bak-*
+*.faiss
+*.faiss.json
+/.cache/
+/.tmp/
+/context

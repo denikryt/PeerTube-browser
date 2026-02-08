@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.png" />
+    <title>Video - PeerTube - Browser</title>
+  </head>
+  <body>
+    <div id="app" class="video-page">
+      <header class="videos-header">
+        <div>
+          <p class="eyebrow">PeerTube videos</p>
+        </div>
+        <nav class="header-nav">
+          <a class="nav-link" href="/">Home</a>
+          <a id="similar-link" class="nav-link" href="/">Similar videos</a>
+          <a class="nav-link" href="/about.html">About</a>
+        </nav>
+      </header>
+
+      <main class="video-main">
+        <section class="player-card">
+          <div class="player-frame">
+            <iframe
+              id="video-embed"
+              title="Video player"
+              allowfullscreen
+              referrerpolicy="no-referrer"
+            ></iframe>
+          </div>
+          <div class="player-info">
+            <h2 id="video-title" class="video-title">Video page</h2>
+            <div class="channel-row">
+              <div id="channel-avatar" class="channel-avatar" aria-hidden="true"></div>
+              <div class="channel-meta">
+                <div class="channel-line">
+                  <div id="video-channel" class="video-channel"></div>
+                  <div class="meta-chips">
+                    <div id="instance-meta" class="instance-meta">
+                      <span id="instance-avatar" class="instance-avatar" aria-hidden="true"></span>
+                      <a id="instance-link" class="instance-link" href="#" target="_blank" rel="noreferrer"></a>
+                    </div>
+                    <div id="account-meta" class="instance-meta">
+                      <span id="account-avatar" class="instance-avatar" aria-hidden="true"></span>
+                      <a id="account-link" class="instance-link" href="#" target="_blank" rel="noreferrer"></a>
+                    </div>
+                  </div>
+                </div>
+                <div class="channel-subline">
+                  <span id="channel-subscribers" class="channel-subscribers"></span>
+                  <span id="video-published" class="channel-published"></span>
+                </div>
+              </div>
+            </div>
+            <div class="video-meta-row">
+              <div class="video-metrics">
+                <span id="video-views" class="metric">
+                  <span class="metric-icon" aria-hidden="true"></span>
+                  <span class="metric-value">0</span>
+                </span>
+              </div>
+              <div class="player-actions">
+                <button id="like-button" class="ghost-button icon-button" type="button" aria-label="Like">
+                  <span class="count" id="like-count">0</span>
+                </button>
+                <button
+                  id="dislike-button"
+                  class="ghost-button icon-button"
+                  type="button"
+                  aria-label="Dislike"
+                >
+                  <span class="count" id="dislike-count">0</span>
+                </button>
+                <a id="original-link" class="ghost-link" href="#" target="_blank" rel="noreferrer">
+                  Open original
+                </a>
+              </div>
+            </div>
+            <div id="video-description" class="video-description"></div>
+          </div>
+        </section>
+
+        <section id="similar-section" class="similar-card">
+          <div class="section-header">
+            <h3>Similar videos</h3>
+            <a id="similar-link-inline" class="ghost-link" href="/">Open full list</a>
+          </div>
+          <div id="similar-videos" class="similar-grid">
+            <div class="loading">Loading...</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/src/pages/video-page/index.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,302 @@
+import { ChannelStore } from "./db.js";
+import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
+const PAGE_SIZE = 50;
+const HEALTH_CONCURRENCY = 4;
+export async function crawlChannels(options) {
+    const store = new ChannelStore({ dbPath: options.dbPath });
+    const hosts = store.listInstances();
+    const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
+    store.prepareChannelProgress(hosts, options.resume);
+    const workItems = store.listChannelWorkItems();
+    console.log(`[channels] instances=${hosts.length} work=${workItems.length} concurrency=${workerCount} resume=${options.resume}`);
+    const queue = workItems.slice();
+    const workers = Array.from({ length: workerCount }, () => workerLoop(queue, store, options));
+    await Promise.all(workers);
+    console.log("[channels] finished");
+    store.close();
+}
+export async function checkChannelHealth(options) {
+    const store = new ChannelStore({ dbPath: options.dbPath });
+    const hosts = store.listChannelInstances();
+    const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
+    console.log(`[channels-health] instances=${hosts.length} concurrency=${workerCount}`);
+    const queue = hosts.slice();
+    const workers = Array.from({ length: workerCount }, () => healthWorkerLoop(queue, store, options));
+    await Promise.all(workers);
+    console.log("[channels-health] finished");
+    store.close();
+}
+async function workerLoop(queue, store, options) {
+    while (true) {
+        const item = queue.pop();
+        if (!item)
+            return;
+        await processInstance(item, store, options);
+    }
+}
+async function healthWorkerLoop(queue, store, options) {
+    while (true) {
+        const host = queue.pop();
+        if (!host)
+            return;
+        await processHealthInstance(host, store, options);
+    }
+}
+async function processInstance(item, store, options) {
+    const normalizedHost = item.instanceDomain.toLowerCase();
+    const startAt = item.status === "in_progress" ? item.lastStart : 0;
+    store.updateChannelProgress(normalizedHost, "in_progress", startAt);
+    console.log(`[channels] start ${normalizedHost} resume=${item.status} start=${startAt}`);
+    try {
+        const { localCount, totalCount } = await crawlInstanceChannels(normalizedHost, startAt, store, options);
+        store.updateChannelProgress(normalizedHost, "done", 0);
+        store.markInstanceDone(normalizedHost);
+        console.log(`[channels] done ${normalizedHost} local=${localCount} total=${totalCount}`);
+    }
+    catch (error) {
+        if (isNoNetworkError(error)) {
+            throw error;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        const status = extractHttpStatus(message);
+        if (status && status >= 400 && status < 500) {
+            store.updateChannelProgress(normalizedHost, "error", startAt);
+            store.markInstanceError(normalizedHost, `HTTP ${status}`);
+            console.warn(`[channels] skip ${normalizedHost} status=${status}`);
+            return;
+        }
+        if (status && status >= 500) {
+            store.updateChannelProgress(normalizedHost, "error", startAt);
+            store.markInstanceError(normalizedHost, `HTTP ${status}`);
+            console.warn(`[channels] error ${normalizedHost} status=${status}`);
+            return;
+        }
+        if (error instanceof SyntaxError) {
+            store.updateChannelProgress(normalizedHost, "error", startAt);
+            store.markInstanceError(normalizedHost, "invalid JSON");
+            console.warn(`[channels] invalid JSON ${normalizedHost}`);
+            return;
+        }
+        store.updateChannelProgress(normalizedHost, "error", startAt);
+        store.markInstanceError(normalizedHost, message);
+        console.warn(`[channels] error ${normalizedHost}: ${message}`);
+    }
+}
+async function processHealthInstance(host, store, options) {
+    const normalizedHost = host.toLowerCase();
+    const channels = store.listChannelsForInstance(normalizedHost);
+    if (channels.length === 0) {
+        console.log(`[channels-health] skip ${normalizedHost} channels=0`);
+        return;
+    }
+    console.log(`[channels-health] start ${normalizedHost} channels=${channels.length}`);
+    let hadError = false;
+    const totalChannels = channels.length;
+    let processedChannels = 0;
+    const nextProcessed = () => {
+        processedChannels += 1;
+        return processedChannels;
+    };
+    await mapWithConcurrency(channels, HEALTH_CONCURRENCY, async (channel) => {
+        if (!channel.channel_name)
+            return;
+        const current = nextProcessed();
+        console.log(`[channels-health] start ${current}/${totalChannels} ${normalizedHost}/${channel.channel_name}`);
+        try {
+            await fetchChannelHealth(normalizedHost, channel.channel_name, options);
+            store.updateChannelHealthOk(channel.channel_id, normalizedHost);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (isNoNetworkError(error)) {
+                console.warn(`[channels-health] network issue ${normalizedHost}: ${message}`);
+                return;
+            }
+            hadError = true;
+            store.updateChannelHealthError(channel.channel_id, normalizedHost, message);
+            console.warn(`[channels-health] error ${normalizedHost}/${channel.channel_name}: ${message}`);
+        }
+    });
+    console.log(`[channels-health] done ${normalizedHost} error=${hadError}`);
+}
+async function crawlInstanceChannels(host, startAt, store, options) {
+    let start = startAt;
+    let protocol = "https:";
+    let totalCount = 0;
+    let localCount = 0;
+    while (true) {
+        const { page, protocol: usedProtocol } = await fetchPage(host, start, options, protocol);
+        protocol = usedProtocol;
+        const data = Array.isArray(page.data) ? page.data : [];
+        const nextStart = start + PAGE_SIZE;
+        totalCount += data.length;
+        if (data.length > 0) {
+            const rows = [];
+            for (const channel of data) {
+                const channelHost = extractChannelHost(channel);
+                if (channelHost !== host)
+                    continue;
+                const channelId = channel.id !== undefined ? String(channel.id) : null;
+                if (!channelId)
+                    continue;
+                rows.push({
+                    channelId,
+                    channelName: toNullableString(channel.name),
+                    channelUrl: toNullableString(channel.url),
+                    displayName: toNullableString(channel.displayName ?? channel.display_name),
+                    instanceDomain: host,
+                    videosCount: toNullableNumber(channel.videosCount ?? channel.videos_count),
+                    followersCount: toNullableNumber(channel.followersCount ?? channel.followers_count),
+                    avatarUrl: getChannelAvatarUrl(channel, host, protocol)
+                });
+            }
+            localCount += rows.length;
+            store.upsertChannels(rows);
+        }
+        // Persist the next page offset after successfully storing this page.
+        store.updateChannelProgress(host, "in_progress", nextStart);
+        if (page.total !== undefined) {
+            if (nextStart >= page.total)
+                break;
+        }
+        else if (data.length < PAGE_SIZE) {
+            break;
+        }
+        start = nextStart;
+    }
+    return { localCount, totalCount };
+}
+async function fetchPage(host, start, options, protocol) {
+    const primaryUrl = buildUrl(host, start, PAGE_SIZE, protocol);
+    try {
+        const page = await fetchJsonWithRetry(primaryUrl, {
+            timeoutMs: options.timeoutMs,
+            maxRetries: options.maxRetries
+        });
+        return { page, protocol };
+    }
+    catch (error) {
+        const fallbackProtocol = protocol === "https:" ? "http:" : "https:";
+        const alternateUrl = buildUrl(host, start, PAGE_SIZE, fallbackProtocol);
+        const page = await fetchJsonWithRetry(alternateUrl, {
+            timeoutMs: options.timeoutMs,
+            maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
+        });
+        return { page, protocol: fallbackProtocol };
+    }
+}
+function buildUrl(host, start, count, protocol) {
+    return `${protocol}//${host}/api/v1/video-channels?start=${start}&count=${count}`;
+}
+async function fetchChannelHealth(host, channelName, options) {
+    await fetchWithFallback(host, channelName, options, "https:");
+}
+async function fetchWithFallback(host, channelName, options, protocol) {
+    const url = buildChannelVideosUrl(host, channelName, 0, 1, protocol);
+    try {
+        return await fetchJsonWithRetry(url, {
+            timeoutMs: options.timeoutMs,
+            maxRetries: options.maxRetries
+        });
+    }
+    catch {
+        const alternate = protocol === "https:" ? "http:" : "https:";
+        const alternateUrl = buildChannelVideosUrl(host, channelName, 0, 1, alternate);
+        return await fetchJsonWithRetry(alternateUrl, {
+            timeoutMs: options.timeoutMs,
+            maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
+        });
+    }
+}
+function buildChannelVideosUrl(host, channelName, start, count, protocol) {
+    return `${protocol}//${host}/api/v1/video-channels/${encodeURIComponent(channelName)}/videos?start=${start}&count=${count}`;
+}
+async function mapWithConcurrency(items, concurrency, mapper) {
+    if (items.length === 0)
+        return;
+    const limit = Math.max(1, concurrency);
+    let index = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (true) {
+            const current = index;
+            index += 1;
+            if (current >= items.length)
+                return;
+            await mapper(items[current]);
+        }
+    });
+    await Promise.all(workers);
+}
+function extractChannelHost(channel) {
+    const host = channel.host ?? channel.account?.host ?? channel.ownerAccount?.host ?? extractHostFromUrl(channel.account?.url);
+    if (!host)
+        return null;
+    return normalizeHost(host);
+}
+function extractHostFromUrl(value) {
+    if (!value)
+        return null;
+    try {
+        if (value.startsWith("http://") || value.startsWith("https://")) {
+            return new URL(value).host;
+        }
+        if (value.includes("/")) {
+            return new URL(`https://${value}`).host;
+        }
+        return value;
+    }
+    catch {
+        return null;
+    }
+}
+function normalizeHost(host) {
+    return host.trim().toLowerCase();
+}
+function toNullableString(value) {
+    return typeof value === "string" && value.length > 0 ? value : null;
+}
+function toNullableNumber(value) {
+    if (typeof value === "number" && Number.isFinite(value))
+        return value;
+    if (typeof value === "string" && value.length > 0) {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed))
+            return parsed;
+    }
+    return null;
+}
+function getChannelAvatarUrl(channel, host, protocol) {
+    const avatar = pickBestAvatar(channel.avatars) ?? channel.avatar;
+    return resolveAvatarUrl(avatar, host, protocol);
+}
+function pickBestAvatar(avatars) {
+    if (!avatars || avatars.length === 0)
+        return undefined;
+    let best = avatars[0];
+    for (const avatar of avatars) {
+        if ((avatar.width ?? 0) > (best.width ?? 0)) {
+            best = avatar;
+        }
+    }
+    return best;
+}
+function resolveAvatarUrl(avatar, host, protocol) {
+    if (!avatar)
+        return null;
+    const candidate = avatar.url ?? avatar.path ?? avatar.staticPath;
+    if (!candidate || typeof candidate !== "string")
+        return null;
+    if (candidate.startsWith("http://") || candidate.startsWith("https://")) {
+        return candidate;
+    }
+    if (candidate.startsWith("/")) {
+        return `${protocol}//${host}${candidate}`;
+    }
+    return `${protocol}//${host}/${candidate}`;
+}
+function extractHttpStatus(message) {
+    const match = message.match(/HTTP (\d{3})/);
+    if (!match)
+        return null;
+    return Number(match[1]);
+}
