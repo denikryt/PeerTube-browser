@@ -4,7 +4,7 @@ PeerTube Browser is a video discovery project for the federated PeerTube network
 It crawls instances, builds a local dataset, creates ANN indexes for fast similarity
 search, and serves a web UI with recommendation feeds.
 
-Live instance: peertube-browser.com
+Live instance: https://peertube-browser.com (may be temporarily unavailable)
 
 ## Why this exists
 PeerTube has great content but weak discovery across the federation. This project
