@@ -221,5 +221,3 @@ sqlite3 server/db/whitelist.db "select count(*) from video_embeddings;"
 sqlite3 server/db/similarity-cache.db "select count(*) from similarity_sources;"
 sqlite3 server/db/random-cache.db "select count(*) from random_rowids;"
 ```
-
-

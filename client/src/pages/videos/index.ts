@@ -47,6 +47,8 @@ const state = {
   visibleCount: CHUNK_SIZE,
   loading: false
 };
+let feedObserver: IntersectionObserver | null = null;
+let fallbackListenersAttached = false;
 
 type LiveStats = {
   views: number | null;
@@ -137,6 +139,7 @@ async function loadVideos() {
     pickSample();
     renderCards(true);
     renderSummary();
+    maybeFillViewport();
   } catch (error) {
     state.loading = false;
     const message = error instanceof Error ? error.message : "Load error";
@@ -225,23 +228,62 @@ function visibleSample() {
   return state.sample.slice(0, state.visibleCount);
 }
 
+function loadNextChunk() {
+  const nextCount = Math.min(state.sample.length, state.visibleCount + CHUNK_SIZE);
+  if (nextCount <= state.visibleCount) return false;
+  state.visibleCount = nextCount;
+  renderCards();
+  renderSummary();
+  return true;
+}
+
+function maybeFillViewport() {
+  if (state.loading) return;
+  let safety = 0;
+  // If there is no scroll yet, keep appending chunks until the page can scroll.
+  while (
+    state.visibleCount < state.sample.length &&
+    document.documentElement.scrollHeight <= window.innerHeight + 120 &&
+    safety < 50
+  ) {
+    const changed = loadNextChunk();
+    if (!changed) break;
+    safety += 1;
+  }
+}
+
+function maybeLoadOnScroll() {
+  if (state.loading) return;
+  const nearBottom =
+    window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 240;
+  if (nearBottom) {
+    loadNextChunk();
+  }
+}
+
 function setupInfiniteScroll() {
-  if (!feedSentinel) return;
-  const observer = new IntersectionObserver(
-    (entries) => {
-      if (state.loading) return;
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      const nextCount = Math.min(state.sample.length, state.visibleCount + CHUNK_SIZE);
-      if (nextCount > state.visibleCount) {
-        state.visibleCount = nextCount;
-        renderCards();
-        renderSummary();
-        return;
-      }
-    },
-    { rootMargin: "200px" }
-  );
-  observer.observe(feedSentinel);
+  if (feedObserver) {
+    feedObserver.disconnect();
+    feedObserver = null;
+  }
+  if (feedSentinel) {
+    feedObserver = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        loadNextChunk();
+      },
+      { rootMargin: "200px" }
+    );
+    feedObserver.observe(feedSentinel);
+  }
+  if (!fallbackListenersAttached) {
+    window.addEventListener("scroll", maybeLoadOnScroll, { passive: true });
+    window.addEventListener("resize", () => {
+      maybeLoadOnScroll();
+      maybeFillViewport();
+    });
+    fallbackListenersAttached = true;
+  }
 }
 
 function renderCard(row: VideoRow) {

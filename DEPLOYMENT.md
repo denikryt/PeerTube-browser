@@ -36,6 +36,17 @@ python3 -m venv venv
 
 The server listens on `http://127.0.0.1:7070`.
 
+Optional (recommended for production): install systemd service
+```bash
+sudo ./install-service.sh
+```
+
+Checks:
+```bash
+systemctl status peertube-browser
+journalctl -u peertube-browser -f
+```
+
 ## 4) Serve the client
 You can serve the static build with any web server. The simplest local option:
 ```bash
