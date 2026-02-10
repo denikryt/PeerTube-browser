@@ -757,6 +757,20 @@ export class ChannelStore {
     return rows.map((row) => row.host);
   }
 
+  listExistingChannelIds(instanceDomain: string, ids: string[]): Set<string> {
+    if (ids.length === 0) return new Set();
+    const placeholders = ids.map(() => "?").join(", ");
+    const rows = this.db
+      .prepare(
+        `SELECT channel_id
+         FROM channels
+         WHERE instance_domain = ?
+           AND channel_id IN (${placeholders})`
+      )
+      .all(instanceDomain, ...ids) as { channel_id: string }[];
+    return new Set(rows.map((row) => row.channel_id));
+  }
+
   listInstancesNeedingHealth(minAgeMs: number): string[] {
     const cutoff = Date.now() - Math.max(0, minAgeMs);
     const rows = this.db

@@ -36,15 +36,28 @@ python3 -m venv venv
 
 The server listens on `http://127.0.0.1:7070`.
 
-Optional (recommended for production): install systemd service
+Optional (recommended for production): use `install-service.sh` to install systemd units.
+
+API service only:
 ```bash
 sudo ./install-service.sh
+```
+
+API service + daily updater timer:
+```bash
+sudo ./install-service.sh --with-updater-timer
 ```
 
 Checks:
 ```bash
 systemctl status peertube-browser
 journalctl -u peertube-browser -f
+```
+
+If updater timer is installed:
+```bash
+systemctl status peertube-updater.timer
+journalctl -u peertube-updater.service -f
 ```
 
 ## 4) Serve the client

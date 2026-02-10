@@ -30,9 +30,6 @@ where only `random/popular/fresh` are active.
    Stores similar lists per seed video (video_id + score + rank).
    Used as a fast candidate source and can refresh when needed.
    If the cache lacks `score`, it is treated as stale and recomputed (refresh).
-   Cache reads can require a full list (`DEFAULT_SIMILARITY_REQUIRE_FULL_CACHE`);
-   partial lists are treated as a miss. For exploit, ANN fallback on miss is
-   controlled by `DEFAULT_SIMILARITY_ALLOW_ANN_ON_CACHE_MISS`.
 4. **Random cache**
    Holds a prebuilt list of rowids for quick random pools.
    Can run in **raw** mode (no filters) or **filtered** mode.
@@ -51,9 +48,6 @@ In guest profiles (no likes), only `random/popular/fresh` are active.
   Selection: random sample from the filtered pool up to the layer limit.
   Requires likes: if there are no likes, the layer is disabled.
   If there are no likes, the layer is empty (fallback goes to random/popular).
-  Cache notes: cache-optimized source reads per-like cache; if the cache is
-  partial/empty, ANN fallback happens only when
-  `DEFAULT_SIMILARITY_ALLOW_ANN_ON_CACHE_MISS` is enabled.
 
 - **explore** — “moderately similar”.
   Source: random cache (or random from DB if cache is empty).

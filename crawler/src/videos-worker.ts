@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import Database from "better-sqlite3";
 import {
   VideoStore,
   type VideoChannelRow,
@@ -14,6 +15,7 @@ const TAGS_CONCURRENCY = 4;
 
 export interface VideoCrawlOptions {
   dbPath: string;
+  existingDbPath: string | null;
   concurrency: number;
   timeoutMs: number;
   maxRetries: number;
@@ -21,6 +23,10 @@ export interface VideoCrawlOptions {
   errorsOnly: boolean;
   newOnly: boolean;
   stopAfterFullPages: number;
+  sort: string;
+  maxInstances: number;
+  maxChannels: number;
+  maxVideosPages: number;
   tagsOnly: boolean;
   updateTags: boolean;
   commentsOnly: boolean;
@@ -127,8 +133,15 @@ export async function crawlVideos(options: VideoCrawlOptions) {
     return;
   }
   const store = new VideoStore({ dbPath: options.dbPath });
-  const hosts = store.listInstances();
-  const channels = store.listChannelsWithVideos(1, hosts);
+  const existingDb = openExistingDb(options);
+  const hostsAll = store.listInstances();
+  const hosts =
+    options.maxInstances > 0 ? hostsAll.slice(0, options.maxInstances) : hostsAll;
+  const channelsAll = store.listChannelsWithVideos(1, hosts);
+  const channels =
+    options.maxChannels > 0
+      ? channelsAll.slice(0, options.maxChannels)
+      : channelsAll;
   const channelMeta = new Map<string, ChannelMeta>(
     channels.map((channel) => [
       channel.channel_id,
@@ -154,16 +167,20 @@ export async function crawlVideos(options: VideoCrawlOptions) {
     `[videos] instances=${instances.length} channels=${workItems.length} concurrency=${workerCount} resume=${options.resume} errorsOnly=${options.errorsOnly}`
   );
 
-  const queue = instances.slice();
-  const workers = Array.from({ length: workerCount }, () =>
-    workerLoop(queue, grouped, channelMeta, store, options)
-  );
-  await Promise.all(workers);
+  try {
+    const queue = instances.slice();
+    const workers = Array.from({ length: workerCount }, () =>
+      workerLoop(queue, grouped, channelMeta, store, existingDb, options)
+    );
+    await Promise.all(workers);
 
-  const totalNew = Number(store.getState("videos_new_total") ?? 0);
-  const totalNewText = Number.isFinite(totalNew) ? totalNew : 0;
-  console.log(`[videos] finished new_total=${totalNewText}`);
-  store.close();
+    const totalNew = Number(store.getState("videos_new_total") ?? 0);
+    const totalNewText = Number.isFinite(totalNew) ? totalNew : 0;
+    console.log(`[videos] finished new_total=${totalNewText}`);
+  } finally {
+    existingDb?.close();
+    store.close();
+  }
 }
 
 async function crawlVideoComments(options: VideoCrawlOptions) {
@@ -213,6 +230,7 @@ async function workerLoop(
   grouped: Map<string, VideoProgressRow[]>,
   channelMeta: Map<string, ChannelMeta>,
   store: VideoStore,
+  existingDb: Database.Database | null,
   options: VideoCrawlOptions
 ) {
   while (true) {
@@ -220,7 +238,7 @@ async function workerLoop(
     if (!host) return;
     const items = grouped.get(host);
     if (!items) continue;
-    await processInstance(host, items, channelMeta, store, options);
+    await processInstance(host, items, channelMeta, store, existingDb, options);
   }
 }
 
@@ -229,6 +247,7 @@ async function processInstance(
   items: VideoProgressRow[],
   channelMeta: Map<string, ChannelMeta>,
   store: VideoStore,
+  existingDb: Database.Database | null,
   options: VideoCrawlOptions
 ) {
   const normalizedHost = host.toLowerCase();
@@ -236,7 +255,7 @@ async function processInstance(
 
   await mapWithConcurrency(items, CHANNEL_CONCURRENCY, async (item) => {
     const meta = channelMeta.get(item.channelId);
-    await processChannel(normalizedHost, item, meta, store, options);
+    await processChannel(normalizedHost, item, meta, store, existingDb, options);
   });
 
   console.log(`[videos] done ${normalizedHost}`);
@@ -361,6 +380,7 @@ async function processChannel(
   item: VideoProgressRow,
   meta: ChannelMeta | undefined,
   store: VideoStore,
+  existingDb: Database.Database | null,
   options: VideoCrawlOptions
 ) {
   const channelSlug = item.channelName ?? meta?.channelSlug ?? null;
@@ -385,6 +405,7 @@ async function processChannel(
       },
       startAt,
       store,
+      existingDb,
       options
     );
     store.updateVideoProgress(host, item.channelId, "done", 0, null);
@@ -409,6 +430,7 @@ async function crawlChannelVideos(
   },
   startAt: number,
   store: VideoStore,
+  existingDb: Database.Database | null,
   options: VideoCrawlOptions
 ) {
   let start = startAt;
@@ -416,6 +438,7 @@ async function crawlChannelVideos(
   let totalCount = 0;
   let localCount = 0;
   let fullPagesSeen = 0;
+  let pagesFetched = 0;
 
   while (true) {
     const { page, protocol: usedProtocol } = await fetchPage(
@@ -426,6 +449,7 @@ async function crawlChannelVideos(
       protocol
     );
     protocol = usedProtocol;
+    pagesFetched += 1;
 
     const data = Array.isArray(page.data) ? page.data : [];
     const ids = options.newOnly
@@ -438,6 +462,9 @@ async function crawlChannelVideos(
         )
       : [];
     const existingIds = options.newOnly ? store.listExistingVideoIds(host, ids) : null;
+    const externalExistingIds = options.newOnly
+      ? queryExternalExistingVideoIds(existingDb, host, ids)
+      : null;
     const nextStart = start + PAGE_SIZE;
     totalCount += data.length;
 
@@ -447,7 +474,11 @@ async function crawlChannelVideos(
       for (const video of data) {
         if (existingIds) {
           const id = toStringId(video.uuid ?? video.id);
-          if (id && existingIds.has(id)) {
+          if (
+            id &&
+            (existingIds.has(id) ||
+              (externalExistingIds ? externalExistingIds.has(id) : false))
+          ) {
             continue;
           }
         }
@@ -466,7 +497,7 @@ async function crawlChannelVideos(
       options.stopAfterFullPages > 0 &&
       ids.length > 0 &&
       existingIds &&
-      existingIds.size >= ids.length
+      existingIds.size + (externalExistingIds?.size ?? 0) >= ids.length
     ) {
       fullPagesSeen += 1;
       if (fullPagesSeen >= options.stopAfterFullPages) {
@@ -484,6 +515,9 @@ async function crawlChannelVideos(
     } else if (data.length < PAGE_SIZE) {
       break;
     }
+    if (options.maxVideosPages > 0 && pagesFetched >= options.maxVideosPages) {
+      break;
+    }
 
     start = nextStart;
   }
@@ -498,7 +532,14 @@ async function fetchPage(
   options: VideoCrawlOptions,
   protocol: string
 ) {
-  const primaryUrl = buildChannelVideosUrl(host, channelName, start, PAGE_SIZE, protocol);
+  const primaryUrl = buildChannelVideosUrl(
+    host,
+    channelName,
+    start,
+    PAGE_SIZE,
+    protocol,
+    options.sort
+  );
 
   try {
     const page = await fetchJsonWithRetry<Page<PeerTubeVideo>>(primaryUrl, {
@@ -508,7 +549,14 @@ async function fetchPage(
     return { page, protocol };
   } catch {
     const fallbackProtocol = protocol === "https:" ? "http:" : "https:";
-    const alternateUrl = buildChannelVideosUrl(host, channelName, start, PAGE_SIZE, fallbackProtocol);
+    const alternateUrl = buildChannelVideosUrl(
+      host,
+      channelName,
+      start,
+      PAGE_SIZE,
+      fallbackProtocol,
+      options.sort
+    );
     const page = await fetchJsonWithRetry<Page<PeerTubeVideo>>(alternateUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
@@ -522,11 +570,13 @@ function buildChannelVideosUrl(
   channelName: string,
   start: number,
   count: number,
-  protocol: string
+  protocol: string,
+  sort: string
 ) {
+  const safeSort = sort && sort.trim().length > 0 ? sort.trim() : "-publishedAt";
   return `${protocol}//${host}/api/v1/video-channels/${encodeURIComponent(
     channelName
-  )}/videos?start=${start}&count=${count}`;
+  )}/videos?start=${start}&count=${count}&sort=${encodeURIComponent(safeSort)}`;
 }
 
 function toVideoRow(
@@ -764,6 +814,34 @@ async function fetchVideoComments(
 
 function buildVideoDetailUrl(host: string, videoUuid: string, protocol: string) {
   return `${protocol}//${host}/api/v1/videos/${encodeURIComponent(videoUuid)}`;
+}
+
+function openExistingDb(options: VideoCrawlOptions): Database.Database | null {
+  if (!options.existingDbPath || options.existingDbPath.trim().length === 0) {
+    return null;
+  }
+  return new Database(options.existingDbPath, {
+    readonly: true,
+    fileMustExist: true
+  });
+}
+
+function queryExternalExistingVideoIds(
+  db: Database.Database | null,
+  instanceDomain: string,
+  ids: string[]
+): Set<string> {
+  if (!db || ids.length === 0) return new Set();
+  const placeholders = ids.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `SELECT video_id
+       FROM videos
+       WHERE instance_domain = ?
+         AND video_id IN (${placeholders})`
+    )
+    .all(instanceDomain, ...ids) as { video_id: string }[];
+  return new Set(rows.map((row) => row.video_id));
 }
 
 function extractHttpStatus(message: string): number | null {

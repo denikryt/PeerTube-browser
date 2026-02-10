@@ -8,6 +8,7 @@ export interface CrawlOptions {
   resume: boolean;
   maxRetries: number;
   maxErrors: number;
+  maxInstances: number;
   expandBeyondWhitelist: boolean;
   collectGraph: boolean;
 }

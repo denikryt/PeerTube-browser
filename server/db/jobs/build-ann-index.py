@@ -176,6 +176,20 @@ def main() -> None:
             "Bits per PQ code; higher improves accuracy but increases index size."
         ),
     )
+    accel_group = parser.add_mutually_exclusive_group()
+    accel_group.add_argument(
+        "--gpu",
+        dest="use_gpu",
+        action="store_true",
+        help="Build/train ANN index on GPU. Fails if FAISS GPU bindings are unavailable.",
+    )
+    accel_group.add_argument(
+        "--cpu",
+        dest="use_gpu",
+        action="store_false",
+        help="Build/train ANN index on CPU.",
+    )
+    parser.set_defaults(use_gpu=False)
     parser.add_argument(
         "--normalize",
         action="store_true",
@@ -209,9 +223,25 @@ def main() -> None:
         normalize_vectors(train_vectors)
 
     logging.info(
-        "building index nlist=%d m=%d nbits=%d", args.nlist, args.m, args.nbits
+        "building index nlist=%d m=%d nbits=%d mode=%s",
+        args.nlist,
+        args.m,
+        args.nbits,
+        "gpu" if args.use_gpu else "cpu",
     )
-    index = build_index(dim, args.nlist, args.m, args.nbits)
+    cpu_index = build_index(dim, args.nlist, args.m, args.nbits)
+    index = cpu_index
+    gpu_resources = None
+    if args.use_gpu:
+        if not hasattr(faiss, "StandardGpuResources") or not hasattr(
+            faiss, "index_cpu_to_gpu"
+        ):
+            raise RuntimeError(
+                "GPU mode requested but installed FAISS has no GPU support. "
+                "Install faiss-gpu (matching CUDA) or run with --cpu."
+            )
+        gpu_resources = faiss.StandardGpuResources()
+        index = faiss.index_cpu_to_gpu(gpu_resources, 0, cpu_index)
     logging.info("training index")
     index.train(train_vectors)
 
@@ -228,8 +258,17 @@ def main() -> None:
         if added % (args.batch_size * 10) == 0:
             logging.info("progress added=%d/%d", added, total)
 
+    index_to_write = index
+    if args.use_gpu:
+        if not hasattr(faiss, "index_gpu_to_cpu"):
+            raise RuntimeError(
+                "GPU index built but FAISS is missing index_gpu_to_cpu()."
+            )
+        logging.info("transferring GPU index to CPU for serialization")
+        index_to_write = faiss.index_gpu_to_cpu(index)
+
     logging.info("writing index to %s", index_path)
-    faiss.write_index(index, str(index_path))
+    faiss.write_index(index_to_write, str(index_path))
 
     meta = {
         "built_at": datetime.now(timezone.utc).isoformat(),
@@ -241,6 +280,7 @@ def main() -> None:
         "m": args.m,
         "nbits": args.nbits,
         "normalized": bool(args.normalize),
+        "acceleration": "gpu" if args.use_gpu else "cpu",
         "id_source": "video_embeddings.rowid",
     }
     meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")

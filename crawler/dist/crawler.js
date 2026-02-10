@@ -10,7 +10,10 @@ export async function crawl(options) {
         expandBeyondWhitelist: options.expandBeyondWhitelist
     });
     const whitelistUrl = ensureUrl(options.whitelistUrl);
-    const whitelistHosts = await fetchWhitelistHosts(whitelistUrl, options);
+    const fetchedWhitelistHosts = await fetchWhitelistHosts(whitelistUrl, options);
+    const whitelistHosts = options.maxInstances > 0
+        ? fetchedWhitelistHosts.slice(0, options.maxInstances)
+        : fetchedWhitelistHosts;
     const whitelistSet = new Set(whitelistHosts);
     const preferredProtocol = new URL(whitelistUrl).protocol;
     if (options.resume && (options.collectGraph || options.expandBeyondWhitelist)) {

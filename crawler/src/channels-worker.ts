@@ -9,7 +9,14 @@ export interface ChannelCrawlOptions {
   concurrency: number;
   timeoutMs: number;
   maxRetries: number;
+  newOnly: boolean;
+  maxInstances: number;
+  maxChannels: number;
   resume: boolean;
+}
+
+interface ChannelInsertLimitState {
+  remaining: number | null;
 }
 
 interface Page<T> {
@@ -50,8 +57,13 @@ interface PeerTubeVideoChannel {
 
 export async function crawlChannels(options: ChannelCrawlOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
-  const hosts = store.listInstances();
+  const hostsAll = store.listInstances();
+  const hosts =
+    options.maxInstances > 0 ? hostsAll.slice(0, options.maxInstances) : hostsAll;
   const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
+  const limitState: ChannelInsertLimitState = {
+    remaining: options.maxChannels > 0 ? options.maxChannels : null
+  };
 
   store.prepareChannelProgress(hosts, options.resume);
   const workItems = store.listChannelWorkItems();
@@ -61,7 +73,9 @@ export async function crawlChannels(options: ChannelCrawlOptions) {
   );
 
   const queue = workItems.slice();
-  const workers = Array.from({ length: workerCount }, () => workerLoop(queue, store, options));
+  const workers = Array.from({ length: workerCount }, () =>
+    workerLoop(queue, store, options, limitState)
+  );
   await Promise.all(workers);
 
   console.log("[channels] finished");
@@ -90,12 +104,16 @@ export async function checkChannelHealth(options: ChannelCrawlOptions) {
 async function workerLoop(
   queue: ChannelProgressRow[],
   store: ChannelStore,
-  options: ChannelCrawlOptions
+  options: ChannelCrawlOptions,
+  limitState: ChannelInsertLimitState
 ) {
   while (true) {
     const item = queue.pop();
     if (!item) return;
-    await processInstance(item, store, options);
+    if (limitState.remaining !== null && limitState.remaining <= 0) {
+      return;
+    }
+    await processInstance(item, store, options, limitState);
   }
 }
 
@@ -114,7 +132,8 @@ async function healthWorkerLoop(
 async function processInstance(
   item: ChannelProgressRow,
   store: ChannelStore,
-  options: ChannelCrawlOptions
+  options: ChannelCrawlOptions,
+  limitState: ChannelInsertLimitState
 ) {
   const normalizedHost = item.instanceDomain.toLowerCase();
   const startAt = item.status === "in_progress" ? item.lastStart : 0;
@@ -126,7 +145,8 @@ async function processInstance(
       normalizedHost,
       startAt,
       store,
-      options
+      options,
+      limitState
     );
 
     store.updateChannelProgress(normalizedHost, "done", 0);
@@ -219,7 +239,8 @@ async function crawlInstanceChannels(
   host: string,
   startAt: number,
   store: ChannelStore,
-  options: ChannelCrawlOptions
+  options: ChannelCrawlOptions,
+  limitState: ChannelInsertLimitState
 ) {
   let start = startAt;
   let protocol = "https:";
@@ -227,6 +248,9 @@ async function crawlInstanceChannels(
   let localCount = 0;
 
   while (true) {
+    if (limitState.remaining !== null && limitState.remaining <= 0) {
+      break;
+    }
     const { page, protocol: usedProtocol } = await fetchPage(host, start, options, protocol);
     protocol = usedProtocol;
 
@@ -235,12 +259,29 @@ async function crawlInstanceChannels(
     totalCount += data.length;
 
     if (data.length > 0) {
+      const ids = options.newOnly
+        ? Array.from(
+            new Set(
+              data
+                .map((channel) =>
+                  channel.id !== undefined ? String(channel.id) : null
+                )
+                .filter((value): value is string => Boolean(value))
+            )
+          )
+        : [];
+      const existingIds = options.newOnly
+        ? store.listExistingChannelIds(host, ids)
+        : null;
       const rows: ChannelUpsertRow[] = [];
       for (const channel of data) {
         const channelHost = extractChannelHost(channel);
         if (channelHost !== host) continue;
         const channelId = channel.id !== undefined ? String(channel.id) : null;
         if (!channelId) continue;
+        if (existingIds && existingIds.has(channelId)) {
+          continue;
+        }
         rows.push({
           channelId,
           channelName: toNullableString(channel.name),
@@ -252,8 +293,9 @@ async function crawlInstanceChannels(
           avatarUrl: getChannelAvatarUrl(channel, host, protocol)
         });
       }
-      localCount += rows.length;
-      store.upsertChannels(rows);
+      const acceptedRows = takeRowsWithinLimit(rows, limitState);
+      localCount += acceptedRows.length;
+      store.upsertChannels(acceptedRows);
     }
 
     // Persist the next page offset after successfully storing this page.
@@ -269,6 +311,22 @@ async function crawlInstanceChannels(
   }
 
   return { localCount, totalCount };
+}
+
+function takeRowsWithinLimit(
+  rows: ChannelUpsertRow[],
+  limitState: ChannelInsertLimitState
+): ChannelUpsertRow[] {
+  if (rows.length === 0) return rows;
+  if (limitState.remaining === null) return rows;
+  if (limitState.remaining <= 0) return [];
+  if (rows.length <= limitState.remaining) {
+    limitState.remaining -= rows.length;
+    return rows;
+  }
+  const accepted = rows.slice(0, limitState.remaining);
+  limitState.remaining = 0;
+  return accepted;
 }
 
 async function fetchPage(

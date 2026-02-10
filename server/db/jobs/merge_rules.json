@@ -1,0 +1,24 @@
+{
+  "tables": [
+    {
+      "name": "instances",
+      "strategy": "INSERT_ONLY",
+      "keys": ["host"]
+    },
+    {
+      "name": "channels",
+      "strategy": "INSERT_ONLY",
+      "keys": ["channel_id", "instance_domain"]
+    },
+    {
+      "name": "videos",
+      "strategy": "INSERT_ONLY",
+      "keys": ["video_id", "instance_domain"]
+    },
+    {
+      "name": "video_embeddings",
+      "strategy": "INSERT_OR_REPLACE",
+      "keys": ["video_id", "instance_domain"]
+    }
+  ]
+}

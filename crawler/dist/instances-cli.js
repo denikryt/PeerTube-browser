@@ -9,6 +9,7 @@ program
     .option("--timeout <ms>", "HTTP timeout in ms", "5000")
     .option("--max-retries <number>", "HTTP retry attempts", "3")
     .option("--max-errors <number>", "Retries per host", "3")
+    .option("--max-instances <number>", "Limit number of whitelist instances to process (0 = no limit)", "0")
     .option("--expand-beyond-whitelist", "Discover instances beyond the whitelist", false)
     .option("--graph", "Collect instance relationships (followers/following)", false)
     .option("--resume", "Resume from existing DB", false);
@@ -23,6 +24,7 @@ try {
         resume: Boolean(options.resume),
         maxRetries: Number(options.maxRetries),
         maxErrors: Number(options.maxErrors),
+        maxInstances: Number(options.maxInstances),
         expandBeyondWhitelist: Boolean(options.expandBeyondWhitelist),
         collectGraph: Boolean(options.graph)
     });

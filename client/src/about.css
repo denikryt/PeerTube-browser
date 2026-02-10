@@ -17,12 +17,60 @@
   font-family: "Courier New", Courier, "Nimbus Mono L", "Liberation Mono", monospace;
 }
 
+.about-tabs {
+  display: inline-flex;
+  gap: 8px;
+  padding: 6px;
+  margin: 0 0 16px;
+  border: 1px solid #e0d8cc;
+  border-radius: 14px;
+  background: #f6f1e8;
+}
+
+.about-tab {
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #4a3f34;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.about-tab:hover {
+  background: rgba(58, 50, 42, 0.08);
+}
+
+.about-tab.is-active {
+  background: #3a322a;
+  color: #fefbf6;
+  box-shadow: 0 6px 16px rgba(32, 24, 12, 0.2);
+}
+
+.about-tab:focus-visible {
+  outline: 2px solid #3a322a;
+  outline-offset: 2px;
+}
+
+.about-panel[hidden] {
+  display: none;
+}
+
 .about-content h2 {
   margin: 24px 0 8px;
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.2px;
   text-transform: uppercase;
+}
+
+.about-panel h2:first-child {
+  margin-top: 0;
 }
 
 .about-content p {
@@ -122,6 +170,16 @@
 }
 
 @media (max-width: 540px) {
+  .about-tabs {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .about-tab {
+    flex: 1;
+    text-align: center;
+  }
+
   .about-grid {
     display: flex;
     flex-direction: column;

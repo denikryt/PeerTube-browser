@@ -17,6 +17,18 @@ All paths below are relative to the repository root.
 - Python 3.10+ for jobs (`server/requirements.txt`).
 - Optional CUDA if you plan to run embeddings with `--gpu`.
 
+## Automatic background updater
+You can run the same build/update flow automatically with the updater worker:
+
+- Worker entrypoint: `server/db/jobs/updater-worker.py`
+- It runs: crawl to staging -> embeddings -> merge to prod -> popularity -> ANN rebuild -> similarity precompute.
+- Systemd installation: `install-service.sh --with-updater-timer`
+- Timer runs daily (`OnUnitInactiveSec=1d`).
+
+Detailed behavior, flags, lock/resume logic, and systemd notes are documented in:
+
+- `server/db/jobs/UPDATER_WORKER.md`
+
 ## 1) Crawl data
 
 ### Build crawler
@@ -221,3 +233,4 @@ sqlite3 server/db/whitelist.db "select count(*) from video_embeddings;"
 sqlite3 server/db/similarity-cache.db "select count(*) from similarity_sources;"
 sqlite3 server/db/random-cache.db "select count(*) from random_rowids;"
 ```
+

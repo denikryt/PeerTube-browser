@@ -8,6 +8,7 @@ __pycache__/
 
 # Local data files
 *.db
+*.db-journal
 *.db-shm
 *.db-wal
 *.db.bak
@@ -17,3 +18,6 @@ __pycache__/
 /.cache/
 /.tmp/
 /context
+/tmp
+
+client/run-client-sync-build.sh

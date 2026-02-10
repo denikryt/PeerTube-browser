@@ -54,6 +54,14 @@ def main() -> None:
         help="Overwrite popularity values for all rows.",
     )
     parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help=(
+            "Update only rows that likely were not scored yet "
+            "(popularity IS NULL or popularity = 0)."
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Log progress counter while updating rows.",
@@ -67,14 +75,26 @@ def main() -> None:
     ensure_popularity_schema(conn)
 
     now_ms_value = now_ms()
-    cursor = conn.execute(
-        "SELECT video_id, instance_domain, title, views, likes, published_at, popularity FROM videos"
-    )
+    if args.reset:
+        cursor = conn.execute(
+            "SELECT video_id, instance_domain, title, views, likes, published_at, popularity "
+            "FROM videos"
+        )
+    elif args.incremental:
+        cursor = conn.execute(
+            "SELECT video_id, instance_domain, title, views, likes, published_at, popularity "
+            "FROM videos WHERE popularity IS NULL OR popularity = 0"
+        )
+    else:
+        cursor = conn.execute(
+            "SELECT video_id, instance_domain, title, views, likes, published_at, popularity "
+            "FROM videos"
+        )
     updates: list[tuple[float, str, str]] = []
     total_rows = conn.execute("SELECT COUNT(*) FROM videos").fetchone()[0]
     processed = 0
     for row in cursor:
-        if not args.reset and row["popularity"] is not None:
+        if not args.reset and not args.incremental and row["popularity"] is not None:
             continue
         score = compute_popularity(
             row["views"],

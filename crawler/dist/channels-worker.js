@@ -4,13 +4,17 @@ const PAGE_SIZE = 50;
 const HEALTH_CONCURRENCY = 4;
 export async function crawlChannels(options) {
     const store = new ChannelStore({ dbPath: options.dbPath });
-    const hosts = store.listInstances();
+    const hostsAll = store.listInstances();
+    const hosts = options.maxInstances > 0 ? hostsAll.slice(0, options.maxInstances) : hostsAll;
     const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
+    const limitState = {
+        remaining: options.maxChannels > 0 ? options.maxChannels : null
+    };
     store.prepareChannelProgress(hosts, options.resume);
     const workItems = store.listChannelWorkItems();
     console.log(`[channels] instances=${hosts.length} work=${workItems.length} concurrency=${workerCount} resume=${options.resume}`);
     const queue = workItems.slice();
-    const workers = Array.from({ length: workerCount }, () => workerLoop(queue, store, options));
+    const workers = Array.from({ length: workerCount }, () => workerLoop(queue, store, options, limitState));
     await Promise.all(workers);
     console.log("[channels] finished");
     store.close();
@@ -26,12 +30,15 @@ export async function checkChannelHealth(options) {
     console.log("[channels-health] finished");
     store.close();
 }
-async function workerLoop(queue, store, options) {
+async function workerLoop(queue, store, options, limitState) {
     while (true) {
         const item = queue.pop();
         if (!item)
             return;
-        await processInstance(item, store, options);
+        if (limitState.remaining !== null && limitState.remaining <= 0) {
+            return;
+        }
+        await processInstance(item, store, options, limitState);
     }
 }
 async function healthWorkerLoop(queue, store, options) {
@@ -42,13 +49,13 @@ async function healthWorkerLoop(queue, store, options) {
         await processHealthInstance(host, store, options);
     }
 }
-async function processInstance(item, store, options) {
+async function processInstance(item, store, options, limitState) {
     const normalizedHost = item.instanceDomain.toLowerCase();
     const startAt = item.status === "in_progress" ? item.lastStart : 0;
     store.updateChannelProgress(normalizedHost, "in_progress", startAt);
     console.log(`[channels] start ${normalizedHost} resume=${item.status} start=${startAt}`);
     try {
-        const { localCount, totalCount } = await crawlInstanceChannels(normalizedHost, startAt, store, options);
+        const { localCount, totalCount } = await crawlInstanceChannels(normalizedHost, startAt, store, options, limitState);
         store.updateChannelProgress(normalizedHost, "done", 0);
         store.markInstanceDone(normalizedHost);
         console.log(`[channels] done ${normalizedHost} local=${localCount} total=${totalCount}`);
@@ -119,18 +126,29 @@ async function processHealthInstance(host, store, options) {
     });
     console.log(`[channels-health] done ${normalizedHost} error=${hadError}`);
 }
-async function crawlInstanceChannels(host, startAt, store, options) {
+async function crawlInstanceChannels(host, startAt, store, options, limitState) {
     let start = startAt;
     let protocol = "https:";
     let totalCount = 0;
     let localCount = 0;
     while (true) {
+        if (limitState.remaining !== null && limitState.remaining <= 0) {
+            break;
+        }
         const { page, protocol: usedProtocol } = await fetchPage(host, start, options, protocol);
         protocol = usedProtocol;
         const data = Array.isArray(page.data) ? page.data : [];
         const nextStart = start + PAGE_SIZE;
         totalCount += data.length;
         if (data.length > 0) {
+            const ids = options.newOnly
+                ? Array.from(new Set(data
+                    .map((channel) => channel.id !== undefined ? String(channel.id) : null)
+                    .filter((value) => Boolean(value))))
+                : [];
+            const existingIds = options.newOnly
+                ? store.listExistingChannelIds(host, ids)
+                : null;
             const rows = [];
             for (const channel of data) {
                 const channelHost = extractChannelHost(channel);
@@ -139,6 +157,9 @@ async function crawlInstanceChannels(host, startAt, store, options) {
                 const channelId = channel.id !== undefined ? String(channel.id) : null;
                 if (!channelId)
                     continue;
+                if (existingIds && existingIds.has(channelId)) {
+                    continue;
+                }
                 rows.push({
                     channelId,
                     channelName: toNullableString(channel.name),
@@ -150,8 +171,9 @@ async function crawlInstanceChannels(host, startAt, store, options) {
                     avatarUrl: getChannelAvatarUrl(channel, host, protocol)
                 });
             }
-            localCount += rows.length;
-            store.upsertChannels(rows);
+            const acceptedRows = takeRowsWithinLimit(rows, limitState);
+            localCount += acceptedRows.length;
+            store.upsertChannels(acceptedRows);
         }
         // Persist the next page offset after successfully storing this page.
         store.updateChannelProgress(host, "in_progress", nextStart);
@@ -165,6 +187,21 @@ async function crawlInstanceChannels(host, startAt, store, options) {
         start = nextStart;
     }
     return { localCount, totalCount };
+}
+function takeRowsWithinLimit(rows, limitState) {
+    if (rows.length === 0)
+        return rows;
+    if (limitState.remaining === null)
+        return rows;
+    if (limitState.remaining <= 0)
+        return [];
+    if (rows.length <= limitState.remaining) {
+        limitState.remaining -= rows.length;
+        return rows;
+    }
+    const accepted = rows.slice(0, limitState.remaining);
+    limitState.remaining = 0;
+    return accepted;
 }
 async function fetchPage(host, start, options, protocol) {
     const primaryUrl = buildUrl(host, start, PAGE_SIZE, protocol);

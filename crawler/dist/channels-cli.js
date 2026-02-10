@@ -7,6 +7,9 @@ program
     .option("--concurrency <number>", "Concurrent instances", "4")
     .option("--timeout <ms>", "HTTP timeout in ms", "5000")
     .option("--max-retries <number>", "HTTP retry attempts", "3")
+    .option("--new-channels", "Insert only channels that do not exist yet (skip updates for existing rows)", false)
+    .option("--max-instances <number>", "Limit number of instances to process (0 = no limit)", "0")
+    .option("--max-channels <number>", "Limit number of channels inserted during this run (0 = no limit)", "0")
     .option("--check-health", "Check channel health for all channels in the DB and record channel errors", false)
     .option("--resume", "Resume from existing progress", false);
 program.parse(process.argv);
@@ -18,6 +21,9 @@ try {
         concurrency: Number(options.concurrency),
         timeoutMs: Number(options.timeout),
         maxRetries: Number(options.maxRetries),
+        newOnly: Boolean(options.newChannels),
+        maxInstances: Number(options.maxInstances),
+        maxChannels: Number(options.maxChannels),
         resume: Boolean(options.resume)
     });
 }

@@ -74,43 +74,121 @@
             </aside>
 
             <div class="about-content">
-              <h2>About the Project</h2>
-              <p>This website is currently hosted on my personal work PC, which means it may occasionally be unavailable. This is a temporary setup. I created this project on my own initiative.</p>
-              <p>This is an independent project aimed at addressing the video discovery problem within the network of PeerTube instances — specifically, the difficulty of finding interesting content inside a federated video ecosystem.</p>
+              <div class="about-tabs" role="tablist" aria-label="About sections">
+                <button
+                  class="about-tab is-active"
+                  type="button"
+                  role="tab"
+                  id="about-tab-project"
+                  aria-selected="true"
+                  aria-controls="about-panel-project"
+                  data-target="project"
+                >
+                  Project
+                </button>
+                <button
+                  class="about-tab"
+                  type="button"
+                  role="tab"
+                  id="about-tab-author"
+                  aria-selected="false"
+                  aria-controls="about-panel-author"
+                  data-target="author"
+                >
+                  Author
+                </button>
+              </div>
 
-              <h2>About the Author</h2>
-              <p>My name is Nachitima (a pseudonym). I am from Ukraine, from Kyiv. I started this project during the war as a way to stay mentally grounded and to find meaning and focus in a difficult and unstable reality. In this sense, the project is a way for me to stay engaged and to keep working on something constructive while a lot of hard things are happening around.</p>
+              <section class="about-panel is-active" id="about-panel-project" role="tabpanel" aria-labelledby="about-tab-project">
+                <h2>What PeerTube Browser Is</h2>
+                <p>PeerTube Browser is an independent open-source project focused on one practical problem: video discovery across the federated PeerTube ecosystem. PeerTube has a lot of valuable content, but it is still hard to find interesting videos when everything is spread across many different instances.</p>
+                <p>The goal of this project is to make discovery easier and faster without centralizing control around one large corporation. It works as a discovery layer on top of public PeerTube data.</p>
 
-              <h2>How the Project Was Made</h2>
-              <p>The project was created almost entirely using vibe-coding. From its beginning to its current state, it was built in roughly two weeks — essentially two weeks of full-time work.</p>
-              <p>I did not really touch the code directly. The technologies used here — HTML, CSS, TypeScript, JavaScript — were either unfamiliar to me or something I had only minimal experience with before. I am not a programmer, I have never worked as one, and I never wanted to be one.</p>
-              <p>I primarily see myself as a content creator. I am interested in animation, 3D, audiovisual content, journalism, maker culture, and hackerspaces. I do like programming in general, but not as a profession. My very first attempt at programming was an attempt to make a computer write code for me, because I did not really want to write it myself. In this sense, vibe-coding turned out to be exactly the way of programming that always felt closest to me.</p>
-              <p>The simple fact is that this approach is fast. I made this project in two weeks. I believe that even a very experienced programmer, doing this manually, would have spent significantly more time on it.</p>
+                <h2>How It Works</h2>
+                <p>The system crawls public PeerTube instances, collects metadata, builds embeddings, and creates a FAISS similarity index. Then the server uses this local dataset to return recommendations through a lightweight API that powers this website.</p>
+                <ul>
+                  <li>Crawler: discovers instances, channels, and videos.</li>
+                  <li>Local dataset: keeps video and channel metadata in SQLite.</li>
+                  <li>Similarity index: enables fast "more like this" search.</li>
+                  <li>Web app: shows recommendations, channels, and video pages.</li>
+                </ul>
 
-              <h2>Why This Project Exists</h2>
-              <p>I like the idea of federated social networks. I started working on this project almost on the same day I first learned about federated social networks as a phenomenon.</p>
-              <p>When I first visited PeerTube, the problem was immediately obvious: it is very hard to find videos that genuinely interest me. I thought it would be cool if it were easier to discover content — roughly as convenient as YouTube is in terms of discovery and finding something new and interesting.</p>
-              <p>At the same time, it is important to me that all of this is based on community rather than on a large corporation making money off users. I like the idea of an alternative to YouTube.</p>
+                <h2>Recommendation Logic</h2>
+                <p>Recommendations are built from a transparent mix of signals: content similarity, freshness, popularity, and controlled layer mixing. Likes are used as input for finding related content, but this is not a heavy black-box ML platform.</p>
+                <p>The idea is to keep the pipeline understandable and controllable while still giving useful discovery results.</p>
 
-              <h2>Why This Project Might Be Useful</h2>
-              <p>I believe this platform can be useful for people who already watch content on PeerTube, for those who host PeerTube instances, and for content creators who publish their videos on PeerTube.</p>
-              <p>It can simplify discovery, lower the barrier to entry, and help people find interesting content more quickly. Potentially, it could attract new users to PeerTube and to federated social networks in general — because, frankly, it is currently quite hard to find anything interesting on PeerTube, and not many people are willing to push through that difficulty.</p>
-              <p>For content creators, this also matters: everyone wants their content to be seen and discovered. A platform like this potentially can help viewers find creators’ videos faster and more easily.</p>
+                <h2>Open Source and Next Steps</h2>
+                <p>The full source code and technical documentation are available on GitHub. If you want the implementation details, build steps, or architecture docs, they are all in the repository.</p>
+                <p>The project is still evolving: future directions include better ranking modes, optional account features, and deeper integration with federated social protocols.</p>
+              </section>
 
-              <h2>Project Structure and Source Code</h2>
-              <p>This is an open-source project. If you want to learn more about how it works, how it is structured, or how specific parts are implemented, you can find detailed information in the GitHub repository. The repository contains the source code, documentation, and a more technical overview of the project.</p>
-              <p>You are welcome to explore it, read through the code, and see how the project is built.</p>
+              <section class="about-panel" id="about-panel-author" role="tabpanel" aria-labelledby="about-tab-author" hidden>
+                <h2>About the Author</h2>
+                <p>My name is Nachitima (a pseudonym). I am from Ukraine, from Kyiv. I started this project during the war as a way to stay mentally grounded and to find meaning and focus in a difficult and unstable reality. In this sense, the project is a way for me to stay engaged and to keep working on something constructive while a lot of hard things are happening around.</p>
 
-              <h2>Feedback and Support</h2>
-              <p>If you like this project or find it useful for any reason, I would really appreciate hearing from you.</p>
-              <p>If you have ideas, thoughts, or suggestions about what could be improved, changed, or added — feel free to reach out to me directly or open an issue on GitHub. Any feedback, ideas, or discussion around the project are very welcome.</p>
-              <p>If you are curious about my other work, you can also check out my other projects and experiments on Instagram and YouTube — links are available below.</p>
-              <p>If you find this project useful and want to support it financially, you can do so via the links provided here. I would be very grateful. This kind of support gives me more motivation to spend time maintaining and developing the project further, and to keep investing attention and energy into it.</p>
+                <h2>How the Project Was Made</h2>
+                <p>The project was created almost entirely using vibe-coding. From its beginning to its current state, it was built in roughly two weeks — essentially two weeks of full-time work.</p>
+                <p>I did not really touch the code directly. The technologies used here — HTML, CSS, TypeScript, JavaScript — were either unfamiliar to me or something I had only minimal experience with before. I am not a programmer, I have never worked as one, and I never wanted to be one.</p>
+                <p>I primarily see myself as a content creator. I am interested in animation, 3D, audiovisual content, journalism, maker culture, and hackerspaces. I do like programming in general, but not as a profession. My very first attempt at programming was an attempt to make a computer write code for me, because I did not really want to write it myself. In this sense, vibe-coding turned out to be exactly the way of programming that always felt closest to me.</p>
+                <p>The simple fact is that this approach is fast. I made this project in two weeks. I believe that even a very experienced programmer, doing this manually, would have spent significantly more time on it.</p>
+
+                <h2>Why This Project Exists</h2>
+                <p>I like the idea of federated social networks. I started working on this project almost on the same day I first learned about federated social networks as a phenomenon.</p>
+                <p>When I first visited PeerTube, the problem was immediately obvious: it is very hard to find videos that genuinely interest me. I thought it would be cool if it were easier to discover content — roughly as convenient as YouTube is in terms of discovery and finding something new and interesting.</p>
+                <p>At the same time, it is important to me that all of this is based on community rather than on a large corporation making money off users. I like the idea of an alternative to YouTube.</p>
+
+                <h2>Why This Project Might Be Useful</h2>
+                <p>I believe this platform can be useful for people who already watch content on PeerTube, for those who host PeerTube instances, and for content creators who publish their videos on PeerTube.</p>
+                <p>It can simplify discovery, lower the barrier to entry, and help people find interesting content more quickly. Potentially, it could attract new users to PeerTube and to federated social networks in general — because, frankly, it is currently quite hard to find anything interesting on PeerTube, and not many people are willing to push through that difficulty.</p>
+                <p>For content creators, this also matters: everyone wants their content to be seen and discovered. A platform like this potentially can help viewers find creators’ videos faster and more easily.</p>
+
+                <h2>Project Structure and Source Code</h2>
+                <p>This is an open-source project. If you want to learn more about how it works, how it is structured, or how specific parts are implemented, you can find detailed information in the GitHub repository. The repository contains the source code, documentation, and a more technical overview of the project.</p>
+                <p>You are welcome to explore it, read through the code, and see how the project is built.</p>
+
+                <h2>Feedback and Support</h2>
+                <p>If you like this project or find it useful for any reason, I would really appreciate hearing from you.</p>
+                <p>If you have ideas, thoughts, or suggestions about what could be improved, changed, or added — feel free to reach out to me directly or open an issue on GitHub. Any feedback, ideas, or discussion around the project are very welcome.</p>
+                <p>If you are curious about my other work, you can also check out my other projects and experiments on Instagram and YouTube — links are available below.</p>
+                <p>If you find this project useful and want to support it financially, you can do so via the links provided here. I would be very grateful. This kind of support gives me more motivation to spend time maintaining and developing the project further, and to keep investing attention and energy into it.</p>
+              </section>
             </div>
 
           </div>
         </section>
       </main>
     </div>
+    <script>
+      (() => {
+        const tabs = Array.from(document.querySelectorAll(".about-tab"));
+        const panels = Array.from(document.querySelectorAll(".about-panel"));
+        if (tabs.length === 0 || panels.length === 0) {
+          return;
+        }
+
+        const activateTab = (target) => {
+          tabs.forEach((tab) => {
+            const isActive = tab.dataset.target === target;
+            tab.classList.toggle("is-active", isActive);
+            tab.setAttribute("aria-selected", String(isActive));
+          });
+
+          panels.forEach((panel) => {
+            const isActive = panel.id === `about-panel-${target}`;
+            panel.classList.toggle("is-active", isActive);
+            panel.hidden = !isActive;
+          });
+        };
+
+        tabs.forEach((tab) => {
+          tab.addEventListener("click", () => {
+            const target = tab.dataset.target;
+            if (target) {
+              activateTab(target);
+            }
+          });
+        });
+      })();
+    </script>
   </body>
 </html>

@@ -2,6 +2,7 @@
 import argparse
 import logging
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,13 @@ except ImportError as exc:  # pragma: no cover
     raise SystemExit(
         "faiss is required. Install faiss-cpu in your Python environment."
     ) from exc
+
+script_dir = Path(__file__).resolve().parent
+server_dir = script_dir.parents[1]
+if str(server_dir) not in sys.path:
+    sys.path.insert(0, str(server_dir))
+
+from scripts.cli_format import CompactHelpFormatter
 
 
 SIMILARITY_ITEM_METADATA_COLUMNS = [
@@ -116,6 +124,23 @@ def connect_source_db(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def iter_embedding_rows_by_rowids(
+    conn: sqlite3.Connection, rowids: list[int], batch_size: int = 512
+):
+    if not rowids:
+        return
+    for start in range(0, len(rowids), batch_size):
+        chunk = rowids[start : start + batch_size]
+        placeholders = ",".join("?" for _ in chunk)
+        query = f"""
+            SELECT rowid, video_id, instance_domain, embedding, embedding_dim
+            FROM video_embeddings
+            WHERE rowid IN ({placeholders})
+        """
+        for row in conn.execute(query, chunk):
+            yield row
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
@@ -303,8 +328,10 @@ def record_similarities(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Precompute similar videos with FAISS.")
-    script_dir = Path(__file__).resolve().parent
+    parser = argparse.ArgumentParser(
+        description="Precompute similar videos with FAISS.",
+        formatter_class=CompactHelpFormatter,
+    )
     repo_root = script_dir.parent.parent
     api_dir = repo_root / "api"
     if str(api_dir) not in sys.path:
@@ -320,6 +347,11 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=20, help="Similar items to keep.")
     parser.add_argument("--nprobe", type=int, default=16, help="FAISS nprobe setting.")
     parser.add_argument("--reset", action="store_true", help="Clear existing cache.")
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Compute only for videos that do not exist in similarity_sources.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -343,15 +375,37 @@ def main() -> None:
             f"Index dimension {index.d} does not match database dimension {dim_value}"
         )
 
-    cursor = src_db.execute(
-        """
-        SELECT rowid, video_id, instance_domain, embedding, embedding_dim
-        FROM video_embeddings
-        """
-    )
+    if args.incremental:
+        # Incremental mode compares source embeddings with already-computed rows
+        # from the output cache DB. We materialize only rowids first to avoid
+        # lock contention while writing to the output DB.
+        out_uri = f"file:{Path(args.out).as_posix()}?mode=ro"
+        src_db.execute("ATTACH DATABASE ? AS out_cache", (out_uri,))
+        pending_rowids = [
+            int(row["rowid"])
+            for row in src_db.execute(
+                """
+                SELECT e.rowid
+                FROM video_embeddings e
+                LEFT JOIN out_cache.similarity_sources s
+                  ON s.video_id = e.video_id
+                 AND s.instance_domain = e.instance_domain
+                WHERE s.video_id IS NULL
+                """
+            )
+        ]
+        src_db.execute("DETACH DATABASE out_cache")
+        row_iter = iter_embedding_rows_by_rowids(src_db, pending_rowids)
+    else:
+        row_iter = src_db.execute(
+            """
+            SELECT rowid, video_id, instance_domain, embedding, embedding_dim
+            FROM video_embeddings
+            """
+        )
     computed_at = int(datetime.now(timezone.utc).timestamp() * 1000)
     processed = 0
-    for row in cursor:
+    for row in row_iter:
         if row["embedding_dim"] != dim_value:
             continue
         embedding = np.frombuffer(row["embedding"], dtype=np.float32)
