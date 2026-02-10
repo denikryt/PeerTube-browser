@@ -9,11 +9,16 @@ WITH_UPDATER_TIMER=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
 FORCE_OVERWRITE=0
+UPDATER_TIMER_ONCALENDAR="${UPDATER_TIMER_ONCALENDAR:-*-*-* 20:00:00}"
 
 # Updater worker flags.
 # Edit this line to control updater behavior installed into systemd.
 # Example: "--gpu --skip-local-dead --concurrency 2 --timeout-ms 15000 --max-retries 3"
 UPDATER_FLAGS="--gpu --skip-local-dead --concurrency 5 --timeout-ms 15000 --max-retries 3"
+# Updater timer schedule.
+# OnCalendar format, local time. Default: every day at 20:00.
+# Example override:
+#   UPDATER_TIMER_ONCALENDAR='*-*-* 03:30:00' sudo ./install-service.sh --with-updater-timer
 
 print_usage() {
   cat <<'EOF'
@@ -194,9 +199,10 @@ EOF
 Description=PeerTube Browser Updater Daily Timer
 
 [Timer]
-OnBootSec=10m
-OnUnitInactiveSec=1d
-Persistent=true
+OnCalendar=${UPDATER_TIMER_ONCALENDAR}
+Persistent=false
+RandomizedDelaySec=0
+AccuracySec=1m
 Unit=${UPDATER_SERVICE_NAME}.service
 
 [Install]
