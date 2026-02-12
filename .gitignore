@@ -21,3 +21,10 @@ __pycache__/
 /tmp
 
 client/run-client-sync-build.sh
+
+# Local planning docs (do not track)
+/TASK_LIST.md
+/TASK_EXECUTION_PROTOCOL.md
+/TASK_EXECUTION_PIPELINE.md
+/AGENTS.md
+/COMPLETED_TASKS.md
