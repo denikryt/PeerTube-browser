@@ -9,16 +9,22 @@ WITH_UPDATER_TIMER=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
 FORCE_OVERWRITE=0
-UPDATER_TIMER_ONCALENDAR="${UPDATER_TIMER_ONCALENDAR:-*-*-* 20:00:00}"
+UPDATER_TIMER_ONCALENDAR="${UPDATER_TIMER_ONCALENDAR:-Mon..Sun *-*-* 20:00:00}"
 
 # Updater worker flags.
 # Edit this line to control updater behavior installed into systemd.
 # Example: "--gpu --skip-local-dead --concurrency 2 --timeout-ms 15000 --max-retries 3"
 UPDATER_FLAGS="--gpu --skip-local-dead --concurrency 5 --timeout-ms 15000 --max-retries 3"
 # Updater timer schedule.
-# OnCalendar format, local time. Default: every day at 20:00.
+# OnCalendar format, local time.
+# Default: daily at 20:00 with weekly success gate in service:
+# - first successful run in current ISO week marks the week as done,
+# - next days in same week are skipped,
+# - if a run fails, next day at 20:00 retries automatically.
 # Example override:
 #   UPDATER_TIMER_ONCALENDAR='*-*-* 03:30:00' sudo ./install-service.sh --with-updater-timer
+UPDATER_WEEK_STATE_DIR="${UPDATER_WEEK_STATE_DIR:-/var/lib/peertube-browser}"
+UPDATER_WEEK_STATE_FILE="${UPDATER_WEEK_STATE_FILE:-${UPDATER_WEEK_STATE_DIR}/updater-last-success-week.txt}"
 
 print_usage() {
   cat <<'EOF'
@@ -27,7 +33,7 @@ Usage: sudo ./install-service.sh [options]
 Options:
   --project-dir <path>   Project root path (default: script directory)
   --service-user <user>  Unix user to run the service as (default: SUDO_USER/current user)
-  --with-updater-timer   Install and enable updater worker timer (daily)
+  --with-updater-timer   Install updater timer (20:00 daily trigger + weekly success gate)
   --updater-service-name <name>  Updater service unit name (default: peertube-updater)
   --updater-timer-name <name>    Updater timer unit name (default: peertube-updater)
   --force                Force full reinstall of selected unit files (stop/disable/remove/recreate)
@@ -177,6 +183,10 @@ WantedBy=multi-user.target
 EOF
 
 if [[ "${WITH_UPDATER_TIMER}" -eq 1 ]]; then
+  mkdir -p "${UPDATER_WEEK_STATE_DIR}"
+  chown "${SERVICE_USER}:${SERVICE_USER}" "${UPDATER_WEEK_STATE_DIR}" || true
+  chmod 755 "${UPDATER_WEEK_STATE_DIR}" || true
+
   echo "[3/8] Writing updater service: ${UPDATER_UNIT_PATH}"
   cat > "${UPDATER_UNIT_PATH}" <<EOF
 [Unit]
@@ -189,14 +199,14 @@ Type=oneshot
 User=${SERVICE_USER}
 WorkingDirectory=${PROJECT_DIR}
 Environment=PYTHONUNBUFFERED=1
-ExecStart=${VENV_PY} ${UPDATER_PY} ${UPDATER_FLAGS}
+ExecStart=/usr/bin/bash -lc 'set -euo pipefail; week_id="$$(date +%G-%V)"; state_file="${UPDATER_WEEK_STATE_FILE}"; if [[ -f "$$state_file" ]] && [[ "$$(cat "$$state_file" 2>/dev/null || true)" == "$$week_id" ]]; then echo "[updater] weekly gate: already successful in week $$week_id, skip"; exit 0; fi; ${VENV_PY} ${UPDATER_PY} ${UPDATER_FLAGS}; printf "%s\n" "$$week_id" > "$$state_file"'
 TimeoutStartSec=24h
 EOF
 
   echo "[4/8] Writing updater timer: ${UPDATER_TIMER_PATH}"
   cat > "${UPDATER_TIMER_PATH}" <<EOF
 [Unit]
-Description=PeerTube Browser Updater Daily Timer
+Description=PeerTube Browser Updater Weekly-Fallback Timer
 
 [Timer]
 OnCalendar=${UPDATER_TIMER_ONCALENDAR}
@@ -261,4 +271,5 @@ echo "Tail logs   : journalctl -u ${SERVICE_NAME} -f"
 if [[ "${WITH_UPDATER_TIMER}" -eq 1 ]]; then
   echo "Timer status: systemctl status ${UPDATER_TIMER_NAME}.timer"
   echo "Timer logs  : journalctl -u ${UPDATER_SERVICE_NAME}.service -f"
+  echo "Timer state : ${UPDATER_WEEK_STATE_FILE}"
 fi

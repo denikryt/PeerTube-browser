@@ -47,7 +47,6 @@ export default defineConfig({
         videos: resolve(rootDir, "videos.html"),
         video: resolve(rootDir, "video-page.html"),
         channels: resolve(rootDir, "channels.html"),
-        debug: resolve(rootDir, "debug.html"),
         about: resolve(rootDir, "about.html"),
       },
     },

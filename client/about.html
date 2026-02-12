@@ -61,6 +61,14 @@
                     </span>
                     Linktree
                   </a>
+                  <a class="about-link" href="https://mastodon.social/@nachitima" rel="me noopener" target="_blank">
+                    <span class="about-link-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" role="img">
+                        <path d="M12 2C7 2 3 5.6 3 10.4v5.3c0 1 .8 1.8 1.8 1.8h2.4v-5.3c0-2.5 2-4.5 4.5-4.5s4.5 2 4.5 4.5v5.3h2.4c1 0 1.8-.8 1.8-1.8v-5.3C21 5.6 17 2 12 2zm-2.1 8.1c-.9 0-1.6.7-1.6 1.6v5.8h1.8v-5.2c0-.5.4-.9.9-.9s.9.4.9.9v5.2h1.8v-5.2c0-.5.4-.9.9-.9s.9.4.9.9v5.2h1.8v-5.8c0-.9-.7-1.6-1.6-1.6-.8 0-1.5.4-1.9 1.1-.4-.7-1.1-1.1-1.9-1.1z" />
+                      </svg>
+                    </span>
+                    Mastodon
+                  </a>
                   <a class="about-link" href="https://www.youtube.com/@nachitima" rel="noopener" target="_blank">
                     <span class="about-link-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" role="img">
@@ -68,6 +76,14 @@
                       </svg>
                     </span>
                     YouTube
+                  </a>
+                  <a class="about-link" href="https://www.instagram.com/nachitima" rel="noopener" target="_blank">
+                    <span class="about-link-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" role="img">
+                        <path d="M7.75 2h8.5A5.75 5.75 0 0 1 22 7.75v8.5A5.75 5.75 0 0 1 16.25 22h-8.5A5.75 5.75 0 0 1 2 16.25v-8.5A5.75 5.75 0 0 1 7.75 2zm8.5 1.8h-8.5A3.95 3.95 0 0 0 3.8 7.75v8.5a3.95 3.95 0 0 0 3.95 3.95h8.5a3.95 3.95 0 0 0 3.95-3.95v-8.5a3.95 3.95 0 0 0-3.95-3.95zM18 6.35a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2zM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 1.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4z" />
+                      </svg>
+                    </span>
+                    Instagram
                   </a>
                 </div>
               </div>
@@ -103,6 +119,8 @@
                 <h2>What PeerTube Browser Is</h2>
                 <p>PeerTube Browser is an independent open-source project focused on one practical problem: video discovery across the federated PeerTube ecosystem. PeerTube has a lot of valuable content, but it is still hard to find interesting videos when everything is spread across many different instances.</p>
                 <p>The goal of this project is to make discovery easier and faster without centralizing control around one large corporation. It works as a discovery layer on top of public PeerTube data.</p>
+                <p><strong>Feedback and discussions:</strong> <a href="https://github.com/denikryt/PeerTube-browser/discussions" rel="noopener" target="_blank">GitHub Discussions</a>.</p>
+                <p><strong>Updates:</strong> I publish devlog/changelog updates on my <a href="https://mastodon.social/@nachitima" rel="me noopener" target="_blank">Mastodon</a>, where I also share updates about other projects.</p>
 
                 <h2>How It Works</h2>
                 <p>The system crawls public PeerTube instances, collects metadata, builds embeddings, and creates a FAISS similarity index. Then the server uses this local dataset to return recommendations through a lightweight API that powers this website.</p>
@@ -115,7 +133,13 @@
 
                 <h2>Recommendation Logic</h2>
                 <p>Recommendations are built from a transparent mix of signals: content similarity, freshness, popularity, and controlled layer mixing. Likes are used as input for finding related content, but this is not a heavy black-box ML platform.</p>
+                <p>The recommendation system is activated by your likes. If you like a video on the video page, that like is saved locally in your browser. You can see your saved likes via the <strong>My likes</strong> button on the home page. You can clear all saved likes with <strong>Reset likes</strong>. Recommendations are generated based on these likes.</p>
                 <p>The idea is to keep the pipeline understandable and controllable while still giving useful discovery results.</p>
+
+                <h2>Content Policy and Moderation</h2>
+                <p>This platform is not intended for distributing pornography or trash content.</p>
+                <p>Moderation and filtering mechanisms are still being implemented. Instances are currently synchronized with what JoinPeerTube provides; if that source is accurate, those instances are already moderated.</p>
+                <p>Sometimes explicit content may still appear by accident. This is unintentional, and such content should no longer appear once moderation tooling is fully in place.</p>
 
                 <h2>Open Source and Next Steps</h2>
                 <p>The full source code and technical documentation are available on GitHub. If you want the implementation details, build steps, or architecture docs, they are all in the repository.</p>
@@ -127,10 +151,10 @@
                 <p>My name is Nachitima (a pseudonym). I am from Ukraine, from Kyiv. I started this project during the war as a way to stay mentally grounded and to find meaning and focus in a difficult and unstable reality. In this sense, the project is a way for me to stay engaged and to keep working on something constructive while a lot of hard things are happening around.</p>
 
                 <h2>How the Project Was Made</h2>
-                <p>The project was created almost entirely using vibe-coding. From its beginning to its current state, it was built in roughly two weeks — essentially two weeks of full-time work.</p>
+                <p>The project was created almost entirely using vibe-coding.</p>
                 <p>I did not really touch the code directly. The technologies used here — HTML, CSS, TypeScript, JavaScript — were either unfamiliar to me or something I had only minimal experience with before. I am not a programmer, I have never worked as one, and I never wanted to be one.</p>
                 <p>I primarily see myself as a content creator. I am interested in animation, 3D, audiovisual content, journalism, maker culture, and hackerspaces. I do like programming in general, but not as a profession. My very first attempt at programming was an attempt to make a computer write code for me, because I did not really want to write it myself. In this sense, vibe-coding turned out to be exactly the way of programming that always felt closest to me.</p>
-                <p>The simple fact is that this approach is fast. I made this project in two weeks. I believe that even a very experienced programmer, doing this manually, would have spent significantly more time on it.</p>
+                <p>The simple fact is that this approach is fast. I believe that even a very experienced programmer, doing this manually, would have spent significantly more time on it.</p>
 
                 <h2>Why This Project Exists</h2>
                 <p>I like the idea of federated social networks. I started working on this project almost on the same day I first learned about federated social networks as a phenomenon.</p>
