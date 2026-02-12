@@ -1,0 +1,46 @@
+.changelog-list {
+  display: grid;
+  gap: 14px;
+}
+
+.changelog-card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 20px rgba(20, 16, 12, 0.06);
+  padding: 16px 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.changelog-date {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.changelog-title {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.35;
+}
+
+.changelog-summary {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.changelog-state {
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  color: var(--muted);
+}
+
+.changelog-state.error {
+  color: #8a3b24;
+  border-color: rgba(138, 59, 36, 0.4);
+  background: rgba(180, 87, 55, 0.08);
+}

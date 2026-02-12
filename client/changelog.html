@@ -4,34 +4,37 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="/favicon.png" />
-    <title>About - PeerTube - Browser</title>
-    <link rel="stylesheet" href="/src/videos.css" />
+    <title>Changelog - PeerTube - Browser</title>
   </head>
   <body>
     <div id="app" class="videos-app">
       <header class="videos-header">
         <div>
           <p class="eyebrow">PeerTube Browser</p>
-          <h1>About</h1>
-          <p class="subtitle">This page is intentionally a template.</p>
+          <h1>Changelog</h1>
+          <p class="subtitle">Recent project updates in plain language.</p>
         </div>
         <nav class="header-nav">
           <a class="nav-link" href="/channels.html">Channels</a>
           <a class="nav-link" href="/">Home</a>
-          <a class="nav-link" href="/changelog.html">Changelog</a>
-          <a class="nav-link active" href="/about.html">About</a>
+          <a class="nav-link active" href="/changelog.html">Changelog</a>
+          <a class="nav-link" href="/about.html">About</a>
         </nav>
       </header>
 
       <main class="videos-main">
         <section class="summary">
           <div>
-            <div class="summary-meta">
-              Replace this template with a local `about.html` that is not tracked by Git.
-            </div>
+            <div id="changelog-counts"></div>
+            <div id="changelog-meta" class="summary-meta"></div>
           </div>
         </section>
+
+        <section id="changelog-state" class="changelog-state">Loading changelog...</section>
+        <section id="changelog-list" class="changelog-list" hidden></section>
       </main>
     </div>
+
+    <script type="module" src="/src/pages/changelog/index.ts"></script>
   </body>
 </html>

@@ -1,0 +1,169 @@
+{
+  "entries": [
+    {
+      "date": "2026-02-12",
+      "title": "Changelog page added",
+      "summary": "Added a dedicated static Changelog page that loads updates from the repository and shows them in a readable newest-first format."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Public changelog source introduced",
+      "summary": "Created a human-readable changelog data file to present completed work in plain language for users."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Recovery after rollback completed",
+      "summary": "Restored worker, crawler, jobs, and documentation after lost edits and revalidated the recovered flow."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Staging updater worker delivered",
+      "summary": "Implemented a staging-based background updater pipeline with merge, service integration, and smoke testing."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Channels page performance improved",
+      "summary": "Moved channels filtering and pagination to the server and optimized DB queries for faster browsing."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Similar video timing logs added",
+      "summary": "Added timing logs for video-page similar requests to make performance bottlenecks visible."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Video card duration on similar list",
+      "summary": "Added duration labels to similar-video cards on the video page."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Exploit cache seed lookup optimized",
+      "summary": "Reduced exploit latency by improving seed lookups, batching DB access, and handling partial cache entries."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Docker deployment support",
+      "summary": "Added Docker and docker-compose support for running the backend with SQLite volume persistence."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Handler contracts and config cleanup",
+      "summary": "Polished handlers and removed duplicated config paths for a cleaner server structure."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Server module decomposition",
+      "summary": "Refactored server.py into focused handler and utility modules to improve maintainability."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "API rate limiting enabled",
+      "summary": "Added in-memory request rate limiting with 429 responses and trigger logging."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Browser-local likes mode",
+      "summary": "Added temporary local likes storage in the browser and sent likes to server recommendations."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Fresh videos selection improved",
+      "summary": "Updated fresh-video logic for both guest and liked profiles with better distribution in feed output."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Recommendation builder extracted",
+      "summary": "Moved recommendation strategy assembly out of server.py into a dedicated builder module."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Unified similarity candidates pipeline",
+      "summary": "Centralized similarity candidate and cache logic so home and video-page flows use the same core path."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Guest recommendation profiles",
+      "summary": "Added automatic guest profiles for users without likes, with explicit profile switching."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Recommendation serving speed pass",
+      "summary": "Materialized popularity in DB, added index support, and introduced popularity recompute tooling."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Popular freshness bonus",
+      "summary": "Adjusted popular ranking with a soft freshness component so old content does not dominate completely."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Filtered random cache mode",
+      "summary": "Added optional random-cache mode that fills cache with filtering already applied."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Random cache per-instance and per-author limits",
+      "summary": "Added limits to keep random results more diverse across instances and channels."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Database build documentation",
+      "summary": "Documented crawler/job pipeline for collecting data, building embeddings, and creating FAISS indexes."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Random and popular layers for no-likes mode",
+      "summary": "Introduced dedicated random and popular layers and clarified fallback behavior when likes are missing."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Per-instance output cap",
+      "summary": "Added per-instance limit in recommendation post-filters to prevent one host from dominating output."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Exploit and explore randomization",
+      "summary": "Added pool-based randomization to reduce repeated recommendation lists from stable sources."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Layer config simplification",
+      "summary": "Removed count override and split gather ratio from mix ratio for clearer recommendation control."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Independent explore, exploit, and fresh layers",
+      "summary": "Separated recommendation layers and treated likes as a mechanism inside generators."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Per-author cap in batch",
+      "summary": "Limited number of videos per author in each batch to improve diversity."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Continuous freshness scoring",
+      "summary": "Switched freshness to a continuous decay-based score instead of a hard threshold."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Exploration versus exploitation split",
+      "summary": "Added explicit explore and exploit behavior to balance discovery and safe recommendations."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Home and Up Next profile split",
+      "summary": "Separated recommendation profiles for home feed and video up-next contexts."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Feature-based recommendation scoring",
+      "summary": "Introduced configurable feature scoring for candidates instead of relying on shuffle."
+    },
+    {
+      "date": "2026-02-12",
+      "title": "Pre-mixer scoring stage",
+      "summary": "Added an explicit scoring stage before mixing so candidates share a comparable utility score."
+    }
+  ]
+}
