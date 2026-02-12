@@ -102,7 +102,7 @@ function renderEntries(entries: ChangelogEntry[]) {
   list.appendChild(fragment);
 
   counts.textContent = `Showing ${entries.length} updates`;
-  meta.textContent = `Source: ${CHANGELOG_URL}`;
+  meta.textContent = "";
 }
 
 function renderEntry(entry: ChangelogEntry): HTMLElement {
@@ -142,7 +142,7 @@ function setEmptyState(message: string) {
   state.classList.remove("error");
   state.textContent = message;
   counts.textContent = "No updates";
-  meta.textContent = `Source: ${CHANGELOG_URL}`;
+  meta.textContent = "";
 }
 
 function setErrorState(message: string) {
@@ -151,7 +151,7 @@ function setErrorState(message: string) {
   state.classList.add("error");
   state.textContent = message;
   counts.textContent = "Unavailable";
-  meta.textContent = `Source: ${CHANGELOG_URL}`;
+  meta.textContent = "";
 }
 
 function formatDate(value: string): string {
