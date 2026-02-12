@@ -30,7 +30,7 @@ Output is in `client/dist/` (static files to be served).
 From the project root:
 ```bash
 python3 -m venv venv
-./venv/bin/pip install -r server/requirements.txt
+./venv/bin/python3 -m pip install --no-cache-dir -r ./server/requirements.txt
 ./venv/bin/python3 server/api/server.py
 ```
 

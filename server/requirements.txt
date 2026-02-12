@@ -1,3 +1,5 @@
+--extra-index-url https://download.pytorch.org/whl/cu121
+
 certifi==2026.1.4
 charset-normalizer==3.4.4
 faiss-cpu==1.13.2

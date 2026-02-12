@@ -299,55 +299,63 @@ def handle_video_request(handler: Any, server: Any, params: dict[str, list[str]]
             float(getattr(server, "popularity_like_weight", 2.0)),
             now_ms_value=checked_at,
         )
-        with server.db_lock:
-            with server.db:
-                server.db.execute(
-                    """
-                    UPDATE videos
-                    SET title = ?, description = ?, channel_name = ?, views = ?, likes = ?, dislikes = ?,
-                        popularity = ?,
-                        tags_json = ?, category = ?, nsfw = ?, last_checked_at = ?
-                    WHERE video_id = ? AND instance_domain = ?
-                    """,
-                    (
-                        title,
-                        description,
-                        channel_display,
-                        views,
-                        likes,
-                        dislikes,
-                        popularity,
-                        tags_json,
-                        category,
-                        nsfw,
-                        checked_at,
-                        row.get("video_id"),
-                        instance_domain,
-                    ),
-                )
-                if channel_id:
+        try:
+            with server.db_lock:
+                with server.db:
                     server.db.execute(
                         """
-                        UPDATE channels
-                        SET channel_name = ?, display_name = ?, followers_count = ?
-                        WHERE channel_id = ? AND instance_domain = ?
+                        UPDATE videos
+                        SET title = ?, description = ?, channel_name = ?, views = ?, likes = ?, dislikes = ?,
+                            popularity = ?,
+                            tags_json = ?, category = ?, nsfw = ?, last_checked_at = ?
+                        WHERE video_id = ? AND instance_domain = ?
                         """,
                         (
-                            channel_slug,
+                            title,
+                            description,
                             channel_display,
-                            channel_followers,
-                            channel_id,
+                            views,
+                            likes,
+                            dislikes,
+                            popularity,
+                            tags_json,
+                            category,
+                            nsfw,
+                            checked_at,
+                            row.get("video_id"),
                             instance_domain,
                         ),
                     )
-                server.db.execute(
-                    """
-                    UPDATE instances
-                    SET last_error = NULL, last_error_at = NULL, last_error_source = NULL
-                    WHERE host = ?
-                    """,
-                    (instance_domain,),
-                )
+                    if channel_id:
+                        server.db.execute(
+                            """
+                            UPDATE channels
+                            SET channel_name = ?, display_name = ?, followers_count = ?
+                            WHERE channel_id = ? AND instance_domain = ?
+                            """,
+                            (
+                                channel_slug,
+                                channel_display,
+                                channel_followers,
+                                channel_id,
+                                instance_domain,
+                            ),
+                        )
+                    server.db.execute(
+                        """
+                        UPDATE instances
+                        SET last_error = NULL, last_error_at = NULL, last_error_source = NULL
+                        WHERE host = ?
+                        """,
+                        (instance_domain,),
+                    )
+        except sqlite3.OperationalError as exc:
+            logging.warning(
+                "[video] failed to persist dynamic metadata for video_id=%s host=%s: %s",
+                row.get("video_id"),
+                instance_domain,
+                exc,
+            )
 
     respond_json(handler, 200, response)
     return True

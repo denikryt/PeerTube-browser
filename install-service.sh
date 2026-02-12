@@ -9,7 +9,7 @@ WITH_UPDATER_TIMER=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
 FORCE_OVERWRITE=0
-UPDATER_TIMER_ONCALENDAR="${UPDATER_TIMER_ONCALENDAR:-Mon..Sun *-*-* 20:00:00}"
+UPDATER_TIMER_ONCALENDAR="${UPDATER_TIMER_ONCALENDAR:-Fri *-*-* 20:00:00}"
 
 # Updater worker flags.
 # Edit this line to control updater behavior installed into systemd.
@@ -268,8 +268,14 @@ fi
 echo "API service installed and running."
 echo "Check status: systemctl status ${SERVICE_NAME}"
 echo "Tail logs   : journalctl -u ${SERVICE_NAME} -f"
-if [[ "${WITH_UPDATER_TIMER}" -eq 1 ]]; then
-  echo "Timer status: systemctl status ${UPDATER_TIMER_NAME}.timer"
-  echo "Timer logs  : journalctl -u ${UPDATER_SERVICE_NAME}.service -f"
-  echo "Timer state : ${UPDATER_WEEK_STATE_FILE}"
+
+if systemctl list-unit-files "${UPDATER_SERVICE_NAME}.service" >/dev/null 2>&1; then
+  echo "Updater status: systemctl status ${UPDATER_SERVICE_NAME}.service"
+  echo "Updater logs  : journalctl -u ${UPDATER_SERVICE_NAME}.service -f"
+fi
+
+if systemctl list-unit-files "${UPDATER_TIMER_NAME}.timer" >/dev/null 2>&1; then
+  echo "Timer status  : systemctl status ${UPDATER_TIMER_NAME}.timer"
+  echo "Timer logs    : journalctl -u ${UPDATER_TIMER_NAME}.timer -f"
+  echo "Timer state   : ${UPDATER_WEEK_STATE_FILE}"
 fi
