@@ -65,6 +65,9 @@ body {
 }
 
 .nav-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
   text-decoration: none;
   padding: 0.45rem 1rem;
   border: 1px solid var(--line);
@@ -78,6 +81,21 @@ body {
 .nav-link:hover {
   border-color: var(--accent);
   transform: translateY(-1px);
+}
+
+.nav-link.has-unread-changelog {
+  padding-right: 1.45rem;
+}
+
+.changelog-badge {
+  width: 0.52rem;
+  height: 0.52rem;
+  border-radius: 999px;
+  background: #d84d2d;
+  box-shadow: 0 0 0 2px var(--paper);
+  position: absolute;
+  top: 0.36rem;
+  right: 0.5rem;
 }
 
 .videos-main {

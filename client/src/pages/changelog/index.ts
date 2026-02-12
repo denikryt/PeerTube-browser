@@ -1,17 +1,14 @@
 import "../../videos.css";
 import "../../changelog.css";
-
-type ChangelogEntry = {
-  date: string;
-  title: string;
-  summary: string;
-};
-
-type ChangelogPayload = {
-  entries?: unknown;
-};
-
-const CHANGELOG_URL = "https://raw.githubusercontent.com/denikryt/PeerTube-Browser/main/CHANGELOG.json";
+import {
+  CHANGELOG_URL,
+  countUnseenEntries,
+  fetchChangelogEntries,
+  getLatestChangelogId,
+  readSeenChangelogId,
+  writeSeenChangelogId,
+  type ChangelogEntry,
+} from "../../data/changelog";
 
 const counts = document.getElementById("changelog-counts");
 const meta = document.getElementById("changelog-meta");
@@ -29,75 +26,38 @@ async function loadChangelog() {
   setLoadingState("Loading changelog...");
 
   try {
-    const response = await fetch(CHANGELOG_URL, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`Could not load changelog (HTTP ${response.status}).`);
-    }
-
-    const payload = (await response.json()) as unknown;
-    const entries = normalizeEntries(payload);
+    const entries = await fetchChangelogEntries();
     if (!entries.length) {
       setEmptyState("Changelog is empty.");
       return;
     }
 
-    renderEntries(entries);
+    const previousSeenId = readSeenChangelogId();
+    const unseenCount = countUnseenEntries(entries, previousSeenId);
+    renderEntries(entries, unseenCount);
+
+    const latestId = getLatestChangelogId(entries);
+    if (latestId) {
+      writeSeenChangelogId(latestId);
+      window.dispatchEvent(new Event("changelog:seen-updated"));
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not load changelog.";
     setErrorState(message);
   }
 }
 
-function normalizeEntries(payload: unknown): ChangelogEntry[] {
-  const rawList = extractRawEntries(payload);
-  const normalized: ChangelogEntry[] = [];
-
-  for (const item of rawList) {
-    if (!item || typeof item !== "object") continue;
-    const candidate = item as Record<string, unknown>;
-    const date = normalizeString(candidate.date);
-    const title = normalizeString(candidate.title);
-    const summary = normalizeString(candidate.summary);
-    if (!date || !title || !summary) continue;
-    if (!isIsoDate(date)) continue;
-    normalized.push({ date, title, summary });
-  }
-
-  normalized.sort((a, b) => {
-    if (a.date === b.date) return 0;
-    return a.date < b.date ? 1 : -1;
-  });
-  return normalized;
-}
-
-function extractRawEntries(payload: unknown): unknown[] {
-  if (Array.isArray(payload)) return payload;
-  if (!payload || typeof payload !== "object") return [];
-  const container = payload as ChangelogPayload;
-  if (!Array.isArray(container.entries)) return [];
-  return container.entries;
-}
-
-function normalizeString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const cleaned = value.trim();
-  return cleaned.length ? cleaned : null;
-}
-
-function isIsoDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsed = Date.parse(`${value}T00:00:00Z`);
-  return Number.isFinite(parsed);
-}
-
-function renderEntries(entries: ChangelogEntry[]) {
+function renderEntries(entries: ChangelogEntry[], unseenCount: number) {
   state.hidden = true;
   list.hidden = false;
   list.innerHTML = "";
 
   const fragment = document.createDocumentFragment();
-  for (const entry of entries) {
-    fragment.appendChild(renderEntry(entry));
+  for (const [index, entry] of entries.entries()) {
+    if (index === unseenCount && unseenCount > 0 && unseenCount < entries.length) {
+      fragment.appendChild(renderSeenSeparator());
+    }
+    fragment.appendChild(renderEntry(entry, index < unseenCount));
   }
   list.appendChild(fragment);
 
@@ -105,9 +65,9 @@ function renderEntries(entries: ChangelogEntry[]) {
   meta.textContent = "";
 }
 
-function renderEntry(entry: ChangelogEntry): HTMLElement {
+function renderEntry(entry: ChangelogEntry, isNew: boolean): HTMLElement {
   const article = document.createElement("article");
-  article.className = "changelog-card";
+  article.className = `changelog-card${isNew ? " is-new" : ""}`;
 
   const dateNode = document.createElement("p");
   dateNode.className = "changelog-date";
@@ -125,6 +85,13 @@ function renderEntry(entry: ChangelogEntry): HTMLElement {
   article.appendChild(titleNode);
   article.appendChild(summaryNode);
   return article;
+}
+
+function renderSeenSeparator(): HTMLElement {
+  const separator = document.createElement("div");
+  separator.className = "changelog-separator";
+  separator.textContent = "Previously seen";
+  return separator;
 }
 
 function setLoadingState(message: string) {

@@ -2,6 +2,11 @@
   "entries": [
     {
       "date": "2026-02-12",
+      "title": "Changelog unread badge and new/seen split",
+      "summary": "Added an unread dot on Changelog navigation links across pages and a visual separator between new and previously seen updates on the changelog page."
+    },
+    {
+      "date": "2026-02-12",
       "title": "Changelog page added",
       "summary": "Added a dedicated static Changelog page that loads updates from the repository and shows them in a readable newest-first format."
     },
