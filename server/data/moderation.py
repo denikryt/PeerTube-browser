@@ -61,7 +61,7 @@ def normalize_host(value: str | None) -> str | None:
 
 
 def ensure_moderation_schema(conn: sqlite3.Connection) -> None:
-    """Create moderation tables used by Block A tasks."""
+    """Create moderation tables used by denylist and channel blocking flows."""
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS instance_denylist (
