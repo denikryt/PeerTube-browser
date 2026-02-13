@@ -1,11 +1,13 @@
 import { ChannelStore, type ChannelProgressRow, type ChannelUpsertRow } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
+import { filterHosts, loadHostsFromFile } from "./host-filters.js";
 
 const PAGE_SIZE = 50;
 const HEALTH_CONCURRENCY = 4;
 
 export interface ChannelCrawlOptions {
   dbPath: string;
+  excludeHostsFile: string | null;
   concurrency: number;
   timeoutMs: number;
   maxRetries: number;
@@ -57,19 +59,23 @@ interface PeerTubeVideoChannel {
 
 export async function crawlChannels(options: ChannelCrawlOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
+  const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const hostsAll = store.listInstances();
-  const hosts =
-    options.maxInstances > 0 ? hostsAll.slice(0, options.maxInstances) : hostsAll;
-  const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
+  const filteredHosts = filterHosts(hostsAll, excludedHosts);
+  const effectiveHosts =
+    options.maxInstances > 0
+      ? filteredHosts.slice(0, options.maxInstances)
+      : filteredHosts;
+  const workerCount = Math.min(options.concurrency, Math.max(1, effectiveHosts.length));
   const limitState: ChannelInsertLimitState = {
     remaining: options.maxChannels > 0 ? options.maxChannels : null
   };
 
-  store.prepareChannelProgress(hosts, options.resume);
+  store.prepareChannelProgress(effectiveHosts, options.resume);
   const workItems = store.listChannelWorkItems();
 
   console.log(
-    `[channels] instances=${hosts.length} work=${workItems.length} concurrency=${workerCount} resume=${options.resume}`
+    `[channels] instances=${effectiveHosts.length} work=${workItems.length} concurrency=${workerCount} resume=${options.resume}`
   );
 
   const queue = workItems.slice();
@@ -84,7 +90,8 @@ export async function crawlChannels(options: ChannelCrawlOptions) {
 
 export async function checkChannelHealth(options: ChannelCrawlOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
-  const hosts = store.listChannelInstances();
+  const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
+  const hosts = filterHosts(store.listChannelInstances(), excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
 
   console.log(

@@ -4,15 +4,19 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import shlex
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 script_dir = Path(__file__).resolve().parent
 server_dir = script_dir.parents[1]
@@ -20,6 +24,12 @@ if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
 
 from scripts.cli_format import CompactHelpFormatter
+from data.moderation import (
+    ensure_moderation_schema,
+    list_active_denied_hosts,
+    purge_host_data,
+    purge_similarity_for_host,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -135,6 +145,23 @@ def parse_args() -> argparse.Namespace:
         "--whitelist-url",
         default="https://instances.joinpeertube.org/api/v1/instances/hosts?count=5000&healthy=true",
         help="Whitelist URL for instances crawl.",
+    )
+    parser.add_argument(
+        "--sync-join-whitelist",
+        action="store_true",
+        help=(
+            "Strict sync mode: reconcile prod hosts with JoinPeerTube and ingest only missing hosts."
+        ),
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm destructive host purge in --sync-join-whitelist mode.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print sync/purge plan and exit (only with --sync-join-whitelist).",
     )
     parser.add_argument(
         "--skip-local-dead",
@@ -260,6 +287,122 @@ def run_cmd(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, cwd=cwd, check=True)
     elapsed_ms = int((time.monotonic() - start) * 1000)
     logging.info("done: %s (%dms)", cmd[0], elapsed_ms)
+
+
+def fetch_join_hosts(url: str) -> set[str]:
+    request = Request(
+        url,
+        headers={"User-Agent": "peertube-browser-updater/1.0"},
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            payload = json.load(response)
+    except (HTTPError, URLError) as exc:
+        raise RuntimeError(f"Failed to fetch hosts from {url}: {exc}") from exc
+
+    if isinstance(payload, dict) and "data" in payload:
+        entries = payload["data"]
+    elif isinstance(payload, list):
+        entries = payload
+    else:
+        raise ValueError("Unexpected whitelist JSON shape.")
+
+    hosts: set[str] = set()
+    for entry in entries:
+        host = entry.get("host") if isinstance(entry, dict) else entry
+        if not host:
+            continue
+        value = str(host).strip().lower()
+        if value:
+            hosts.add(value)
+    return hosts
+
+
+def list_prod_hosts(prod_db: Path) -> set[str]:
+    conn = sqlite3.connect(prod_db.as_posix())
+    try:
+        rows = conn.execute("SELECT host FROM instances").fetchall()
+        return {str(row[0]).strip().lower() for row in rows if row and row[0]}
+    finally:
+        conn.close()
+
+
+def load_denied_hosts(prod_db: Path) -> set[str]:
+    conn = sqlite3.connect(prod_db.as_posix())
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_moderation_schema(conn)
+        return list_active_denied_hosts(conn)
+    finally:
+        conn.close()
+
+
+def write_hosts_file(hosts: set[str], prefix: str) -> Path | None:
+    if not hosts:
+        return None
+    handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix=prefix,
+        suffix=".txt",
+        delete=False,
+    )
+    try:
+        for host in sorted(hosts):
+            handle.write(f"{host}\n")
+    finally:
+        handle.close()
+    return Path(handle.name)
+
+
+def purge_hosts(
+    *,
+    prod_db: Path,
+    similarity_db: Path,
+    hosts: set[str],
+    dry_run: bool,
+) -> dict[str, int]:
+    summary: dict[str, int] = {}
+    if not hosts:
+        return summary
+
+    main_conn = sqlite3.connect(prod_db.as_posix())
+    main_conn.row_factory = sqlite3.Row
+    sim_conn: sqlite3.Connection | None = None
+    try:
+        sim_exists = similarity_db.exists()
+        if sim_exists:
+            sim_conn = sqlite3.connect(similarity_db.as_posix())
+            sim_conn.row_factory = sqlite3.Row
+        for host in sorted(hosts):
+            counts = purge_host_data(main_conn, host, dry_run=dry_run)
+            for table, value in counts.items():
+                summary[table] = summary.get(table, 0) + int(value)
+            if sim_conn is not None:
+                sim_counts = purge_similarity_for_host(sim_conn, host, dry_run=dry_run)
+                for table, value in sim_counts.items():
+                    summary[table] = summary.get(table, 0) + int(value)
+    finally:
+        main_conn.close()
+        if sim_conn is not None:
+            sim_conn.close()
+    return summary
+
+
+def purge_hosts_from_staging(staging_db: Path, hosts: set[str]) -> dict[str, int]:
+    summary: dict[str, int] = {}
+    if not hosts:
+        return summary
+    conn = sqlite3.connect(staging_db.as_posix())
+    conn.row_factory = sqlite3.Row
+    try:
+        for host in sorted(hosts):
+            counts = purge_host_data(conn, host, dry_run=False)
+            for table, value in counts.items():
+                summary[table] = summary.get(table, 0) + int(value)
+    finally:
+        conn.close()
+    return summary
 
 
 def remove_db_with_sidecars(path: Path) -> None:
@@ -538,198 +681,306 @@ def main() -> None:
     logging.info("worker start prod_db=%s staging_db=%s", prod_db, staging_db)
     service_stopped = False
     pipeline_start = time.monotonic()
+    if args.dry_run and not args.sync_join_whitelist:
+        raise RuntimeError("--dry-run is supported only together with --sync-join-whitelist.")
 
-    with single_run_lock(lock_file):
-        if args.resume_staging and staging_db.exists():
-            logging.info("staging reused from previous run: %s", staging_db)
-        else:
-            init_staging_db(staging_db, schema_path)
-            logging.info("staging initialized")
+    temp_files: list[Path] = []
+    try:
+        with single_run_lock(lock_file):
+            denied_hosts = load_denied_hosts(prod_db)
+            logging.info("moderation deny_hosts_active=%d", len(denied_hosts))
 
-            seed_staging_from_prod(prod_db, staging_db)
-            logging.info("staging seeded from prod (instances + channels)")
-
-        run_cmd(
-            [
-                args.node_bin,
-                (crawler_dist / "instances-cli.js").as_posix(),
-                "--db",
-                staging_db.as_posix(),
-                "--whitelist-url",
-                args.whitelist_url,
-                "--resume",
-                "--max-instances",
-                str(args.max_instances),
-                "--concurrency",
-                str(args.concurrency),
-                "--timeout",
-                str(args.timeout_ms),
-                "--max-retries",
-                str(args.max_retries),
-            ],
-            cwd=crawler_dir,
-        )
-        if args.skip_local_dead:
-            prune_staging_local_non_ok_instances(prod_db=prod_db, staging_db=staging_db)
-        run_cmd(
-            [
-                args.node_bin,
-                (crawler_dist / "channels-cli.js").as_posix(),
-                "--db",
-                staging_db.as_posix(),
-                "--resume",
-                "--new-channels",
-                "--max-instances",
-                str(args.max_instances),
-                "--max-channels",
-                str(args.max_channels),
-                "--concurrency",
-                str(args.concurrency),
-                "--timeout",
-                str(args.timeout_ms),
-                "--max-retries",
-                str(args.max_retries),
-            ],
-            cwd=crawler_dir,
-        )
-        run_cmd(
-            [
-                args.node_bin,
-                (crawler_dist / "videos-cli.js").as_posix(),
-                "--db",
-                staging_db.as_posix(),
-                "--existing-db",
-                prod_db.as_posix(),
-                "--resume",
-                "--new-videos",
-                "--sort",
-                "-publishedAt",
-                "--max-instances",
-                str(args.max_instances),
-                "--max-channels",
-                str(args.max_channels),
-                "--max-videos-pages",
-                str(args.max_videos_pages),
-                "--stop-after-full-pages",
-                str(args.videos_stop_after_full_pages),
-                "--concurrency",
-                str(args.concurrency),
-                "--timeout",
-                str(args.timeout_ms),
-                "--max-retries",
-                str(args.max_retries),
-            ],
-            cwd=crawler_dir,
-        )
-        run_cmd(
-            [
-                args.node_bin,
-                (crawler_dist / "channels-videos-count-cli.js").as_posix(),
-                "--db",
-                staging_db.as_posix(),
-                "--resume",
-                "--concurrency",
-                str(args.concurrency),
-                "--timeout",
-                str(args.timeout_ms),
-                "--max-retries",
-                str(args.max_retries),
-            ],
-            cwd=crawler_dir,
-        )
-
-        embeddings_cmd = [
-            args.python_bin,
-            (script_dir / "build-video-embeddings.py").as_posix(),
-            "--db-path",
-            staging_db.as_posix(),
-        ]
-        if args.use_gpu:
-            embeddings_cmd.append("--gpu")
-        run_cmd(embeddings_cmd, cwd=repo_root)
-        if args.inject_replace_embedding_for_test:
-            inject_replace_embedding_for_test(prod_db=prod_db, staging_db=staging_db)
-
-        deltas = count_staging_deltas(prod_db, staging_db)
-        logging.info(
-            "staging delta instances=%d channels=%d videos=%d embeddings=%d",
-            deltas["instances_new"],
-            deltas["channels_new"],
-            deltas["videos_new"],
-            deltas["embeddings_new"],
-        )
-
-        if args.fail_before_merge:
-            raise RuntimeError("Injected failure: before merge stage")
-
-        try:
-            if not args.skip_systemctl:
-                run_cmd(["systemctl", "stop", args.service_name])
-                service_stopped = True
-
-            run_cmd(
-                [
-                    args.python_bin,
-                    (script_dir / "merge-staging-db.py").as_posix(),
-                    "--prod-db",
-                    prod_db.as_posix(),
-                    "--staging-db",
-                    staging_db.as_posix(),
-                    "--rules",
-                    merge_rules.as_posix(),
-                ],
-                cwd=repo_root,
-            )
-            run_cmd(
-                [
-                    args.python_bin,
-                    (script_dir / "recompute-popularity.py").as_posix(),
-                    "--db",
-                    prod_db.as_posix(),
-                    "--incremental",
-                ],
-                cwd=repo_root,
-            )
-            if args.fail_during_ann_build:
-                raise RuntimeError("Injected failure: ANN build stage")
-            ann_cmd = [
-                args.python_bin,
-                (script_dir / "build-ann-index.py").as_posix(),
-                "--db-path",
-                prod_db.as_posix(),
-                "--index-path",
-                index_path.as_posix(),
-                "--meta-path",
-                index_meta_path.as_posix(),
-                "--normalize",
-                "--nlist",
-                str(args.nlist),
-            ]
-            if args.use_gpu:
-                ann_cmd.append("--gpu")
-            run_cmd(ann_cmd, cwd=repo_root)
-            if args.fail_after_merge_before_similarity:
-                raise RuntimeError(
-                    "Injected failure: after merge/ANN and before similarity precompute"
+            sync_new_hosts: set[str] = set()
+            sync_stale_hosts: set[str] = set()
+            if args.sync_join_whitelist:
+                join_hosts = fetch_join_hosts(args.whitelist_url)
+                effective_join_hosts = join_hosts - denied_hosts
+                prod_hosts = list_prod_hosts(prod_db)
+                sync_stale_hosts = prod_hosts - effective_join_hosts
+                sync_new_hosts = effective_join_hosts - prod_hosts
+                logging.info(
+                    "sync-join hosts_total=%d effective=%d stale=%d new=%d",
+                    len(join_hosts),
+                    len(effective_join_hosts),
+                    len(sync_stale_hosts),
+                    len(sync_new_hosts),
                 )
-            run_cmd(
-                [
-                    args.python_bin,
-                    (script_dir / "precompute-similar-ann.py").as_posix(),
+
+                stale_plan = purge_hosts(
+                    prod_db=prod_db,
+                    similarity_db=similarity_db,
+                    hosts=sync_stale_hosts,
+                    dry_run=True,
+                )
+                if args.dry_run:
+                    logging.info(
+                        "sync-join dry-run stale_hosts=%d delete_plan=%s",
+                        len(sync_stale_hosts),
+                        stale_plan,
+                    )
+                    return
+                if sync_stale_hosts and not args.yes:
+                    raise RuntimeError(
+                        "Refusing sync stale-host purge without --yes. "
+                        "Re-run with --yes or use --dry-run to inspect."
+                    )
+                if sync_stale_hosts:
+                    stale_applied = purge_hosts(
+                        prod_db=prod_db,
+                        similarity_db=similarity_db,
+                        hosts=sync_stale_hosts,
+                        dry_run=False,
+                    )
+                    logging.info(
+                        "sync-join stale purge hosts=%d deleted=%s",
+                        len(sync_stale_hosts),
+                        stale_applied,
+                    )
+
+            if args.resume_staging and staging_db.exists():
+                logging.info("staging reused from previous run: %s", staging_db)
+            else:
+                init_staging_db(staging_db, schema_path)
+                logging.info("staging initialized")
+                if not args.sync_join_whitelist:
+                    seed_staging_from_prod(prod_db, staging_db)
+                    logging.info("staging seeded from prod (instances + channels)")
+
+            if denied_hosts:
+                staging_prune = purge_hosts_from_staging(staging_db, denied_hosts)
+                if staging_prune:
+                    logging.info("staging denylist prune=%s", staging_prune)
+
+            exclude_hosts_file = write_hosts_file(denied_hosts, "ptb-exclude-hosts-")
+            if exclude_hosts_file is not None:
+                temp_files.append(exclude_hosts_file)
+            whitelist_hosts_file = None
+            if args.sync_join_whitelist:
+                whitelist_hosts_file = write_hosts_file(sync_new_hosts, "ptb-whitelist-hosts-")
+                if whitelist_hosts_file is not None:
+                    temp_files.append(whitelist_hosts_file)
+
+            run_crawl_stages = (not args.sync_join_whitelist) or bool(sync_new_hosts)
+            if run_crawl_stages:
+                instances_cmd = [
+                    args.node_bin,
+                    (crawler_dist / "instances-cli.js").as_posix(),
                     "--db",
+                    staging_db.as_posix(),
+                    "--resume",
+                    "--max-instances",
+                    str(args.max_instances),
+                    "--concurrency",
+                    str(args.concurrency),
+                    "--timeout",
+                    str(args.timeout_ms),
+                    "--max-retries",
+                    str(args.max_retries),
+                ]
+                if whitelist_hosts_file is not None:
+                    instances_cmd.extend(["--whitelist-file", whitelist_hosts_file.as_posix()])
+                else:
+                    instances_cmd.extend(["--whitelist-url", args.whitelist_url])
+                if exclude_hosts_file is not None:
+                    instances_cmd.extend(
+                        ["--exclude-hosts-file", exclude_hosts_file.as_posix()]
+                    )
+                run_cmd(instances_cmd, cwd=crawler_dir)
+
+                if args.skip_local_dead:
+                    prune_staging_local_non_ok_instances(prod_db=prod_db, staging_db=staging_db)
+
+                channels_cmd = [
+                    args.node_bin,
+                    (crawler_dist / "channels-cli.js").as_posix(),
+                    "--db",
+                    staging_db.as_posix(),
+                    "--resume",
+                    "--new-channels",
+                    "--max-instances",
+                    str(args.max_instances),
+                    "--max-channels",
+                    str(args.max_channels),
+                    "--concurrency",
+                    str(args.concurrency),
+                    "--timeout",
+                    str(args.timeout_ms),
+                    "--max-retries",
+                    str(args.max_retries),
+                ]
+                if exclude_hosts_file is not None:
+                    channels_cmd.extend(
+                        ["--exclude-hosts-file", exclude_hosts_file.as_posix()]
+                    )
+                run_cmd(channels_cmd, cwd=crawler_dir)
+
+                videos_cmd = [
+                    args.node_bin,
+                    (crawler_dist / "videos-cli.js").as_posix(),
+                    "--db",
+                    staging_db.as_posix(),
+                    "--existing-db",
                     prod_db.as_posix(),
-                    "--index",
+                    "--resume",
+                    "--new-videos",
+                    "--sort",
+                    "-publishedAt",
+                    "--max-instances",
+                    str(args.max_instances),
+                    "--max-channels",
+                    str(args.max_channels),
+                    "--max-videos-pages",
+                    str(args.max_videos_pages),
+                    "--stop-after-full-pages",
+                    str(args.videos_stop_after_full_pages),
+                    "--concurrency",
+                    str(args.concurrency),
+                    "--timeout",
+                    str(args.timeout_ms),
+                    "--max-retries",
+                    str(args.max_retries),
+                ]
+                if exclude_hosts_file is not None:
+                    videos_cmd.extend(
+                        ["--exclude-hosts-file", exclude_hosts_file.as_posix()]
+                    )
+                run_cmd(videos_cmd, cwd=crawler_dir)
+
+                counts_cmd = [
+                    args.node_bin,
+                    (crawler_dist / "channels-videos-count-cli.js").as_posix(),
+                    "--db",
+                    staging_db.as_posix(),
+                    "--resume",
+                    "--concurrency",
+                    str(args.concurrency),
+                    "--timeout",
+                    str(args.timeout_ms),
+                    "--max-retries",
+                    str(args.max_retries),
+                ]
+                if exclude_hosts_file is not None:
+                    counts_cmd.extend(
+                        ["--exclude-hosts-file", exclude_hosts_file.as_posix()]
+                    )
+                run_cmd(counts_cmd, cwd=crawler_dir)
+
+                embeddings_cmd = [
+                    args.python_bin,
+                    (script_dir / "build-video-embeddings.py").as_posix(),
+                    "--db-path",
+                    staging_db.as_posix(),
+                ]
+                if args.use_gpu:
+                    embeddings_cmd.append("--gpu")
+                run_cmd(embeddings_cmd, cwd=repo_root)
+                if args.inject_replace_embedding_for_test:
+                    inject_replace_embedding_for_test(prod_db=prod_db, staging_db=staging_db)
+
+                deltas = count_staging_deltas(prod_db, staging_db)
+                logging.info(
+                    "staging delta instances=%d channels=%d videos=%d embeddings=%d",
+                    deltas["instances_new"],
+                    deltas["channels_new"],
+                    deltas["videos_new"],
+                    deltas["embeddings_new"],
+                )
+            else:
+                logging.info(
+                    "sync-join ingest skipped: no new hosts after denylist filtering"
+                )
+                if not sync_stale_hosts:
+                    logging.info("sync-join no changes detected; finishing early")
+                    return
+
+            if args.fail_before_merge:
+                raise RuntimeError("Injected failure: before merge stage")
+
+            try:
+                if not args.skip_systemctl:
+                    run_cmd(["systemctl", "stop", args.service_name])
+                    service_stopped = True
+
+                run_cmd(
+                    [
+                        args.python_bin,
+                        (script_dir / "merge-staging-db.py").as_posix(),
+                        "--prod-db",
+                        prod_db.as_posix(),
+                        "--staging-db",
+                        staging_db.as_posix(),
+                        "--rules",
+                        merge_rules.as_posix(),
+                    ],
+                    cwd=repo_root,
+                )
+
+                if denied_hosts:
+                    safety_prune = purge_hosts(
+                        prod_db=prod_db,
+                        similarity_db=similarity_db,
+                        hosts=denied_hosts,
+                        dry_run=False,
+                    )
+                    if safety_prune:
+                        logging.info("post-merge denylist safety prune=%s", safety_prune)
+
+                run_cmd(
+                    [
+                        args.python_bin,
+                        (script_dir / "recompute-popularity.py").as_posix(),
+                        "--db",
+                        prod_db.as_posix(),
+                        "--incremental",
+                    ],
+                    cwd=repo_root,
+                )
+                if args.fail_during_ann_build:
+                    raise RuntimeError("Injected failure: ANN build stage")
+                ann_cmd = [
+                    args.python_bin,
+                    (script_dir / "build-ann-index.py").as_posix(),
+                    "--db-path",
+                    prod_db.as_posix(),
+                    "--index-path",
                     index_path.as_posix(),
-                    "--out",
-                    similarity_db.as_posix(),
-                    "--incremental",
-                ],
-                cwd=repo_root,
-            )
-        finally:
-            if service_stopped and not args.skip_systemctl:
-                run_cmd(["systemctl", "start", args.service_name])
-                service_stopped = False
+                    "--meta-path",
+                    index_meta_path.as_posix(),
+                    "--normalize",
+                    "--nlist",
+                    str(args.nlist),
+                ]
+                if args.use_gpu:
+                    ann_cmd.append("--gpu")
+                run_cmd(ann_cmd, cwd=repo_root)
+                if args.fail_after_merge_before_similarity:
+                    raise RuntimeError(
+                        "Injected failure: after merge/ANN and before similarity precompute"
+                    )
+                run_cmd(
+                    [
+                        args.python_bin,
+                        (script_dir / "precompute-similar-ann.py").as_posix(),
+                        "--db",
+                        prod_db.as_posix(),
+                        "--index",
+                        index_path.as_posix(),
+                        "--out",
+                        similarity_db.as_posix(),
+                        "--incremental",
+                    ],
+                    cwd=repo_root,
+                )
+            finally:
+                if service_stopped and not args.skip_systemctl:
+                    run_cmd(["systemctl", "start", args.service_name])
+                    service_stopped = False
+    finally:
+        for temp_path in temp_files:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except Exception:
+                logging.warning("failed to remove temp file: %s", temp_path)
 
     total_ms = int((time.monotonic() - pipeline_start) * 1000)
     logging.info("worker completed in %dms", total_ms)

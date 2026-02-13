@@ -26,6 +26,7 @@ from data.channels import fetch_channels
 from data.embeddings import normalize_vector, resolve_seed
 from data.metadata import fetch_metadata
 from data.random_videos import fetch_random_rows, fetch_random_rows_from_cache
+from data.serving_moderation import apply_serving_moderation_filters
 from data.similarity_candidates import SimilarityCandidatesPolicy, get_similar_candidates
 from data.time import now_ms
 from recommendations.debug import attach_debug_info
@@ -328,8 +329,12 @@ class SimilarHandler(BaseHTTPRequestHandler):
         seed_payload: dict[str, Any],
     ) -> None:
         """Serialize rows and write HTTP response."""
-        stable_rows = stable_video_rows(rows)
-        stable_rows = maybe_attach_debug(stable_rows, rows, include_debug)
+        filtered_rows, _ = apply_serving_moderation_filters(
+            self.server, rows, request_id=request_id
+        )
+
+        stable_rows = stable_video_rows(filtered_rows)
+        stable_rows = maybe_attach_debug(stable_rows, filtered_rows, include_debug)
         duration_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
         logging.info(
             "[similar-server][%s] done count=%d duration_ms=%d",

@@ -23,6 +23,7 @@ if str(api_dir) not in sys.path:
 
 from scripts.cli_format import CompactHelpFormatter
 from server_config import DEFAULT_DB_PATH
+from data.moderation import ensure_moderation_schema, list_active_denied_hosts
 
 DEFAULT_URL = (
     "https://instances.joinpeertube.org/api/v1/instances/hosts?count=5000&healthy=true"
@@ -449,6 +450,10 @@ def main() -> None:
 
     source_hosts: set[str] = set()
     selected_hosts: set[str] = set()
+    selected_hosts_before_deny: set[str] = set()
+    denylisted_hosts: set[str] = set()
+    denylisted_skipped = 0
+    denylisted_purged = 0
     total = 0
     removed = 0
     added = 0
@@ -462,9 +467,11 @@ def main() -> None:
         )
         attached = True
         with conn:
+            ensure_moderation_schema(conn)
             ensure_whitelist_schema(conn)
             ensure_content_schema(conn)
             ensure_schema_compatibility(conn)
+            denylisted_hosts = list_active_denied_hosts(conn)
             source_hosts = {
                 row[0]
                 for row in conn.execute(
@@ -472,9 +479,39 @@ def main() -> None:
                 )
             }
             if args.mode == "exclude":
-                selected_hosts = source_hosts - remote_hosts
+                selected_hosts_before_deny = source_hosts - remote_hosts
             else:
-                selected_hosts = remote_hosts
+                selected_hosts_before_deny = remote_hosts
+            if denylisted_hosts:
+                selected_hosts = selected_hosts_before_deny - denylisted_hosts
+                denylisted_skipped = len(selected_hosts_before_deny - selected_hosts)
+                placeholders = ", ".join(["?"] * len(denylisted_hosts))
+                denylisted_purged += int(
+                    conn.execute(
+                        f"SELECT COUNT(*) FROM channels WHERE instance_domain IN ({placeholders})",
+                        tuple(sorted(denylisted_hosts)),
+                    ).fetchone()[0]
+                )
+                denylisted_purged += int(
+                    conn.execute(
+                        f"SELECT COUNT(*) FROM videos WHERE instance_domain IN ({placeholders})",
+                        tuple(sorted(denylisted_hosts)),
+                    ).fetchone()[0]
+                )
+                denylisted_purged += int(
+                    conn.execute(
+                        f"SELECT COUNT(*) FROM video_embeddings WHERE instance_domain IN ({placeholders})",
+                        tuple(sorted(denylisted_hosts)),
+                    ).fetchone()[0]
+                )
+                denylisted_purged += int(
+                    conn.execute(
+                        f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE host IN ({placeholders})",
+                        tuple(sorted(denylisted_hosts)),
+                    ).fetchone()[0]
+                )
+            else:
+                selected_hosts = selected_hosts_before_deny
             total, removed, added = sync_hosts(conn, selected_hosts)
             channels_count, videos_count, embeddings_count = rebuild_content_tables(
                 conn, selected_hosts
@@ -490,6 +527,12 @@ def main() -> None:
         len(remote_hosts),
         len(source_hosts),
         len(selected_hosts),
+    )
+    logging.info(
+        "Denylist integration: active=%d denylisted_skipped=%d denylisted_purged=%d",
+        len(denylisted_hosts),
+        denylisted_skipped,
+        denylisted_purged,
     )
     logging.info(
         "Whitelist synced: %s entries, %s added, %s removed.",

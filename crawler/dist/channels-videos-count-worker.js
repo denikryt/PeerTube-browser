@@ -1,9 +1,11 @@
 import { ChannelStore } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
+import { filterHosts, loadHostsFromFile } from "./host-filters.js";
 const CHANNEL_CONCURRENCY = 2;
 export async function crawlChannelVideosCount(options) {
     const store = new ChannelStore({ dbPath: options.dbPath });
-    const hosts = store.listInstances();
+    const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
+    const hosts = filterHosts(store.listInstances(), excludedHosts);
     const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
     const counts = store.getChannelCounts();
     const progress = {

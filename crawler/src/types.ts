@@ -2,6 +2,8 @@ export type CrawlStatus = "pending" | "processing" | "done" | "error";
 
 export interface CrawlOptions {
   whitelistUrl: string;
+  whitelistFile: string | null;
+  excludeHostsFile: string | null;
   dbPath: string;
   concurrency: number;
   timeoutMs: number;

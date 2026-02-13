@@ -2,6 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import Database from "better-sqlite3";
 import { VideoStore } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
+import { filterHosts, loadHostsFromFile } from "./host-filters.js";
 const PAGE_SIZE = 50;
 const CHANNEL_CONCURRENCY = 2;
 const TAGS_CONCURRENCY = 4;
@@ -19,9 +20,13 @@ export async function crawlVideos(options) {
         return;
     }
     const store = new VideoStore({ dbPath: options.dbPath });
+    const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
     const existingDb = openExistingDb(options);
     const hostsAll = store.listInstances();
-    const hosts = options.maxInstances > 0 ? hostsAll.slice(0, options.maxInstances) : hostsAll;
+    const filteredHosts = filterHosts(hostsAll, excludedHosts);
+    const hosts = options.maxInstances > 0
+        ? filteredHosts.slice(0, options.maxInstances)
+        : filteredHosts;
     const channelsAll = store.listChannelsWithVideos(1, hosts);
     const channels = options.maxChannels > 0
         ? channelsAll.slice(0, options.maxChannels)
@@ -59,9 +64,10 @@ export async function crawlVideos(options) {
 }
 async function crawlVideoComments(options) {
     const store = new VideoStore({ dbPath: options.dbPath });
+    const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
     const items = store.listVideosForComments(options.resume);
     const grouped = groupByInstanceComments(items);
-    const instances = Array.from(grouped.keys());
+    const instances = filterHosts(Array.from(grouped.keys()), excludedHosts);
     const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
     console.log(`[comments] instances=${instances.length} videos=${items.length} concurrency=${workerCount} resume=${options.resume}`);
     const queue = instances.slice();
@@ -72,9 +78,10 @@ async function crawlVideoComments(options) {
 }
 async function crawlVideoTags(options, mode) {
     const store = new VideoStore({ dbPath: options.dbPath });
+    const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
     const items = store.listVideosForTags(mode);
     const grouped = groupByInstanceTags(items);
-    const instances = Array.from(grouped.keys());
+    const instances = filterHosts(Array.from(grouped.keys()), excludedHosts);
     const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
     console.log(`[tags] instances=${instances.length} videos=${items.length} concurrency=${workerCount}`);
     const queue = instances.slice();

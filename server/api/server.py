@@ -52,6 +52,8 @@ from server_config import (
     DEFAULT_USE_CLIENT_LIKES,
     DEFAULT_RATE_LIMIT_MAX_REQUESTS,
     DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
+    DEFAULT_ENABLE_INSTANCE_IGNORE,
+    DEFAULT_ENABLE_CHANNEL_BLOCKLIST,
 )
 from data.db import connect_db, connect_similarity_db, connect_user_db
 from data.embeddings import (
@@ -72,6 +74,7 @@ from data.users import ensure_user_schema, get_or_create_user
 from data.random_cache import connect_random_cache_db, populate_random_cache
 from data.channels import ensure_channels_indexes
 from data.videos import ensure_video_indexes
+from data.moderation import ensure_moderation_schema
 from recommendations import RecommendationStrategy
 from recommendations.keys import like_key
 from recommendations.builder import (
@@ -150,6 +153,8 @@ class SimilarServer(ThreadingHTTPServer):
         use_client_likes: bool,
         rate_limiter: RateLimiter | None,
         popularity_like_weight: float,
+        enable_instance_ignore: bool,
+        enable_channel_blocklist: bool,
     ) -> None:
         super().__init__(server_address, handler_class)
         self.db = db
@@ -175,6 +180,8 @@ class SimilarServer(ThreadingHTTPServer):
         self.use_client_likes = use_client_likes
         self.rate_limiter = rate_limiter
         self.popularity_like_weight = popularity_like_weight
+        self.enable_instance_ignore = enable_instance_ignore
+        self.enable_channel_blocklist = enable_channel_blocklist
         self.index_lock = threading.Lock()
         self.db_lock = threading.Lock()
         self.user_db_lock = threading.Lock()
@@ -197,6 +204,7 @@ def main() -> None:
     random_cache_path = (script_dir.parent.parent / DEFAULT_RANDOM_CACHE_DB_PATH).resolve()
 
     db = connect_db(db_path)
+    ensure_moderation_schema(db)
     ensure_channels_indexes(db)
     ensure_video_indexes(db)
     users_db = connect_user_db(users_db_path)
@@ -293,6 +301,8 @@ def main() -> None:
         DEFAULT_USE_CLIENT_LIKES,
         rate_limiter,
         DEFAULT_POPULARITY_LIKE_WEIGHT,
+        DEFAULT_ENABLE_INSTANCE_IGNORE,
+        DEFAULT_ENABLE_CHANNEL_BLOCKLIST,
     )
 
     logging.info("[similar-server] listening on http://%s:%d", host, port)

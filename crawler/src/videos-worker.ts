@@ -8,6 +8,7 @@ import {
   type VideoUpsertRow
 } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
+import { filterHosts, loadHostsFromFile } from "./host-filters.js";
 
 const PAGE_SIZE = 50;
 const CHANNEL_CONCURRENCY = 2;
@@ -15,6 +16,7 @@ const TAGS_CONCURRENCY = 4;
 
 export interface VideoCrawlOptions {
   dbPath: string;
+  excludeHostsFile: string | null;
   existingDbPath: string | null;
   concurrency: number;
   timeoutMs: number;
@@ -133,10 +135,14 @@ export async function crawlVideos(options: VideoCrawlOptions) {
     return;
   }
   const store = new VideoStore({ dbPath: options.dbPath });
+  const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const existingDb = openExistingDb(options);
   const hostsAll = store.listInstances();
+  const filteredHosts = filterHosts(hostsAll, excludedHosts);
   const hosts =
-    options.maxInstances > 0 ? hostsAll.slice(0, options.maxInstances) : hostsAll;
+    options.maxInstances > 0
+      ? filteredHosts.slice(0, options.maxInstances)
+      : filteredHosts;
   const channelsAll = store.listChannelsWithVideos(1, hosts);
   const channels =
     options.maxChannels > 0
@@ -185,9 +191,10 @@ export async function crawlVideos(options: VideoCrawlOptions) {
 
 async function crawlVideoComments(options: VideoCrawlOptions) {
   const store = new VideoStore({ dbPath: options.dbPath });
+  const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForComments(options.resume);
   const grouped = groupByInstanceComments(items);
-  const instances = Array.from(grouped.keys());
+  const instances = filterHosts(Array.from(grouped.keys()), excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
 
   console.log(
@@ -206,9 +213,10 @@ async function crawlVideoComments(options: VideoCrawlOptions) {
 
 async function crawlVideoTags(options: VideoCrawlOptions, mode: "missing" | "present") {
   const store = new VideoStore({ dbPath: options.dbPath });
+  const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForTags(mode);
   const grouped = groupByInstanceTags(items);
-  const instances = Array.from(grouped.keys());
+  const instances = filterHosts(Array.from(grouped.keys()), excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
 
   console.log(

@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { CrawlerStore } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
+import { filterHosts, loadHostsFromFile, normalizeHostToken } from "./host-filters.js";
 const PAGE_SIZE = 50;
 export async function crawl(options) {
     const store = new CrawlerStore({
@@ -10,10 +11,17 @@ export async function crawl(options) {
         expandBeyondWhitelist: options.expandBeyondWhitelist
     });
     const whitelistUrl = ensureUrl(options.whitelistUrl);
-    const fetchedWhitelistHosts = await fetchWhitelistHosts(whitelistUrl, options);
+    const fetchedWhitelistHosts = options.whitelistFile
+        ? Array.from(loadHostsFromFile(options.whitelistFile))
+        : await fetchWhitelistHosts(whitelistUrl, options);
+    const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
+    const filteredWhitelistHosts = filterHosts(fetchedWhitelistHosts, excludedHosts);
     const whitelistHosts = options.maxInstances > 0
-        ? fetchedWhitelistHosts.slice(0, options.maxInstances)
-        : fetchedWhitelistHosts;
+        ? filteredWhitelistHosts.slice(0, options.maxInstances)
+        : filteredWhitelistHosts;
+    if (whitelistHosts.length === 0) {
+        throw new Error("Whitelist is empty after exclude-host filtering.");
+    }
     const whitelistSet = new Set(whitelistHosts);
     const preferredProtocol = new URL(whitelistUrl).protocol;
     if (options.resume && (options.collectGraph || options.expandBeyondWhitelist)) {
@@ -35,13 +43,13 @@ export async function crawl(options) {
         store.close();
         return;
     }
-    const workers = Array.from({ length: options.concurrency }, () => workerLoop(store, options, whitelistSet, preferredProtocol));
+    const workers = Array.from({ length: options.concurrency }, () => workerLoop(store, options, whitelistSet, excludedHosts, preferredProtocol));
     await Promise.all(workers);
     store.setState("finished_at", new Date().toISOString());
     console.log("[crawl] finished");
     store.close();
 }
-async function workerLoop(store, options, whitelistHosts, preferredProtocol) {
+async function workerLoop(store, options, whitelistHosts, excludedHosts, preferredProtocol) {
     while (true) {
         const host = store.claimNextHost();
         if (!host) {
@@ -53,8 +61,12 @@ async function workerLoop(store, options, whitelistHosts, preferredProtocol) {
             continue;
         }
         try {
+            if (excludedHosts.has(host)) {
+                store.markDone(host);
+                continue;
+            }
             console.log(`[crawl] processing ${host}`);
-            await processHost(host, store, options, whitelistHosts, preferredProtocol);
+            await processHost(host, store, options, whitelistHosts, excludedHosts, preferredProtocol);
             store.markDone(host);
             console.log(`[crawl] done ${host}`);
         }
@@ -73,7 +85,7 @@ async function workerLoop(store, options, whitelistHosts, preferredProtocol) {
         }
     }
 }
-async function processHost(host, store, options, whitelistHosts, preferredProtocol) {
+async function processHost(host, store, options, whitelistHosts, excludedHosts, preferredProtocol) {
     // Nothing to do unless we are collecting edges or expanding discovery.
     if (!options.collectGraph && !options.expandBeyondWhitelist)
         return;
@@ -82,6 +94,8 @@ async function processHost(host, store, options, whitelistHosts, preferredProtoc
     for (const item of following) {
         const targetHost = extractFollowingHost(item, host);
         if (!targetHost)
+            continue;
+        if (excludedHosts.has(targetHost))
             continue;
         if (options.expandBeyondWhitelist || whitelistHosts.has(targetHost)) {
             store.ensureInstance(targetHost);
@@ -96,6 +110,8 @@ async function processHost(host, store, options, whitelistHosts, preferredProtoc
     for (const item of followers) {
         const followerHost = extractFollowerHost(item, host);
         if (!followerHost)
+            continue;
+        if (excludedHosts.has(followerHost))
             continue;
         if (options.expandBeyondWhitelist || whitelistHosts.has(followerHost)) {
             store.ensureInstance(followerHost);
@@ -237,16 +253,5 @@ function parseHost(ref) {
     return null;
 }
 function parseHostString(value) {
-    try {
-        if (value.startsWith("http://") || value.startsWith("https://")) {
-            return new URL(value).host.toLowerCase();
-        }
-        if (value.includes("/")) {
-            return new URL(`https://${value}`).host.toLowerCase();
-        }
-        return value.toLowerCase();
-    }
-    catch {
-        return null;
-    }
+    return normalizeHostToken(value);
 }

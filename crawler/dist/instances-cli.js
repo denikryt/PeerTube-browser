@@ -5,6 +5,8 @@ const program = new Command();
 program
     .option("--whitelist-url <url>", "Whitelist JSON URL", "https://instances.joinpeertube.org/api/v1/instances/hosts?count=5000&healthy=true")
     .option("--db <path>", "SQLite DB path", "data/crawl.db")
+    .option("--whitelist-file <path>", "Optional local file with whitelist hosts (one per line)", "")
+    .option("--exclude-hosts-file <path>", "Optional local file with excluded hosts (one per line)", "")
     .option("--concurrency <number>", "Concurrent workers", "4")
     .option("--timeout <ms>", "HTTP timeout in ms", "5000")
     .option("--max-retries <number>", "HTTP retry attempts", "3")
@@ -18,6 +20,8 @@ const options = program.opts();
 try {
     await crawl({
         whitelistUrl: options.whitelistUrl,
+        whitelistFile: options.whitelistFile || null,
+        excludeHostsFile: options.excludeHostsFile || null,
         dbPath: options.db,
         concurrency: Number(options.concurrency),
         timeoutMs: Number(options.timeout),

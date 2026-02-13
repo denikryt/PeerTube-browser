@@ -4,6 +4,7 @@ import { isNoNetworkError } from "./http.js";
 const program = new Command();
 program
     .option("--db <path>", "SQLite DB path", "data/crawl.db")
+    .option("--exclude-hosts-file <path>", "Optional local file with excluded hosts (one per line)", "")
     .option("--existing-db <path>", "Optional reference DB path used by --new-videos to skip already known videos", "")
     .option("--concurrency <number>", "Number of concurrent instance workers", "4")
     .option("--timeout <ms>", "HTTP timeout per request in ms", "5000")
@@ -25,6 +26,7 @@ const options = program.opts();
 try {
     await crawlVideos({
         dbPath: options.db,
+        excludeHostsFile: options.excludeHostsFile || null,
         existingDbPath: options.existingDb || null,
         concurrency: Number(options.concurrency),
         timeoutMs: Number(options.timeout),

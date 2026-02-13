@@ -331,3 +331,9 @@ DEFAULT_CLIENT_LIKES_BODY_LIMIT = 65536
 # Simple in-memory rate limit for API requests (0 disables).
 DEFAULT_RATE_LIMIT_MAX_REQUESTS = 60
 DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
+
+# Moderation filters for feed/similar output.
+DEFAULT_ENABLE_INSTANCE_IGNORE = True
+DEFAULT_ENABLE_CHANNEL_BLOCKLIST = True
+# Optional future toggle for /api/video hide behavior.
+DEFAULT_HIDE_BLOCKED_IN_VIDEO_API = False

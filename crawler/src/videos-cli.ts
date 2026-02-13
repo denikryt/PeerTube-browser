@@ -7,6 +7,11 @@ const program = new Command();
 program
   .option("--db <path>", "SQLite DB path", "data/crawl.db")
   .option(
+    "--exclude-hosts-file <path>",
+    "Optional local file with excluded hosts (one per line)",
+    ""
+  )
+  .option(
     "--existing-db <path>",
     "Optional reference DB path used by --new-videos to skip already known videos",
     ""
@@ -78,6 +83,7 @@ const options = program.opts();
 try {
   await crawlVideos({
     dbPath: options.db,
+    excludeHostsFile: options.excludeHostsFile || null,
     existingDbPath: options.existingDb || null,
     concurrency: Number(options.concurrency),
     timeoutMs: Number(options.timeout),

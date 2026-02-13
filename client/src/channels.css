@@ -7,7 +7,7 @@
   --accent-strong: #8a3b24;
   --line: rgba(31, 27, 22, 0.12);
   --shadow: rgba(27, 20, 14, 0.12);
-  font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+  font-family: "Roboto", "Noto Sans", Arial, sans-serif;
   color: var(--ink);
   background:
     radial-gradient(circle at 10% 10%, rgba(180, 87, 55, 0.16), transparent 45%),
@@ -17,6 +17,13 @@
 
 * {
   box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
 }
 
 body {
