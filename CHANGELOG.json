@@ -2,8 +2,8 @@
   "entries": [
     {
       "date": "2026-02-12",
-      "title": "Block A moderation and ingest controls",
-      "summary": "Implemented persistent instance/channel moderation, denylist-aware sync/updater/crawler filtering, strict JoinPeerTube sync mode, and a dedicated end-to-end Block A regression test on fixture databases."
+      "title": "Moderation and ingest controls",
+      "summary": "Implemented persistent instance/channel moderation, denylist-aware sync/updater/crawler filtering, strict JoinPeerTube sync mode, and a dedicated end-to-end regression test on fixture databases."
     },
     {
       "date": "2026-02-12",
