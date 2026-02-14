@@ -163,15 +163,40 @@ def _resolve_client_likes(server: Any, likes: list[dict[str, str]]) -> list[dict
 class SimilarHandler(BaseHTTPRequestHandler):
     """HTTP handler for similarity and user endpoints."""
 
+    def _get_client_ip(self) -> str:
+        """Resolve client IP behind reverse proxy headers when available."""
+        forwarded_for = self.headers.get("X-Forwarded-For", "").strip()
+        if forwarded_for:
+            first = forwarded_for.split(",", 1)[0].strip()
+            if first:
+                return first
+        real_ip = self.headers.get("X-Real-IP", "").strip()
+        if real_ip:
+            return real_ip
+        if self.client_address:
+            return self.client_address[0]
+        return "unknown"
+
+    def _get_full_url(self) -> str:
+        """Build absolute URL from forwarded headers and request path."""
+        host = self.headers.get("Host", "").strip()
+        if not host:
+            return self.path
+        proto = self.headers.get("X-Forwarded-Proto", "http").split(",", 1)[0].strip() or "http"
+        return f"{proto}://{host}{self.path}"
+
     def log_message(self, format: str, *args: Any) -> None:
-        """Avoid logging full query strings."""
-        safe_args = []
-        for item in args:
-            if isinstance(item, str) and "?" in item:
-                safe_args.append(item.split("?", 1)[0])
-            else:
-                safe_args.append(item)
-        super().log_message(format, *safe_args)
+        """Emit structured access logs with real client IP and full URL."""
+        status = args[1] if len(args) > 1 else "-"
+        size = args[2] if len(args) > 2 else "-"
+        logging.info(
+            "[access] ip=%s method=%s url=%s status=%s bytes=%s",
+            self._get_client_ip(),
+            self.command or "-",
+            self._get_full_url(),
+            status,
+            size,
+        )
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         """Handle CORS preflight."""
@@ -273,7 +298,7 @@ class SimilarHandler(BaseHTTPRequestHandler):
         limiter = getattr(self.server, "rate_limiter", None)
         if limiter is None:
             return True
-        ip = self.client_address[0] if self.client_address else "unknown"
+        ip = self._get_client_ip()
         key = f"{ip}:{path}"
         return limiter.allow(key)
 
