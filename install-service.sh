@@ -14,7 +14,7 @@ UPDATER_TIMER_ONCALENDAR="${UPDATER_TIMER_ONCALENDAR:-Fri *-*-* 20:00:00}"
 # Updater worker flags.
 # Edit this line to control updater behavior installed into systemd.
 # Example: "--gpu --skip-local-dead --concurrency 2 --timeout-ms 15000 --max-retries 3"
-UPDATER_FLAGS="--gpu --skip-local-dead --concurrency 5 --timeout-ms 15000 --max-retries 3"
+UPDATER_FLAGS="--gpu --skip-local-dead --concurrency 5 --timeout-ms 15000 --max-retries 3 --systemctl-use-sudo"
 # Updater timer schedule.
 # OnCalendar format, local time.
 # Default: daily at 20:00 with weekly success gate in service:
@@ -36,6 +36,7 @@ Options:
   --with-updater-timer   Install updater timer (20:00 daily trigger + weekly success gate)
   --updater-service-name <name>  Updater service unit name (default: peertube-updater)
   --updater-timer-name <name>    Updater timer unit name (default: peertube-updater)
+                          Installs a scoped sudoers rule so updater can stop/start API service non-interactively
   --force                Force full reinstall of selected unit files (stop/disable/remove/recreate)
   -h, --help             Show this help
 EOF
@@ -113,6 +114,7 @@ force_reinstall_units() {
     systemctl disable "${UPDATER_TIMER_NAME}.timer" >/dev/null 2>&1 || true
     rm -f "${UPDATER_TIMER_PATH}"
     rm -f "${UPDATER_UNIT_PATH}"
+    rm -f "${UPDATER_SUDOERS_PATH}"
   fi
 
   systemctl daemon-reload
@@ -123,12 +125,13 @@ force_reinstall_units() {
   fi
 }
 
-echo "[1/8] Preflight checks"
+echo "[1/9] Preflight checks"
 [[ "${EUID}" -eq 0 ]] || fail "Run as root (use sudo)."
 check_cmd systemctl
 check_cmd journalctl
 
 systemctl list-unit-files >/dev/null 2>&1 || fail "systemctl is not usable on this host."
+SYSTEMCTL_BIN="$(command -v systemctl)"
 
 [[ -n "${SERVICE_USER}" ]] || fail "--service-user cannot be empty."
 id "${SERVICE_USER}" >/dev/null 2>&1 || fail "User does not exist: ${SERVICE_USER}"
@@ -145,13 +148,19 @@ VENV_PY="${PROJECT_DIR}/venv/bin/python3"
 UPDATER_PY="${PROJECT_DIR}/server/db/jobs/updater-worker.py"
 UPDATER_UNIT_PATH="/etc/systemd/system/${UPDATER_SERVICE_NAME}.service"
 UPDATER_TIMER_PATH="/etc/systemd/system/${UPDATER_TIMER_NAME}.timer"
+UPDATER_SUDOERS_PATH="/etc/sudoers.d/${UPDATER_SERVICE_NAME}-systemctl"
 
 [[ -f "${SERVER_PY}" ]] || fail "Missing server entrypoint: ${SERVER_PY}"
 [[ -x "${VENV_PY}" ]] || fail "Missing python interpreter in venv: ${VENV_PY}"
 if [[ "${WITH_UPDATER_TIMER}" -eq 1 ]]; then
   [[ -f "${UPDATER_PY}" ]] || fail "Missing updater worker entrypoint: ${UPDATER_PY}"
+  check_cmd sudo
+  check_cmd visudo
 fi
 [[ -w "/etc/systemd/system" ]] || fail "No write access to /etc/systemd/system."
+if [[ "${WITH_UPDATER_TIMER}" -eq 1 ]]; then
+  [[ -w "/etc/sudoers.d" ]] || fail "No write access to /etc/sudoers.d."
+fi
 
 if [[ "${FORCE_OVERWRITE}" -eq 1 ]]; then
   force_reinstall_units
@@ -161,9 +170,10 @@ confirm_overwrite "${UNIT_PATH}"
 if [[ "${WITH_UPDATER_TIMER}" -eq 1 ]]; then
   confirm_overwrite "${UPDATER_UNIT_PATH}"
   confirm_overwrite "${UPDATER_TIMER_PATH}"
+  confirm_overwrite "${UPDATER_SUDOERS_PATH}"
 fi
 
-echo "[2/8] Writing API unit file: ${UNIT_PATH}"
+echo "[2/9] Writing API unit file: ${UNIT_PATH}"
 cat > "${UNIT_PATH}" <<EOF
 [Unit]
 Description=PeerTube Browser API Server
@@ -187,7 +197,7 @@ if [[ "${WITH_UPDATER_TIMER}" -eq 1 ]]; then
   chown "${SERVICE_USER}:${SERVICE_USER}" "${UPDATER_WEEK_STATE_DIR}" || true
   chmod 755 "${UPDATER_WEEK_STATE_DIR}" || true
 
-  echo "[3/8] Writing updater service: ${UPDATER_UNIT_PATH}"
+  echo "[3/9] Writing updater service: ${UPDATER_UNIT_PATH}"
   cat > "${UPDATER_UNIT_PATH}" <<EOF
 [Unit]
 Description=PeerTube Browser Updater Worker
@@ -199,11 +209,11 @@ Type=oneshot
 User=${SERVICE_USER}
 WorkingDirectory=${PROJECT_DIR}
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/bash -lc 'set -euo pipefail; week_id="$$(date +%G-%V)"; state_file="${UPDATER_WEEK_STATE_FILE}"; if [[ -f "$$state_file" ]] && [[ "$$(cat "$$state_file" 2>/dev/null || true)" == "$$week_id" ]]; then echo "[updater] weekly gate: already successful in week $$week_id, skip"; exit 0; fi; ${VENV_PY} ${UPDATER_PY} ${UPDATER_FLAGS}; printf "%s\n" "$$week_id" > "$$state_file"'
+ExecStart=/usr/bin/bash -lc 'set -euo pipefail; week_id="\$(date +%G-%V)"; state_file="${UPDATER_WEEK_STATE_FILE}"; if [[ -f "\$state_file" ]] && [[ "\$(cat "\$state_file" 2>/dev/null || true)" == "\$week_id" ]]; then echo "[updater] weekly gate: already successful in week \$week_id, skip"; exit 0; fi; ${VENV_PY} ${UPDATER_PY} --systemctl-bin ${SYSTEMCTL_BIN} ${UPDATER_FLAGS}; printf "%s\n" "\$week_id" > "\$state_file"'
 TimeoutStartSec=24h
 EOF
 
-  echo "[4/8] Writing updater timer: ${UPDATER_TIMER_PATH}"
+  echo "[4/9] Writing updater timer: ${UPDATER_TIMER_PATH}"
   cat > "${UPDATER_TIMER_PATH}" <<EOF
 [Unit]
 Description=PeerTube Browser Updater Weekly-Fallback Timer
@@ -218,27 +228,37 @@ Unit=${UPDATER_SERVICE_NAME}.service
 [Install]
 WantedBy=timers.target
 EOF
+
+  echo "[5/9] Writing updater sudoers rule: ${UPDATER_SUDOERS_PATH}"
+  TMP_SUDOERS="$(mktemp)"
+  cat > "${TMP_SUDOERS}" <<EOF
+${SERVICE_USER} ALL=(root) NOPASSWD: ${SYSTEMCTL_BIN} stop ${SERVICE_NAME}, ${SYSTEMCTL_BIN} start ${SERVICE_NAME}
+EOF
+  visudo -cf "${TMP_SUDOERS}" >/dev/null
+  install -m 0440 "${TMP_SUDOERS}" "${UPDATER_SUDOERS_PATH}"
+  rm -f "${TMP_SUDOERS}"
 else
-  echo "[3/8] Skipping updater timer install"
-  echo "[4/8] Skipping updater timer install"
+  echo "[3/9] Skipping updater timer install"
+  echo "[4/9] Skipping updater timer install"
+  echo "[5/9] Skipping updater sudoers rule install"
 fi
 
-echo "[5/8] Reloading systemd"
+echo "[6/9] Reloading systemd"
 systemctl daemon-reload
 
-echo "[6/8] Enabling API service"
+echo "[7/9] Enabling API service"
 systemctl enable "${SERVICE_NAME}" >/dev/null
 if [[ "${WITH_UPDATER_TIMER}" -eq 1 ]]; then
   systemctl enable "${UPDATER_TIMER_NAME}.timer" >/dev/null
 fi
 
-echo "[7/8] Starting services"
+echo "[8/9] Starting services"
 systemctl restart "${SERVICE_NAME}"
 if [[ "${WITH_UPDATER_TIMER}" -eq 1 ]]; then
   systemctl restart "${UPDATER_TIMER_NAME}.timer"
 fi
 
-echo "[8/8] Post-checks"
+echo "[9/9] Post-checks"
 ENABLED_STATE="$(systemctl is-enabled "${SERVICE_NAME}" 2>/dev/null || true)"
 ACTIVE_STATE="$(systemctl is-active "${SERVICE_NAME}" 2>/dev/null || true)"
 

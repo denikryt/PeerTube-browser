@@ -82,6 +82,8 @@ After merge, prod contains merged changes according to `merge_rules.json`.
 
 Default behavior:
 - worker stops `peertube-browser` before merge and starts it after post-merge jobs.
+- systemd install uses `--systemctl-use-sudo` so stop/start runs as `sudo -n systemctl ...`
+  without interactive auth prompts.
 
 Alternative:
 - `--skip-systemctl` disables stop/start control (for manual orchestration).
@@ -101,6 +103,8 @@ Default is `--gpu` unless overridden.
 - `--similarity-db`
 - `--merge-rules`
 - `--service-name`
+- `--systemctl-bin`
+- `--systemctl-use-sudo`
 - `--skip-systemctl`
 - `--skip-local-dead`
 - `--resume-staging`
@@ -129,6 +133,8 @@ From repo root:
 `install-service.sh --with-updater-timer` installs:
 - `peertube-updater.service` (oneshot worker)
 - `peertube-updater.timer` (daily schedule)
+- `/etc/sudoers.d/peertube-updater-systemctl` scoped rule allowing updater user to run
+  `/usr/bin/systemctl stop/start peertube-browser` via `sudo -n`.
 
 Current timer behavior:
 - `OnBootSec=10m`

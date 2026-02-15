@@ -148,6 +148,13 @@
       "summary": "Keep API startup non-blocking and refresh random cache in the background with safe atomic swap."
     },
     {
+      "id": "task-similarity-cache-shadow-swap-without-long-downtime",
+      "date": "2026-02-15",
+      "status": "Planned",
+      "title": "Similarity Cache Shadow Swap Without Long Downtime",
+      "summary": "Build similarity cache in a shadow database while API is running, then switch atomically with safe rollback."
+    },
+    {
       "id": "task-zero-downtime-server-deploy",
       "date": "2026-02-14",
       "status": "Planned",

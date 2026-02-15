@@ -48,6 +48,11 @@ API service + daily updater timer:
 sudo ./install-service.sh --with-updater-timer
 ```
 
+To refresh unit files and updater sudoers permissions after installer updates:
+```bash
+sudo ./install-service.sh --with-updater-timer --force
+```
+
 Checks:
 ```bash
 systemctl status peertube-browser

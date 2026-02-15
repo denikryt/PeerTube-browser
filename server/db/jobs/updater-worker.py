@@ -95,6 +95,16 @@ def parse_args() -> argparse.Namespace:
         help="Systemd service name to stop/start during merge.",
     )
     parser.add_argument(
+        "--systemctl-bin",
+        default="systemctl",
+        help="Systemctl executable path/name.",
+    )
+    parser.add_argument(
+        "--systemctl-use-sudo",
+        action="store_true",
+        help="Run service stop/start as 'sudo -n <systemctl>'.",
+    )
+    parser.add_argument(
         "--skip-systemctl",
         action="store_true",
         help="Do not stop/start service automatically.",
@@ -287,6 +297,19 @@ def run_cmd(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, cwd=cwd, check=True)
     elapsed_ms = int((time.monotonic() - start) * 1000)
     logging.info("done: %s (%dms)", cmd[0], elapsed_ms)
+
+
+def systemctl_cmd(
+    *,
+    systemctl_bin: str,
+    service_name: str,
+    action: str,
+    use_sudo: bool,
+) -> list[str]:
+    cmd = [systemctl_bin, action, service_name]
+    if use_sudo:
+        return ["sudo", "-n", *cmd]
+    return cmd
 
 
 def fetch_join_hosts(url: str) -> set[str]:
@@ -898,7 +921,14 @@ def main() -> None:
 
             try:
                 if not args.skip_systemctl:
-                    run_cmd(["systemctl", "stop", args.service_name])
+                    run_cmd(
+                        systemctl_cmd(
+                            systemctl_bin=args.systemctl_bin,
+                            service_name=args.service_name,
+                            action="stop",
+                            use_sudo=args.systemctl_use_sudo,
+                        )
+                    )
                     service_stopped = True
 
                 run_cmd(
@@ -973,7 +1003,14 @@ def main() -> None:
                 )
             finally:
                 if service_stopped and not args.skip_systemctl:
-                    run_cmd(["systemctl", "start", args.service_name])
+                    run_cmd(
+                        systemctl_cmd(
+                            systemctl_bin=args.systemctl_bin,
+                            service_name=args.service_name,
+                            action="start",
+                            use_sudo=args.systemctl_use_sudo,
+                        )
+                    )
                     service_stopped = False
     finally:
         for temp_path in temp_files:
