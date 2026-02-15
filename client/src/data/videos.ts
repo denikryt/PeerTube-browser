@@ -1,6 +1,7 @@
 import type { VideoRow, VideosPayload } from "../types/videos";
 import { fetchJsonWithCache } from "./cache";
 import { getRandomLikes } from "./local-likes";
+import { resolveApiBase as resolveApiBaseValue } from "./api-base";
 
 export interface SimilarQuery {
   id?: string | null;
@@ -12,7 +13,6 @@ export interface SimilarQuery {
 }
 
 const STATIC_VIDEO_URLS = ["/videos.json", "./videos.json", "videos.json"];
-const DEFAULT_API_BASE = window.location.origin;
 
 export function parseSimilarQuery(params: URLSearchParams): SimilarQuery {
   return {
@@ -26,8 +26,7 @@ export function parseSimilarQuery(params: URLSearchParams): SimilarQuery {
 }
 
 export function resolveApiBase(query: SimilarQuery) {
-  const base = query.apiBase ?? "";
-  return base && base.startsWith("http") ? base : DEFAULT_API_BASE;
+  return resolveApiBaseValue(query.apiBase);
 }
 
 export function buildSimilarUrl(query: SimilarQuery) {

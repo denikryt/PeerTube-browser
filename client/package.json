@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "vite",
+    "dev": "node ./scripts/dev.mjs",
+    "dev:api7071": "node ./scripts/dev.mjs --api-port 7071",
     "build": "vite build",
     "preview": "vite preview"
   },

@@ -5,6 +5,7 @@ This module wires together data access, ANN search, cache-backed similarity
 candidate generation, and recommendation mixing into HTTP handlers.
 """
 import logging
+import argparse
 import sqlite3
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -88,6 +89,7 @@ from recommendations.related_personalization import (
 from handlers.similar import SimilarHandler
 from http_utils import RateLimiter
 from request_context import fetch_recent_likes_request
+from scripts.cli_format import CompactHelpFormatter
 try:
     import faiss  # type: ignore
 except ImportError as exc:  # pragma: no cover
@@ -100,6 +102,58 @@ SIMILAR_PER_LIKE = DEFAULT_SIMILAR_PER_LIKE
 SIMILARITY_SEARCH_LIMIT = DEFAULT_SIMILARITY_SEARCH_LIMIT
 SIMILARITY_MAX_PER_AUTHOR = DEFAULT_SIMILARITY_MAX_PER_AUTHOR
 SIMILARITY_EXCLUDE_SOURCE_AUTHOR = DEFAULT_SIMILARITY_EXCLUDE_SOURCE_AUTHOR
+DEV_SERVER_PORT = 7071
+
+
+def _parse_port(value: str) -> int:
+    port = int(value)
+    if port < 1 or port > 65535:
+        raise argparse.ArgumentTypeError("port must be in range 1..65535")
+    return port
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run PeerTube Browser API server.",
+        formatter_class=CompactHelpFormatter,
+    )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help=(
+            "Enable dev defaults: bind port 7071 and disable random cache refresh "
+            "(unless explicitly overridden)."
+        ),
+    )
+    parser.add_argument(
+        "--host",
+        default=DEFAULT_SERVER_HOST,
+        help="Server host/interface to bind.",
+    )
+    parser.add_argument(
+        "--port",
+        type=_parse_port,
+        default=None,
+        help=(
+            "Server TCP port to bind. "
+            f"Defaults to {DEFAULT_SERVER_PORT} (or {DEV_SERVER_PORT} with --dev)."
+        ),
+    )
+    refresh_group = parser.add_mutually_exclusive_group()
+    refresh_group.add_argument(
+        "--random-cache-refresh",
+        dest="random_cache_refresh",
+        action="store_true",
+        help="Force random cache refresh on startup.",
+    )
+    refresh_group.add_argument(
+        "--no-random-cache-refresh",
+        dest="random_cache_refresh",
+        action="store_false",
+        help="Disable random cache refresh on startup.",
+    )
+    parser.set_defaults(random_cache_refresh=None)
+    return parser.parse_args()
 
 
 def set_nprobe(index: faiss.Index, nprobe: int) -> None:
@@ -191,9 +245,15 @@ class SimilarServer(ThreadingHTTPServer):
 
 def main() -> None:
     """Run the similarity server."""
+    args = parse_args()
     script_dir = Path(__file__).resolve().parent
-    host = DEFAULT_SERVER_HOST
-    port = DEFAULT_SERVER_PORT
+    host = args.host
+    default_port = DEV_SERVER_PORT if args.dev else DEFAULT_SERVER_PORT
+    port = args.port if args.port is not None else default_port
+    if args.random_cache_refresh is None:
+        random_cache_refresh = False if args.dev else DEFAULT_RANDOM_CACHE_REFRESH
+    else:
+        random_cache_refresh = bool(args.random_cache_refresh)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -217,7 +277,7 @@ def main() -> None:
         db,
         random_cache_db,
         DEFAULT_RANDOM_CACHE_SIZE,
-        DEFAULT_RANDOM_CACHE_REFRESH,
+        random_cache_refresh,
         DEFAULT_RANDOM_CACHE_FILTERED_MODE,
         DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE,
         DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR,
@@ -306,6 +366,11 @@ def main() -> None:
     )
 
     logging.info("[similar-server] listening on http://%s:%d", host, port)
+    logging.info(
+        "[similar-server] mode=%s random_cache_refresh=%s",
+        "dev" if args.dev else "default",
+        "true" if random_cache_refresh else "false",
+    )
     logging.info("[similar-server] db=%s index=%s total=%d", db_path, index_path, embeddings_count)
     logging.info("[similar-server] strategy=%s", recommendation_strategy.name)
     try:

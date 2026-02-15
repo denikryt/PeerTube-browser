@@ -77,6 +77,24 @@ If the client is served from a different origin than the API, add a query param:
 ?api=http://127.0.0.1:7070
 ```
 
+Dev mode shortcut (client auto-targets dev API `http://127.0.0.1:7071`):
+```bash
+cd client
+npm run dev
+```
+
+Optional overrides:
+```bash
+# Point client dev to another API port
+npm run dev -- --api-port 7070
+
+# Or set full API base directly
+npm run dev -- --api-base http://127.0.0.1:9090
+
+# Vite port flags still work
+npm run dev -- --port 5175 --strictPort --api-port 7070
+```
+
 ## 5) Verify
 Open:
 - `/` (home)
