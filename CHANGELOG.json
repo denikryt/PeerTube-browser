@@ -190,6 +190,13 @@
       "summary": "Add dedicated smoke tests in a root tests directory to verify dev installer execution, Engine/Client interaction, and guaranteed cleanup of dev test services."
     },
     {
+      "id": "48",
+      "date": "2026-02-16",
+      "status": "Planned",
+      "title": "Split Architecture Smoke Test (Engine/Client Boundaries + Bridge Flow)",
+      "summary": "Add a dedicated smoke test that validates Engine/Client endpoint ownership, health checks, and Client-to-Engine bridge interaction flow with clear failure diagnostics."
+    },
+    {
       "id": "42",
       "date": "2026-02-14",
       "status": "Planned",
