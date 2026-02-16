@@ -17,7 +17,6 @@ __pycache__/
 *.faiss.json
 /.cache/
 /.tmp/
-/context
 /tmp
 
 client/run-client-sync-build.sh
