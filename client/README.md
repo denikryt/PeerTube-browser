@@ -5,7 +5,7 @@ using data from the backend API. The client stays UI‑only: no database access 
 no ranking logic.
 
 ## What it does
-- Fetches `/api/similar` and `/api/video`.
+- Fetches Engine read endpoints (`/recommendations`, `/videos/similar`, `/api/video`).
 - Renders feeds (recommendations/random) and the video page.
 - Stores likes locally in the browser (temporary profile).
 

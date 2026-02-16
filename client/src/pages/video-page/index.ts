@@ -33,7 +33,7 @@ let currentMetadata: VideoMetadata | null = null;
 const params = new URLSearchParams(window.location.search);
 const seedId = params.get("id");
 const seedHost = params.get("host");
-const apiBase = resolveApiBase({ apiBase: params.get("api") ?? params.get("apiBase") });
+const apiBase = resolveApiBase({ apiBase: params.get("api") });
 const fallback = {
   title: params.get("title") ?? "Video page",
   channel: params.get("channel") ?? "",
@@ -46,7 +46,7 @@ const similarStatsLoading = new Set<string>();
 
 if (similarLink && seedId) {
   const search = new URLSearchParams();
-  search.set("similarId", seedId);
+  search.set("id", seedId);
   if (seedHost) search.set("host", seedHost);
   similarLink.href = `/videos.html?${search.toString()}`;
 }
@@ -209,7 +209,7 @@ async function loadSimilarVideos() {
   }
   if (similarLinkInline) {
     const search = new URLSearchParams();
-    search.set("similarId", seedId);
+    search.set("id", seedId);
     if (seedHost) search.set("host", seedHost);
     similarLinkInline.href = `/videos.html?${search.toString()}`;
   }

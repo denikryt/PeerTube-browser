@@ -1,0 +1,17 @@
+# Engine Server
+
+Read-only Engine API for PeerTube Browser recommendations and video metadata.
+This service does not own user write/profile endpoints.
+
+## What it does
+- `/recommendations` recommendations.
+- `/videos/{id}/similar` and `/videos/similar` read aliases.
+- `/api/video` metadata for the video page.
+- `/internal/events/ingest` temporary trusted bridge ingest for normalized events
+  (`ENGINE_INGEST_MODE=bridge`).
+
+## Notes
+- Reads from `DEFAULT_DB_PATH` and FAISS index.
+- Test docs:
+  - `engine/server/db/jobs/docs/MODERATION_INTEGRATION_TEST.md`
+  - `engine/server/db/jobs/docs/ORCHESTRATOR_SMOKE_TEST.md`

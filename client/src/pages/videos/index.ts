@@ -34,7 +34,7 @@ const similarQuery = parseSimilarQuery(params);
 const feedMode = resolveFeedMode(params);
 const useSimilar = Boolean(similarQuery.id);
 const apiBase = resolveApiBase(similarQuery);
-const apiParam = params.get("api") ?? params.get("apiBase");
+const apiParam = params.get("api");
 
 document.title = "PeerTube - Browser";
 
@@ -797,11 +797,7 @@ function setFeedMode(mode: "random" | "recommendations") {
   } else {
     next.delete("mode");
   }
-  next.delete("similarId");
   next.delete("id");
-  next.delete("video_id");
-  next.delete("videoId");
   next.delete("uuid");
-  next.delete("video_uuid");
   window.location.search = next.toString();
 }

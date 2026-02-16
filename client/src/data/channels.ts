@@ -1,10 +1,10 @@
 import type { ChannelRow, ChannelsPayload } from "../types/channels";
 import { fetchJsonWithCache } from "./cache";
-import { resolveApiBase as resolveApiBaseValue } from "./api-base";
+import { resolveEngineApiBase } from "./api-base";
 const DEFAULT_CACHE_TTL_MS = 30 * 1000;
 
 export function resolveApiBase(apiBase?: string | null) {
-  return resolveApiBaseValue(apiBase);
+  return resolveEngineApiBase(apiBase);
 }
 
 type FetchChannelsOptions = {

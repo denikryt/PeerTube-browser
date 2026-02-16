@@ -1,3 +1,5 @@
+import { resolveClientApiBase } from "./api-base";
+
 interface UserActionInput {
   videoId: string;
   host?: string | null;
@@ -5,7 +7,8 @@ interface UserActionInput {
 }
 
 export async function sendUserAction(apiBase: string, input: UserActionInput): Promise<void> {
-  const response = await fetch(new URL("/api/user-action", apiBase), {
+  const clientApiBase = resolveClientApiBase(apiBase);
+  const response = await fetch(new URL("/api/user-action", clientApiBase), {
     method: "POST",
     headers: {
       "content-type": "application/json"

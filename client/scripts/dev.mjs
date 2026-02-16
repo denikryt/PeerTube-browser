@@ -3,16 +3,20 @@
 import { spawn } from "node:child_process";
 
 const HELP_TEXT = `
-Usage: npm run dev [-- [vite args...]] [--api-port <port>] [--api-base <url>]
+Usage: npm run dev [-- [vite args...]]
+  [--engine-api-base <url>]
+  [--engine-api-port <port>]
+  [--client-api-base <url>]
+  [--client-api-port <port>]
 
 Defaults:
-  VITE_API_BASE=http://127.0.0.1:7071
+  VITE_ENGINE_API_BASE=http://127.0.0.1:7171
+  VITE_CLIENT_API_BASE=http://127.0.0.1:7172
 
 Examples:
   npm run dev
-  npm run dev -- --api-port 7070
-  npm run dev -- --api-base http://127.0.0.1:9090
-  npm run dev -- --port 5175 --strictPort --api-port 7070
+  npm run dev -- --engine-api-port 7171 --client-api-port 7172
+  npm run dev -- --engine-api-base http://127.0.0.1:7071 --client-api-base http://127.0.0.1:7072
 `.trim();
 
 function parsePort(raw) {
@@ -23,9 +27,21 @@ function parsePort(raw) {
   return value;
 }
 
+function normalizeHttpBase(value) {
+  const raw = String(value || "").trim();
+  return raw.startsWith("http") ? raw : "";
+}
+
 function parseArgs(argv) {
-  let apiBase = process.env.VITE_API_BASE || "";
-  let apiPort = process.env.VITE_API_PORT || "7071";
+  let engineApiBase = process.env.VITE_ENGINE_API_BASE || "";
+  let engineApiPort =
+    process.env.VITE_ENGINE_API_PORT ||
+    "7171";
+  let clientApiBase = process.env.VITE_CLIENT_API_BASE || "";
+  let clientApiPort =
+    process.env.VITE_CLIENT_API_PORT ||
+    "7172";
+
   const viteArgs = [];
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -34,35 +50,60 @@ function parseArgs(argv) {
       console.log(HELP_TEXT);
       process.exit(0);
     }
-    if (arg === "--api-base") {
+    if (arg === "--engine-api-base") {
       const next = argv[index + 1];
-      if (!next) throw new Error("Missing value for --api-base");
-      apiBase = next;
+      if (!next) throw new Error("Missing value for --engine-api-base");
+      engineApiBase = next;
       index += 1;
       continue;
     }
-    if (arg.startsWith("--api-base=")) {
-      apiBase = arg.slice("--api-base=".length);
+    if (arg.startsWith("--engine-api-base=")) {
+      engineApiBase = arg.slice("--engine-api-base=".length);
       continue;
     }
-    if (arg === "--api-port") {
+    if (arg === "--engine-api-port") {
       const next = argv[index + 1];
-      if (!next) throw new Error("Missing value for --api-port");
-      apiPort = String(parsePort(next));
+      if (!next) throw new Error("Missing value for --engine-api-port");
+      engineApiPort = String(parsePort(next));
       index += 1;
       continue;
     }
-    if (arg.startsWith("--api-port=")) {
-      apiPort = String(parsePort(arg.slice("--api-port=".length)));
+    if (arg.startsWith("--engine-api-port=")) {
+      engineApiPort = String(parsePort(arg.slice("--engine-api-port=".length)));
+      continue;
+    }
+    if (arg === "--client-api-base") {
+      const next = argv[index + 1];
+      if (!next) throw new Error("Missing value for --client-api-base");
+      clientApiBase = next;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--client-api-base=")) {
+      clientApiBase = arg.slice("--client-api-base=".length);
+      continue;
+    }
+    if (arg === "--client-api-port") {
+      const next = argv[index + 1];
+      if (!next) throw new Error("Missing value for --client-api-port");
+      clientApiPort = String(parsePort(next));
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--client-api-port=")) {
+      clientApiPort = String(parsePort(arg.slice("--client-api-port=".length)));
       continue;
     }
     viteArgs.push(arg);
   }
 
-  const normalizedApiBase = String(apiBase || "").trim();
-  const finalApiBase =
-    normalizedApiBase.length > 0 ? normalizedApiBase : `http://127.0.0.1:${parsePort(apiPort)}`;
-  return { viteArgs, finalApiBase };
+  const finalEngineApiBase =
+    normalizeHttpBase(engineApiBase) ||
+    `http://127.0.0.1:${parsePort(engineApiPort)}`;
+  const finalClientApiBase =
+    normalizeHttpBase(clientApiBase) ||
+    `http://127.0.0.1:${parsePort(clientApiPort)}`;
+  return { viteArgs, finalEngineApiBase, finalClientApiBase };
 }
 
 let parsed;
@@ -79,7 +120,8 @@ const child = spawn("vite", parsed.viteArgs, {
   stdio: "inherit",
   env: {
     ...process.env,
-    VITE_API_BASE: parsed.finalApiBase,
+    VITE_ENGINE_API_BASE: parsed.finalEngineApiBase,
+    VITE_CLIENT_API_BASE: parsed.finalClientApiBase,
   },
 });
 

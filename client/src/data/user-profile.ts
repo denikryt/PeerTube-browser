@@ -1,5 +1,6 @@
 import type { VideoRow } from "../types/videos";
 import { getStoredLikes } from "./local-likes";
+import { resolveClientApiBase } from "./api-base";
 
 interface UserProfileResponse {
   user_id?: string;
@@ -9,10 +10,11 @@ interface UserProfileResponse {
 const USE_LOCAL_LIKES_PROFILE = true;
 
 export async function fetchUserProfileLikes(apiBase: string): Promise<VideoRow[]> {
+  const clientApiBase = resolveClientApiBase(apiBase);
   if (USE_LOCAL_LIKES_PROFILE) {
     const stored = getStoredLikes();
     if (!stored.length) return [];
-    const response = await fetch(new URL("/api/user-profile/likes", apiBase), {
+    const response = await fetch(new URL("/api/user-profile/likes", clientApiBase), {
       method: "POST",
       headers: {
         "content-type": "application/json"
@@ -32,7 +34,7 @@ export async function fetchUserProfileLikes(apiBase: string): Promise<VideoRow[]
     return Array.isArray(payload.likes) ? payload.likes : [];
   }
 
-  const response = await fetch(new URL("/api/user-profile/likes", apiBase));
+  const response = await fetch(new URL("/api/user-profile/likes", clientApiBase));
   if (!response.ok) {
     const message = await readErrorMessage(response);
     throw new Error(message ?? "Failed to fetch user profile");
@@ -41,8 +43,9 @@ export async function fetchUserProfileLikes(apiBase: string): Promise<VideoRow[]
   return Array.isArray(payload.likes) ? payload.likes : [];
 }
 
-export async function resetUserProfileLikes(apiBase: string): Promise<UserLikeEntry[]> {
-  const response = await fetch(new URL("/api/user-profile/reset", apiBase), {
+export async function resetUserProfileLikes(apiBase: string): Promise<VideoRow[]> {
+  const clientApiBase = resolveClientApiBase(apiBase);
+  const response = await fetch(new URL("/api/user-profile/reset", clientApiBase), {
     method: "POST",
     headers: {
       "content-type": "application/json"

@@ -21,11 +21,12 @@ similarity-based recommendations.
 See `DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset and ANN index.
 
 ## Components
-- Crawler: discovers instances/channels/videos and stores raw data.
-- Dataset/DB: local SQLite database with video/channel metadata.
-- ANN index: FAISS index for similarity search.
-- Server: API for /api/similar, /api/video, profile/likes endpoints.
-- Client: static web UI (recommendations, video page, channels).
+- `engine/`: read/analytics workspace.
+- `engine/crawler/`: crawler subsystem (part of Engine).
+- `engine/server/`: read-only recommendation API + bridge ingest.
+- `client/`: client workspace.
+- `client/src`, `client/public`: frontend app and static assets.
+- `client/backend/`: client write/profile API that publishes normalized events to Engine.
 
 ## Recommendations (current)
 The recommendation system is a mix of filtering + scoring:
@@ -37,9 +38,10 @@ The recommendation system is a mix of filtering + scoring:
 Likes are used as a signal to find similar content. This is not a heavy ML system;
 it is a transparent, controllable pipeline.
 
-## Privacy
-Currently, likes are stored locally in the browser and sent to the server as JSON
-per request. The server does not keep user profiles by default.
+## Current service split
+- Engine API (read): `/recommendations`, `/videos/{id}/similar`, `/videos/similar`, `/api/video`, `/api/health`.
+- Client backend (write/profile): `/api/user-action`, `/api/user-profile/*`.
+- Temporary bridge contract: Client backend publishes events to Engine `/internal/events/ingest`.
 
 ## Future ideas
 - ActivityPub integration (receive new video events, send likes/comments).

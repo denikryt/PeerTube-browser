@@ -27,7 +27,7 @@ type SortDir = "asc" | "desc";
 const numberFormat = new Intl.NumberFormat("en-US");
 const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
 const params = new URLSearchParams(window.location.search);
-const apiParam = params.get("api") ?? params.get("apiBase");
+const apiParam = params.get("api");
 const FILTER_DEBOUNCE_MS = 250;
 
 const state = {
