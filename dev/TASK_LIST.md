@@ -359,6 +359,18 @@
 **Solution option:** separate responsibilities now, keep ActivityPub transport out of scope for this task, and introduce a minimal temporary bridge ingest contract that is compatible with future ActivityPub event handling.
 
 #### **Solution details:**
+- **Mandatory physical split (root-level):**
+  - The repository must contain two first-level directories: `engine/` and `client/`.
+  - `engine/` is a standalone service workspace for recommendation/read analytics only.
+  - Crawler is part of Engine and must live inside the Engine workspace (`engine/crawler/*`), not as a separate top-level service/workspace.
+  - `client/` is a standalone service workspace that includes:
+    - frontend application code,
+    - static/public assets,
+    - backend API layer for user actions/profile/write-side flows.
+- **Mandatory logical/service split:**
+  - Engine and Client are two separate runtime entities (separate processes/services), not one mixed API server.
+  - Service interaction is only via explicit service-to-service contracts (HTTP/API/events), not via mixed in-process write/read handlers.
+  - Engine must not serve client UI/static pages; Client must own UI/static delivery and user-facing write orchestration.
 - **Target contracts (without ActivityPub implementation yet):**
   - Engine exposes read/compute API only:
     - `POST /recommendations` (seed/params in JSON),
@@ -386,21 +398,25 @@
   - Client service sends actions to original instance and publishes normalized events to Engine bridge.
   - UI must not call Engine ingest/write paths directly.
 - **Compatibility and migration path:**
+  - Move/organize modules so read-only recommendation logic lives under `engine/` and client-facing write/profile/backend logic lives under `client/`.
+  - Keep old mixed paths only as short-term compatibility shims during migration, with explicit deprecation notes.
   - Keep existing read routes temporarily via compatibility wrappers where needed, but mark old mixed routes as deprecated.
   - Add explicit config switches:
     - `ENGINE_INGEST_MODE=bridge|activitypub`,
     - `CLIENT_PUBLISH_MODE=bridge|activitypub`.
   - In this task, default both to `bridge`; ActivityPub mode is reserved for later milestone.
 - **Validation / tests:**
+  - Structural check: root contains both `engine/` and `client/`, and they are used as separate service roots.
+  - Service-boundary check: no user write/profile endpoints remain in Engine public API surface.
   - Integration smoke: `client-like -> bridge ingest -> Engine metrics update -> changed /recommendations output`.
   - Contract tests for ingest idempotency (`event_id` duplicate handling).
   - Regression tests confirming Engine read endpoints still work while legacy write endpoints are disabled/deprecated.
 
 #### **Affected areas/files (expected):**
-- Engine routing/handlers: `server/api/handlers/similar.py`, new bridge ingest handler module, `server/api/server.py`.
-- Engine write/profile removal or isolation: `server/api/handlers/user_profile.py`, `server/api/request_context.py`, `server/data/users.py`.
-- Recommendation input plumbing: `server/api/recommendations/*`, scoring/popularity sources in `server/data/*`.
-- Client API callers (no direct Engine writes): `client/src/data/user-actions.ts`, `client/src/data/user-profile.ts`, `client/src/data/videos.ts`, related page hooks.
+- Engine workspace (new root): `engine/*` (read API routing/handlers, recommendation core, ingest normalization, DB/recompute jobs).
+- Crawler migration into Engine: existing `crawler/*` is moved under `engine/crawler/*` and treated as one Engine subsystem.
+- Client workspace (existing/new root): `client/frontend/*`, `client/public/*`, `client/src/*`, `client/backend/*` (write/profile endpoints and bridge publisher).
+- Migration from mixed layout: existing `server/*` paths are moved/split into `engine/*` and `client/backend/*` according to read vs write ownership.
 - Deployment/docs/contracts: `README.md`, `DEPLOYMENT.md`, service run docs for split Engine/Client responsibilities.
 
 ## Logging / observability
@@ -540,6 +556,86 @@
   - repeated deploy smoke tests with no 5xx spikes in nginx access log;
   - forced-failure test verifies rollback path;
   - verify one-command run requires no manual `systemctl`/nginx edits.
+
+### 46) Prod/Dev service installers: isolated Engine+Client contours with wrapper entrypoints
+**Problem:** current `install-service.sh` installs one API unit (`peertube-browser`) and does not expose contour-aware Engine/Client install contract. Dev/prod wrapper behavior exists only as recovery artifacts (`tmp/recovery-vscode-history/install-service-dev.sh`, `tmp/recovery-vscode-history/install-service-prod.sh`) and is not integrated into the active repository flow.
+
+**Solution option:** implement two first-class installer entrypoints (`install-service-prod.sh` and `install-service-dev.sh`) over shared install primitives so prod and dev can run in parallel without cross-impact.
+
+#### **Solution details:**
+- **Installer contours (mandatory):**
+  - `install-service-prod.sh` and `install-service-dev.sh` are top-level wrappers that call shared logic in `install-service.sh`.
+  - Both contours install two services: Engine and Client (separate systemd units).
+  - Service naming must be contour-specific:
+    - prod: `peertube-engine`, `peertube-client`, optional `peertube-updater`,
+    - dev: `peertube-engine-dev`, `peertube-client-dev`, optional `peertube-updater-dev`.
+- **Prod behavior (default):**
+  - Default install mode is force-reinstall for prod units:
+    - stop/disable existing prod units,
+    - remove/recreate unit files,
+    - reload systemd and restart units.
+  - This force behavior applies only to prod contour units (must not touch dev units).
+- **Dev behavior (flags + isolation):**
+  - Dev installer supports explicit timer mode toggle (with timer / without timer).
+  - Dev services run on ports different from prod defaults and can run simultaneously with prod.
+  - Dev Client must target local Dev Engine endpoint (no cross-call into prod Engine).
+  - Dev reinstall/restart operations must not stop/modify prod units.
+- **Shared installer contract:**
+  - Keep common preflight, unit rendering, enable/start, and post-check logic in `install-service.sh`.
+  - Expose shared flags for contour-specific unit names, hosts, ports, and Engine ingest base URL.
+  - Keep strict validation of provided service names/ports and explicit failure logs.
+- **Compatibility expectations:**
+  - Preserve current prod runtime contract for Client->Engine behavior unless overridden by explicit contour flags.
+  - Keep wrapper UX simple and predictable:
+    - prod: opinionated reinstall defaults,
+    - dev: local development isolation defaults.
+- **Validation / tests:**
+  - `--help` contract tests for all three scripts (`install-service.sh`, `install-service-prod.sh`, `install-service-dev.sh`).
+  - Smoke test: install prod contour, then install dev contour, verify both Engine/Client pairs are active simultaneously.
+  - Port/endpoint check: dev Client routes only to dev Engine; prod Client routes only to prod Engine.
+  - Timer toggle check: dev with/without timer behaves according to flag; prod default behavior remains explicit.
+
+#### **Affected areas/files (expected):**
+- Shared installer core: `install-service.sh`.
+- New wrappers: `install-service-prod.sh`, `install-service-dev.sh`.
+- Service docs/runbooks: `DEPLOYMENT.md`, `README.md` (service install section).
+- Optional cleanup alignment (if present later): uninstall scripts for matching contour unit names.
+
+### 47) Smoke tests for installers and Engine/Client service interaction (with guaranteed cleanup)
+**Problem:** after adding contour-aware installers, there is no automated smoke verification that (a) dev installer flow is executable end-to-end and leaves no residual services, and (b) Engine/Client interaction works through expected endpoints.
+
+**Solution option:** add a dedicated root `tests/` directory with two smoke-test scripts: one for dev installer lifecycle and cleanup, and one for Engine/Client interaction checks.
+
+#### **Solution details:**
+- **Test location and structure (mandatory):**
+  - Create/use top-level `tests/` directory for smoke tests related to service install/runtime checks.
+  - Keep installer smoke and interaction smoke as separate scripts with clear CLI/help.
+- **Smoke test A: dev installer lifecycle + cleanup (`tests/...installer...smoke...`):**
+  - Run dev install path (with explicit timer mode parameter where applicable).
+  - Validate resulting dev units are created, enabled/active as expected, and bound to dev contour names/ports.
+  - Capture and print actionable diagnostics on failure (`systemctl status`, recent `journalctl` tails).
+  - Always perform teardown in `finally/trap` logic:
+    - stop/disable/remove dev units created by the test,
+    - remove test-created timer units/state artifacts when applicable,
+    - ensure no dev test services remain after script exits (success or failure).
+- **Smoke test B: Engine/Client interaction (`tests/...interaction...smoke...`):**
+  - Validate Engine and Client health/readiness endpoints first.
+  - Run minimal end-to-end interaction checks through expected API flow (Client -> Engine and Engine read responses visible to Client path).
+  - Assert expected HTTP statuses, response shape basics, and non-empty critical fields.
+  - On failure, emit concise request/response diagnostics and related unit logs.
+- **Isolation and safety rules:**
+  - Smoke tests target dev contour by default and must not modify prod contour units.
+  - Use deterministic dev ports/service names from installer contract; no cross-calls into prod contour during tests.
+  - Teardown is mandatory even when assertions fail or script is interrupted.
+- **Validation / CI expectations:**
+  - Local run contract: one command per smoke script and non-zero exit code on any failed assertion.
+  - Optional aggregate runner in `tests/` that executes both smoke tests sequentially and reports summary.
+  - Document prerequisites (sudo/systemd availability, required env vars) and cleanup guarantees in script headers.
+
+#### **Affected areas/files (expected):**
+- New test directory and scripts: `tests/*` (installer smoke + interaction smoke + optional runner/shared utils).
+- Service scripts touched by tests: `install-service.sh`, `install-service-dev.sh`, `install-service-prod.sh` (invoked, not necessarily modified).
+- Test run docs: `README.md` and/or `DEPLOYMENT.md` (how to run smoke tests and expected cleanup behavior).
 
 ## Product transparency / changelog
 

@@ -31,6 +31,13 @@ Before implementing any task or task bundle, always:
 2. Implement with future tasks from the same block in mind (shared primitives first where reasonable).
 3. Avoid local one-off implementations that would force duplicate rewrites in upcoming related tasks.
 
+## Task execution trigger (strict)
+
+1. Do not start implementing any task until the user gives an explicit execution command in this exact format: `выполни задачу X`.
+2. Any message that does not contain an explicit command in the format `выполни задачу X` is treated as non-execution (clarification, planning, edits of task text, review, or discussion only).
+3. If the user intent looks like execution but the command format is not explicit, ask for a direct command in the required format and do not start implementation.
+4. User confirmation that a task is completed is separate from execution start and must still be explicit (see Task state management rules below).
+
 ## Task state management
 
 1. Do not mark any task or task block as completed until the user explicitly confirms completion after review.
@@ -42,6 +49,11 @@ Before implementing any task or task bundle, always:
 7. Every public changelog task must have an explicit status (allowed: `Planned`, `Done`).
 8. Update an item in `CHANGELOG.json` to `Done` only after explicit user confirmation of completion.
 9. Keep public changelog task wording human-readable and maintain stable task identity so status updates are deterministic.
+10. When creating any new task in `dev/TASK_LIST.md`, add the corresponding task entry to `CHANGELOG.json` in the same edit run with status `Planned`.
+11. When changing task text/scope/title/ID in `dev/TASK_LIST.md`, explicitly check whether the matching item in `CHANGELOG.json` must be updated; apply that changelog update in the same edit run when needed.
+12. Never skip changelog synchronization for task create/update/complete actions; treat it as a mandatory blocking rule.
+13. `CHANGELOG.json` task `id` must be exactly the task number from `dev/TASK_LIST.md` (for example: `1`, `30`, `45`, `8b`, `12a`, `16l`) and must not use text slugs.
+14. Task-number identity is canonical: one task number in `dev/TASK_LIST.md` -> one entry with the same `id` in `CHANGELOG.json` (no duplicates, no aliases).
 
 ### After user confirmation (required sequence)
 
