@@ -19,8 +19,5 @@ __pycache__/
 /.tmp/
 /context
 /tmp
-/dev
 
 client/run-client-sync-build.sh
-
-/AGENTS.md
