@@ -104,7 +104,7 @@
 
 #### **Solution details:**
 - **Client instrumentation**:
-  - Add `data-track-id` for each outbound link in `client/about.html` (e.g., `about_patreon`, `about_github`, `about_youtube`).
+  - Add `data-track-id` for each outbound link in `client/frontend/about.html` (e.g., `about_patreon`, `about_github`, `about_youtube`).
   - Add one delegated click handler for `a[data-track-id]`.
   - Send event with `navigator.sendBeacon()` to `/api/analytics/outbound-click` (fallback to `fetch(..., { keepalive: true })` if needed).
   - Event payload: `track_id`, `href`, `page_path`, `timestamp`.
@@ -415,7 +415,7 @@
 #### **Affected areas/files (expected):**
 - Engine workspace (new root): `engine/*` (read API routing/handlers, recommendation core, ingest normalization, DB/recompute jobs).
 - Crawler migration into Engine: existing `crawler/*` is moved under `engine/crawler/*` and treated as one Engine subsystem.
-- Client workspace (existing/new root): `client/frontend/*`, `client/public/*`, `client/src/*`, `client/backend/*` (write/profile endpoints and bridge publisher).
+- Client workspace (existing/new root): `client/frontend/*`, `client/backend/*` (write/profile endpoints and bridge publisher).
 - Migration from mixed layout: existing `server/*` paths are moved/split into `engine/*` and `client/backend/*` according to read vs write ownership.
 - Deployment/docs/contracts: `README.md`, `DEPLOYMENT.md`, service run docs for split Engine/Client responsibilities.
 

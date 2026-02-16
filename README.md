@@ -24,8 +24,7 @@ See `DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset and ANN
 - `engine/`: read/analytics workspace.
 - `engine/crawler/`: crawler subsystem (part of Engine).
 - `engine/server/`: read-only recommendation API + bridge ingest.
-- `client/`: client workspace.
-- `client/src`, `client/public`: frontend app and static assets.
+- `client/frontend/`: frontend app and static assets.
 - `client/backend/`: client write/profile API that publishes normalized events to Engine.
 
 ## Recommendations (current)

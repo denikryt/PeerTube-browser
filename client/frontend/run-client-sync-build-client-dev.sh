@@ -15,8 +15,6 @@ mkdir -p "${TARGET_DIR}"
 if [[ "${SOURCE_CLIENT_DIR}" == "${TARGET_DIR}" ]]; then
   echo "Source and target are the same, rsync skipped."
 else
-  echo "Cleaning target directory ${TARGET_DIR}"
-  rm -rf "${TARGET_DIR}"/* 2>/dev/null || true
   echo "Rsync client -> ${TARGET_DIR}"
   rsync -a --delete \
     --exclude "node_modules/" \

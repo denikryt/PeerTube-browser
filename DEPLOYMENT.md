@@ -22,12 +22,12 @@ Client backend keeps its own users DB (default):
 ## 2) Build the client
 From the project root:
 ```bash
-cd client
+cd client/frontend
 npm install
 npm run build
 ```
 
-Output is in `client/dist/` (static files to be served).
+Output is in `client/frontend/dist/` (static files to be served).
 
 ## 3) Run the API server
 From the project root:
@@ -50,13 +50,13 @@ CLIENT_PUBLISH_MODE=bridge ./venv/bin/python3 client/backend/server.py \
 ## 5) Serve the client
 You can serve the static build with any web server. The simplest local option:
 ```bash
-cd client
+cd client/frontend
 npx serve -l 5173 dist
 ```
 
 Dev mode shortcut:
 ```bash
-cd client
+cd client/frontend
 npm run dev
 ```
 
