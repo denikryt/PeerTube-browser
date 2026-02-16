@@ -169,6 +169,13 @@
       "summary": "Show roadmap-style tasks with status fields and split views for completed and not completed tasks in the client."
     },
     {
+      "id": "task-engine-client-architecture-split-with-bridge-ap-foundation",
+      "date": "2026-02-16",
+      "status": "Planned",
+      "title": "Engine/Client Architecture Split with Bridge (ActivityPub-Ready)",
+      "summary": "Separate Engine into read-only analytics API, move user actions to client responsibility, and add a temporary bridge ingest contract prepared for future ActivityPub integration."
+    },
+    {
       "id": "task-real-client-ip-and-full-url-in-access-logs",
       "date": "2026-02-14",
       "status": "Done",
