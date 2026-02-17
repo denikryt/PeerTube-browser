@@ -209,6 +209,13 @@
       "status": "Done",
       "title": "Strict Client-Engine Decoupling (API-Only Contract)",
       "summary": "Remove direct Client imports of Engine modules and direct Engine DB reads, and enforce interaction only via explicit Engine HTTP read/bridge contracts."
+    },
+    {
+      "id": "50",
+      "date": "2026-02-17",
+      "status": "Planned",
+      "title": "Engine Recommendations: Interaction-Signals Only (No Local Users DB Likes)",
+      "summary": "Finish split architecture by removing Engine recommendation dependence on local users likes tables and using only bridge-ingested aggregated interaction signals for write-derived ranking inputs."
     }
   ]
 }
