@@ -16,19 +16,21 @@ Use it before implementing any task bundle.
    Improves data quality on video page and creates better API/DB test baseline.
 5. **1** then **2** (video-page UX flow for similars)  
    First fast initial response, then progressive loading/scroll behavior.
-6. **4** (comments) and **9/9b** (description + single-like removal)  
+6. **52** (UI read path via Client backend proxy)  
+   Consolidate frontend read traffic through Client before additional video-page/profile UX work.
+7. **4** (comments) and **9/9b** (description + single-like removal)  
    Video/profile UX improvements with low backend risk.
-7. **12a** then **8b** (popular weighted-random + feed modes)  
+8. **12a** then **8b** (popular weighted-random + feed modes)  
    Finalize popular-layer behavior before exposing it as user-facing feed mode.
-8. **10** (search page) and **8c** (about outbound analytics)  
+9. **10** (search page) and **8c** (about outbound analytics)  
    Mostly orthogonal product features.
-9. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
+10. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
    Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
-10. **16l** then **39** then **44** then **40** (cache runtime safety + similarity shadow swap + zero-downtime deploy)  
+11. **16l** then **39** then **44** then **40** (cache runtime safety + similarity shadow swap + zero-downtime deploy)  
    Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache shadow cutover, then blue/green nginx switch automation.
-11. **16**, **11** (docs + docstrings)  
+12. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
-12. **42** (public roadmap changelog with status + client filters)  
+13. **42** (public roadmap changelog with status + client filters)  
    Implement after major feature blocks to avoid repeated migration/status churn while core tasks are still changing.
 
 ### Functional blocks (aligned with the same order)
@@ -36,8 +38,8 @@ Use it before implementing any task bundle.
   - Tasks: **37 -> 30 -> 33 -> 12a**
   - Scope: ANN/similarity defaults, impacted recompute, upnext diversity, popular-layer sampling quality.
 - **Block B: Video page data + UX behavior**
-  - Tasks: **3 -> 1 -> 2 -> 4 -> 9 -> 9b**
-  - Scope: metadata completeness, fast similar rendering, scrolling behavior, comments, profile/likes interactions.
+  - Tasks: **3 -> 1 -> 2 -> 52 -> 4 -> 9 -> 9b**
+  - Scope: metadata completeness, fast similar rendering, Client-gateway read routing, comments, profile/likes interactions.
 - **Block C: Feed and discovery product features**
   - Tasks: **8b -> 10 -> 15**
   - Scope: feed modes, search UX/API, crawler seed mode from one instance/subscriptions.
@@ -64,6 +66,10 @@ Use it before implementing any task bundle.
   Implement config source-of-truth first in **30**, then tuning/diversity in **33**.
 - **1 <-> 2 <-> 33**: all touch video-page similar retrieval/rendering behavior.  
   Backend candidate quality/diversity (**33**) should be stable before final UX behavior (**1**, **2**).
+- **52 <-> 1/2/3/33**: all touch UI read-path contracts and video/read request wiring.  
+  Stabilize endpoint payload expectations before moving UI reads fully behind Client proxy.
+- **52 <-> 49/45 contracts**: split architecture relies on explicit Client/Engine boundaries.  
+  Keep Client as the browser-facing API gateway and preserve Engine as internal upstream for these reads.
 - **8b <-> 12a**: both touch popular layer output behavior.  
   Weighted-random in popular should be finished before exposing/locking popular mode UX.
 - **41 <-> 38**: same logging contract and request context propagation.  
