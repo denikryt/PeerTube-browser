@@ -1,8 +1,5 @@
 # Task List (future)
 
-## UX / client
-
-## Video page
 ### 1) Fast response with similars
 **Problem:** until the server receives a response from the instance, the client shows an empty page; some instances respond slowly.
 
@@ -74,7 +71,6 @@
 - Remove the comment input field (view-only).
 - First verify on a specific video which request is needed to fetch comments; use the response structure for client rendering.
 
-## General UI
 ### 8) Tailwind CSS (optional)
 **Problem:** styles are fragmented and hard to maintain.
 
@@ -83,7 +79,6 @@
 #### **Solution details:**
 - Start with new blocks, gradually replace repeating styles.
 
-## Feed modes
 ### 8b) Switchable feed modes: recommendations / hot / recent / random / popular
 **Problem:** right now there are only recommendations and random; there are no quick modes like “only recent / only hot / only popular.”
 
@@ -133,7 +128,6 @@
   - API test: valid event is stored, invalid event is rejected.
   - E2E smoke test: clicking About links increases counter in DB.
 
-## Profile / likes
 ### 9b) Remove a single like (UI + API)
 **Problem:** currently you can only reset all likes, but cannot remove a single one.
 
@@ -154,7 +148,6 @@
 - Limit description height and show a “Show more/Collapse” button.
 - On click, toggle expanded/collapsed state and keep it in the UI.
 
-## Video search
 ### 10) Video search page
 **Problem:** there is no search page and no server-side logic for video search.
 
@@ -164,7 +157,6 @@
 - Define request/response format: `GET /api/search/videos?q=...&page=...&limit=...&sort=...`.
 - Server: add a video search endpoint (SQLite FTS5, fallback to LIKE).
 
-## Code infrastructure
 ### 11) Docstrings for all modules and functions
 **Problem:** descriptions are missing in some places, making it harder to quickly understand module and function purpose.
 
@@ -175,7 +167,6 @@
 - Functions/classes: 1–2 lines, “what it does / what it returns.”
 - Avoid noise — only where it is non-obvious.
 
-## Performance
 ### 12a) Popular: weighted random by similarity
 **Problem:** when likes exist, popular is sorted by similarity but then a random sample is taken from the whole pool, so the sorting almost does not affect the result.
 
@@ -187,7 +178,6 @@
 - Add config parameter `popular.weighted_random_alpha` (0 = disabled).
 - For empty/zero weights fallback to normal random.
 
-## Data / collection
 ### 15) Crawler mode: start from one instance and its subscriptions
 **Problem:** there is no crawler mode that starts from one instance and walks its federated subscriptions.
 
@@ -202,8 +192,6 @@
 - Step 2: iterate through channels of each instance and collect their metadata.
 - Step 3: iterate through videos of channels and save them to the DB.
 - Note: this mode belongs to the instance crawler; its behavior should be aligned with existing crawler flags.
-
-## Recommendations and similars
 
 ### 16) Update recommendation description (RECOMMENDATIONS_OVERVIEW)
 **Problem:** `RECOMMENDATIONS_OVERVIEW.md` does not match the current recommendation logic.
@@ -351,7 +339,171 @@
 - DB schema/migration/ingest: `server/db/jobs/migrate-whitelist.py`, `server/db/jobs/build-video-embeddings.py`, `server/db/jobs/sync-whitelist.py`, merge/updater flow.
 - Ops/docs/tests: `server/db/jobs/updater-worker.py`, updater docs, ANN/smoke tests.
 
-## Architecture / federation readiness
+### 38) Request lifecycle logs: request-start first + shared request_id across server logs
+**Problem:** current logs are hard to correlate because access logs are emitted on response write, while business logs (`[similar-server]`, `[recommendations]`) are produced during processing and can interleave across threads.
+
+**Solution option:** introduce a per-request lifecycle log (`start` -> work logs -> `end`) and one shared `request_id` propagated through handler and recommendation logs.
+
+#### **Solution details:**
+- Keep a two-log model (do not merge into one physical file):
+  - nginx access log for client/network view (`ip`, URL, status, timing),
+  - app/service log for internal processing (`similar-server`, `recommendations`, timing).
+- Correlation contract:
+  - one shared `request_id` must appear in both logs for the same request;
+  - nginx should forward `X-Request-ID` (or generate it when missing), app should read and reuse it.
+- Add a request-scoped context value (`request_id`) at the start of every API request (`do_GET`/`do_POST`) before business logic.
+- Emit `request-start` log first with `request_id`, client IP, method, full URL, and optional user-agent.
+- Reuse the same `request_id` in all downstream request-path logs (`[similar-server]`, `[recommendations]`, handler timing logs).
+- Emit `request-end` log with `request_id`, status, duration_ms; `bytes` in app-log is optional.
+- Treat response byte size as nginx access-log responsibility (source of truth for transferred bytes).
+- Remove ad-hoc per-handler random id generation where it conflicts with shared request context.
+- Keep compatibility with threaded serving (ordering guaranteed per request, not globally).
+- Validation:
+  - smoke test for `/api/similar`, `/api/video`, `/api/health` to verify `start -> ... -> end` with same `request_id`;
+  - regression test to ensure no request is logged without `request_id`;
+  - manual verification runbook that compares one request in both logs by `request_id`.
+
+### 39) Random cache refresh worker without startup downtime (extends 16l runtime behavior)
+**Problem:** rebuilding random cache during startup can delay readiness and create a visible unavailable window after restart.
+
+**Solution option:** keep serving from existing cache immediately, and rebuild cache in a background worker with atomic swap.
+
+#### **Solution details:**
+- Keep startup non-blocking:
+  - open existing `random-cache.db` and start API listening first;
+  - if cache is missing/invalid, use safe DB fallback until first successful build.
+- Add background worker/timer to rebuild into `random-cache.tmp.db`.
+- Perform atomic cache swap and safe connection reopen under `random_cache_lock`.
+- Add backoff/retry policy for failed refreshes; do not block request path.
+- Add metrics logs: build duration, scanned rows, final size, short-fill reasons, swap success/failure.
+- Config:
+  - refresh interval (minutes),
+  - startup refresh mode (`off` / `async`),
+  - optional max build runtime guard.
+- Validation:
+  - startup readiness test confirms `/api/health` responds before cache rebuild completes;
+  - concurrent read test during swap shows no request failures.
+
+### 40) Zero-downtime server deploy: parallel port startup + automatic nginx switch
+**Problem:** in-place restart on one port causes temporary downtime during server initialization/warm-up.
+
+**Solution option:** implement blue/green style deploy for the API: start a new instance on a second port, health-check it, switch nginx upstream, then drain/stop old instance.
+
+#### **Solution details:**
+- Add one-command deploy script (example name: `deploy-bluegreen.sh`) that performs full switch automatically.
+- Add explicit blue/green mode flag in the script (example: `--blue-green`).
+- Use a fixed blue/green port pair only: `7070` and `7071` (no random/free-port selection and no custom port list flag).
+- Move API service to systemd instance template (for example `peertube-browser@.service`) so two instances can run in parallel:
+  - `peertube-browser@7070`,
+  - `peertube-browser@7071`.
+- Deploy flow in script:
+  1) detect which one of `7070/7071` is currently active and choose the other one as target,
+  2) start new systemd instance on inactive port,
+  3) run readiness checks against new port (`/api/health`, optional warm-up wait),
+  4) switch nginx upstream to the new port (single source file/snippet for upstream target),
+  5) run `nginx -t` and reload nginx,
+  6) stop old systemd instance after successful switch.
+- Add automatic rollback:
+  - if readiness check fails, stop new instance and keep old port active;
+  - if nginx validation/reload fails, restore previous upstream target and keep old instance.
+- Keep deploy idempotent and lock-protected (avoid concurrent deploy races).
+- Add operation logs: deploy id, old/new port, switch timestamp, health-check result, rollback reason.
+- Validation:
+  - repeated deploy smoke tests with no 5xx spikes in nginx access log;
+  - forced-failure test verifies rollback path;
+  - verify one-command run requires no manual `systemctl`/nginx edits.
+
+### 41) Timestamped request logs (explicit date/time)
+**Problem:** request timing analysis is harder when logs rely only on journal envelope time or inconsistent message formatting.
+
+**Solution option:** include explicit timestamp in application log format and in request lifecycle logs.
+
+#### **Solution details:**
+- Configure logging format with explicit timestamp (recommended: ISO-8601 with milliseconds, UTC).
+- Ensure both request lifecycle logs and internal server logs include the same timestamp format.
+- Add optional config for structured log output (plain text default, JSON optional).
+- Keep compatibility with journald (no duplicate parsing assumptions).
+- Validation:
+  - sample log lines include full date/time and timezone marker;
+  - ordering checks across request-start/work/request-end use application timestamp fields.
+
+### 42) CHANGELOG as public task board: roadmap-style tasks + status + client filters
+**Problem:** current `CHANGELOG.json` is a done-only history log, so users cannot see planned tasks and completed tasks in one unified public board.
+
+**Solution option:** repurpose `CHANGELOG.json` into a human-readable public task board (roadmap-style entries) with explicit status, and update client rendering accordingly.
+
+#### **Solution details:**
+- **Data contract migration (`CHANGELOG.json`)**:
+  - Replace done-only entries with task entries in readable format (title + short summary).
+  - Add required status field per task (allowed enum):
+    - `Planned`,
+    - `Done`.
+  - Keep stable task identity (`id`/`slug`) so status can be updated without rewriting history order.
+  - Keep optional metadata for UI (`updated_at`, `category`, `source_ref`).
+- **Source-of-truth alignment**:
+  - Task wording should stay human-readable and product-facing.
+  - Keep mapping from public changelog task to internal task id when possible (`TASK_LIST` / completed id).
+- **Client adaptation**:
+  - Update changelog page parser to new schema and status field.
+  - Render status-dependent UI:
+    - `Done`: completed visual state (e.g., green + checkmark),
+    - `Planned`: non-complete visual state.
+  - Add two filters/tabs (same tab style as About page):
+    - `Completed`,
+    - `Not completed` (`Planned`).
+- **Workflow update**:
+  - On task completion, update status of existing changelog task instead of appending only a new done-history row.
+  - Keep changelog order deterministic (roadmap/group order or explicit sort key).
+- **Validation / tests**:
+  - Client: schema parse test + filter/tabs test.
+  - Client: status style rendering test for all statuses.
+  - Data: migration/backward-compat test (if legacy entries exist).
+
+### 43) Static page visit logs for About and Changelog
+**Problem:** visits to `about` and `changelog` are currently served as static files by nginx, so these page visits are not visible in app/service request logs.
+
+**Solution option:** add a dedicated logging path for static page visits and keep correlation with request tracing where possible.
+
+#### **Solution details:**
+- Add dedicated nginx logging for `about` and `changelog` page routes:
+  - include client IP, method, URL, status, response time, user-agent;
+  - keep this in a separate log stream or with explicit marker field.
+- Preserve/propagate `X-Request-ID` in nginx logs for those routes when available.
+- Add a simple runbook to compare:
+  - static page visits (`about`/`changelog`) from nginx logs,
+  - API request traces from app logs.
+- Optional (if needed): add client-side pageview beacon endpoint for cleaner human-intent tracking and bot/noise filtering.
+- Validation:
+  - visiting `about` and `changelog` produces entries with expected fields in nginx logs;
+  - sample correlation by request id/time window works against app-side traces.
+
+### 44) Similarity cache shadow build + atomic swap without long API downtime
+**Problem:** updater currently keeps API service stopped until `precompute-similar-ann.py` finishes. Similarity precompute can be very long, causing unnecessary API downtime.
+
+**Solution option:** build similarity cache in a shadow DB while API is already running, then perform a fast atomic cutover.
+
+#### **Solution details:**
+- **Updater sequence change:**
+  - keep service stop/start around write-conflict-critical stages only (`merge` + ANN rebuild),
+  - start API service before similarity precompute stage.
+- **Shadow cache build path:**
+  - create `similarity-cache.next.db` from current active `similarity-cache.db` (preserve incremental baseline),
+  - run `precompute-similar-ann.py --incremental` against the shadow file, not active file.
+- **Atomic cutover:**
+  - on success, atomically replace active cache file (`os.replace`),
+  - keep rollback backup (`similarity-cache.prev.db`) for one-step restore.
+- **Runtime handoff:**
+  - add safe similarity DB reconnect/reopen path in API process under `similarity_db_lock` (signal or admin hook),
+  - fallback: short controlled API restart only for reconnect if hot-reload is unavailable.
+- **Safety/rollback:**
+  - if shadow build fails, keep active cache untouched,
+  - if swap/reopen fails, restore previous active cache and keep service healthy.
+- **Observability:**
+  - log shadow build duration, processed sources, swap duration, reopen result, rollback reason.
+- **Validation / tests:**
+  - integration test: API stays available during similarity precompute window,
+  - concurrency test: no read errors during swap/reopen,
+  - rollback test: forced swap failure restores previous cache and keeps `/api/health` green.
 
 ### 45) Engine/Client architecture split: read-only Engine + temporary bridge ingest (ActivityPub-ready)
 **Problem:** current API server mixes responsibilities: Engine-like recommendation read paths and user write actions/profile state in one service (`/api/user-action`, `/api/user-profile/*`). This coupling blocks clean migration to the target model where Engine is a read/analytics service and federated writes arrive through ActivityPub subscriptions.
@@ -418,144 +570,6 @@
 - Client workspace (existing/new root): `client/frontend/*`, `client/backend/*` (write/profile endpoints and bridge publisher).
 - Migration from mixed layout: existing `server/*` paths are moved/split into `engine/*` and `client/backend/*` according to read vs write ownership.
 - Deployment/docs/contracts: `README.md`, `DEPLOYMENT.md`, service run docs for split Engine/Client responsibilities.
-
-## Logging / observability
-
-### 38) Request lifecycle logs: request-start first + shared request_id across server logs
-**Problem:** current logs are hard to correlate because access logs are emitted on response write, while business logs (`[similar-server]`, `[recommendations]`) are produced during processing and can interleave across threads.
-
-**Solution option:** introduce a per-request lifecycle log (`start` -> work logs -> `end`) and one shared `request_id` propagated through handler and recommendation logs.
-
-#### **Solution details:**
-- Keep a two-log model (do not merge into one physical file):
-  - nginx access log for client/network view (`ip`, URL, status, timing),
-  - app/service log for internal processing (`similar-server`, `recommendations`, timing).
-- Correlation contract:
-  - one shared `request_id` must appear in both logs for the same request;
-  - nginx should forward `X-Request-ID` (or generate it when missing), app should read and reuse it.
-- Add a request-scoped context value (`request_id`) at the start of every API request (`do_GET`/`do_POST`) before business logic.
-- Emit `request-start` log first with `request_id`, client IP, method, full URL, and optional user-agent.
-- Reuse the same `request_id` in all downstream request-path logs (`[similar-server]`, `[recommendations]`, handler timing logs).
-- Emit `request-end` log with `request_id`, status, duration_ms; `bytes` in app-log is optional.
-- Treat response byte size as nginx access-log responsibility (source of truth for transferred bytes).
-- Remove ad-hoc per-handler random id generation where it conflicts with shared request context.
-- Keep compatibility with threaded serving (ordering guaranteed per request, not globally).
-- Validation:
-  - smoke test for `/api/similar`, `/api/video`, `/api/health` to verify `start -> ... -> end` with same `request_id`;
-  - regression test to ensure no request is logged without `request_id`;
-  - manual verification runbook that compares one request in both logs by `request_id`.
-
-### 41) Timestamped request logs (explicit date/time)
-**Problem:** request timing analysis is harder when logs rely only on journal envelope time or inconsistent message formatting.
-
-**Solution option:** include explicit timestamp in application log format and in request lifecycle logs.
-
-#### **Solution details:**
-- Configure logging format with explicit timestamp (recommended: ISO-8601 with milliseconds, UTC).
-- Ensure both request lifecycle logs and internal server logs include the same timestamp format.
-- Add optional config for structured log output (plain text default, JSON optional).
-- Keep compatibility with journald (no duplicate parsing assumptions).
-- Validation:
-  - sample log lines include full date/time and timezone marker;
-  - ordering checks across request-start/work/request-end use application timestamp fields.
-
-### 43) Static page visit logs for About and Changelog
-**Problem:** visits to `about` and `changelog` are currently served as static files by nginx, so these page visits are not visible in app/service request logs.
-
-**Solution option:** add a dedicated logging path for static page visits and keep correlation with request tracing where possible.
-
-#### **Solution details:**
-- Add dedicated nginx logging for `about` and `changelog` page routes:
-  - include client IP, method, URL, status, response time, user-agent;
-  - keep this in a separate log stream or with explicit marker field.
-- Preserve/propagate `X-Request-ID` in nginx logs for those routes when available.
-- Add a simple runbook to compare:
-  - static page visits (`about`/`changelog`) from nginx logs,
-  - API request traces from app logs.
-- Optional (if needed): add client-side pageview beacon endpoint for cleaner human-intent tracking and bot/noise filtering.
-- Validation:
-  - visiting `about` and `changelog` produces entries with expected fields in nginx logs;
-  - sample correlation by request id/time window works against app-side traces.
-
-## Runtime reliability / operations
-
-### 39) Random cache refresh worker without startup downtime (extends 16l runtime behavior)
-**Problem:** rebuilding random cache during startup can delay readiness and create a visible unavailable window after restart.
-
-**Solution option:** keep serving from existing cache immediately, and rebuild cache in a background worker with atomic swap.
-
-#### **Solution details:**
-- Keep startup non-blocking:
-  - open existing `random-cache.db` and start API listening first;
-  - if cache is missing/invalid, use safe DB fallback until first successful build.
-- Add background worker/timer to rebuild into `random-cache.tmp.db`.
-- Perform atomic cache swap and safe connection reopen under `random_cache_lock`.
-- Add backoff/retry policy for failed refreshes; do not block request path.
-- Add metrics logs: build duration, scanned rows, final size, short-fill reasons, swap success/failure.
-- Config:
-  - refresh interval (minutes),
-  - startup refresh mode (`off` / `async`),
-  - optional max build runtime guard.
-- Validation:
-  - startup readiness test confirms `/api/health` responds before cache rebuild completes;
-  - concurrent read test during swap shows no request failures.
-
-### 44) Similarity cache shadow build + atomic swap without long API downtime
-**Problem:** updater currently keeps API service stopped until `precompute-similar-ann.py` finishes. Similarity precompute can be very long, causing unnecessary API downtime.
-
-**Solution option:** build similarity cache in a shadow DB while API is already running, then perform a fast atomic cutover.
-
-#### **Solution details:**
-- **Updater sequence change:**
-  - keep service stop/start around write-conflict-critical stages only (`merge` + ANN rebuild),
-  - start API service before similarity precompute stage.
-- **Shadow cache build path:**
-  - create `similarity-cache.next.db` from current active `similarity-cache.db` (preserve incremental baseline),
-  - run `precompute-similar-ann.py --incremental` against the shadow file, not active file.
-- **Atomic cutover:**
-  - on success, atomically replace active cache file (`os.replace`),
-  - keep rollback backup (`similarity-cache.prev.db`) for one-step restore.
-- **Runtime handoff:**
-  - add safe similarity DB reconnect/reopen path in API process under `similarity_db_lock` (signal or admin hook),
-  - fallback: short controlled API restart only for reconnect if hot-reload is unavailable.
-- **Safety/rollback:**
-  - if shadow build fails, keep active cache untouched,
-  - if swap/reopen fails, restore previous active cache and keep service healthy.
-- **Observability:**
-  - log shadow build duration, processed sources, swap duration, reopen result, rollback reason.
-- **Validation / tests:**
-  - integration test: API stays available during similarity precompute window,
-  - concurrency test: no read errors during swap/reopen,
-  - rollback test: forced swap failure restores previous cache and keeps `/api/health` green.
-
-### 40) Zero-downtime server deploy: parallel port startup + automatic nginx switch
-**Problem:** in-place restart on one port causes temporary downtime during server initialization/warm-up.
-
-**Solution option:** implement blue/green style deploy for the API: start a new instance on a second port, health-check it, switch nginx upstream, then drain/stop old instance.
-
-#### **Solution details:**
-- Add one-command deploy script (example name: `deploy-bluegreen.sh`) that performs full switch automatically.
-- Add explicit blue/green mode flag in the script (example: `--blue-green`).
-- Use a fixed blue/green port pair only: `7070` and `7071` (no random/free-port selection and no custom port list flag).
-- Move API service to systemd instance template (for example `peertube-browser@.service`) so two instances can run in parallel:
-  - `peertube-browser@7070`,
-  - `peertube-browser@7071`.
-- Deploy flow in script:
-  1) detect which one of `7070/7071` is currently active and choose the other one as target,
-  2) start new systemd instance on inactive port,
-  3) run readiness checks against new port (`/api/health`, optional warm-up wait),
-  4) switch nginx upstream to the new port (single source file/snippet for upstream target),
-  5) run `nginx -t` and reload nginx,
-  6) stop old systemd instance after successful switch.
-- Add automatic rollback:
-  - if readiness check fails, stop new instance and keep old port active;
-  - if nginx validation/reload fails, restore previous upstream target and keep old instance.
-- Keep deploy idempotent and lock-protected (avoid concurrent deploy races).
-- Add operation logs: deploy id, old/new port, switch timestamp, health-check result, rollback reason.
-- Validation:
-  - repeated deploy smoke tests with no 5xx spikes in nginx access log;
-  - forced-failure test verifies rollback path;
-  - verify one-command run requires no manual `systemctl`/nginx edits.
 
 ### 46) Prod/Dev service installers: isolated Engine+Client contours with wrapper entrypoints
 **Problem:** current `install-service.sh` installs one API unit (`peertube-browser`) and does not expose contour-aware Engine/Client install contract. Dev/prod wrapper behavior exists only as recovery artifacts (`tmp/recovery-vscode-history/install-service-dev.sh`, `tmp/recovery-vscode-history/install-service-prod.sh`) and is not integrated into the active repository flow.
@@ -636,37 +650,3 @@
 - New test directory and scripts: `tests/*` (installer smoke + interaction smoke + optional runner/shared utils).
 - Service scripts touched by tests: `install-service.sh`, `install-service-dev.sh`, `install-service-prod.sh` (invoked, not necessarily modified).
 - Test run docs: `README.md` and/or `DEPLOYMENT.md` (how to run smoke tests and expected cleanup behavior).
-
-## Product transparency / changelog
-
-### 42) CHANGELOG as public task board: roadmap-style tasks + status + client filters
-**Problem:** current `CHANGELOG.json` is a done-only history log, so users cannot see planned tasks and completed tasks in one unified public board.
-
-**Solution option:** repurpose `CHANGELOG.json` into a human-readable public task board (roadmap-style entries) with explicit status, and update client rendering accordingly.
-
-#### **Solution details:**
-- **Data contract migration (`CHANGELOG.json`)**:
-  - Replace done-only entries with task entries in readable format (title + short summary).
-  - Add required status field per task (allowed enum):
-    - `Planned`,
-    - `Done`.
-  - Keep stable task identity (`id`/`slug`) so status can be updated without rewriting history order.
-  - Keep optional metadata for UI (`updated_at`, `category`, `source_ref`).
-- **Source-of-truth alignment**:
-  - Task wording should stay human-readable and product-facing.
-  - Keep mapping from public changelog task to internal task id when possible (`TASK_LIST` / completed id).
-- **Client adaptation**:
-  - Update changelog page parser to new schema and status field.
-  - Render status-dependent UI:
-    - `Done`: completed visual state (e.g., green + checkmark),
-    - `Planned`: non-complete visual state.
-  - Add two filters/tabs (same tab style as About page):
-    - `Completed`,
-    - `Not completed` (`Planned`).
-- **Workflow update**:
-  - On task completion, update status of existing changelog task instead of appending only a new done-history row.
-  - Keep changelog order deterministic (roadmap/group order or explicit sort key).
-- **Validation / tests**:
-  - Client: schema parse test + filter/tabs test.
-  - Client: status style rendering test for all statuses.
-  - Data: migration/backward-compat test (if legacy entries exist).
