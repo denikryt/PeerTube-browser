@@ -186,8 +186,8 @@
       "id": "47",
       "date": "2026-02-16",
       "status": "Planned",
-      "title": "Smoke Tests for Installer Flow and Engine/Client Interaction",
-      "summary": "Add dedicated smoke tests in a root tests directory to verify dev installer execution, Engine/Client interaction, and guaranteed cleanup of dev test services."
+      "title": "Smoke Tests for Installer/Uninstaller Flow and Engine/Client Interaction",
+      "summary": "Add dedicated smoke tests with a full installer/uninstaller script matrix (centralized, wrappers, service-specific), strict runtime HTTP behavior checks (prod/dev contour routing and e2e bridge flow), and guaranteed zero-residual cleanup."
     },
     {
       "id": "48",
