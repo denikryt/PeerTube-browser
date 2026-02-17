@@ -42,6 +42,15 @@ it is a transparent, controllable pipeline.
 - Client backend (write/profile): `/api/user-action`, `/api/user-profile/*`.
 - Temporary bridge contract: Client backend publishes events to Engine `/internal/events/ingest`.
 
+## Split architecture smoke test
+Run the boundary/bridge smoke test:
+```bash
+bash tests/run-arch-split-smoke.sh
+```
+
+The script automatically starts Engine (`7072`) and Client (`7272`), runs all checks,
+aggregates errors, prints diagnostics, and always stops started processes.
+
 ## Future ideas
 - ActivityPub integration (receive new video events, send likes/comments).
 - User accounts and server-side profiles (opt-in).

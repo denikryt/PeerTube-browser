@@ -82,3 +82,17 @@ Optional debug toggle:
 ```
 RECOMMENDATIONS_DEBUG_ENABLED = True  # engine/server/api/server_config.py
 ```
+
+## 7) Split architecture smoke test
+The smoke script starts Engine and Client automatically on dev test ports,
+runs all split-boundary checks, prints aggregated errors (if any), and always
+stops started processes on exit:
+```bash
+bash tests/run-arch-split-smoke.sh
+```
+
+Optional explicit endpoints:
+```bash
+ENGINE_URL=http://127.0.0.1:7072 CLIENT_URL=http://127.0.0.1:7272 \
+  bash tests/run-arch-split-smoke.sh
+```
