@@ -202,6 +202,13 @@
       "status": "Planned",
       "title": "Changelog as Public Task Board",
       "summary": "Show roadmap-style tasks with status fields and split views for completed and not completed tasks in the client."
+    },
+    {
+      "id": "49",
+      "date": "2026-02-17",
+      "status": "Planned",
+      "title": "Strict Client-Engine Decoupling (API-Only Contract)",
+      "summary": "Remove direct Client imports of Engine modules and direct Engine DB reads, and enforce interaction only via explicit Engine HTTP read/bridge contracts."
     }
   ]
 }

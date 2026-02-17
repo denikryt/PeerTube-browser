@@ -650,3 +650,35 @@
 - New test directory and scripts: `tests/*` (installer smoke + interaction smoke + optional runner/shared utils).
 - Service scripts touched by tests: `install-service.sh`, `install-service-dev.sh`, `install-service-prod.sh` (invoked, not necessarily modified).
 - Test run docs: `README.md` and/or `DEPLOYMENT.md` (how to run smoke tests and expected cleanup behavior).
+
+### 49) Remove direct Client->Engine code/DB coupling (API-only contract)
+**Problem:** Client backend still has direct technical coupling to Engine internals (imports from `engine.server.*` and direct reads from Engine SQLite DB). This breaks strict service separation and makes split architecture fragile.
+
+**Solution option:** enforce an API-only interaction contract between Client and Engine: Client must not import Engine modules and must not open/read Engine DB files directly.
+
+#### **Solution details:**
+- **Hard boundary rules (mandatory):**
+  - `client/backend/*` must not import from `engine.server.*`.
+  - Client service must not open `engine/server/db/*.db` directly.
+  - Interaction between Client and Engine must go only through HTTP/API contracts.
+- **Client backend refactor:**
+  - Remove `sys.path` wiring that injects Engine paths into Client runtime.
+  - Replace Engine utility imports (`http_utils`, embedding/metadata/user helpers) with Client-owned modules.
+  - Keep Client-owned users/profile storage in `client/backend/db/users.db`.
+- **API contract for seed/metadata resolution:**
+  - Add/extend Engine read endpoints needed by Client write flow (for example resolve `uuid+host` -> canonical video identity/metadata).
+  - Update Client `/api/user-action` flow to use Engine HTTP read endpoint(s) instead of direct DB reads.
+  - Keep bridge publish (`/internal/events/ingest`) as the only Engine write-surface used by Client.
+- **Bridge/event compatibility:**
+  - Keep normalized event payload contract stable (`event_id`, `event_type`, `actor_id`, `object`, `published_at`, `source_instance`, `raw_payload`).
+  - Preserve idempotency behavior on Engine side.
+- **Validation / tests:**
+  - Add boundary regression test (grep/contract style) that fails if `client/backend` imports `engine.server` modules.
+  - Add integration smoke assertion confirming `client_user_action` still works after decoupling.
+  - Ensure split smoke remains green and logs stay actionable on failures.
+
+#### **Affected areas/files (expected):**
+- Client backend refactor: `client/backend/server.py`, new Client-owned helper modules (e.g. `client/backend/lib/*`).
+- Engine read contract: `engine/server/api/handlers/*` and related schema/response helpers.
+- Tests: `tests/run-arch-split-smoke.sh` (and/or additional boundary smoke checks).
+- Docs: `README.md`, `DEPLOYMENT.md` (explicit API-only boundary contract).
