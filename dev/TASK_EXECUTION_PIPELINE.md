@@ -28,8 +28,8 @@ Block A (`35 -> 32 -> 31 -> 34 -> 36`) is completed and moved to `COMPLETED_TASK
    Mostly orthogonal product features.
 10. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
    Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
-11. **46** then **47** then **48** then **16l** then **39** then **44** then **40** (prod/dev installers + smoke tests + split-boundary smoke + cache runtime safety + similarity shadow swap + zero-downtime deploy)  
-   First establish contour-isolated Engine/Client installer primitives, then lock smoke coverage for installer/runtime interaction contracts, then add explicit split-boundary/bridge-flow smoke checks, then background/atomic cache refresh primitives, then startup no-downtime hardening, then similarity-cache shadow cutover, then blue/green nginx switch automation.
+11. **46** then **47** then **16l** then **39** then **44** then **40** (prod/dev installers + smoke tests + cache runtime safety + similarity shadow swap + zero-downtime deploy)  
+   First establish contour-isolated Engine/Client installer primitives, then lock smoke coverage for installer/runtime interaction contracts, then add background/atomic cache refresh primitives, then startup no-downtime hardening, then similarity-cache shadow cutover, then blue/green nginx switch automation.
 12. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
 13. **42** (public roadmap changelog with status + client filters)  
@@ -61,8 +61,8 @@ Block A (`35 -> 32 -> 31 -> 34 -> 36`) is completed and moved to `COMPLETED_TASK
   - Tasks: **41 -> 38 -> 43**
   - Scope: explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/Changelog.
 - **Block I: Runtime reliability and operations**
-  - Tasks: **46 -> 47 -> 48 -> 16l -> 39 -> 44 -> 40**
-  - Scope: contour-isolated prod/dev service installers for Engine+Client, smoke coverage for install/runtime interaction contracts plus explicit split-boundary/bridge-flow checks, safe cache refresh/swap runtime behavior (random + similarity), and automated blue/green nginx cutover.
+  - Tasks: **46 -> 47 -> 16l -> 39 -> 44 -> 40**
+  - Scope: contour-isolated prod/dev service installers for Engine+Client, smoke coverage for install/runtime interaction contracts, safe cache refresh/swap runtime behavior (random + similarity), and automated blue/green nginx cutover.
 - **Block J: Public roadmap and changelog UX**
   - Tasks: **42**
   - Scope: roadmap-style public changelog entries with task statuses and client-side completed/not-completed filters.
@@ -78,14 +78,8 @@ Block A (`35 -> 32 -> 31 -> 34 -> 36`) is completed and moved to `COMPLETED_TASK
   Separate Engine/Client service model first, then add contour-aware installers/smoke checks and harden startup/cache/deploy operations around that topology.
 - **46 <-> 47**: smoke tests validate the installer contracts directly (unit names, ports, timer modes, cleanup guarantees).  
   Land installer contour and unit naming contracts first to avoid immediate smoke test rewrites.
-- **45 <-> 48**: split-boundary smoke depends on final Engine/Client ownership and bridge contract.  
-  Keep architecture split contract stable first, then lock boundary assertions in smoke checks.
-- **47 <-> 48**: both are smoke coverage for runtime/service contracts and should share test helpers/conventions.  
-  Reuse one diagnostics/assertion style to avoid duplicate test harness logic.
 - **47 <-> 39/44/40**: runtime/deploy changes can affect smoke assumptions and readiness/interaction checks.  
   Keep smoke scripts aligned with post-installer runtime contracts to avoid flaky operational verification.
-- **48 <-> 39/44/40**: runtime/deploy changes can alter readiness timing and endpoint/contour assumptions used by boundary smoke.  
-  Keep split-boundary smoke expectations aligned with final runtime/deploy contract.
 - **37 <-> 30 <-> 33**: same ANN/similarity core and ID contracts.  
   Stable ANN id source (**37**) must land before tuning/recompute behavior (**30**, **33**) to avoid duplicate rewrites.
 - **30 <-> 33**: same ANN/similarity knobs (`top-k`, `nprobe`, precompute behavior).  

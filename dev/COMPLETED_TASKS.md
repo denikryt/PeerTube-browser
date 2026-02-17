@@ -1,5 +1,14 @@
 # Completed tasks
 
+### 48) Split architecture smoke test: Engine/Client boundary + bridge flow + endpoint contracts (done)
+**Done:** added a dedicated split-boundary smoke test with bridge-flow checks and structured diagnostics.
+
+#### **What was implemented:**
+- Added `tests/run-arch-split-smoke.sh` to validate Engine/Client health, endpoint ownership boundaries, and Client -> Engine bridge flow.
+- Added interaction checks for like action through Client API and response contract validation (`ok`, `bridge_ok`, `bridge_error`).
+- Added guaranteed cleanup via trap/finally logic so started test processes are stopped on success, failure, or interruption.
+- Added persistent smoke logs under `tmp/arch-split-smoke-logs/` (`*.run.log`, `*.checks.log`, `*.errors.log`) for failure analysis.
+
 ### 35) Persistent instance denylist (done)
 **Done:** implemented a persistent denylist source of truth and wired it into serving/sync/ingest paths.
 

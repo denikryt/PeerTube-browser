@@ -637,46 +637,6 @@
 - Service scripts touched by tests: `install-service.sh`, `install-service-dev.sh`, `install-service-prod.sh` (invoked, not necessarily modified).
 - Test run docs: `README.md` and/or `DEPLOYMENT.md` (how to run smoke tests and expected cleanup behavior).
 
-### 48) Split architecture smoke test: Engine/Client boundary + bridge flow + endpoint contracts
-**Problem:** after the Engine/Client split, regressions can silently re-couple services (wrong endpoint ownership, wrong port targets, broken bridge publish path), and manual checks are inconsistent.
-
-**Solution option:** add one dedicated smoke test script that verifies the split contract end-to-end: boundary ownership, read path, write path through Client->Engine bridge, and actionable diagnostics on failures.
-
-#### **Solution details:**
-- **Test script contract (mandatory):**
-  - Add a dedicated smoke script in `tests/` (for example `tests/run-arch-split-smoke.sh`).
-  - Script must return non-zero on any failed assertion.
-  - Script must print concise, actionable diagnostics (URL, expected vs actual status/body fragment).
-- **Config/env defaults:**
-  - Support explicit env overrides with sane defaults:
-    - `ENGINE_URL` (default `http://127.0.0.1:7171`),
-    - `CLIENT_URL` (default `http://127.0.0.1:7172`).
-  - Do not hardcode prod ports in smoke assertions.
-- **Mandatory checks (service boundaries):**
-  - Engine health responds: `GET ${ENGINE_URL}/api/health` -> `200`.
-  - Client health responds: `GET ${CLIENT_URL}/api/health` -> `200`.
-  - Engine must reject client write/profile routes (e.g. `/api/user-profile*`) with `404`/non-success.
-  - Client must reject Engine recommendation/read routes (`/recommendations`, `/videos/similar`) with `404`/non-success.
-- **Mandatory checks (interaction flow):**
-  - Fetch recommendation rows from Engine (`POST /recommendations`) and validate non-empty shape.
-  - Select one candidate (`uuid` + `host`) and send like via Client (`POST /api/user-action`).
-  - Assert bridge publish result is successful (`ok=true`, `bridge_ok=true`, no bridge error).
-  - Verify profile-like fetch path via Client (`/api/user-profile/likes`) returns expected response shape.
-- **Failure diagnostics:**
-  - On assertion failure, print last request/response summary and recommended next check command.
-  - Optionally include recent `journalctl` tail for `peertube-engine-dev` / `peertube-client-dev` when systemd units exist.
-- **Safety/isolation rules:**
-  - Smoke test targets dev contour only by default.
-  - Test must not stop/start or mutate prod contour units unless explicitly requested.
-- **Validation / docs:**
-  - Add run instructions to `README.md`/`DEPLOYMENT.md`.
-  - Keep the script compatible with local runs and CI-style non-interactive execution.
-
-#### **Affected areas/files (expected):**
-- New smoke script: `tests/run-arch-split-smoke.sh` (or equivalent).
-- Optional shared test helpers: `tests/lib/*`.
-- Docs update: `README.md` and/or `DEPLOYMENT.md` (how to run + expected checks).
-
 ## Product transparency / changelog
 
 ### 42) CHANGELOG as public task board: roadmap-style tasks + status + client filters

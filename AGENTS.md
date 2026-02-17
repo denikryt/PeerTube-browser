@@ -54,6 +54,8 @@ Before implementing any task or task bundle, always:
 12. Never skip changelog synchronization for task create/update/complete actions; treat it as a mandatory blocking rule.
 13. `CHANGELOG.json` task `id` must be exactly the task number from `dev/TASK_LIST.md` (for example: `1`, `30`, `45`, `8b`, `12a`, `16l`) and must not use text slugs.
 14. Task-number identity is canonical: one task number in `dev/TASK_LIST.md` -> one entry with the same `id` in `CHANGELOG.json` (no duplicates, no aliases).
+15. New tasks in `CHANGELOG.json` must be added only at the end of the `entries` array (append-only); do not insert/reorder by category or any other grouping.
+16. New tasks in `dev/TASK_LIST.md` must be added only at the end of the file as a single linear list entry; do not place new tasks into category sections and do not regroup existing tasks by categories.
 
 ### After user confirmation (required sequence)
 

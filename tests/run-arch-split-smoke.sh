@@ -13,6 +13,11 @@ RUNTIME_PY=""
 TMP_DIR="$(mktemp -d /tmp/arch-split-smoke.XXXXXX)"
 ENGINE_LOG="${TMP_DIR}/engine.log"
 CLIENT_LOG="${TMP_DIR}/client.log"
+LOG_ROOT_DIR="${ROOT_DIR}/tmp/arch-split-smoke-logs"
+RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
+RUN_LOG="${LOG_ROOT_DIR}/${RUN_ID}.run.log"
+CHECK_LOG="${LOG_ROOT_DIR}/${RUN_ID}.checks.log"
+ERROR_LOG="${LOG_ROOT_DIR}/${RUN_ID}.errors.log"
 
 ENGINE_PID=""
 CLIENT_PID=""
@@ -26,6 +31,11 @@ LAST_BODY_FILE=""
 CLEANUP_DONE=0
 
 declare -a ERRORS=()
+
+mkdir -p "${LOG_ROOT_DIR}"
+: > "${RUN_LOG}"
+: > "${CHECK_LOG}"
+: > "${ERROR_LOG}"
 
 print_help() {
   cat <<'EOF'
@@ -87,13 +97,17 @@ ENGINE_URL="${ENGINE_URL%/}"
 CLIENT_URL="${CLIENT_URL%/}"
 
 log() {
-  echo "[arch-split-smoke] $*"
+  local message="[arch-split-smoke] $*"
+  echo "${message}"
+  printf '%s\n' "${message}" >> "${RUN_LOG}"
 }
 
 record_error() {
   local message="$1"
   ERROR_COUNT=$((ERROR_COUNT + 1))
   ERRORS+=("${message}")
+  printf '%s\n' "${message}" >> "${ERROR_LOG}"
+  printf '[arch-split-smoke] ERROR: %s\n' "${message}" >> "${RUN_LOG}"
 }
 
 require_cmd() {
@@ -259,6 +273,18 @@ wait_for_health_200() {
   return 1
 }
 
+log_check_result() {
+  local result="$1"
+  local name="$2"
+  local method="$3"
+  local url="$4"
+  local status="$5"
+  local expectation="$6"
+  local line="${result} check=${name} method=${method} url=${url} status=${status} expect=${expectation}"
+  printf '%s\n' "${line}" >> "${CHECK_LOG}"
+  printf '[arch-split-smoke] %s\n' "${line}" >> "${RUN_LOG}"
+}
+
 extract_seed_uuid_host() {
   local file_path="$1"
   python3 - "$file_path" <<'PY'
@@ -339,12 +365,16 @@ check_status_eq() {
   local status
   status="$(request_json "${name}" "${method}" "${url}" "${body}")"
   if [[ "${status}" == CURL_ERROR:* ]]; then
+    log_check_result "FAIL" "${name}" "${method}" "${url}" "${status}" "=${expected}"
     record_error "${name}: request failed (${status})"
     return
   fi
   if [[ "${status}" != "${expected}" ]]; then
+    log_check_result "FAIL" "${name}" "${method}" "${url}" "${status}" "=${expected}"
     record_error "${name}: expected HTTP ${expected}, got ${status}"
+    return
   fi
+  log_check_result "PASS" "${name}" "${method}" "${url}" "${status}" "=${expected}"
 }
 
 check_status_non_success() {
@@ -356,16 +386,21 @@ check_status_non_success() {
   local status
   status="$(request_json "${name}" "${method}" "${url}" "${body}")"
   if [[ "${status}" == CURL_ERROR:* ]]; then
+    log_check_result "FAIL" "${name}" "${method}" "${url}" "${status}" ">=400"
     record_error "${name}: request failed (${status})"
     return
   fi
   if [[ ! "${status}" =~ ^[0-9]+$ ]]; then
+    log_check_result "FAIL" "${name}" "${method}" "${url}" "${status}" ">=400"
     record_error "${name}: non-numeric status ${status}"
     return
   fi
   if (( status < 400 )); then
+    log_check_result "FAIL" "${name}" "${method}" "${url}" "${status}" ">=400"
     record_error "${name}: expected non-success status, got ${status}"
+    return
   fi
+  log_check_result "PASS" "${name}" "${method}" "${url}" "${status}" ">=400"
 }
 
 ENGINE_HOST="$(url_part "${ENGINE_URL}" host)"
@@ -406,8 +441,12 @@ if (( ERROR_COUNT == 0 )); then
     --host "${ENGINE_HOST}" --port "${ENGINE_PORT}" >"${ENGINE_LOG}" 2>&1 &
   ENGINE_PID="$!"
 
+  CHECK_COUNT=$((CHECK_COUNT + 1))
   if ! wait_for_health_200 "engine_start_health" "${ENGINE_URL}/api/health" "${STARTUP_TIMEOUT_SECONDS}"; then
+    log_check_result "FAIL" "engine_start_health" "GET" "${ENGINE_URL}/api/health" "TIMEOUT" "=200"
     record_error "Engine failed to become healthy within ${STARTUP_TIMEOUT_SECONDS}s"
+  else
+    log_check_result "PASS" "engine_start_health" "GET" "${ENGINE_URL}/api/health" "200" "=200"
   fi
 fi
 
@@ -418,8 +457,12 @@ if (( ERROR_COUNT == 0 )); then
     --engine-ingest-base "${ENGINE_URL}" >"${CLIENT_LOG}" 2>&1 &
   CLIENT_PID="$!"
 
+  CHECK_COUNT=$((CHECK_COUNT + 1))
   if ! wait_for_health_200 "client_start_health" "${CLIENT_URL}/api/health" "${STARTUP_TIMEOUT_SECONDS}"; then
+    log_check_result "FAIL" "client_start_health" "GET" "${CLIENT_URL}/api/health" "TIMEOUT" "=200"
     record_error "Client failed to become healthy within ${STARTUP_TIMEOUT_SECONDS}s"
+  else
+    log_check_result "PASS" "client_start_health" "GET" "${CLIENT_URL}/api/health" "200" "=200"
   fi
 fi
 
@@ -433,31 +476,43 @@ check_status_non_success "client_reject_similar" POST "${CLIENT_URL}/videos/simi
 
 check_status_eq "engine_recommendations" POST "${ENGINE_URL}/recommendations" "200" "{}"
 if [[ "${LAST_NAME}" == "engine_recommendations" && "${LAST_STATUS}" == "200" ]]; then
+  CHECK_COUNT=$((CHECK_COUNT + 1))
   seed_output="$(extract_seed_uuid_host "${TMP_DIR}/engine_recommendations.json" 2>&1)"
   if [[ $? -ne 0 ]]; then
+    log_check_result "FAIL" "engine_recommendations_seed_extract" "PARSE" "${TMP_DIR}/engine_recommendations.json" "ERROR" "uuid+host"
     record_error "engine_recommendations: ${seed_output}"
   else
     seed_uuid="$(printf '%s\n' "${seed_output}" | sed -n '1p')"
     seed_host="$(printf '%s\n' "${seed_output}" | sed -n '2p')"
     if [[ -z "${seed_uuid}" || -z "${seed_host}" ]]; then
+      log_check_result "FAIL" "engine_recommendations_seed_extract" "PARSE" "${TMP_DIR}/engine_recommendations.json" "EMPTY" "uuid+host"
       record_error "engine_recommendations: empty uuid/host"
     else
+      log_check_result "PASS" "engine_recommendations_seed_extract" "PARSE" "${TMP_DIR}/engine_recommendations.json" "OK" "uuid+host"
       log "Selected seed: uuid=${seed_uuid} host=${seed_host}"
 
       like_payload="$(printf '{"uuid":"%s","host":"%s","action":"like"}' "${seed_uuid}" "${seed_host}")"
       check_status_eq "client_user_action" POST "${CLIENT_URL}/api/user-action" "200" "${like_payload}"
       if [[ "${LAST_NAME}" == "client_user_action" && "${LAST_STATUS}" == "200" ]]; then
+        CHECK_COUNT=$((CHECK_COUNT + 1))
         validate_user_action_response "${TMP_DIR}/client_user_action.json" 2>"${TMP_DIR}/client_user_action.validate.err"
         if [[ $? -ne 0 ]]; then
+          log_check_result "FAIL" "client_user_action_validate" "VALIDATE" "${TMP_DIR}/client_user_action.json" "ERROR" "ok+bridge_ok+bridge_error"
           record_error "client_user_action: $(cat "${TMP_DIR}/client_user_action.validate.err")"
+        else
+          log_check_result "PASS" "client_user_action_validate" "VALIDATE" "${TMP_DIR}/client_user_action.json" "OK" "ok+bridge_ok+bridge_error"
         fi
       fi
 
       check_status_eq "client_profile_likes" GET "${CLIENT_URL}/api/user-profile/likes" "200"
       if [[ "${LAST_NAME}" == "client_profile_likes" && "${LAST_STATUS}" == "200" ]]; then
+        CHECK_COUNT=$((CHECK_COUNT + 1))
         validate_profile_likes_response "${TMP_DIR}/client_profile_likes.json" 2>"${TMP_DIR}/client_profile_likes.validate.err"
         if [[ $? -ne 0 ]]; then
+          log_check_result "FAIL" "client_profile_likes_validate" "VALIDATE" "${TMP_DIR}/client_profile_likes.json" "ERROR" "likes[] non-empty"
           record_error "client_profile_likes: $(cat "${TMP_DIR}/client_profile_likes.validate.err")"
+        else
+          log_check_result "PASS" "client_profile_likes_validate" "VALIDATE" "${TMP_DIR}/client_profile_likes.json" "OK" "likes[] non-empty"
         fi
       fi
     fi
@@ -481,8 +536,15 @@ if (( ERROR_COUNT > 0 )); then
     echo "--- Client log tail ---" >&2
     tail -n 80 "${CLIENT_LOG}" >&2 || true
   fi
+  echo "[arch-split-smoke] Check log: ${CHECK_LOG}" >&2
+  echo "[arch-split-smoke] Error log: ${ERROR_LOG}" >&2
+  echo "[arch-split-smoke] Run log: ${RUN_LOG}" >&2
   exit 1
 fi
 
+echo "NO_ERRORS" >> "${ERROR_LOG}"
 log "PASS: all ${CHECK_COUNT} checks succeeded."
+log "Check log: ${CHECK_LOG}"
+log "Error log: ${ERROR_LOG}"
+log "Run log: ${RUN_LOG}"
 exit 0
