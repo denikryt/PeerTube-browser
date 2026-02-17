@@ -1,5 +1,30 @@
 # Completed tasks
 
+### 47) Smoke tests for installers/uninstallers and Engine/Client service interaction (with guaranteed cleanup) (done)
+**Done:** implemented full installer/uninstaller smoke coverage for split services, including runtime readiness checks, e2e Client->Engine validation, and guaranteed teardown.
+
+#### **What was implemented:**
+- Added dedicated installer/uninstaller smoke script:
+  - `tests/run-installers-smoke.sh`
+- Implemented full entrypoint contract matrix checks (`--help`, `--dry-run`) for:
+  - centralized install/uninstall scripts,
+  - prod/dev wrappers,
+  - service-specific Engine/Client install/uninstall scripts.
+- Added live functional checks for dev contour:
+  - install -> service active -> HTTP readiness (`/api/health`) -> e2e write flow (`/api/user-action`) -> uninstall -> endpoint down + artifacts removed.
+- Added contour isolation and idempotency checks:
+  - repeated install/uninstall must succeed,
+  - dev operations must not modify prod contour state.
+- Added structured diagnostics for failures:
+  - `systemctl status` + `journalctl` tails in smoke run logs.
+- Added guaranteed cleanup path:
+  - uninstall-first teardown with fallback residual cleanup,
+  - no leftover test dev services/artifacts after run.
+- Added post-e2e test data cleanup:
+  - reset test user profile likes through Client API,
+  - remove test-ingested Engine interaction events and reconcile aggregated signals.
+- Updated run docs in `README.md` and `DEPLOYMENT.md` for the split smoke flow.
+
 ### 51) Uninstall scripts for service installers (Engine/Client + centralized prod/dev) (done)
 **Done:** implemented symmetric uninstall flow for Engine/Client services with centralized prod/dev/all orchestration and contour-safe cleanup.
 

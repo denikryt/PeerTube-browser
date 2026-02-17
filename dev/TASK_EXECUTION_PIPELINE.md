@@ -24,8 +24,8 @@ Use it before implementing any task bundle.
    Mostly orthogonal product features.
 9. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
    Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
-10. **47** then **16l** then **39** then **44** then **40** (full installer/uninstaller matrix smoke + cache runtime safety + similarity shadow swap + zero-downtime deploy)  
-   Lock full installer/uninstaller/runtime interaction matrix coverage, then add background/atomic cache refresh primitives, then startup no-downtime hardening, then similarity-cache shadow cutover, then blue/green nginx switch automation.
+10. **16l** then **39** then **44** then **40** (cache runtime safety + similarity shadow swap + zero-downtime deploy)  
+   Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache shadow cutover, then blue/green nginx switch automation.
 11. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
 12. **42** (public roadmap changelog with status + client filters)  
@@ -51,15 +51,13 @@ Use it before implementing any task bundle.
   - Tasks: **41 -> 38 -> 43**
   - Scope: explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/Changelog.
 - **Block G: Runtime reliability and operations**
-  - Tasks: **47 -> 16l -> 39 -> 44 -> 40**
-  - Scope: full smoke coverage for install/uninstall/runtime interaction contracts, safe cache refresh/swap runtime behavior (random + similarity), and automated blue/green nginx cutover.
+  - Tasks: **16l -> 39 -> 44 -> 40**
+  - Scope: safe cache refresh/swap runtime behavior (random + similarity) and automated blue/green nginx cutover.
 - **Block H: Public roadmap and changelog UX**
   - Tasks: **42**
   - Scope: roadmap-style public changelog entries with task statuses and client-side completed/not-completed filters.
 
 ### Cross-task overlaps and dependencies
-- **47 <-> 39/44/40**: runtime/deploy changes can affect smoke assumptions and readiness/interaction checks.  
-  Keep smoke scripts aligned with post-installer/uninstaller runtime contracts (including all script entrypoints) to avoid flaky operational verification.
 - **37 <-> 30 <-> 33**: same ANN/similarity core and ID contracts.  
   Stable ANN id source (**37**) must land before tuning/recompute behavior (**30**, **33**) to avoid duplicate rewrites.
 - **30 <-> 33**: same ANN/similarity knobs (`top-k`, `nprobe`, precompute behavior).  

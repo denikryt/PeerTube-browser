@@ -128,10 +128,35 @@ Optional debug toggle:
 RECOMMENDATIONS_DEBUG_ENABLED = True  # engine/server/api/server_config.py
 ```
 
-## 8) Split architecture smoke test
-The smoke script starts Engine and Client automatically on dev test ports,
-runs all split-boundary checks, prints aggregated errors (if any), and always
-stops started processes on exit:
+## 8) Split architecture smoke tests
+Use two dedicated smoke scripts.
+
+### A) Installer/uninstaller matrix and runtime behavior
+Contract matrix only (safe, no service changes):
+```bash
+bash tests/run-installers-smoke.sh --dry-run-only
+```
+
+Full live dev contour verification (requires sudo/systemd):
+```bash
+sudo bash tests/run-installers-smoke.sh --mode dev
+```
+
+Live all-contours verification (explicit opt-in for prod changes):
+```bash
+sudo bash tests/run-installers-smoke.sh --mode all --allow-prod
+```
+
+What it verifies:
+- all installer/uninstaller entrypoints support `--help` and `--dry-run`,
+- install -> HTTP/e2e verify -> uninstall -> verify cleanup,
+- idempotent re-install/re-uninstall,
+- contour isolation checks,
+- teardown on exit.
+
+### B) Client/Engine boundary + bridge interaction
+This script starts temporary local processes on test ports and validates split
+boundaries and bridge interaction:
 ```bash
 bash tests/run-arch-split-smoke.sh
 ```

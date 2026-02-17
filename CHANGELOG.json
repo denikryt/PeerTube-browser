@@ -184,8 +184,8 @@
     },
     {
       "id": "47",
-      "date": "2026-02-16",
-      "status": "Planned",
+      "date": "2026-02-17",
+      "status": "Done",
       "title": "Smoke Tests for Installer/Uninstaller Flow and Engine/Client Interaction",
       "summary": "Add dedicated smoke tests with a full installer/uninstaller script matrix (centralized, wrappers, service-specific), strict runtime HTTP behavior checks (prod/dev contour routing and e2e bridge flow), and guaranteed zero-residual cleanup."
     },

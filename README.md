@@ -95,14 +95,26 @@ sudo bash uninstall-service.sh --mode prod
 sudo bash uninstall-service.sh --mode all --purge-updater-state
 ```
 
-## Split architecture smoke test
-Run the boundary/bridge smoke test:
+## Split architecture smoke tests
+Two smoke scripts are available:
+
+1. Installer/uninstaller matrix + runtime checks:
+```bash
+# Contract-only checks (safe, no system changes)
+bash tests/run-installers-smoke.sh --dry-run-only
+
+# Full dev contour install/uninstall verification (systemd + HTTP + e2e)
+sudo bash tests/run-installers-smoke.sh --mode dev
+```
+
+2. Boundary/interaction checks with temporary local processes:
 ```bash
 bash tests/run-arch-split-smoke.sh
 ```
 
-The script automatically starts Engine (`7072`) and Client (`7272`), runs all checks,
-aggregates errors, prints diagnostics, and always stops started processes.
+`run-arch-split-smoke.sh` starts Engine (`7072`) and Client (`7272`) locally,
+runs boundary + bridge checks, aggregates errors, prints diagnostics, and always
+stops started processes.
 
 ## Future ideas
 - ActivityPub integration (receive new video events, send likes/comments).

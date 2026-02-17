@@ -9,6 +9,7 @@ Project-level hard constraints for task work in this repository.
 3. If user intent looks like execution but the command format is not explicit, ask for a direct command in the required format and do not start implementation.
 4. User confirmation that a task is completed is separate from execution start and must still be explicit.
 5. Once execution is allowed, follow `dev/TASK_EXECUTION_PROTOCOL.md` as the only process source of truth.
+6. Exception for corrective fixes: if the user asks to fix a bug/regression introduced by the assistant in already changed files, apply that fix immediately without requiring `execute task X`; keep the scope strictly limited to correcting that mistake (no new task scope).
 
 ## Task and tracking state constraints
 
