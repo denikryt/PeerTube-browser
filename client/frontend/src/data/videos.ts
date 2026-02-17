@@ -1,7 +1,7 @@
 import type { VideoRow, VideosPayload } from "../types/videos";
 import { fetchJsonWithCache } from "./cache";
 import { getRandomLikes } from "./local-likes";
-import { resolveEngineApiBase } from "./api-base";
+import { resolveClientApiBase } from "./api-base";
 
 export interface SimilarQuery {
   id?: string | null;
@@ -26,7 +26,7 @@ export function parseSimilarQuery(params: URLSearchParams): SimilarQuery {
 }
 
 export function resolveApiBase(query: SimilarQuery) {
-  return resolveEngineApiBase(query.apiBase);
+  return resolveClientApiBase(query.apiBase);
 }
 
 export function buildSimilarUrl(query: SimilarQuery) {

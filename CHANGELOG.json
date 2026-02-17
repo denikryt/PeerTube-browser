@@ -227,7 +227,7 @@
     {
       "id": "52",
       "date": "2026-02-17",
-      "status": "Planned",
+      "status": "Done",
       "title": "UI Reads via Client Gateway Only (No Direct Engine Calls)",
       "summary": "Route recommendations/similar/read requests through Client backend proxy endpoints so frontend uses Client as the single API gateway while Client talks to Engine internally."
     }

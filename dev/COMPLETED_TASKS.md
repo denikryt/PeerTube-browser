@@ -1,5 +1,26 @@
 # Completed tasks
 
+### 52) Route all Engine read requests through Client backend (UI must not call Engine directly) (done)
+**Done:** routed frontend read flows through Client backend proxy endpoints and removed direct Engine read usage from UI code.
+
+#### **What was implemented:**
+- Added Client read-proxy handling for Engine-backed routes in `client/backend/server.py`:
+  - GET: `/api/video`, `/api/channels`
+  - POST: `/recommendations`, `/videos/similar`
+- Added strict proxy request validation:
+  - allowlist-only query/body fields,
+  - deterministic `400` responses for unknown fields,
+  - explicit timeout/retry/error mapping for Client -> Engine forwarding.
+- Updated frontend data path to Client API base only:
+  - removed Engine API base resolver/env usage from frontend code and dev scripts.
+- Updated frontend dev proxy routing to Client backend for `/api`, `/recommendations`, and `/videos/similar`.
+- Added frontend boundary contract test:
+  - `tests/check-frontend-client-gateway.sh`
+- Updated and validated smokes/regressions:
+  - `tests/run-arch-split-smoke.sh`,
+  - `tests/run-installers-smoke.sh`,
+  - `tests/check-client-engine-boundary.sh`.
+
 ### 47) Smoke tests for installers/uninstallers and Engine/Client service interaction (with guaranteed cleanup) (done)
 **Done:** implemented full installer/uninstaller smoke coverage for split services, including runtime readiness checks, e2e Client->Engine validation, and guaranteed teardown.
 

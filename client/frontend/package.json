@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "node ./scripts/dev.mjs",
-    "dev:engine7171-client7172": "node ./scripts/dev.mjs --engine-api-port 7171 --client-api-port 7172",
+    "dev:client7172": "node ./scripts/dev.mjs --client-api-port 7172",
     "build": "vite build",
     "preview": "vite preview"
   },

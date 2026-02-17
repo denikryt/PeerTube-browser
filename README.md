@@ -42,10 +42,11 @@ This is not a heavy ML system; it is a transparent, controllable pipeline.
 
 ## Current service split
 - Engine API (read): `/recommendations`, `/videos/{id}/similar`, `/videos/similar`, `/api/video`, `/api/health`.
-- Client backend (write/profile): `/api/user-action`, `/api/user-profile/*`.
+- Client backend (browser-facing gateway): `/api/user-action`, `/api/user-profile/*`, and read proxy routes for recommendations/similar/video/channels.
 - Internal Client->Engine read contract: `/internal/videos/resolve`, `/internal/videos/metadata`.
 - Temporary bridge contract: Client backend publishes events to Engine `/internal/events/ingest`.
 - Boundary rule: Client backend must not import `engine.server.*` modules and must not read `engine/server/db/*` directly.
+- Boundary rule: frontend reads must use Client API base only (no direct Engine API base usage in UI code).
 
 ## Service installers (task 46)
 Installer topology:

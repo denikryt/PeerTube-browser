@@ -418,6 +418,17 @@ run_boundary_contract_check() {
   record_error "${name}: $(sed -n '1,120p' "${TMP_DIR}/${name}.log" | tr '\n' ' ' | sed 's/[[:space:]]\\+/ /g')"
 }
 
+run_frontend_gateway_contract_check() {
+  local name="frontend_client_gateway_contract"
+  CHECK_COUNT=$((CHECK_COUNT + 1))
+  if bash "${ROOT_DIR}/tests/check-frontend-client-gateway.sh" >"${TMP_DIR}/${name}.log" 2>&1; then
+    log_check_result "PASS" "${name}" "CHECK" "${ROOT_DIR}/tests/check-frontend-client-gateway.sh" "OK" "no direct Engine API base usage in frontend src"
+    return
+  fi
+  log_check_result "FAIL" "${name}" "CHECK" "${ROOT_DIR}/tests/check-frontend-client-gateway.sh" "ERROR" "no direct Engine API base usage in frontend src"
+  record_error "${name}: $(sed -n '1,120p' "${TMP_DIR}/${name}.log" | tr '\n' ' ' | sed 's/[[:space:]]\\+/ /g')"
+}
+
 run_engine_users_db_fd_check() {
   local name="engine_users_db_fd_absent"
   local users_db_path="${ROOT_DIR}/engine/server/db/users.db"
@@ -496,6 +507,7 @@ fi
 
 if (( ERROR_COUNT == 0 )); then
   run_boundary_contract_check
+  run_frontend_gateway_contract_check
 fi
 
 if (( ERROR_COUNT == 0 )); then
@@ -535,25 +547,28 @@ check_status_eq "engine_health" GET "${ENGINE_URL}/api/health" "200"
 check_status_eq "client_health" GET "${CLIENT_URL}/api/health" "200"
 check_status_non_success "engine_reject_profile" GET "${ENGINE_URL}/api/user-profile"
 check_status_non_success "engine_reject_write" POST "${ENGINE_URL}/api/user-action" "{}"
-check_status_non_success "client_reject_recommendations" POST "${CLIENT_URL}/recommendations" "{}"
-check_status_non_success "client_reject_similar" POST "${CLIENT_URL}/videos/similar" "{}"
+check_status_eq "client_channels_proxy" GET "${CLIENT_URL}/api/channels?limit=1" "200"
+check_status_eq "client_recommendations_proxy" POST "${CLIENT_URL}/recommendations" "200" "{}"
+client_recommendations_status="${LAST_STATUS}"
+check_status_eq "client_similar_proxy" POST "${CLIENT_URL}/videos/similar" "200" "{}"
 
 check_status_eq "engine_recommendations" POST "${ENGINE_URL}/recommendations" "200" "{}"
-if [[ "${LAST_NAME}" == "engine_recommendations" && "${LAST_STATUS}" == "200" ]]; then
+if [[ "${client_recommendations_status}" == "200" ]]; then
   CHECK_COUNT=$((CHECK_COUNT + 1))
-  seed_output="$(extract_seed_uuid_host "${TMP_DIR}/engine_recommendations.json" 2>&1)"
+  seed_output="$(extract_seed_uuid_host "${TMP_DIR}/client_recommendations_proxy.json" 2>&1)"
   if [[ $? -ne 0 ]]; then
-    log_check_result "FAIL" "engine_recommendations_seed_extract" "PARSE" "${TMP_DIR}/engine_recommendations.json" "ERROR" "uuid+host"
-    record_error "engine_recommendations: ${seed_output}"
+    log_check_result "FAIL" "client_recommendations_seed_extract" "PARSE" "${TMP_DIR}/client_recommendations_proxy.json" "ERROR" "uuid+host"
+    record_error "client_recommendations_proxy: ${seed_output}"
   else
     seed_uuid="$(printf '%s\n' "${seed_output}" | sed -n '1p')"
     seed_host="$(printf '%s\n' "${seed_output}" | sed -n '2p')"
     if [[ -z "${seed_uuid}" || -z "${seed_host}" ]]; then
-      log_check_result "FAIL" "engine_recommendations_seed_extract" "PARSE" "${TMP_DIR}/engine_recommendations.json" "EMPTY" "uuid+host"
-      record_error "engine_recommendations: empty uuid/host"
+      log_check_result "FAIL" "client_recommendations_seed_extract" "PARSE" "${TMP_DIR}/client_recommendations_proxy.json" "EMPTY" "uuid+host"
+      record_error "client_recommendations_proxy: empty uuid/host"
     else
-      log_check_result "PASS" "engine_recommendations_seed_extract" "PARSE" "${TMP_DIR}/engine_recommendations.json" "OK" "uuid+host"
+      log_check_result "PASS" "client_recommendations_seed_extract" "PARSE" "${TMP_DIR}/client_recommendations_proxy.json" "OK" "uuid+host"
       log "Selected seed: uuid=${seed_uuid} host=${seed_host}"
+      check_status_eq "client_video_proxy" GET "${CLIENT_URL}/api/video?id=${seed_uuid}&host=${seed_host}" "200"
 
       like_payload="$(printf '{"uuid":"%s","host":"%s","action":"like"}' "${seed_uuid}" "${seed_host}")"
       check_status_eq "client_user_action" POST "${CLIENT_URL}/api/user-action" "200" "${like_payload}"

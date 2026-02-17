@@ -12,7 +12,17 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: "http://127.0.0.1:7070",
+        target: "http://127.0.0.1:7172",
+        changeOrigin: true,
+        secure: true,
+      },
+      '/recommendations': {
+        target: "http://127.0.0.1:7172",
+        changeOrigin: true,
+        secure: true,
+      },
+      '/videos/similar': {
+        target: "http://127.0.0.1:7172",
         changeOrigin: true,
         secure: true,
       },

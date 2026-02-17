@@ -7,11 +7,12 @@ import json
 import logging
 import os
 import sqlite3
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -35,6 +36,32 @@ MAX_LIKES = 100
 MAX_CLIENT_LIKES = 200
 RATE_LIMIT_MAX_REQUESTS = 90
 RATE_LIMIT_WINDOW_SECONDS = 60
+ENGINE_PROXY_TIMEOUT_SECONDS = 10
+ENGINE_PROXY_MAX_BODY_BYTES = 1_000_000
+ENGINE_PROXY_RETRY_COUNT = 1
+ENGINE_PROXY_RETRY_DELAY_SECONDS = 0.25
+PROXY_READ_GET_ROUTES = frozenset(("/api/video", "/api/channels"))
+PROXY_READ_POST_ROUTES = frozenset(("/recommendations", "/videos/similar"))
+PROXY_ALLOWED_QUERY_PARAMS: dict[str, set[str]] = {
+    "/recommendations": {"id", "host", "limit", "random", "debug", "mode", "user_id"},
+    "/videos/similar": {"id", "host", "limit", "random", "debug", "mode", "user_id"},
+    "/api/video": {"id", "host", "refresh_cache", "user_id"},
+    "/api/channels": {
+        "limit",
+        "offset",
+        "q",
+        "instance",
+        "minFollowers",
+        "minVideos",
+        "maxVideos",
+        "sort",
+        "dir",
+    },
+}
+PROXY_ALLOWED_BODY_KEYS: dict[str, set[str]] = {
+    "/recommendations": {"likes", "user_id", "mode"},
+    "/videos/similar": {"likes", "user_id", "mode"},
+}
 
 
 def _resolve_mode(value: str, default: str = "bridge") -> str:
@@ -86,6 +113,12 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         url = urlparse(self.path)
         params = parse_qs(url.query)
+        if url.path in PROXY_READ_GET_ROUTES:
+            if not self._rate_limit_check(url.path):
+                respond_json(self, 429, {"error": "Rate limit exceeded"})
+                return
+            self._handle_engine_read_proxy_get(url.path, params)
+            return
         if url.path == "/api/health":
             respond_json(
                 self,
@@ -118,6 +151,12 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         url = urlparse(self.path)
+        if url.path in PROXY_READ_POST_ROUTES:
+            if not self._rate_limit_check(url.path):
+                respond_json(self, 429, {"error": "Rate limit exceeded"})
+                return
+            self._handle_engine_read_proxy_post(url.path, url)
+            return
         if url.path == "/api/user-action":
             if not self._rate_limit_check(url.path):
                 respond_json(self, 429, {"error": "Rate limit exceeded"})
@@ -148,6 +187,158 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         ip = self.client_address[0] if self.client_address else "unknown"
         key = f"{ip}:{path}"
         return self.server.rate_limiter.allow(key)
+
+    def _handle_engine_read_proxy_get(self, path: str, params: dict[str, list[str]]) -> None:
+        allowed = PROXY_ALLOWED_QUERY_PARAMS.get(path, set())
+        sanitized: dict[str, str] = {}
+        for key, values in params.items():
+            if key not in allowed:
+                respond_json(self, 400, {"error": f"Unknown query parameter: {key}"})
+                return
+            if not values:
+                continue
+            if len(values) != 1:
+                respond_json(self, 400, {"error": f"Multiple values are not allowed for query parameter: {key}"})
+                return
+            value = values[0].strip()
+            if value:
+                sanitized[key] = value
+        self._proxy_engine_request("GET", path, sanitized_query=sanitized)
+
+    def _handle_engine_read_proxy_post(self, path: str, url: Any) -> None:
+        query_params = parse_qs(url.query)
+        allowed_query = PROXY_ALLOWED_QUERY_PARAMS.get(path, set())
+        sanitized_query: dict[str, str] = {}
+        for key, values in query_params.items():
+            if key not in allowed_query:
+                respond_json(self, 400, {"error": f"Unknown query parameter: {key}"})
+                return
+            if not values:
+                continue
+            if len(values) != 1:
+                respond_json(self, 400, {"error": f"Multiple values are not allowed for query parameter: {key}"})
+                return
+            value = values[0].strip()
+            if value:
+                sanitized_query[key] = value
+        try:
+            body = read_json_body(self)
+        except ValueError as exc:
+            respond_json(self, 400, {"error": str(exc)})
+            return
+        if not isinstance(body, dict):
+            respond_json(self, 400, {"error": "Invalid JSON body"})
+            return
+        allowed_body_keys = PROXY_ALLOWED_BODY_KEYS.get(path, set())
+        sanitized_body: dict[str, Any] = {}
+        for key, value in body.items():
+            if key not in allowed_body_keys:
+                respond_json(self, 400, {"error": f"Unknown body field: {key}"})
+                return
+            sanitized_body[key] = value
+        likes = sanitized_body.get("likes")
+        if likes is not None:
+            if not isinstance(likes, list):
+                respond_json(self, 400, {"error": "Invalid likes payload"})
+                return
+            sanitized_likes: list[dict[str, str]] = []
+            for entry in likes[:MAX_CLIENT_LIKES]:
+                if not isinstance(entry, dict):
+                    continue
+                uuid = entry.get("uuid")
+                host = entry.get("host")
+                if not isinstance(uuid, str) or not uuid.strip():
+                    continue
+                if not isinstance(host, str) or not host.strip():
+                    continue
+                sanitized_likes.append({"uuid": uuid.strip(), "host": host.strip()})
+            sanitized_body["likes"] = sanitized_likes
+        self._proxy_engine_request(
+            "POST",
+            path,
+            sanitized_query=sanitized_query,
+            body=sanitized_body,
+        )
+
+    def _proxy_engine_request(
+        self,
+        method: str,
+        path: str,
+        sanitized_query: dict[str, str] | None = None,
+        body: dict[str, Any] | None = None,
+    ) -> None:
+        sanitized_query = sanitized_query or {}
+        upstream = f"{self.server.engine_ingest_base}{path}"
+        if sanitized_query:
+            upstream = f"{upstream}?{urlencode(sanitized_query)}"
+        request_data: bytes | None = None
+        headers = {"accept": "application/json"}
+        if method == "POST":
+            request_data = json.dumps(body or {}).encode("utf-8")
+            if len(request_data) > ENGINE_PROXY_MAX_BODY_BYTES:
+                respond_json(self, 400, {"error": "Invalid JSON body"})
+                return
+            headers["content-type"] = "application/json"
+        request = Request(
+            upstream,
+            data=request_data,
+            method=method,
+            headers=headers,
+        )
+        last_transport_error: Exception | None = None
+        for attempt in range(ENGINE_PROXY_RETRY_COUNT + 1):
+            try:
+                with urlopen(request, timeout=ENGINE_PROXY_TIMEOUT_SECONDS) as response:
+                    payload = response.read()
+                    status = int(response.status)
+                    content_type = response.headers.get("content-type", "application/json; charset=utf-8")
+                    self.send_response(status)
+                    self.send_header("content-type", content_type)
+                    self.send_header("access-control-allow-origin", "*")
+                    self.send_header("access-control-allow-methods", "GET, POST, OPTIONS")
+                    self.send_header("access-control-allow-headers", "content-type")
+                    self.send_header("content-length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
+            except HTTPError as exc:
+                payload = exc.read() if exc.fp else b""
+                if payload:
+                    content_type = exc.headers.get("content-type", "application/json; charset=utf-8")
+                    self.send_response(int(exc.code))
+                    self.send_header("content-type", content_type)
+                    self.send_header("access-control-allow-origin", "*")
+                    self.send_header("access-control-allow-methods", "GET, POST, OPTIONS")
+                    self.send_header("access-control-allow-headers", "content-type")
+                    self.send_header("content-length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
+                respond_json(self, int(exc.code), {"error": f"Engine read proxy HTTP {int(exc.code)}"})
+                return
+            except (URLError, TimeoutError) as exc:
+                last_transport_error = exc
+                if attempt < ENGINE_PROXY_RETRY_COUNT:
+                    time.sleep(ENGINE_PROXY_RETRY_DELAY_SECONDS)
+                    continue
+                break
+            except Exception as exc:  # pragma: no cover
+                respond_json(
+                    self,
+                    502,
+                    {"error": "Engine read proxy failed", "code": "ENGINE_PROXY_FAILURE", "detail": str(exc)},
+                )
+                return
+        respond_json(
+            self,
+            502,
+            {
+                "error": "Engine read proxy failed",
+                "code": "ENGINE_PROXY_UNAVAILABLE",
+                "detail": str(last_transport_error) if last_transport_error is not None else "Unknown transport error",
+            },
+        )
+        return
 
     def _handle_user_action(self) -> None:
         try:

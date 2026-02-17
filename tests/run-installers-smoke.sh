@@ -614,19 +614,20 @@ run_interaction_check_for_contour() {
   check_http_status "${contour}_engine_health" GET "${engine_url}/api/health" "200" || true
   check_http_status "${contour}_client_health" GET "${client_url}/api/health" "200" || true
   check_json_field_equals "${contour}_client_health_ingest_base" "${TMP_DIR}/${contour}_client_health.json" "engine_ingest_base" "${expected_ingest_base}" || true
+  check_http_status "${contour}_client_channels_proxy" GET "${client_url}/api/channels?limit=1" "200" || true
 
   if (( CHECK_PUBLISH == 0 )); then
     return 0
   fi
 
-  check_http_status "${contour}_recommendations" POST "${engine_url}/recommendations" "200" "{}" || true
+  check_http_status "${contour}_client_recommendations_proxy" POST "${client_url}/recommendations" "200" "{}" || true
   if [[ "${REQUEST_STATUS}" != "200" ]]; then
     return 0
   fi
 
   CHECK_COUNT=$((CHECK_COUNT + 1))
   local seed_output
-  seed_output="$(extract_seed_uuid_host "${TMP_DIR}/${contour}_recommendations.json" 2>&1)"
+  seed_output="$(extract_seed_uuid_host "${TMP_DIR}/${contour}_client_recommendations_proxy.json" 2>&1)"
   if [[ $? -ne 0 ]]; then
     log_check "FAIL" "${contour}_seed_extract" "parse_error"
     record_error "${contour}_seed_extract: ${seed_output}"
@@ -637,6 +638,7 @@ run_interaction_check_for_contour() {
   local seed_host
   seed_uuid="$(printf '%s\n' "${seed_output}" | sed -n '1p')"
   seed_host="$(printf '%s\n' "${seed_output}" | sed -n '2p')"
+  check_http_status "${contour}_client_video_proxy" GET "${client_url}/api/video?id=${seed_uuid}&host=${seed_host}" "200" || true
 
   local user_id="smoke-${contour}-$(date +%s)-$$"
   local like_payload
@@ -1048,6 +1050,7 @@ if [[ ! -f "${ROOT_DIR}/install-service.sh" ]]; then
 fi
 
 run_contract_matrix
+check_cmd_success "frontend_gateway_boundary_contract" bash "${ROOT_DIR}/tests/check-frontend-client-gateway.sh" || true
 
 if (( DRY_RUN_ONLY == 1 )); then
   log "Dry-run-only mode: skipping live systemd checks."

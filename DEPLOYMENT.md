@@ -91,6 +91,7 @@ CLIENT_PUBLISH_MODE=bridge ./venv/bin/python3 client/backend/server.py \
 Boundary contract (mandatory):
 - Client backend talks to Engine only over HTTP (`/internal/videos/resolve`, `/internal/videos/metadata`, `/internal/events/ingest`).
 - Client backend must not import `engine.server.*` modules and must not open `engine/server/db/*` files.
+- Frontend runtime reads/writes must use Client API base; no direct Engine API base calls from UI code.
 
 ## 6) Serve the client
 You can serve the static build with any web server. The simplest local option:
@@ -107,14 +108,12 @@ npm run dev
 
 Optional overrides:
 ```bash
-# Split Engine/Client API targets in dev
-npm run dev -- --engine-api-port 7171 --client-api-port 7172
-
-# Or set full API bases directly
-npm run dev -- --engine-api-base http://127.0.0.1:7070 --client-api-base http://127.0.0.1:7072
+# Set Client API target explicitly in dev
+npm run dev -- --client-api-port 7172
+npm run dev -- --client-api-base http://127.0.0.1:7072
 
 # Vite port flags still work
-npm run dev -- --port 5175 --strictPort --engine-api-port 7171 --client-api-port 7172
+npm run dev -- --port 5175 --strictPort --client-api-port 7172
 ```
 
 ## 7) Verify
