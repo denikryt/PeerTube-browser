@@ -1,5 +1,35 @@
 # Completed tasks
 
+### 45) Engine/Client architecture split: read-only Engine + temporary bridge ingest (ActivityPub-ready) (done)
+**Done:** separated Engine and Client workspaces/services and introduced a temporary bridge ingest contract for write-derived signals.
+
+#### **What was implemented:**
+- Established top-level split into `engine/` and `client/`, with crawler located under `engine/crawler/`.
+- Kept Engine API as read/analytics surface (`/recommendations`, `/videos/{id}/similar`, `/videos/similar`, `/api/video`, `/api/health`) without public user write/profile routes.
+- Kept Client backend as write/profile surface (`/api/user-action`, `/api/user-profile/*`) and publishing path toward Engine.
+- Added Engine internal bridge ingest endpoint (`/internal/events/ingest`) with normalized event schema and idempotent `event_id` handling.
+- Added Engine raw/aggregated interaction storage (`interaction_raw_events`, `interaction_signals`) and ranking usage of aggregated interaction signals.
+- Added split-boundary smoke coverage and bridge-flow checks via `tests/run-arch-split-smoke.sh`.
+
+### 49) Remove direct Client->Engine code/DB coupling (API-only contract) (done)
+**Done:** enforced strict API-only Client/Engine interaction and removed direct Client coupling to Engine internals.
+
+#### **What was implemented:**
+- Removed Client imports from `engine.server.*` and eliminated direct Engine DB access from `client/backend/server.py`.
+- Added Client-owned helper modules under `client/backend/lib/*` for HTTP/time/users helpers and Engine API access.
+- Added Engine internal read endpoints for Client flow (`/internal/videos/resolve`, `/internal/videos/metadata`) and wired routing.
+- Added boundary regression script `tests/check-client-engine-boundary.sh` and integrated it into `tests/run-arch-split-smoke.sh`.
+- Updated split-boundary docs in `README.md`, `DEPLOYMENT.md`, `client/backend/README.md`, and `engine/server/README.md`.
+
+### 48) Split architecture smoke test: Engine/Client boundary + bridge flow + endpoint contracts (done)
+**Done:** added a dedicated split-boundary smoke test with bridge-flow checks and structured diagnostics.
+
+#### **What was implemented:**
+- Added `tests/run-arch-split-smoke.sh` to validate Engine/Client health, endpoint ownership boundaries, and Client -> Engine bridge flow.
+- Added interaction checks for like action through Client API and response contract validation (`ok`, `bridge_ok`, `bridge_error`).
+- Added guaranteed cleanup via trap/finally logic so started test processes are stopped on success, failure, or interruption.
+- Added persistent smoke logs under `tmp/arch-split-smoke-logs/` (`*.run.log`, `*.checks.log`, `*.errors.log`) for failure analysis.
+
 ### 35) Persistent instance denylist (done)
 **Done:** implemented a persistent denylist source of truth and wired it into serving/sync/ingest paths.
 

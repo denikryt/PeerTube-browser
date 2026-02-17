@@ -143,9 +143,9 @@ id "${SERVICE_USER}" >/dev/null 2>&1 || fail "User does not exist: ${SERVICE_USE
 PROJECT_DIR="$(realpath "${PROJECT_DIR}")"
 [[ -d "${PROJECT_DIR}" ]] || fail "Project directory not found: ${PROJECT_DIR}"
 
-SERVER_PY="${PROJECT_DIR}/server/api/server.py"
+SERVER_PY="${PROJECT_DIR}/engine/server/api/server.py"
 VENV_PY="${PROJECT_DIR}/venv/bin/python3"
-UPDATER_PY="${PROJECT_DIR}/server/db/jobs/updater-worker.py"
+UPDATER_PY="${PROJECT_DIR}/engine/server/db/jobs/updater-worker.py"
 UPDATER_UNIT_PATH="/etc/systemd/system/${UPDATER_SERVICE_NAME}.service"
 UPDATER_TIMER_PATH="/etc/systemd/system/${UPDATER_TIMER_NAME}.timer"
 UPDATER_SUDOERS_PATH="/etc/sudoers.d/${UPDATER_SERVICE_NAME}-systemctl"

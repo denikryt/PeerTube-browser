@@ -21,11 +21,11 @@ similarity-based recommendations.
 See `DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset and ANN index.
 
 ## Components
-- Crawler: discovers instances/channels/videos and stores raw data.
-- Dataset/DB: local SQLite database with video/channel metadata.
-- ANN index: FAISS index for similarity search.
-- Server: API for /api/similar, /api/video, profile/likes endpoints.
-- Client: static web UI (recommendations, video page, channels).
+- `engine/`: read/analytics workspace.
+- `engine/crawler/`: crawler subsystem (part of Engine).
+- `engine/server/`: read-only recommendation API + bridge ingest.
+- `client/frontend/`: frontend app and static assets.
+- `client/backend/`: client write/profile API that publishes normalized events to Engine.
 
 ## Recommendations (current)
 The recommendation system is a mix of filtering + scoring:
@@ -34,12 +34,27 @@ The recommendation system is a mix of filtering + scoring:
 - popularity,
 - layer mixing (explore/exploit/popular/random/fresh).
 
-Likes are used as a signal to find similar content. This is not a heavy ML system;
-it is a transparent, controllable pipeline.
+Likes are used as a signal to find similar content. Engine reads likes from the
+current request context only (provided by Client/Frontend) and does not depend
+on local `engine/server/db/users.db` for recommendation ranking. Bridge-ingested
+events update aggregated `interaction_signals`, which are also used by ranking.
+This is not a heavy ML system; it is a transparent, controllable pipeline.
 
-## Privacy
-Currently, likes are stored locally in the browser and sent to the server as JSON
-per request. The server does not keep user profiles by default.
+## Current service split
+- Engine API (read): `/recommendations`, `/videos/{id}/similar`, `/videos/similar`, `/api/video`, `/api/health`.
+- Client backend (write/profile): `/api/user-action`, `/api/user-profile/*`.
+- Internal Client->Engine read contract: `/internal/videos/resolve`, `/internal/videos/metadata`.
+- Temporary bridge contract: Client backend publishes events to Engine `/internal/events/ingest`.
+- Boundary rule: Client backend must not import `engine.server.*` modules and must not read `engine/server/db/*` directly.
+
+## Split architecture smoke test
+Run the boundary/bridge smoke test:
+```bash
+bash tests/run-arch-split-smoke.sh
+```
+
+The script automatically starts Engine (`7072`) and Client (`7272`), runs all checks,
+aggregates errors, prints diagnostics, and always stops started processes.
 
 ## Future ideas
 - ActivityPub integration (receive new video events, send likes/comments).
