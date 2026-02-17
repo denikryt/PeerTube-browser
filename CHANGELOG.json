@@ -178,7 +178,7 @@
     {
       "id": "46",
       "date": "2026-02-16",
-      "status": "Planned",
+      "status": "Done",
       "title": "Prod/Dev Installers: Separate Engine/Client Installers + Centralized Mode Installer",
       "summary": "Add dedicated Engine and Client installers plus one centralized mode-based installer (prod/dev) so both contours use separate systemd unit names, isolated ports, and can run in parallel without cross-impact."
     },
@@ -216,6 +216,13 @@
       "status": "Done",
       "title": "Engine Recommendations: Interaction-Signals Only (No Local Users DB Likes)",
       "summary": "Finish split architecture by removing Engine recommendation dependence on local users likes tables and using only bridge-ingested aggregated interaction signals for write-derived ranking inputs."
+    },
+    {
+      "id": "51",
+      "date": "2026-02-17",
+      "status": "Planned",
+      "title": "Uninstall Scripts for Engine/Client Service Installers",
+      "summary": "Add symmetric uninstall scripts for Engine and Client plus centralized prod/dev/all uninstall orchestration so contour services and installer-created artifacts can be removed safely and predictably."
     }
   ]
 }

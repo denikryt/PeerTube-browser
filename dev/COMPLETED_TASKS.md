@@ -1,5 +1,24 @@
 # Completed tasks
 
+### 46) Prod/Dev service installers: separate Engine/Client installers + centralized mode installer (done)
+**Done:** implemented split service installers for Engine/Client and one centralized prod/dev mode orchestrator with contour isolation.
+
+#### **What was implemented:**
+- Added service-specific installers with explicit `--mode prod|dev` contracts:
+  - `engine/install-engine-service.sh`
+  - `client/install-client-service.sh`
+- Reworked centralized orchestrator `install-service.sh` to support `--mode prod|dev|all` and pass contour settings to both service installers.
+- Added mode preset wrappers:
+  - `install-service-prod.sh`
+  - `install-service-dev.sh`
+- Implemented contour-specific unit naming and routing isolation:
+  - prod: `peertube-engine`, `peertube-client`, optional `peertube-updater`
+  - dev: `peertube-engine-dev`, `peertube-client-dev`, optional `peertube-updater-dev`
+- Implemented prod/dev defaults and flags:
+  - prod default force-reinstall behavior for prod units
+  - dev timer toggle (`--with-updater-timer` / `--without-updater-timer`) with non-prod-safe defaults
+- Updated service install docs in `README.md` and `DEPLOYMENT.md` for the new installer topology.
+
 ### 50) Remove Engine dependency on local users likes DB for recommendations (interaction-signals-only ranking input) (done)
 **Done:** removed Engine recommendation-path dependency on local users likes DB and finalized interaction-signals-only ranking input contract.
 

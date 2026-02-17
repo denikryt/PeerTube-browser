@@ -505,54 +505,6 @@
   - concurrency test: no read errors during swap/reopen,
   - rollback test: forced swap failure restores previous cache and keeps `/api/health` green.
 
-### 46) Prod/Dev service installers: separate Engine/Client installers + centralized mode installer
-**Problem:** current install flow does not provide first-class split installers for Engine and Client, and does not provide one centralized mode-driven installer contract for prod/dev contours with strict runtime isolation.
-
-**Solution option:** implement separate service installers for Engine and Client, plus one centralized installer entrypoint that installs/starts contour-specific services by explicit mode flags.
-
-#### **Solution details:**
-- **Installer topology (mandatory):**
-  - Add separate installers for services:
-    - Engine installer (`...engine...install...sh`),
-    - Client installer (`...client...install...sh`).
-  - Each service-specific installer must support its own explicit install mode flags (`prod` / `dev`) and render/install contour-specific unit names and ports accordingly.
-  - Add one centralized installer/orchestrator (`install-service.sh`) that invokes Engine + Client installers as one action.
-  - Keep convenience wrappers for mode presets (`install-service-prod.sh`, `install-service-dev.sh`) if needed, but centralized mode installer is the source of truth.
-- **Centralized mode contract (mandatory):**
-  - Centralized installer must accept explicit mode flags (at minimum `prod` / `dev`; optional `all` to run both contours in one command).
-  - One command in a given mode installs/updates both services for that contour (Engine + Client).
-  - Shared flags expose contour-specific unit names, ports, timer toggle, and endpoint wiring.
-  - Centralized mode values must be passed through to service-specific installers (no hidden hardcoded contour inside service installers).
-- **Systemd naming and contour isolation:**
-  - Prod and Dev must use different unit names:
-    - prod: `peertube-engine`, `peertube-client`, optional `peertube-updater`,
-    - dev: `peertube-engine-dev`, `peertube-client-dev`, optional `peertube-updater-dev`.
-  - Reinstall/restart operations for one contour must not modify/stop the other contour.
-- **Ports and routing isolation:**
-  - Dev ports must be different from prod ports so both contours can run in parallel.
-  - Dev Client must call only Dev Engine endpoint.
-  - Prod Client must call only Prod Engine endpoint.
-- **Prod behavior (default):**
-  - Prod mode defaults to force-reinstall for prod units only:
-    - stop/disable existing prod units,
-    - remove/recreate unit files,
-    - reload systemd and restart prod units.
-- **Dev behavior (flags + local workflow):**
-  - Dev mode supports explicit timer toggle (with timer / without timer).
-  - Dev defaults are optimized for local parallel testing and must not affect prod units.
-- **Validation / tests:**
-  - `--help` contract tests for centralized installer, wrappers (if present), and service-specific installers.
-  - Mode contract tests for each service-specific installer: `engine-installer --mode prod/dev` and `client-installer --mode prod/dev` must produce expected contour unit names/ports.
-  - Smoke test: install prod contour, then install dev contour, verify both Engine/Client pairs are active simultaneously.
-  - Port/endpoint check: strict contour-local routing (dev->dev, prod->prod).
-  - Mode flag check: `prod` and `dev` modes install expected unit names/ports; timer toggle behavior is explicit for dev.
-
-#### **Affected areas/files (expected):**
-- Centralized installer/orchestrator: `install-service.sh`.
-- Service-specific installers: `install-engine-service.sh`, `install-client-service.sh` (or equivalent explicit names).
-- Mode wrappers (optional but recommended): `install-service-prod.sh`, `install-service-dev.sh`.
-- Service docs/runbooks: `DEPLOYMENT.md`, `README.md` (service install section).
-
 ### 47) Smoke tests for installers and Engine/Client service interaction (with guaranteed cleanup)
 **Problem:** after adding contour-aware installers, there is no automated smoke verification that (a) dev installer flow is executable end-to-end and leaves no residual services, and (b) Engine/Client interaction works through expected endpoints.
 
@@ -588,3 +540,46 @@
 - New test directory and scripts: `tests/*` (installer smoke + interaction smoke + optional runner/shared utils).
 - Service scripts touched by tests: `install-service.sh`, `install-service-dev.sh`, `install-service-prod.sh` (invoked, not necessarily modified).
 - Test run docs: `README.md` and/or `DEPLOYMENT.md` (how to run smoke tests and expected cleanup behavior).
+
+### 51) Uninstall scripts for service installers (Engine/Client + centralized prod/dev)
+**Problem:** install flow has dedicated installers but no symmetric uninstall flow, so removing contour-specific services and unit artifacts is manual and error-prone.
+
+**Solution option:** add dedicated uninstall scripts for Engine and Client services plus centralized uninstall orchestration for `prod` / `dev` contours (with optional `all`).
+
+#### **Solution details:**
+- **Uninstall topology (mandatory):**
+  - Add service-specific uninstallers:
+    - Engine uninstaller (`...engine...uninstall...sh`),
+    - Client uninstaller (`...client...uninstall...sh`).
+  - Add centralized uninstaller/orchestrator (`uninstall-service.sh`) that uninstalls Engine + Client for selected contour(s).
+  - Add convenience wrappers for mode presets:
+    - `uninstall-service-prod.sh`,
+    - `uninstall-service-dev.sh`.
+- **Mode contract and symmetry with installers:**
+  - Centralized uninstaller accepts `--mode prod|dev|all`.
+  - Service-specific uninstallers accept `--mode prod|dev` and optional explicit service-name override.
+  - Defaults must mirror installer naming contract:
+    - prod: `peertube-engine`, `peertube-client`, optional `peertube-updater`,
+    - dev: `peertube-engine-dev`, `peertube-client-dev`, optional `peertube-updater-dev`.
+- **Uninstall behavior:**
+  - Stop service/timer units if active.
+  - Disable units if enabled.
+  - Remove unit files created by installers.
+  - Reload systemd daemon and reset failed state for removed units.
+  - Remove installer-created updater sudoers files and optional updater state artifacts (contour-scoped only).
+- **Isolation and safety:**
+  - `prod` uninstall must not modify `dev` units.
+  - `dev` uninstall must not modify `prod` units.
+  - `all` performs both contours in deterministic order with clear logs per contour.
+- **Validation / tests:**
+  - `--help` contract tests for centralized uninstaller, wrappers, and service-specific uninstallers.
+  - Dry-run tests for `prod`, `dev`, and `all`.
+  - Install-then-uninstall smoke:
+    - install contour,
+    - uninstall same contour,
+    - verify units absent/inactive and no contour artifacts remain.
+
+#### **Affected areas/files (expected):**
+- New centralized uninstall scripts: `uninstall-service.sh`, `uninstall-service-prod.sh`, `uninstall-service-dev.sh`.
+- New service-specific uninstall scripts: `engine/uninstall-engine-service.sh`, `client/uninstall-client-service.sh`.
+- Installer docs/runbooks: `README.md`, `DEPLOYMENT.md`.
