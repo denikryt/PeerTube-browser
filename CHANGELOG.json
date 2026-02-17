@@ -213,7 +213,7 @@
     {
       "id": "50",
       "date": "2026-02-17",
-      "status": "Planned",
+      "status": "Done",
       "title": "Engine Recommendations: Interaction-Signals Only (No Local Users DB Likes)",
       "summary": "Finish split architecture by removing Engine recommendation dependence on local users likes tables and using only bridge-ingested aggregated interaction signals for write-derived ranking inputs."
     }

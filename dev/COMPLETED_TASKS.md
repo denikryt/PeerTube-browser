@@ -1,5 +1,15 @@
 # Completed tasks
 
+### 50) Remove Engine dependency on local users likes DB for recommendations (interaction-signals-only ranking input) (done)
+**Done:** removed Engine recommendation-path dependency on local users likes DB and finalized interaction-signals-only ranking input contract.
+
+#### **What was implemented:**
+- Removed Engine runtime dependency on users DB in API server wiring and shared server state.
+- Removed request-context fallback to Engine users likes storage; Engine now uses request-scoped likes only for recommendation-path user-like input.
+- Updated recommendation modules/sources/candidates to stop reading likes via `server.user_db` and use the request-like contract.
+- Extended split smoke with runtime assertion that Engine process does not open `engine/server/db/users.db` (`engine_users_db_fd_absent`).
+- Updated docs to explicitly state interaction-signal-driven ranking and no local Engine users likes DB dependency.
+
 ### 45) Engine/Client architecture split: read-only Engine + temporary bridge ingest (ActivityPub-ready) (done)
 **Done:** separated Engine and Client workspaces/services and introduced a temporary bridge ingest contract for write-derived signals.
 
