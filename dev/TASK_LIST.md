@@ -1,5 +1,8 @@
 # Task List (future)
 
+## UX / client
+
+## Video page
 ### 1) Fast response with similars
 **Problem:** until the server receives a response from the instance, the client shows an empty page; some instances respond slowly.
 
@@ -71,6 +74,7 @@
 - Remove the comment input field (view-only).
 - First verify on a specific video which request is needed to fetch comments; use the response structure for client rendering.
 
+## General UI
 ### 8) Tailwind CSS (optional)
 **Problem:** styles are fragmented and hard to maintain.
 
@@ -79,6 +83,7 @@
 #### **Solution details:**
 - Start with new blocks, gradually replace repeating styles.
 
+## Feed modes
 ### 8b) Switchable feed modes: recommendations / hot / recent / random / popular
 **Problem:** right now there are only recommendations and random; there are no quick modes like “only recent / only hot / only popular.”
 
@@ -99,7 +104,7 @@
 
 #### **Solution details:**
 - **Client instrumentation**:
-  - Add `data-track-id` for each outbound link in `client/frontend/about.html` (e.g., `about_patreon`, `about_github`, `about_youtube`).
+  - Add `data-track-id` for each outbound link in `client/about.html` (e.g., `about_patreon`, `about_github`, `about_youtube`).
   - Add one delegated click handler for `a[data-track-id]`.
   - Send event with `navigator.sendBeacon()` to `/api/analytics/outbound-click` (fallback to `fetch(..., { keepalive: true })` if needed).
   - Event payload: `track_id`, `href`, `page_path`, `timestamp`.
@@ -128,6 +133,7 @@
   - API test: valid event is stored, invalid event is rejected.
   - E2E smoke test: clicking About links increases counter in DB.
 
+## Profile / likes
 ### 9b) Remove a single like (UI + API)
 **Problem:** currently you can only reset all likes, but cannot remove a single one.
 
@@ -148,6 +154,7 @@
 - Limit description height and show a “Show more/Collapse” button.
 - On click, toggle expanded/collapsed state and keep it in the UI.
 
+## Video search
 ### 10) Video search page
 **Problem:** there is no search page and no server-side logic for video search.
 
@@ -157,6 +164,7 @@
 - Define request/response format: `GET /api/search/videos?q=...&page=...&limit=...&sort=...`.
 - Server: add a video search endpoint (SQLite FTS5, fallback to LIKE).
 
+## Code infrastructure
 ### 11) Docstrings for all modules and functions
 **Problem:** descriptions are missing in some places, making it harder to quickly understand module and function purpose.
 
@@ -167,6 +175,7 @@
 - Functions/classes: 1–2 lines, “what it does / what it returns.”
 - Avoid noise — only where it is non-obvious.
 
+## Performance
 ### 12a) Popular: weighted random by similarity
 **Problem:** when likes exist, popular is sorted by similarity but then a random sample is taken from the whole pool, so the sorting almost does not affect the result.
 
@@ -178,6 +187,7 @@
 - Add config parameter `popular.weighted_random_alpha` (0 = disabled).
 - For empty/zero weights fallback to normal random.
 
+## Data / collection
 ### 15) Crawler mode: start from one instance and its subscriptions
 **Problem:** there is no crawler mode that starts from one instance and walks its federated subscriptions.
 
@@ -192,6 +202,8 @@
 - Step 2: iterate through channels of each instance and collect their metadata.
 - Step 3: iterate through videos of channels and save them to the DB.
 - Note: this mode belongs to the instance crawler; its behavior should be aligned with existing crawler flags.
+
+## Recommendations and similars
 
 ### 16) Update recommendation description (RECOMMENDATIONS_OVERVIEW)
 **Problem:** `RECOMMENDATIONS_OVERVIEW.md` does not match the current recommendation logic.
@@ -339,6 +351,60 @@
 - DB schema/migration/ingest: `server/db/jobs/migrate-whitelist.py`, `server/db/jobs/build-video-embeddings.py`, `server/db/jobs/sync-whitelist.py`, merge/updater flow.
 - Ops/docs/tests: `server/db/jobs/updater-worker.py`, updater docs, ANN/smoke tests.
 
+## Architecture / federation readiness
+
+### 45) Engine/Client architecture split: read-only Engine + temporary bridge ingest (ActivityPub-ready)
+**Problem:** current API server mixes responsibilities: Engine-like recommendation read paths and user write actions/profile state in one service (`/api/user-action`, `/api/user-profile/*`). This coupling blocks clean migration to the target model where Engine is a read/analytics service and federated writes arrive through ActivityPub subscriptions.
+
+**Solution option:** separate responsibilities now, keep ActivityPub transport out of scope for this task, and introduce a minimal temporary bridge ingest contract that is compatible with future ActivityPub event handling.
+
+#### **Solution details:**
+- **Target contracts (without ActivityPub implementation yet):**
+  - Engine exposes read/compute API only:
+    - `POST /recommendations` (seed/params in JSON),
+    - `GET /videos/{id}/similar` (id-only path),
+    - `POST /videos/similar` (extended params path),
+    - keep health/video metadata read endpoints.
+  - Engine must not expose user action write endpoints (`/api/user-action`, `/api/user-profile/reset`, and similar write paths).
+- **Temporary bridge ingest (AP-ready shape):**
+  - Add internal endpoint (example: `POST /internal/events/ingest`) for trusted service-to-service event delivery.
+  - Event schema should mirror future ActivityPub mapping:
+    - `event_id`,
+    - `event_type` (`Like`, `UndoLike`, `Comment`),
+    - `actor_id`,
+    - `object` (`video_uuid`, `instance_domain`, optional canonical URL),
+    - `published_at`,
+    - `source_instance`,
+    - `raw_payload`.
+  - Enforce idempotency with unique `event_id`.
+- **Engine storage and ranking inputs:**
+  - Add raw event store + normalized interaction store in Engine DB.
+  - Add/update aggregated signal view/table consumed by recommendation scoring.
+  - Recommendation/scoring code should consume aggregated interaction signals, not local user-like tables.
+- **Client service responsibility split:**
+  - UI sends like/comment actions to Client service only.
+  - Client service sends actions to original instance and publishes normalized events to Engine bridge.
+  - UI must not call Engine ingest/write paths directly.
+- **Compatibility and migration path:**
+  - Keep existing read routes temporarily via compatibility wrappers where needed, but mark old mixed routes as deprecated.
+  - Add explicit config switches:
+    - `ENGINE_INGEST_MODE=bridge|activitypub`,
+    - `CLIENT_PUBLISH_MODE=bridge|activitypub`.
+  - In this task, default both to `bridge`; ActivityPub mode is reserved for later milestone.
+- **Validation / tests:**
+  - Integration smoke: `client-like -> bridge ingest -> Engine metrics update -> changed /recommendations output`.
+  - Contract tests for ingest idempotency (`event_id` duplicate handling).
+  - Regression tests confirming Engine read endpoints still work while legacy write endpoints are disabled/deprecated.
+
+#### **Affected areas/files (expected):**
+- Engine routing/handlers: `server/api/handlers/similar.py`, new bridge ingest handler module, `server/api/server.py`.
+- Engine write/profile removal or isolation: `server/api/handlers/user_profile.py`, `server/api/request_context.py`, `server/data/users.py`.
+- Recommendation input plumbing: `server/api/recommendations/*`, scoring/popularity sources in `server/data/*`.
+- Client API callers (no direct Engine writes): `client/src/data/user-actions.ts`, `client/src/data/user-profile.ts`, `client/src/data/videos.ts`, related page hooks.
+- Deployment/docs/contracts: `README.md`, `DEPLOYMENT.md`, service run docs for split Engine/Client responsibilities.
+
+## Logging / observability
+
 ### 38) Request lifecycle logs: request-start first + shared request_id across server logs
 **Problem:** current logs are hard to correlate because access logs are emitted on response write, while business logs (`[similar-server]`, `[recommendations]`) are produced during processing and can interleave across threads.
 
@@ -363,6 +429,40 @@
   - regression test to ensure no request is logged without `request_id`;
   - manual verification runbook that compares one request in both logs by `request_id`.
 
+### 41) Timestamped request logs (explicit date/time)
+**Problem:** request timing analysis is harder when logs rely only on journal envelope time or inconsistent message formatting.
+
+**Solution option:** include explicit timestamp in application log format and in request lifecycle logs.
+
+#### **Solution details:**
+- Configure logging format with explicit timestamp (recommended: ISO-8601 with milliseconds, UTC).
+- Ensure both request lifecycle logs and internal server logs include the same timestamp format.
+- Add optional config for structured log output (plain text default, JSON optional).
+- Keep compatibility with journald (no duplicate parsing assumptions).
+- Validation:
+  - sample log lines include full date/time and timezone marker;
+  - ordering checks across request-start/work/request-end use application timestamp fields.
+
+### 43) Static page visit logs for About and Changelog
+**Problem:** visits to `about` and `changelog` are currently served as static files by nginx, so these page visits are not visible in app/service request logs.
+
+**Solution option:** add a dedicated logging path for static page visits and keep correlation with request tracing where possible.
+
+#### **Solution details:**
+- Add dedicated nginx logging for `about` and `changelog` page routes:
+  - include client IP, method, URL, status, response time, user-agent;
+  - keep this in a separate log stream or with explicit marker field.
+- Preserve/propagate `X-Request-ID` in nginx logs for those routes when available.
+- Add a simple runbook to compare:
+  - static page visits (`about`/`changelog`) from nginx logs,
+  - API request traces from app logs.
+- Optional (if needed): add client-side pageview beacon endpoint for cleaner human-intent tracking and bot/noise filtering.
+- Validation:
+  - visiting `about` and `changelog` produces entries with expected fields in nginx logs;
+  - sample correlation by request id/time window works against app-side traces.
+
+## Runtime reliability / operations
+
 ### 39) Random cache refresh worker without startup downtime (extends 16l runtime behavior)
 **Problem:** rebuilding random cache during startup can delay readiness and create a visible unavailable window after restart.
 
@@ -383,6 +483,34 @@
 - Validation:
   - startup readiness test confirms `/api/health` responds before cache rebuild completes;
   - concurrent read test during swap shows no request failures.
+
+### 44) Similarity cache shadow build + atomic swap without long API downtime
+**Problem:** updater currently keeps API service stopped until `precompute-similar-ann.py` finishes. Similarity precompute can be very long, causing unnecessary API downtime.
+
+**Solution option:** build similarity cache in a shadow DB while API is already running, then perform a fast atomic cutover.
+
+#### **Solution details:**
+- **Updater sequence change:**
+  - keep service stop/start around write-conflict-critical stages only (`merge` + ANN rebuild),
+  - start API service before similarity precompute stage.
+- **Shadow cache build path:**
+  - create `similarity-cache.next.db` from current active `similarity-cache.db` (preserve incremental baseline),
+  - run `precompute-similar-ann.py --incremental` against the shadow file, not active file.
+- **Atomic cutover:**
+  - on success, atomically replace active cache file (`os.replace`),
+  - keep rollback backup (`similarity-cache.prev.db`) for one-step restore.
+- **Runtime handoff:**
+  - add safe similarity DB reconnect/reopen path in API process under `similarity_db_lock` (signal or admin hook),
+  - fallback: short controlled API restart only for reconnect if hot-reload is unavailable.
+- **Safety/rollback:**
+  - if shadow build fails, keep active cache untouched,
+  - if swap/reopen fails, restore previous active cache and keep service healthy.
+- **Observability:**
+  - log shadow build duration, processed sources, swap duration, reopen result, rollback reason.
+- **Validation / tests:**
+  - integration test: API stays available during similarity precompute window,
+  - concurrency test: no read errors during swap/reopen,
+  - rollback test: forced swap failure restores previous cache and keeps `/api/health` green.
 
 ### 40) Zero-downtime server deploy: parallel port startup + automatic nginx switch
 **Problem:** in-place restart on one port causes temporary downtime during server initialization/warm-up.
@@ -413,19 +541,7 @@
   - forced-failure test verifies rollback path;
   - verify one-command run requires no manual `systemctl`/nginx edits.
 
-### 41) Timestamped request logs (explicit date/time)
-**Problem:** request timing analysis is harder when logs rely only on journal envelope time or inconsistent message formatting.
-
-**Solution option:** include explicit timestamp in application log format and in request lifecycle logs.
-
-#### **Solution details:**
-- Configure logging format with explicit timestamp (recommended: ISO-8601 with milliseconds, UTC).
-- Ensure both request lifecycle logs and internal server logs include the same timestamp format.
-- Add optional config for structured log output (plain text default, JSON optional).
-- Keep compatibility with journald (no duplicate parsing assumptions).
-- Validation:
-  - sample log lines include full date/time and timezone marker;
-  - ordering checks across request-start/work/request-end use application timestamp fields.
+## Product transparency / changelog
 
 ### 42) CHANGELOG as public task board: roadmap-style tasks + status + client filters
 **Problem:** current `CHANGELOG.json` is a done-only history log, so users cannot see planned tasks and completed tasks in one unified public board.
@@ -458,163 +574,3 @@
   - Client: schema parse test + filter/tabs test.
   - Client: status style rendering test for all statuses.
   - Data: migration/backward-compat test (if legacy entries exist).
-
-### 43) Static page visit logs for About and Changelog
-**Problem:** visits to `about` and `changelog` are currently served as static files by nginx, so these page visits are not visible in app/service request logs.
-
-**Solution option:** add a dedicated logging path for static page visits and keep correlation with request tracing where possible.
-
-#### **Solution details:**
-- Add dedicated nginx logging for `about` and `changelog` page routes:
-  - include client IP, method, URL, status, response time, user-agent;
-  - keep this in a separate log stream or with explicit marker field.
-- Preserve/propagate `X-Request-ID` in nginx logs for those routes when available.
-- Add a simple runbook to compare:
-  - static page visits (`about`/`changelog`) from nginx logs,
-  - API request traces from app logs.
-- Optional (if needed): add client-side pageview beacon endpoint for cleaner human-intent tracking and bot/noise filtering.
-- Validation:
-  - visiting `about` and `changelog` produces entries with expected fields in nginx logs;
-  - sample correlation by request id/time window works against app-side traces.
-
-### 44) Similarity cache shadow build + atomic swap without long API downtime
-**Problem:** updater currently keeps API service stopped until `precompute-similar-ann.py` finishes. Similarity precompute can be very long, causing unnecessary API downtime.
-
-**Solution option:** build similarity cache in a shadow DB while API is already running, then perform a fast atomic cutover.
-
-#### **Solution details:**
-- **Updater sequence change:**
-  - keep service stop/start around write-conflict-critical stages only (`merge` + ANN rebuild),
-  - start API service before similarity precompute stage.
-- **Shadow cache build path:**
-  - create `similarity-cache.next.db` from current active `similarity-cache.db` (preserve incremental baseline),
-  - run `precompute-similar-ann.py --incremental` against the shadow file, not active file.
-- **Atomic cutover:**
-  - on success, atomically replace active cache file (`os.replace`),
-  - keep rollback backup (`similarity-cache.prev.db`) for one-step restore.
-- **Runtime handoff:**
-  - add safe similarity DB reconnect/reopen path in API process under `similarity_db_lock` (signal or admin hook),
-  - fallback: short controlled API restart only for reconnect if hot-reload is unavailable.
-- **Safety/rollback:**
-  - if shadow build fails, keep active cache untouched,
-  - if swap/reopen fails, restore previous active cache and keep service healthy.
-- **Observability:**
-  - log shadow build duration, processed sources, swap duration, reopen result, rollback reason.
-- **Validation / tests:**
-  - integration test: API stays available during similarity precompute window,
-  - concurrency test: no read errors during swap/reopen,
-  - rollback test: forced swap failure restores previous cache and keeps `/api/health` green.
-
-### 46) Prod/Dev service installers: isolated Engine+Client contours with wrapper entrypoints
-**Problem:** current `install-service.sh` installs one API unit (`peertube-browser`) and does not expose contour-aware Engine/Client install contract. Dev/prod wrapper behavior exists only as recovery artifacts (`tmp/recovery-vscode-history/install-service-dev.sh`, `tmp/recovery-vscode-history/install-service-prod.sh`) and is not integrated into the active repository flow.
-
-**Solution option:** implement two first-class installer entrypoints (`install-service-prod.sh` and `install-service-dev.sh`) over shared install primitives so prod and dev can run in parallel without cross-impact.
-
-#### **Solution details:**
-- **Installer contours (mandatory):**
-  - `install-service-prod.sh` and `install-service-dev.sh` are top-level wrappers that call shared logic in `install-service.sh`.
-  - Both contours install two services: Engine and Client (separate systemd units).
-  - Service naming must be contour-specific:
-    - prod: `peertube-engine`, `peertube-client`, optional `peertube-updater`,
-    - dev: `peertube-engine-dev`, `peertube-client-dev`, optional `peertube-updater-dev`.
-- **Prod behavior (default):**
-  - Default install mode is force-reinstall for prod units:
-    - stop/disable existing prod units,
-    - remove/recreate unit files,
-    - reload systemd and restart units.
-  - This force behavior applies only to prod contour units (must not touch dev units).
-- **Dev behavior (flags + isolation):**
-  - Dev installer supports explicit timer mode toggle (with timer / without timer).
-  - Dev services run on ports different from prod defaults and can run simultaneously with prod.
-  - Dev Client must target local Dev Engine endpoint (no cross-call into prod Engine).
-  - Dev reinstall/restart operations must not stop/modify prod units.
-- **Shared installer contract:**
-  - Keep common preflight, unit rendering, enable/start, and post-check logic in `install-service.sh`.
-  - Expose shared flags for contour-specific unit names, hosts, ports, and Engine ingest base URL.
-  - Keep strict validation of provided service names/ports and explicit failure logs.
-- **Compatibility expectations:**
-  - Preserve current prod runtime contract for Client->Engine behavior unless overridden by explicit contour flags.
-  - Keep wrapper UX simple and predictable:
-    - prod: opinionated reinstall defaults,
-    - dev: local development isolation defaults.
-- **Validation / tests:**
-  - `--help` contract tests for all three scripts (`install-service.sh`, `install-service-prod.sh`, `install-service-dev.sh`).
-  - Smoke test: install prod contour, then install dev contour, verify both Engine/Client pairs are active simultaneously.
-  - Port/endpoint check: dev Client routes only to dev Engine; prod Client routes only to prod Engine.
-  - Timer toggle check: dev with/without timer behaves according to flag; prod default behavior remains explicit.
-
-#### **Affected areas/files (expected):**
-- Shared installer core: `install-service.sh`.
-- New wrappers: `install-service-prod.sh`, `install-service-dev.sh`.
-- Service docs/runbooks: `DEPLOYMENT.md`, `README.md` (service install section).
-- Optional cleanup alignment (if present later): uninstall scripts for matching contour unit names.
-
-### 47) Smoke tests for installers and Engine/Client service interaction (with guaranteed cleanup)
-**Problem:** after adding contour-aware installers, there is no automated smoke verification that (a) dev installer flow is executable end-to-end and leaves no residual services, and (b) Engine/Client interaction works through expected endpoints.
-
-**Solution option:** add a dedicated root `tests/` directory with two smoke-test scripts: one for dev installer lifecycle and cleanup, and one for Engine/Client interaction checks.
-
-#### **Solution details:**
-- **Test location and structure (mandatory):**
-  - Create/use top-level `tests/` directory for smoke tests related to service install/runtime checks.
-  - Keep installer smoke and interaction smoke as separate scripts with clear CLI/help.
-- **Smoke test A: dev installer lifecycle + cleanup (`tests/...installer...smoke...`):**
-  - Run dev install path (with explicit timer mode parameter where applicable).
-  - Validate resulting dev units are created, enabled/active as expected, and bound to dev contour names/ports.
-  - Capture and print actionable diagnostics on failure (`systemctl status`, recent `journalctl` tails).
-  - Always perform teardown in `finally/trap` logic:
-    - stop/disable/remove dev units created by the test,
-    - remove test-created timer units/state artifacts when applicable,
-    - ensure no dev test services remain after script exits (success or failure).
-- **Smoke test B: Engine/Client interaction (`tests/...interaction...smoke...`):**
-  - Validate Engine and Client health/readiness endpoints first.
-  - Run minimal end-to-end interaction checks through expected API flow (Client -> Engine and Engine read responses visible to Client path).
-  - Assert expected HTTP statuses, response shape basics, and non-empty critical fields.
-  - On failure, emit concise request/response diagnostics and related unit logs.
-- **Isolation and safety rules:**
-  - Smoke tests target dev contour by default and must not modify prod contour units.
-  - Use deterministic dev ports/service names from installer contract; no cross-calls into prod contour during tests.
-  - Teardown is mandatory even when assertions fail or script is interrupted.
-- **Validation / CI expectations:**
-  - Local run contract: one command per smoke script and non-zero exit code on any failed assertion.
-  - Optional aggregate runner in `tests/` that executes both smoke tests sequentially and reports summary.
-  - Document prerequisites (sudo/systemd availability, required env vars) and cleanup guarantees in script headers.
-
-#### **Affected areas/files (expected):**
-- New test directory and scripts: `tests/*` (installer smoke + interaction smoke + optional runner/shared utils).
-- Service scripts touched by tests: `install-service.sh`, `install-service-dev.sh`, `install-service-prod.sh` (invoked, not necessarily modified).
-- Test run docs: `README.md` and/or `DEPLOYMENT.md` (how to run smoke tests and expected cleanup behavior).
-
-### 50) Remove Engine dependency on local users likes DB for recommendations (interaction-signals-only ranking input)
-**Problem:** split architecture is still incomplete: Engine recommendations still read likes from local `engine/server/db/users.db` and fallback to `fetch_recent_likes(...)`, while task 45 requires ranking inputs to rely on aggregated interaction signals from bridge ingest.
-
-**Solution option:** remove Engine-side dependency on user-like tables from recommendation flow and make interaction signals (`interaction_raw_events` + `interaction_signals`) the only write-derived ranking input consumed by Engine.
-
-#### **Solution details:**
-- **Hard contract (mandatory):**
-  - Recommendation generation in Engine must not read likes from `engine/server/db/users.db`.
-  - Engine read path must not require `user_db` connection for recommendation/ranking logic.
-  - Bridge-ingested interaction signals remain the only write-derived input for scoring/ranking.
-- **Engine runtime cleanup:**
-  - Remove `users_db` initialization/connection from Engine server startup and shared server state where no longer needed.
-  - Remove request-context fallback that reads likes from user DB when client likes are absent.
-  - Eliminate recommendation-path calls that read likes via `server.user_db`.
-- **Recommendation contract update:**
-  - Keep read APIs and seed resolution behavior unchanged for clients (`/recommendations`, `/videos/similar`, `/videos/{id}/similar`).
-  - Ensure ranking behavior uses `interaction_signals` aggregates (and existing read-only metadata/popularity sources), not per-user likes tables in Engine.
-  - Keep bridge ingest idempotency behavior by `event_id` unchanged.
-- **Migration and compatibility:**
-  - Keep `client/backend/db/users.db` ownership on Client side intact.
-  - If Engine users DB remains temporarily for non-recommendation legacy code, mark it explicitly out of recommendation path and document deprecation/removal plan.
-  - Update docs to state that Engine recommendation scoring no longer depends on local users likes DB.
-- **Validation / tests:**
-  - Add regression checks proving recommendation path works when Engine users DB is absent/unused.
-  - Extend boundary smoke to fail if recommendation flow touches Engine users likes storage.
-  - Keep split smoke green for `client-like -> bridge ingest -> Engine signal update -> recommendation/read path`.
-
-#### **Affected areas/files (expected):**
-- Engine server wiring: `engine/server/api/server.py`, `engine/server/api/request_context.py`.
-- Recommendation path using user DB likes: `engine/server/api/recommendations/*` (notably mixer/filters and related fetch points).
-- Signal data path: `engine/server/data/interaction_events.py`, `engine/server/data/random_videos.py` (and related ranking readers).
-- Tests and diagnostics: `tests/run-arch-split-smoke.sh`, `tests/check-client-engine-boundary.sh` (and/or additional contract smoke checks).
-- Docs/contracts: `README.md`, `DEPLOYMENT.md`, `engine/server/README.md`.

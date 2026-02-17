@@ -6,34 +6,34 @@ artifacts (embeddings, ANN index, caches) used by the API.
 All paths below are relative to the repository root.
 
 ## Outputs
-- `engine/crawler/data/crawl.db` raw crawl database.
-- `engine/server/db/whitelist.db` filtered dataset used by the API.
-- `engine/server/db/whitelist-video-embeddings.faiss` and `engine/server/db/whitelist-video-embeddings.faiss.json` ANN index + metadata.
-- `engine/server/db/similarity-cache.db` precomputed similar cache (optional).
-- `engine/server/db/random-cache.db` random rowid cache (optional).
+- `crawler/data/crawl.db` raw crawl database.
+- `server/db/whitelist.db` filtered dataset used by the API.
+- `server/db/whitelist-video-embeddings.faiss` and `server/db/whitelist-video-embeddings.faiss.json` ANN index + metadata.
+- `server/db/similarity-cache.db` precomputed similar cache (optional).
+- `server/db/random-cache.db` random rowid cache (optional).
 
 ## Prerequisites
-- Node.js + npm for the crawler (`engine/crawler/package.json`).
-- Python 3.10+ for jobs (`engine/server/requirements.txt`).
+- Node.js + npm for the crawler (`crawler/package.json`).
+- Python 3.10+ for jobs (`server/requirements.txt`).
 - Optional CUDA if you plan to run embeddings with `--gpu`.
 
 ## Automatic background updater
 You can run the same build/update flow automatically with the updater worker:
 
-- Worker entrypoint: `engine/server/db/jobs/updater-worker.py`
+- Worker entrypoint: `server/db/jobs/updater-worker.py`
 - It runs: crawl to staging -> embeddings -> merge to prod -> popularity -> ANN rebuild -> similarity precompute.
 - Systemd installation: `install-service.sh --with-updater-timer`
 - Timer runs daily (`OnUnitInactiveSec=1d`).
 
 Detailed behavior, flags, lock/resume logic, and systemd notes are documented in:
 
-- `engine/server/db/jobs/UPDATER_WORKER.md`
+- `server/db/jobs/UPDATER_WORKER.md`
 
 ## 1) Crawl data
 
 ### Build crawler
 ```bash
-cd engine/crawler
+cd crawler
 npm install
 npm run build
 ```
@@ -41,7 +41,7 @@ npm run build
 ### Instance discovery
 Default source is the JoinPeerTube whitelist JSON.
 ```bash
-cd engine/crawler
+cd crawler
 npm run crawl:instances
 ```
 
@@ -59,7 +59,7 @@ Data source and limits:
 
 ### Instance health checks
 ```bash
-cd engine/crawler
+cd crawler
 npm run crawl:instances:health
 ```
 
@@ -73,7 +73,7 @@ Data source and limits:
 
 ### Channel crawl
 ```bash
-cd engine/crawler
+cd crawler
 npm run crawl:channels
 ```
 
@@ -87,7 +87,7 @@ Data source and limits:
 
 ### Channel video counts
 ```bash
-cd engine/crawler
+cd crawler
 npm run crawl:channels:videos-count
 ```
 
@@ -97,7 +97,7 @@ Useful flags:
 
 ### Video crawl
 ```bash
-cd engine/crawler
+cd crawler
 npm run crawl:videos
 ```
 
@@ -114,7 +114,7 @@ Data source and limits:
 ### Tags and comments enrichment
 These are slower because they hit per-video endpoints.
 ```bash
-cd engine/crawler
+cd crawler
 npm run crawl:videos:tags
 npm run crawl:videos:comments
 ```
@@ -127,12 +127,12 @@ Data source and limits:
 - Uses `GET /api/v1/videos/<uuid>` for tags and comment counts.
 
 ## 2) Filter to JoinPeerTube whitelist
-This step builds the API dataset in `engine/server/db/whitelist.db`.
+This step builds the API dataset in `server/db/whitelist.db`.
 
 ```bash
-python3 engine/server/db/jobs/sync-whitelist.py \
-  --db engine/crawler/data/crawl.db \
-  --output-db engine/server/db/whitelist.db
+python3 server/db/jobs/sync-whitelist.py \
+  --db crawler/data/crawl.db \
+  --output-db server/db/whitelist.db
 ```
 
 Notes:
@@ -143,7 +143,7 @@ Notes:
 
 If the whitelist DB schema is outdated, migrate it:
 ```bash
-python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whitelist.db
+python3 server/db/jobs/migrate-whitelist.py --db server/db/whitelist.db
 ```
 
 ## 3) Build embeddings
@@ -157,8 +157,8 @@ Embeddings use SentenceTransformers. The text payload is built from:
 
 Default model is `all-MiniLM-L6-v2`.
 ```bash
-python3 engine/server/db/jobs/build-video-embeddings.py \
-  --db-path engine/server/db/whitelist.db
+python3 server/db/jobs/build-video-embeddings.py \
+  --db-path server/db/whitelist.db
 ```
 
 Useful flags:
@@ -171,10 +171,10 @@ Useful flags:
 The index uses `video_embeddings.rowid` as ids.
 
 ```bash
-python3 engine/server/db/jobs/build-ann-index.py \
-  --db-path engine/server/db/whitelist.db \
-  --index-path engine/server/db/whitelist-video-embeddings.faiss \
-  --meta-path engine/server/db/whitelist-video-embeddings.faiss.json \
+python3 server/db/jobs/build-ann-index.py \
+  --db-path server/db/whitelist.db \
+  --index-path server/db/whitelist-video-embeddings.faiss \
+  --meta-path server/db/whitelist-video-embeddings.faiss.json \
   --normalize
 ```
 
@@ -186,10 +186,10 @@ Useful flags:
 ## 5) Precompute similarity cache (optional)
 This speeds up similar video fetches for the video page.
 ```bash
-python3 engine/server/db/jobs/precompute-similar-ann.py \
-  --db engine/server/db/whitelist.db \
-  --index engine/server/db/whitelist-video-embeddings.faiss \
-  --out engine/server/db/similarity-cache.db \
+python3 server/db/jobs/precompute-similar-ann.py \
+  --db server/db/whitelist.db \
+  --index server/db/whitelist-video-embeddings.faiss \
+  --out server/db/similarity-cache.db \
   --top-k 20 \
   --nprobe 16 \
   --reset
@@ -198,9 +198,9 @@ python3 engine/server/db/jobs/precompute-similar-ann.py \
 ## 6) Precompute random cache (optional)
 This prepares a random rowid pool for the random feed.
 ```bash
-python3 engine/server/db/jobs/precompute-random-rowids.py \
-  --db engine/server/db/whitelist.db \
-  --out engine/server/db/random-cache.db \
+python3 server/db/jobs/precompute-random-rowids.py \
+  --db server/db/whitelist.db \
+  --out server/db/random-cache.db \
   --size 5000 \
   --filtered \
   --max-per-author 100 \
@@ -211,8 +211,8 @@ python3 engine/server/db/jobs/precompute-random-rowids.py \
 ## 7) Recompute popularity (one-time after dataset build)
 Materialize a `videos.popularity` score for fast popular queries.
 ```bash
-python3 engine/server/db/jobs/recompute-popularity.py \
-  --db engine/server/db/whitelist.db \
+python3 server/db/jobs/recompute-popularity.py \
+  --db server/db/whitelist.db \
   --like-weight 2.0 \
   --reset
 ```
@@ -225,11 +225,12 @@ npm run crawl:channels -- --resume > /tmp/crawl-channels.log
 
 Check progress directly in SQLite:
 ```bash
-sqlite3 engine/crawler/data/crawl.db "select count(*) from instances;"
-sqlite3 engine/crawler/data/crawl.db "select status, count(*) from channel_crawl_progress group by status;"
-sqlite3 engine/crawler/data/crawl.db "select status, count(*) from video_crawl_progress group by status;"
-sqlite3 engine/server/db/whitelist.db "select count(*) from videos;"
-sqlite3 engine/server/db/whitelist.db "select count(*) from video_embeddings;"
-sqlite3 engine/server/db/similarity-cache.db "select count(*) from similarity_sources;"
-sqlite3 engine/server/db/random-cache.db "select count(*) from random_rowids;"
+sqlite3 crawler/data/crawl.db "select count(*) from instances;"
+sqlite3 crawler/data/crawl.db "select status, count(*) from channel_crawl_progress group by status;"
+sqlite3 crawler/data/crawl.db "select status, count(*) from video_crawl_progress group by status;"
+sqlite3 server/db/whitelist.db "select count(*) from videos;"
+sqlite3 server/db/whitelist.db "select count(*) from video_embeddings;"
+sqlite3 server/db/similarity-cache.db "select count(*) from similarity_sources;"
+sqlite3 server/db/random-cache.db "select count(*) from random_rowids;"
 ```
+

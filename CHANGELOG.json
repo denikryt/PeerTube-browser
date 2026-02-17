@@ -1,221 +1,186 @@
 {
   "entries": [
     {
-      "id": "1",
+      "id": "task-faster-video-page-loading",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Faster Video Page Loading",
       "summary": "Show useful recommendations immediately when a video page opens, so users do not see an empty screen while details load."
     },
     {
-      "id": "2",
+      "id": "task-more-similar-videos-on-scroll",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "More Similar Videos on Scroll",
       "summary": "Load and reveal more similar videos directly on the video page as users scroll, instead of limiting to a very short list."
     },
     {
-      "id": "3",
+      "id": "task-richer-video-details",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Richer Video Details",
       "summary": "Show more complete video information on the page, including clearer category and tags presentation."
     },
     {
-      "id": "4",
+      "id": "task-comments-under-videos",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Comments Under Videos",
       "summary": "Display video comments below the player in a readable, lightweight format."
     },
     {
-      "id": "8",
+      "id": "task-optional-ui-style-system-upgrade",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Optional UI Style System Upgrade",
       "summary": "Evaluate and potentially adopt a more consistent styling approach to make UI changes easier and cleaner over time."
     },
     {
-      "id": "8b",
+      "id": "task-switchable-feed-modes",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Switchable Feed Modes",
       "summary": "Let users switch between recommendation styles like personalized, recent, random, and popular feeds."
     },
     {
-      "id": "8c",
+      "id": "task-about-page-link-analytics",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "About Page Link Analytics",
       "summary": "Track outbound link clicks from the About page to better understand what users find useful."
     },
     {
-      "id": "9b",
+      "id": "task-remove-one-like",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Remove One Like",
       "summary": "Allow users to remove a single liked video without resetting the whole likes profile."
     },
     {
-      "id": "9",
+      "id": "task-expandable-video-description",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Expandable Video Description",
       "summary": "Make long descriptions easier to read with a collapsed view and a show more/show less toggle."
     },
     {
-      "id": "10",
+      "id": "task-video-search-page",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Video Search Page",
       "summary": "Add a dedicated search experience to help users quickly find videos by text query."
     },
     {
-      "id": "11",
+      "id": "task-clearer-developer-documentation-in-code",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Clearer Developer Documentation in Code",
       "summary": "Improve inline descriptions in code to make maintenance and future changes faster."
     },
     {
-      "id": "12a",
+      "id": "task-smarter-popular-feed-variety",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Smarter Popular Feed Variety",
       "summary": "Improve popular feed selection so it keeps quality while showing more varied results."
     },
     {
-      "id": "15",
+      "id": "task-seed-based-crawl-mode",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Seed-Based Crawl Mode",
       "summary": "Support a crawl mode that starts from one instance and expands through related federated content."
     },
     {
-      "id": "16",
+      "id": "task-recommendations-overview-refresh",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Recommendations Overview Refresh",
       "summary": "Publish a clearer and more accurate public explanation of how recommendations are generated."
     },
     {
-      "id": "16l",
+      "id": "task-automatic-random-cache-refresh",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Automatic Random Cache Refresh",
       "summary": "Refresh random content in the background so recommendations stay fresh without manual restarts."
     },
     {
-      "id": "30",
+      "id": "task-better-incremental-similarity-updates",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Better Incremental Similarity Updates",
       "summary": "Improve similarity refresh logic so existing videos also benefit when new content arrives."
     },
     {
-      "id": "33",
+      "id": "task-more-diverse-up-next-results",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "More Diverse Up Next Results",
       "summary": "Reduce repetitive similar-video results on refresh and improve coverage for low-candidate videos."
     },
     {
-      "id": "37",
+      "id": "task-stable-similarity-index-ids",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Stable Similarity Index IDs",
       "summary": "Use stable internal IDs for similarity indexing to keep recommendation quality reliable across rebuilds and cleanups."
     },
     {
-      "id": "45",
-      "date": "2026-02-16",
-      "status": "Done",
-      "title": "Engine/Client Architecture Split with Bridge (ActivityPub-Ready)",
-      "summary": "Separate Engine into read-only analytics API (including crawler as part of Engine), move user actions to client responsibility, and add a temporary bridge ingest contract prepared for future ActivityPub integration."
-    },
-    {
-      "id": "38",
+      "id": "task-request-lifecycle-logs-with-request-id",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Request Lifecycle Logs with Request ID",
       "summary": "Log request start and request end with one shared request ID and reuse this ID across server request-path logs for clear traceability."
     },
     {
-      "id": "41",
+      "id": "task-timestamped-request-logs",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Timestamped Request Logs",
       "summary": "Include explicit date and time in application request logs in a single consistent format."
     },
     {
-      "id": "43",
-      "date": "2026-02-14",
-      "status": "Planned",
-      "title": "Static Page Visit Logs for About and Changelog",
-      "summary": "Add dedicated visibility for About and Changelog page visits served by nginx, with request correlation where possible."
-    },
-    {
-      "id": "39",
+      "id": "task-random-cache-refresh-without-startup-downtime",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Random Cache Refresh Without Startup Downtime",
       "summary": "Keep API startup non-blocking and refresh random cache in the background with safe atomic swap."
     },
     {
-      "id": "44",
+      "id": "task-similarity-cache-shadow-swap-without-long-downtime",
       "date": "2026-02-15",
       "status": "Planned",
       "title": "Similarity Cache Shadow Swap Without Long Downtime",
       "summary": "Build similarity cache in a shadow database while API is running, then switch atomically with safe rollback."
     },
     {
-      "id": "40",
+      "id": "task-zero-downtime-server-deploy",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Zero-Downtime Server Deploy",
       "summary": "Run a new server instance on a second port, switch nginx automatically after health check, and keep rollback safety."
     },
     {
-      "id": "46",
-      "date": "2026-02-16",
-      "status": "Planned",
-      "title": "Prod/Dev Service Installers for Isolated Engine+Client Contours",
-      "summary": "Add production and development installer wrappers over shared install logic so Engine and Client run as separate contour-specific services without cross-impact."
-    },
-    {
-      "id": "47",
-      "date": "2026-02-16",
-      "status": "Planned",
-      "title": "Smoke Tests for Installer Flow and Engine/Client Interaction",
-      "summary": "Add dedicated smoke tests in a root tests directory to verify dev installer execution, Engine/Client interaction, and guaranteed cleanup of dev test services."
-    },
-    {
-      "id": "48",
-      "date": "2026-02-16",
-      "status": "Done",
-      "title": "Split Architecture Smoke Test (Engine/Client Boundaries + Bridge Flow)",
-      "summary": "Add a dedicated smoke test that validates Engine/Client endpoint ownership, health checks, and Client-to-Engine bridge interaction flow with clear failure diagnostics."
-    },
-    {
-      "id": "42",
+      "id": "task-changelog-as-public-task-board",
       "date": "2026-02-14",
       "status": "Planned",
       "title": "Changelog as Public Task Board",
       "summary": "Show roadmap-style tasks with status fields and split views for completed and not completed tasks in the client."
     },
     {
-      "id": "49",
-      "date": "2026-02-17",
-      "status": "Done",
-      "title": "Strict Client-Engine Decoupling (API-Only Contract)",
-      "summary": "Remove direct Client imports of Engine modules and direct Engine DB reads, and enforce interaction only via explicit Engine HTTP read/bridge contracts."
+      "id": "task-engine-client-architecture-split-with-bridge-ap-foundation",
+      "date": "2026-02-16",
+      "status": "Planned",
+      "title": "Engine/Client Architecture Split with Bridge (ActivityPub-Ready)",
+      "summary": "Separate Engine into read-only analytics API, move user actions to client responsibility, and add a temporary bridge ingest contract prepared for future ActivityPub integration."
     },
     {
-      "id": "50",
-      "date": "2026-02-17",
-      "status": "Planned",
-      "title": "Engine Recommendations: Interaction-Signals Only (No Local Users DB Likes)",
-      "summary": "Finish split architecture by removing Engine recommendation dependence on local users likes tables and using only bridge-ingested aggregated interaction signals for write-derived ranking inputs."
+      "id": "task-real-client-ip-and-full-url-in-access-logs",
+      "date": "2026-02-14",
+      "status": "Done",
+      "title": "Real Client IP and Full URL in Access Logs",
+      "summary": "Server access logs now resolve client IP from forwarded headers and log the full request URL, including query string."
     }
   ]
 }

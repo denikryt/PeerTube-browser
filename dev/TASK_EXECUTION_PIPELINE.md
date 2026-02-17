@@ -6,11 +6,10 @@ Use it before implementing any task bundle.
 ## Recommended implementation order
 
 Block A (`35 -> 32 -> 31 -> 34 -> 36`) is completed and moved to `COMPLETED_TASKS.md`.
-Task 45 is completed and moved to `COMPLETED_TASKS.md`.
 
 ### Execution sequence (recommended)
-1. **50** (remove Engine users-like DB dependency in recommendation path)  
-   Keep split architecture strict by using request likes + aggregated interaction signals only in Engine ranking flow.
+1. **45** (Engine/Client architecture split + temporary bridge ingest, ActivityPub-ready)  
+   Establish service boundaries and AP-ready event contract before feature work that depends on API shape and write/read responsibility.
 2. **37** (stable ANN IDs: `video_id+host -> int64`)  
    First establish stable ANN id contract before further similarity tuning.
 3. **30** (incremental similar cache + config defaults)  
@@ -29,8 +28,8 @@ Task 45 is completed and moved to `COMPLETED_TASKS.md`.
    Mostly orthogonal product features.
 10. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
    Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
-11. **46** then **47** then **16l** then **39** then **44** then **40** (prod/dev installers + smoke tests + cache runtime safety + similarity shadow swap + zero-downtime deploy)  
-   First establish contour-isolated Engine/Client installer primitives, then lock smoke coverage for installer/runtime interaction contracts, then add background/atomic cache refresh primitives, then startup no-downtime hardening, then similarity-cache shadow cutover, then blue/green nginx switch automation.
+11. **16l** then **39** then **44** then **40** (cache runtime safety + similarity shadow swap + zero-downtime deploy)  
+   First background/atomic cache refresh primitives, then startup no-downtime hardening, then similarity-cache shadow cutover, then blue/green nginx switch automation.
 12. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
 13. **42** (public roadmap changelog with status + client filters)  
@@ -41,8 +40,8 @@ Task 45 is completed and moved to `COMPLETED_TASKS.md`.
   - Tasks: **35 -> 32 -> 31 -> 34 -> 36**
   - Scope: permanent deny/block rules, purge tooling, guaranteed exclusion during sync/crawl/merge, and one integrated regression pass for the whole block.
 - **Block B: Architecture split and federation readiness**
-  - Tasks: **50**
-  - Scope: finalize split contracts by removing Engine recommendation dependence on local users-like tables and keeping interaction-signal-driven ranking inputs.
+  - Tasks: **45**
+  - Scope: enforce Engine read-only boundary, move user actions to client responsibility, and introduce temporary bridge ingest contract compatible with future ActivityPub.
 - **Block C: Similarity and recommendation core**
   - Tasks: **37 -> 30 -> 33 -> 12a**
   - Scope: ANN/similarity defaults, impacted recompute, upnext diversity, popular-layer sampling quality.
@@ -62,25 +61,21 @@ Task 45 is completed and moved to `COMPLETED_TASKS.md`.
   - Tasks: **41 -> 38 -> 43**
   - Scope: explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/Changelog.
 - **Block I: Runtime reliability and operations**
-  - Tasks: **46 -> 47 -> 16l -> 39 -> 44 -> 40**
-  - Scope: contour-isolated prod/dev service installers for Engine+Client, smoke coverage for install/runtime interaction contracts, safe cache refresh/swap runtime behavior (random + similarity), and automated blue/green nginx cutover.
+  - Tasks: **16l -> 39 -> 44 -> 40**
+  - Scope: safe cache refresh/swap runtime behavior (random + similarity) and automated blue/green nginx cutover.
 - **Block J: Public roadmap and changelog UX**
   - Tasks: **42**
   - Scope: roadmap-style public changelog entries with task statuses and client-side completed/not-completed filters.
 
 ### Cross-task overlaps and dependencies
-- **50 <-> 3/1/2/4/9/9b/8b/10**: these tasks rely on stable API boundaries and request ownership.  
-  Keep post-split contracts strict to avoid repeated rewrites of routes and service responsibilities.
-- **50 <-> 30/33/12a**: similarity/recommendation tuning should use final signal-source contract.  
-  Land **50** before core recommendation tuning to prevent duplicate rewrites across source/feature selection logic.
-- **50 <-> 38/41/43**: request tracing/logging spans multiple services after split and should reflect final recommendation input sources.  
-  Keep correlated logging conventions aligned with post-50 Engine/Client runtime behavior.
-- **50 <-> 46/47/16l/39/44/40**: runtime/deploy automation and smoke checks should target the finalized signal-source contract as well.  
-  Keep installer/smoke/runtime hardening aligned with post-50 Engine/Client behavior to avoid service-level rework.
-- **46 <-> 47**: smoke tests validate the installer contracts directly (unit names, ports, timer modes, cleanup guarantees).  
-  Land installer contour and unit naming contracts first to avoid immediate smoke test rewrites.
-- **47 <-> 39/44/40**: runtime/deploy changes can affect smoke assumptions and readiness/interaction checks.  
-  Keep smoke scripts aligned with post-installer runtime contracts to avoid flaky operational verification.
+- **45 <-> 3/1/2/4/9/9b/8b/10**: these tasks rely on stable API boundaries and request ownership.  
+  Land architecture split (**45**) first to avoid repeated rewrites of routes and client/server responsibility.
+- **45 <-> 30/33/12a**: recommendation work should target post-split Engine contracts.  
+  Keep ranking/similar pipeline changes aligned with read-only Engine and bridge-based signal ingest.
+- **45 <-> 38/41/43**: request tracing/logging spans multiple services after split.  
+  Define service boundaries and request-path ownership first, then finalize correlated logging conventions.
+- **45 <-> 16l/39/44/40**: runtime/deploy automation depends on final service topology.  
+  Separate Engine/Client service model first, then harden startup/cache/deploy operations around that topology.
 - **37 <-> 30 <-> 33**: same ANN/similarity core and ID contracts.  
   Stable ANN id source (**37**) must land before tuning/recompute behavior (**30**, **33**) to avoid duplicate rewrites.
 - **30 <-> 33**: same ANN/similarity knobs (`top-k`, `nprobe`, precompute behavior).  
