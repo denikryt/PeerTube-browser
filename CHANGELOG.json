@@ -179,8 +179,8 @@
       "id": "46",
       "date": "2026-02-16",
       "status": "Planned",
-      "title": "Prod/Dev Service Installers for Isolated Engine+Client Contours",
-      "summary": "Add production and development installer wrappers over shared install logic so Engine and Client run as separate contour-specific services without cross-impact."
+      "title": "Prod/Dev Installers: Separate Engine/Client Installers + Centralized Mode Installer",
+      "summary": "Add dedicated Engine and Client installers plus one centralized mode-based installer (prod/dev) so both contours use separate systemd unit names, isolated ports, and can run in parallel without cross-impact."
     },
     {
       "id": "47",

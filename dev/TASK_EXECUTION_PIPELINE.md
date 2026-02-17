@@ -24,8 +24,8 @@ Use it before implementing any task bundle.
    Mostly orthogonal product features.
 9. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
    Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
-10. **46** then **47** then **16l** then **39** then **44** then **40** (prod/dev installers + smoke tests + cache runtime safety + similarity shadow swap + zero-downtime deploy)  
-   First establish contour-isolated Engine/Client installer primitives, then lock smoke coverage for installer/runtime interaction contracts, then add background/atomic cache refresh primitives, then startup no-downtime hardening, then similarity-cache shadow cutover, then blue/green nginx switch automation.
+10. **46** then **47** then **16l** then **39** then **44** then **40** (service-specific installers + centralized mode installer + smoke tests + cache runtime safety + similarity shadow swap + zero-downtime deploy)  
+   First establish contour-isolated Engine/Client service-specific installers and centralized prod/dev mode orchestration, then lock smoke coverage for installer/runtime interaction contracts, then add background/atomic cache refresh primitives, then startup no-downtime hardening, then similarity-cache shadow cutover, then blue/green nginx switch automation.
 11. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
 12. **42** (public roadmap changelog with status + client filters)  
@@ -52,14 +52,14 @@ Use it before implementing any task bundle.
   - Scope: explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/Changelog.
 - **Block G: Runtime reliability and operations**
   - Tasks: **46 -> 47 -> 16l -> 39 -> 44 -> 40**
-  - Scope: contour-isolated prod/dev service installers for Engine+Client, smoke coverage for install/runtime interaction contracts, safe cache refresh/swap runtime behavior (random + similarity), and automated blue/green nginx cutover.
+  - Scope: contour-isolated prod/dev Engine+Client service-specific installers plus centralized mode orchestration, smoke coverage for install/runtime interaction contracts, safe cache refresh/swap runtime behavior (random + similarity), and automated blue/green nginx cutover.
 - **Block H: Public roadmap and changelog UX**
   - Tasks: **42**
   - Scope: roadmap-style public changelog entries with task statuses and client-side completed/not-completed filters.
 
 ### Cross-task overlaps and dependencies
-- **46 <-> 47**: smoke tests validate the installer contracts directly (unit names, ports, timer modes, cleanup guarantees).  
-  Land installer contour and unit naming contracts first to avoid immediate smoke test rewrites.
+- **46 <-> 47**: smoke tests validate installer contracts directly (service-specific installers, centralized mode flags, unit names, ports, timer modes, cleanup guarantees).  
+  Land installer contour/mode contracts first to avoid immediate smoke test rewrites.
 - **47 <-> 39/44/40**: runtime/deploy changes can affect smoke assumptions and readiness/interaction checks.  
   Keep smoke scripts aligned with post-installer runtime contracts to avoid flaky operational verification.
 - **37 <-> 30 <-> 33**: same ANN/similarity core and ID contracts.  

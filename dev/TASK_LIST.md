@@ -505,49 +505,53 @@
   - concurrency test: no read errors during swap/reopen,
   - rollback test: forced swap failure restores previous cache and keeps `/api/health` green.
 
-### 46) Prod/Dev service installers: isolated Engine+Client contours with wrapper entrypoints
-**Problem:** current `install-service.sh` installs one API unit (`peertube-browser`) and does not expose contour-aware Engine/Client install contract. Dev/prod wrapper behavior exists only as recovery artifacts (`tmp/recovery-vscode-history/install-service-dev.sh`, `tmp/recovery-vscode-history/install-service-prod.sh`) and is not integrated into the active repository flow.
+### 46) Prod/Dev service installers: separate Engine/Client installers + centralized mode installer
+**Problem:** current install flow does not provide first-class split installers for Engine and Client, and does not provide one centralized mode-driven installer contract for prod/dev contours with strict runtime isolation.
 
-**Solution option:** implement two first-class installer entrypoints (`install-service-prod.sh` and `install-service-dev.sh`) over shared install primitives so prod and dev can run in parallel without cross-impact.
+**Solution option:** implement separate service installers for Engine and Client, plus one centralized installer entrypoint that installs/starts contour-specific services by explicit mode flags.
 
 #### **Solution details:**
-- **Installer contours (mandatory):**
-  - `install-service-prod.sh` and `install-service-dev.sh` are top-level wrappers that call shared logic in `install-service.sh`.
-  - Both contours install two services: Engine and Client (separate systemd units).
-  - Service naming must be contour-specific:
+- **Installer topology (mandatory):**
+  - Add separate installers for services:
+    - Engine installer (`...engine...install...sh`),
+    - Client installer (`...client...install...sh`).
+  - Each service-specific installer must support its own explicit install mode flags (`prod` / `dev`) and render/install contour-specific unit names and ports accordingly.
+  - Add one centralized installer/orchestrator (`install-service.sh`) that invokes Engine + Client installers as one action.
+  - Keep convenience wrappers for mode presets (`install-service-prod.sh`, `install-service-dev.sh`) if needed, but centralized mode installer is the source of truth.
+- **Centralized mode contract (mandatory):**
+  - Centralized installer must accept explicit mode flags (at minimum `prod` / `dev`; optional `all` to run both contours in one command).
+  - One command in a given mode installs/updates both services for that contour (Engine + Client).
+  - Shared flags expose contour-specific unit names, ports, timer toggle, and endpoint wiring.
+  - Centralized mode values must be passed through to service-specific installers (no hidden hardcoded contour inside service installers).
+- **Systemd naming and contour isolation:**
+  - Prod and Dev must use different unit names:
     - prod: `peertube-engine`, `peertube-client`, optional `peertube-updater`,
     - dev: `peertube-engine-dev`, `peertube-client-dev`, optional `peertube-updater-dev`.
+  - Reinstall/restart operations for one contour must not modify/stop the other contour.
+- **Ports and routing isolation:**
+  - Dev ports must be different from prod ports so both contours can run in parallel.
+  - Dev Client must call only Dev Engine endpoint.
+  - Prod Client must call only Prod Engine endpoint.
 - **Prod behavior (default):**
-  - Default install mode is force-reinstall for prod units:
+  - Prod mode defaults to force-reinstall for prod units only:
     - stop/disable existing prod units,
     - remove/recreate unit files,
-    - reload systemd and restart units.
-  - This force behavior applies only to prod contour units (must not touch dev units).
-- **Dev behavior (flags + isolation):**
-  - Dev installer supports explicit timer mode toggle (with timer / without timer).
-  - Dev services run on ports different from prod defaults and can run simultaneously with prod.
-  - Dev Client must target local Dev Engine endpoint (no cross-call into prod Engine).
-  - Dev reinstall/restart operations must not stop/modify prod units.
-- **Shared installer contract:**
-  - Keep common preflight, unit rendering, enable/start, and post-check logic in `install-service.sh`.
-  - Expose shared flags for contour-specific unit names, hosts, ports, and Engine ingest base URL.
-  - Keep strict validation of provided service names/ports and explicit failure logs.
-- **Compatibility expectations:**
-  - Preserve current prod runtime contract for Client->Engine behavior unless overridden by explicit contour flags.
-  - Keep wrapper UX simple and predictable:
-    - prod: opinionated reinstall defaults,
-    - dev: local development isolation defaults.
+    - reload systemd and restart prod units.
+- **Dev behavior (flags + local workflow):**
+  - Dev mode supports explicit timer toggle (with timer / without timer).
+  - Dev defaults are optimized for local parallel testing and must not affect prod units.
 - **Validation / tests:**
-  - `--help` contract tests for all three scripts (`install-service.sh`, `install-service-prod.sh`, `install-service-dev.sh`).
+  - `--help` contract tests for centralized installer, wrappers (if present), and service-specific installers.
+  - Mode contract tests for each service-specific installer: `engine-installer --mode prod/dev` and `client-installer --mode prod/dev` must produce expected contour unit names/ports.
   - Smoke test: install prod contour, then install dev contour, verify both Engine/Client pairs are active simultaneously.
-  - Port/endpoint check: dev Client routes only to dev Engine; prod Client routes only to prod Engine.
-  - Timer toggle check: dev with/without timer behaves according to flag; prod default behavior remains explicit.
+  - Port/endpoint check: strict contour-local routing (dev->dev, prod->prod).
+  - Mode flag check: `prod` and `dev` modes install expected unit names/ports; timer toggle behavior is explicit for dev.
 
 #### **Affected areas/files (expected):**
-- Shared installer core: `install-service.sh`.
-- New wrappers: `install-service-prod.sh`, `install-service-dev.sh`.
+- Centralized installer/orchestrator: `install-service.sh`.
+- Service-specific installers: `install-engine-service.sh`, `install-client-service.sh` (or equivalent explicit names).
+- Mode wrappers (optional but recommended): `install-service-prod.sh`, `install-service-dev.sh`.
 - Service docs/runbooks: `DEPLOYMENT.md`, `README.md` (service install section).
-- Optional cleanup alignment (if present later): uninstall scripts for matching contour unit names.
 
 ### 47) Smoke tests for installers and Engine/Client service interaction (with guaranteed cleanup)
 **Problem:** after adding contour-aware installers, there is no automated smoke verification that (a) dev installer flow is executable end-to-end and leaves no residual services, and (b) Engine/Client interaction works through expected endpoints.
