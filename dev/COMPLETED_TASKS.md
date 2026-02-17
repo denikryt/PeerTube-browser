@@ -1,5 +1,15 @@
 # Completed tasks
 
+### 49) Remove direct Client->Engine code/DB coupling (API-only contract) (done)
+**Done:** enforced strict API-only Client/Engine interaction and removed direct Client coupling to Engine internals.
+
+#### **What was implemented:**
+- Removed Client imports from `engine.server.*` and eliminated direct Engine DB access from `client/backend/server.py`.
+- Added Client-owned helper modules under `client/backend/lib/*` for HTTP/time/users helpers and Engine API access.
+- Added Engine internal read endpoints for Client flow (`/internal/videos/resolve`, `/internal/videos/metadata`) and wired routing.
+- Added boundary regression script `tests/check-client-engine-boundary.sh` and integrated it into `tests/run-arch-split-smoke.sh`.
+- Updated split-boundary docs in `README.md`, `DEPLOYMENT.md`, `client/backend/README.md`, and `engine/server/README.md`.
+
 ### 48) Split architecture smoke test: Engine/Client boundary + bridge flow + endpoint contracts (done)
 **Done:** added a dedicated split-boundary smoke test with bridge-flow checks and structured diagnostics.
 

@@ -47,6 +47,10 @@ CLIENT_PUBLISH_MODE=bridge ./venv/bin/python3 client/backend/server.py \
   --engine-ingest-base http://127.0.0.1:7070
 ```
 
+Boundary contract (mandatory):
+- Client backend talks to Engine only over HTTP (`/internal/videos/resolve`, `/internal/videos/metadata`, `/internal/events/ingest`).
+- Client backend must not import `engine.server.*` modules and must not open `engine/server/db/*` files.
+
 ## 5) Serve the client
 You can serve the static build with any web server. The simplest local option:
 ```bash

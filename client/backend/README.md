@@ -10,6 +10,7 @@ Write/profile API service for PeerTube Browser Client.
   - `GET /api/user-profile`
 - Publishes normalized interaction events to Engine bridge:
   - Engine endpoint: `POST /internal/events/ingest`
+- Uses Engine read API over HTTP for video resolve/metadata (no direct Engine DB access).
 
 ## Run
 ```bash

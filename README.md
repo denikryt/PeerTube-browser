@@ -40,7 +40,9 @@ it is a transparent, controllable pipeline.
 ## Current service split
 - Engine API (read): `/recommendations`, `/videos/{id}/similar`, `/videos/similar`, `/api/video`, `/api/health`.
 - Client backend (write/profile): `/api/user-action`, `/api/user-profile/*`.
+- Internal Client->Engine read contract: `/internal/videos/resolve`, `/internal/videos/metadata`.
 - Temporary bridge contract: Client backend publishes events to Engine `/internal/events/ingest`.
+- Boundary rule: Client backend must not import `engine.server.*` modules and must not read `engine/server/db/*` directly.
 
 ## Split architecture smoke test
 Run the boundary/bridge smoke test:

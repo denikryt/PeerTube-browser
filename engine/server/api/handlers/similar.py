@@ -7,6 +7,8 @@ Routes:
 - /api/health: health check.
 - /api/channels: channels listing.
 - /api/video: single video metadata.
+- /internal/videos/resolve: internal Client read lookup by video_id/uuid(+host).
+- /internal/videos/metadata: internal Client metadata batch lookup.
 - /internal/events/ingest: internal bridge ingest for normalized events.
 
 Key steps:
@@ -43,6 +45,10 @@ from server_config import (
 from http_utils import read_json_body, respond_json, respond_options, resolve_user_id
 from request_context import clear_request_context, set_request_client_likes, fetch_recent_likes_request
 from handlers.internal_events import handle_internal_events_ingest
+from handlers.internal_client_reads import (
+    handle_internal_video_resolve,
+    handle_internal_videos_metadata,
+)
 from handlers.video import handle_video_request
 
 
@@ -204,6 +210,12 @@ class SimilarHandler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path in SIMILAR_POST_ROUTES:
             self._handle_similar_request(method="POST")
+            return
+        if url.path == "/internal/videos/resolve":
+            handle_internal_video_resolve(self, self.server)
+            return
+        if url.path == "/internal/videos/metadata":
+            handle_internal_videos_metadata(self, self.server)
             return
         if url.path == "/internal/events/ingest":
             if getattr(self.server, "engine_ingest_mode", "bridge") != "bridge":

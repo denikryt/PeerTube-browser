@@ -7,6 +7,8 @@ This service does not own user write/profile endpoints.
 - `/recommendations` recommendations.
 - `/videos/{id}/similar` and `/videos/similar` read aliases.
 - `/api/video` metadata for the video page.
+- `/internal/videos/resolve` internal read lookup for Client (`video_id/uuid + host`).
+- `/internal/videos/metadata` internal metadata batch lookup for Client likes/profile.
 - `/internal/events/ingest` temporary trusted bridge ingest for normalized events
   (`ENGINE_INGEST_MODE=bridge`).
 

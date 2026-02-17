@@ -206,7 +206,7 @@
     {
       "id": "49",
       "date": "2026-02-17",
-      "status": "Planned",
+      "status": "Done",
       "title": "Strict Client-Engine Decoupling (API-Only Contract)",
       "summary": "Remove direct Client imports of Engine modules and direct Engine DB reads, and enforce interaction only via explicit Engine HTTP read/bridge contracts."
     }

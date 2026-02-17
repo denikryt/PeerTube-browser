@@ -6,15 +6,16 @@ Project-level execution rules for task work in this repository.
 
 Before implementing any task or task bundle, always:
 
-1. Read `dev/TASK_EXECUTION_PIPELINE.md`.
-2. Read `dev/TASK_EXECUTION_PROTOCOL.md`.
-3. If multiple tasks are requested:
+1. Read the exact task text in `dev/TASK_LIST.md` for the task being executed.
+2. Read `dev/TASK_EXECUTION_PIPELINE.md`.
+3. Read `dev/TASK_EXECUTION_PROTOCOL.md`.
+4. If multiple tasks are requested:
    - build execution order from `dev/TASK_EXECUTION_PIPELINE.md`,
    - identify overlaps/dependencies before coding.
-4. If any task text is added/edited in `dev/TASK_LIST.md`:
+5. If any task text is added/edited in `dev/TASK_LIST.md`:
    - explicitly check whether `dev/TASK_EXECUTION_PIPELINE.md` needs updates (order, block, overlaps),
    - apply pipeline changes in the same edit run when needed.
-5. Before adding a new task (or rewriting an existing one), inspect the real implementation context in code first:
+6. Before adding a new task (or rewriting an existing one), inspect the real implementation context in code first:
    - read the relevant modules/handlers/scripts/configs/tests,
    - verify how the feature currently works in this repository,
    - then write task steps based on actual code paths/files (not only high-level assumptions).
@@ -37,6 +38,7 @@ Before implementing any task or task bundle, always:
 2. Any message that does not contain an explicit command in the format `выполни задачу X` is treated as non-execution (clarification, planning, edits of task text, review, or discussion only).
 3. If the user intent looks like execution but the command format is not explicit, ask for a direct command in the required format and do not start implementation.
 4. User confirmation that a task is completed is separate from execution start and must still be explicit (see Task state management rules below).
+5. On every explicit execution command `выполни задачу X`, first re-read in this order: task `X` in `dev/TASK_LIST.md` -> `dev/TASK_EXECUTION_PIPELINE.md` -> `dev/TASK_EXECUTION_PROTOCOL.md`; only after that start implementation.
 
 ## Task state management
 

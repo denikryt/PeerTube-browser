@@ -8,8 +8,8 @@ Use it before implementing any task bundle.
 Block A (`35 -> 32 -> 31 -> 34 -> 36`) is completed and moved to `COMPLETED_TASKS.md`.
 
 ### Execution sequence (recommended)
-1. **45** then **49** (Engine/Client architecture split + temporary bridge ingest, then hard API-only decoupling)  
-   First establish service boundaries/bridge contract, then remove residual Client->Engine code/DB coupling so the split is strict before dependent feature work.
+1. **45** (Engine/Client architecture split + temporary bridge ingest)  
+   Establish service boundaries and bridge contract first before dependent feature and runtime work.
 2. **37** (stable ANN IDs: `video_id+host -> int64`)  
    First establish stable ANN id contract before further similarity tuning.
 3. **30** (incremental similar cache + config defaults)  
@@ -40,8 +40,8 @@ Block A (`35 -> 32 -> 31 -> 34 -> 36`) is completed and moved to `COMPLETED_TASK
   - Tasks: **35 -> 32 -> 31 -> 34 -> 36**
   - Scope: permanent deny/block rules, purge tooling, guaranteed exclusion during sync/crawl/merge, and one integrated regression pass for the whole block.
 - **Block B: Architecture split and federation readiness**
-  - Tasks: **45 -> 49**
-  - Scope: enforce Engine read-only boundary, move user actions to client responsibility, introduce temporary bridge ingest contract, and remove direct Client->Engine code/DB coupling in favor of API-only interaction.
+  - Tasks: **45**
+  - Scope: enforce Engine read-only boundary, move user actions to client responsibility, and introduce temporary bridge ingest contract.
 - **Block C: Similarity and recommendation core**
   - Tasks: **37 -> 30 -> 33 -> 12a**
   - Scope: ANN/similarity defaults, impacted recompute, upnext diversity, popular-layer sampling quality.
@@ -70,14 +70,12 @@ Block A (`35 -> 32 -> 31 -> 34 -> 36`) is completed and moved to `COMPLETED_TASK
 ### Cross-task overlaps and dependencies
 - **45 <-> 3/1/2/4/9/9b/8b/10**: these tasks rely on stable API boundaries and request ownership.  
   Land architecture split (**45**) first to avoid repeated rewrites of routes and client/server responsibility.
-- **45 <-> 49**: task 45 establishes split topology and bridge contract, while task 49 removes residual direct code/DB coupling.  
-  Execute **49** right after **45** to make the split strict before further feature/runtime work.
 - **45 <-> 30/33/12a**: recommendation work should target post-split Engine contracts.  
   Keep ranking/similar pipeline changes aligned with read-only Engine and bridge-based signal ingest.
 - **45 <-> 38/41/43**: request tracing/logging spans multiple services after split.  
   Define service boundaries and request-path ownership first, then finalize correlated logging conventions.
-- **49 <-> 46/47/16l/39/44/40**: runtime/deploy automation and smoke checks should target the final strict API-only split.  
-  Land decoupling (**49**) before installer/smoke/runtime hardening to avoid rework in service contracts and diagnostics.
+- **45 <-> 46/47/16l/39/44/40**: runtime/deploy automation and smoke checks should target the finalized split contracts.  
+  Keep installer/smoke/runtime hardening aligned with Engine/Client boundary contracts to avoid service-level rework.
 - **46 <-> 47**: smoke tests validate the installer contracts directly (unit names, ports, timer modes, cleanup guarantees).  
   Land installer contour and unit naming contracts first to avoid immediate smoke test rewrites.
 - **47 <-> 39/44/40**: runtime/deploy changes can affect smoke assumptions and readiness/interaction checks.  

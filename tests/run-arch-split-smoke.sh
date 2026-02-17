@@ -28,6 +28,7 @@ LAST_METHOD=""
 LAST_URL=""
 LAST_STATUS=""
 LAST_BODY_FILE=""
+REQUEST_STATUS=""
 CLEANUP_DONE=0
 
 declare -a ERRORS=()
@@ -247,15 +248,16 @@ request_json() {
   LAST_NAME="${name}"
   LAST_METHOD="${method}"
   LAST_URL="${url}"
-  LAST_STATUS="${status}"
   LAST_BODY_FILE="${body_file}"
 
   if (( curl_exit != 0 )); then
-    echo "CURL_ERROR:${curl_exit}"
+    REQUEST_STATUS="CURL_ERROR:${curl_exit}"
+    LAST_STATUS="${REQUEST_STATUS}"
     return 0
   fi
 
-  echo "${status}"
+  REQUEST_STATUS="${status}"
+  LAST_STATUS="${REQUEST_STATUS}"
 }
 
 wait_for_health_200() {
@@ -264,7 +266,8 @@ wait_for_health_200() {
   local timeout="$3"
   local status=""
   for ((i = 0; i < timeout; i++)); do
-    status="$(request_json "${name}" GET "${url}")"
+    request_json "${name}" GET "${url}"
+    status="${REQUEST_STATUS}"
     if [[ "${status}" == "200" ]]; then
       return 0
     fi
@@ -363,7 +366,8 @@ check_status_eq() {
   local body="${5-}"
   CHECK_COUNT=$((CHECK_COUNT + 1))
   local status
-  status="$(request_json "${name}" "${method}" "${url}" "${body}")"
+  request_json "${name}" "${method}" "${url}" "${body}"
+  status="${REQUEST_STATUS}"
   if [[ "${status}" == CURL_ERROR:* ]]; then
     log_check_result "FAIL" "${name}" "${method}" "${url}" "${status}" "=${expected}"
     record_error "${name}: request failed (${status})"
@@ -384,7 +388,8 @@ check_status_non_success() {
   local body="${4-}"
   CHECK_COUNT=$((CHECK_COUNT + 1))
   local status
-  status="$(request_json "${name}" "${method}" "${url}" "${body}")"
+  request_json "${name}" "${method}" "${url}" "${body}"
+  status="${REQUEST_STATUS}"
   if [[ "${status}" == CURL_ERROR:* ]]; then
     log_check_result "FAIL" "${name}" "${method}" "${url}" "${status}" ">=400"
     record_error "${name}: request failed (${status})"
@@ -401,6 +406,17 @@ check_status_non_success() {
     return
   fi
   log_check_result "PASS" "${name}" "${method}" "${url}" "${status}" ">=400"
+}
+
+run_boundary_contract_check() {
+  local name="client_engine_boundary_contract"
+  CHECK_COUNT=$((CHECK_COUNT + 1))
+  if bash "${ROOT_DIR}/tests/check-client-engine-boundary.sh" >"${TMP_DIR}/${name}.log" 2>&1; then
+    log_check_result "PASS" "${name}" "CHECK" "${ROOT_DIR}/tests/check-client-engine-boundary.sh" "OK" "no direct engine.server imports or Engine DB paths in client/backend"
+    return
+  fi
+  log_check_result "FAIL" "${name}" "CHECK" "${ROOT_DIR}/tests/check-client-engine-boundary.sh" "ERROR" "no direct engine.server imports or Engine DB paths in client/backend"
+  record_error "${name}: $(sed -n '1,120p' "${TMP_DIR}/${name}.log" | tr '\n' ' ' | sed 's/[[:space:]]\\+/ /g')"
 }
 
 ENGINE_HOST="$(url_part "${ENGINE_URL}" host)"
@@ -433,6 +449,10 @@ if (( ERROR_COUNT == 0 )); then
   if ! is_port_free "${CLIENT_PORT}"; then
     record_error "Client port is already in use: ${CLIENT_HOST}:${CLIENT_PORT}"
   fi
+fi
+
+if (( ERROR_COUNT == 0 )); then
+  run_boundary_contract_check
 fi
 
 if (( ERROR_COUNT == 0 )); then

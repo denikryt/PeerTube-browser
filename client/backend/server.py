@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import sqlite3
-import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -16,41 +15,20 @@ from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
+from lib.engine_api_client import (EngineApiError, fetch_metadata_for_entries,
+                                   resolve_video_seed, resolve_videos_by_uuid_host)
+from lib.http_utils import (RateLimiter, read_json_body, resolve_user_id,
+                            respond_json, respond_options)
+from lib.time_utils import now_ms
+from lib.users_store import (clear_likes, ensure_user_schema, fetch_recent_likes,
+                             get_or_create_user, record_like, remove_like)
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = SCRIPT_DIR.parent.parent
-ENGINE_SERVER_DIR = ROOT_DIR / "engine" / "server"
-ENGINE_API_DIR = ENGINE_SERVER_DIR / "api"
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-if str(ENGINE_SERVER_DIR) not in sys.path:
-    sys.path.insert(0, str(ENGINE_SERVER_DIR))
-if str(ENGINE_API_DIR) not in sys.path:
-    sys.path.insert(0, str(ENGINE_API_DIR))
-
-from engine.server.api.http_utils import (  # type: ignore
-    RateLimiter,
-    read_json_body,
-    respond_json,
-    respond_options,
-    resolve_user_id,
-)
-from engine.server.data.embeddings import fetch_seed_embedding  # type: ignore
-from engine.server.data.metadata import fetch_metadata_by_ids  # type: ignore
-from engine.server.data.time import now_ms  # type: ignore
-from engine.server.data.users import (  # type: ignore
-    clear_likes,
-    ensure_user_schema,
-    fetch_recent_likes,
-    get_or_create_user,
-    record_like,
-)
-from engine.server.api.recommendations.keys import like_key  # type: ignore
-
 
 DEFAULT_CLIENT_HOST = "127.0.0.1"
 DEFAULT_CLIENT_PORT = 7172
 DEFAULT_ENGINE_INGEST_BASE = "http://127.0.0.1:7171"
-DEFAULT_ENGINE_DB_PATH = "engine/server/db/whitelist.db"
 DEFAULT_USERS_DB_PATH = "client/backend/db/users.db"
 DEFAULT_CLIENT_PUBLISH_MODE = os.environ.get("CLIENT_PUBLISH_MODE", "bridge").strip().lower()
 MAX_LIKES = 100
@@ -68,7 +46,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run PeerTube Client backend service.")
     parser.add_argument("--host", default=DEFAULT_CLIENT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_CLIENT_PORT)
-    parser.add_argument("--engine-db", default=DEFAULT_ENGINE_DB_PATH)
     parser.add_argument("--users-db", default=DEFAULT_USERS_DB_PATH)
     parser.add_argument("--engine-ingest-base", default=DEFAULT_ENGINE_INGEST_BASE)
     parser.add_argument("--publish-mode", default=_resolve_mode(DEFAULT_CLIENT_PUBLISH_MODE))
@@ -88,14 +65,12 @@ class ClientBackendServer(ThreadingHTTPServer):
         self,
         server_address: tuple[str, int],
         handler_class: type[BaseHTTPRequestHandler],
-        engine_db: sqlite3.Connection,
         user_db: sqlite3.Connection,
         engine_ingest_base: str,
         publish_mode: str,
         rate_limiter: RateLimiter,
     ) -> None:
         super().__init__(server_address, handler_class)
-        self.engine_db = engine_db
         self.user_db = user_db
         self.engine_ingest_base = engine_ingest_base.rstrip("/")
         self.publish_mode = _resolve_mode(publish_mode)
@@ -192,27 +167,46 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
             respond_json(self, 400, {"error": "Missing video_id or uuid"})
             return
         user_id = resolve_user_id(str(user_id_raw) if user_id_raw is not None else None)
-        seed = fetch_seed_embedding(
-            self.server.engine_db,
-            str(video_id) if video_id is not None else None,
-            str(host) if host is not None else None,
-            str(uuid) if uuid is not None else None,
-        )
-        if not seed:
-            respond_json(self, 404, {"error": "Video embedding not found"})
+
+        try:
+            seed = resolve_video_seed(
+                self.server.engine_ingest_base,
+                str(video_id) if video_id is not None else None,
+                str(host) if host is not None else None,
+                str(uuid) if uuid is not None else None,
+            )
+        except EngineApiError as exc:
+            respond_json(self, 502, {"error": f"Engine resolve failed: {exc}"})
             return
+
+        if not seed:
+            respond_json(self, 404, {"error": "Video not found in Engine"})
+            return
+
+        canonical_video_id = str(seed.get("video_id") or "")
+        canonical_host = str(seed.get("instance_domain") or "")
+        canonical_uuid = str(seed.get("video_uuid") or "")
+        if not canonical_video_id or not canonical_host:
+            respond_json(self, 502, {"error": "Engine resolve returned incomplete identity"})
+            return
+
         if action == "like":
             with self.server.user_db:
-                record_like(self.server.user_db, user_id, "like", seed, MAX_LIKES)
+                record_like(
+                    self.server.user_db,
+                    user_id,
+                    "like",
+                    {
+                        "video_id": canonical_video_id,
+                        "video_uuid": canonical_uuid,
+                        "instance_domain": canonical_host,
+                    },
+                    MAX_LIKES,
+                )
             event_type = "Like"
         else:
             with self.server.user_db:
-                _remove_like(
-                    self.server.user_db,
-                    user_id,
-                    str(seed.get("video_id") or ""),
-                    str(seed.get("instance_domain") or ""),
-                )
+                remove_like(self.server.user_db, user_id, canonical_video_id, canonical_host)
             event_type = "UndoLike"
 
         event_payload = {
@@ -220,12 +214,12 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
             "event_type": event_type,
             "actor_id": user_id,
             "object": {
-                "video_uuid": seed.get("video_uuid") or "",
-                "instance_domain": seed.get("instance_domain") or "",
-                "canonical_url": None,
+                "video_uuid": canonical_uuid,
+                "instance_domain": canonical_host,
+                "canonical_url": seed.get("video_url"),
             },
             "published_at": now_ms(),
-            "source_instance": seed.get("instance_domain") or "",
+            "source_instance": canonical_host,
             "raw_payload": body,
         }
         bridge_result = _publish_event(
@@ -266,7 +260,11 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         with self.server.user_db:
             get_or_create_user(self.server.user_db, user_id)
             likes = fetch_recent_likes(self.server.user_db, user_id, limit)
-        rows = _resolve_likes_to_metadata(self.server.engine_db, likes)
+        try:
+            rows = fetch_metadata_for_entries(self.server.engine_ingest_base, likes)
+        except EngineApiError as exc:
+            respond_json(self, 502, {"error": f"Engine metadata failed: {exc}"})
+            return
         respond_json(self, 200, {"user_id": user_id, "likes": rows, "updatedAt": now_ms()})
 
     def _handle_user_profile_likes_from_client(self) -> None:
@@ -279,8 +277,12 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         if not likes:
             respond_json(self, 200, {"likes": [], "updatedAt": now_ms()})
             return
-        resolved = _resolve_client_likes(self.server.engine_db, likes)
-        rows = _resolve_likes_to_metadata(self.server.engine_db, resolved)
+        try:
+            resolved = resolve_videos_by_uuid_host(self.server.engine_ingest_base, likes)
+            rows = fetch_metadata_for_entries(self.server.engine_ingest_base, resolved)
+        except EngineApiError as exc:
+            respond_json(self, 502, {"error": f"Engine metadata failed: {exc}"})
+            return
         respond_json(self, 200, {"likes": rows, "updatedAt": now_ms()})
 
     def _handle_client_publish_event(self) -> None:
@@ -334,14 +336,6 @@ def _publish_event(
     return _publish_to_engine_bridge(engine_ingest_base, payload)
 
 
-def _remove_like(conn: sqlite3.Connection, user_id: str, video_id: str, instance_domain: str) -> None:
-    conn.execute(
-        "DELETE FROM likes WHERE user_id = ? AND video_id = ? AND instance_domain = ?",
-        (user_id, video_id, instance_domain),
-    )
-    conn.commit()
-
-
 def _parse_int(value: str | None) -> int:
     try:
         parsed = int(value or "0")
@@ -368,78 +362,16 @@ def _parse_client_likes(payload: dict[str, Any], max_items: int) -> list[dict[st
     return likes
 
 
-def _resolve_client_likes(
-    engine_db: sqlite3.Connection, likes: list[dict[str, str]]
-) -> list[dict[str, Any]]:
-    if not likes:
-        return []
-    unique: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for entry in likes:
-        key = f"{entry['video_uuid']}::{entry['instance_domain']}"
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(entry)
-    conditions = " OR ".join(["(video_uuid = ? AND instance_domain = ?)"] * len(unique))
-    params: list[Any] = []
-    for entry in unique:
-        params.append(entry["video_uuid"])
-        params.append(entry["instance_domain"])
-    rows = engine_db.execute(
-        f"""
-        SELECT video_id, video_uuid, instance_domain
-        FROM videos
-        WHERE {conditions}
-        """,
-        params,
-    ).fetchall()
-    lookup = {
-        f"{row['video_uuid']}::{row['instance_domain']}": row["video_id"] for row in rows
-    }
-    resolved: list[dict[str, Any]] = []
-    for entry in unique:
-        key = f"{entry['video_uuid']}::{entry['instance_domain']}"
-        video_id = lookup.get(key)
-        if not video_id:
-            continue
-        resolved.append(
-            {
-                "video_id": str(video_id),
-                "video_uuid": entry["video_uuid"],
-                "instance_domain": entry["instance_domain"],
-            }
-        )
-    return resolved
-
-
-def _resolve_likes_to_metadata(
-    engine_db: sqlite3.Connection, likes: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    if not likes:
-        return []
-    metadata = fetch_metadata_by_ids(engine_db, likes)
-    rows: list[dict[str, Any]] = []
-    for like in likes:
-        meta = metadata.get(like_key(like))
-        if meta:
-            rows.append(meta)
-    return rows
-
-
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    engine_db_path = (ROOT_DIR / args.engine_db).resolve()
     users_db_path = (ROOT_DIR / args.users_db).resolve()
     users_db_path.parent.mkdir(parents=True, exist_ok=True)
-    engine_db = connect_db(engine_db_path)
     user_db = connect_db(users_db_path)
     ensure_user_schema(user_db)
     server = ClientBackendServer(
         (args.host, int(args.port)),
         ClientBackendHandler,
-        engine_db,
         user_db,
         args.engine_ingest_base,
         args.publish_mode,
@@ -458,7 +390,6 @@ def main() -> None:
         logging.info("shutting down")
     finally:
         server.server_close()
-        engine_db.close()
         user_db.close()
 
 
