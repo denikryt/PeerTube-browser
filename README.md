@@ -47,6 +47,30 @@ This is not a heavy ML system; it is a transparent, controllable pipeline.
 - Temporary bridge contract: Client backend publishes events to Engine `/internal/events/ingest`.
 - Boundary rule: Client backend must not import `engine.server.*` modules and must not read `engine/server/db/*` directly.
 
+## Service installers (task 46)
+Installer topology:
+- Service-specific installers:
+  - `engine/install-engine-service.sh` (`--mode prod|dev`)
+  - `client/install-client-service.sh` (`--mode prod|dev`)
+- Centralized mode installer (source of truth):
+  - `install-service.sh --mode prod|dev|all`
+- Mode wrappers:
+  - `install-service-prod.sh`
+  - `install-service-dev.sh`
+
+Examples:
+```bash
+# Prod contour (force reinstall by default)
+sudo bash install-service-prod.sh
+
+# Dev contour (ports differ from prod; timer disabled by default)
+sudo bash install-service-dev.sh --without-updater-timer
+
+# Centralized direct mode usage
+sudo bash install-service.sh --mode prod --force --with-updater-timer
+sudo bash install-service.sh --mode dev --force --without-updater-timer
+```
+
 ## Split architecture smoke test
 Run the boundary/bridge smoke test:
 ```bash

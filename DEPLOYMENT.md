@@ -23,7 +23,29 @@ Note: Engine recommendation ranking does not require local `engine/server/db/use
 Write-derived ranking signals in Engine come from bridge-ingested aggregated
 `interaction_signals`.
 
-## 2) Build the client
+## 2) Install systemd services (prod/dev contours)
+Centralized installer (source of truth):
+```bash
+# Prod contour (force reinstall default + updater timer enabled by default)
+sudo bash install-service.sh --mode prod --force --with-updater-timer
+
+# Dev contour (separate unit names/ports, safe for local parallel run with prod)
+sudo bash install-service.sh --mode dev --force --without-updater-timer
+```
+
+Convenience wrappers:
+```bash
+sudo bash install-service-prod.sh
+sudo bash install-service-dev.sh --without-updater-timer
+```
+
+Service-specific installers (each supports its own `--mode prod|dev`):
+```bash
+sudo bash engine/install-engine-service.sh --mode prod --force
+sudo bash client/install-client-service.sh --mode dev --force --engine-ingest-base http://127.0.0.1:7171
+```
+
+## 3) Build the client
 From the project root:
 ```bash
 cd client/frontend
@@ -33,7 +55,7 @@ npm run build
 
 Output is in `client/frontend/dist/` (static files to be served).
 
-## 3) Run the API server
+## 4) Run the API server
 From the project root:
 ```bash
 python3 -m venv venv
@@ -43,7 +65,7 @@ ENGINE_INGEST_MODE=bridge ./venv/bin/python3 engine/server/api/server.py
 
 Engine API listens on `http://127.0.0.1:7070`.
 
-## 4) Run the client backend service
+## 5) Run the client backend service
 From the project root:
 ```bash
 CLIENT_PUBLISH_MODE=bridge ./venv/bin/python3 client/backend/server.py \
@@ -55,7 +77,7 @@ Boundary contract (mandatory):
 - Client backend talks to Engine only over HTTP (`/internal/videos/resolve`, `/internal/videos/metadata`, `/internal/events/ingest`).
 - Client backend must not import `engine.server.*` modules and must not open `engine/server/db/*` files.
 
-## 5) Serve the client
+## 6) Serve the client
 You can serve the static build with any web server. The simplest local option:
 ```bash
 cd client/frontend
@@ -80,7 +102,7 @@ npm run dev -- --engine-api-base http://127.0.0.1:7070 --client-api-base http://
 npm run dev -- --port 5175 --strictPort --engine-api-port 7171 --client-api-port 7172
 ```
 
-## 6) Verify
+## 7) Verify
 Open:
 - `/` (home)
 - `/videos.html`
@@ -91,7 +113,7 @@ Optional debug toggle:
 RECOMMENDATIONS_DEBUG_ENABLED = True  # engine/server/api/server_config.py
 ```
 
-## 7) Split architecture smoke test
+## 8) Split architecture smoke test
 The smoke script starts Engine and Client automatically on dev test ports,
 runs all split-boundary checks, prints aggregated errors (if any), and always
 stops started processes on exit:
