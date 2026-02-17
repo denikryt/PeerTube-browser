@@ -5,10 +5,6 @@ Use it before implementing any task bundle.
 
 ## Recommended implementation order
 
-Block A (`35 -> 32 -> 31 -> 34 -> 36`) is completed and moved to `COMPLETED_TASKS.md`.
-Task 45 is completed and moved to `COMPLETED_TASKS.md`.
-Task 50 is completed and moved to `COMPLETED_TASKS.md`.
-
 ### Execution sequence (recommended)
 1. **37** (stable ANN IDs: `video_id+host -> int64`)  
    First establish stable ANN id contract before further similarity tuning.
@@ -36,34 +32,28 @@ Task 50 is completed and moved to `COMPLETED_TASKS.md`.
    Implement after major feature blocks to avoid repeated migration/status churn while core tasks are still changing.
 
 ### Functional blocks (aligned with the same order)
-- **Block A: Moderation and ingest control (completed)**
-  - Tasks: **35 -> 32 -> 31 -> 34 -> 36**
-  - Scope: permanent deny/block rules, purge tooling, guaranteed exclusion during sync/crawl/merge, and one integrated regression pass for the whole block.
-- **Block B: Architecture split and federation readiness (completed)**
-  - Tasks: **45 -> 50**
-  - Scope: enforced Engine/Client split contracts and finalized interaction-signal-driven ranking input without Engine users-like DB dependency.
-- **Block C: Similarity and recommendation core**
+- **Block A: Similarity and recommendation core**
   - Tasks: **37 -> 30 -> 33 -> 12a**
   - Scope: ANN/similarity defaults, impacted recompute, upnext diversity, popular-layer sampling quality.
-- **Block D: Video page data + UX behavior**
+- **Block B: Video page data + UX behavior**
   - Tasks: **3 -> 1 -> 2 -> 4 -> 9 -> 9b**
   - Scope: metadata completeness, fast similar rendering, scrolling behavior, comments, profile/likes interactions.
-- **Block E: Feed and discovery product features**
+- **Block C: Feed and discovery product features**
   - Tasks: **8b -> 10 -> 15**
   - Scope: feed modes, search UX/API, crawler seed mode from one instance/subscriptions.
-- **Block F: Analytics and style infrastructure**
+- **Block D: Analytics and style infrastructure**
   - Tasks: **8c -> 8**
   - Scope: outbound click analytics and optional styling-system consolidation.
-- **Block G: Documentation and maintenance**
+- **Block E: Documentation and maintenance**
   - Tasks: **16 -> 11**
   - Scope: recommendations docs alignment and missing docstrings.
-- **Block H: Logging and observability**
+- **Block F: Logging and observability**
   - Tasks: **41 -> 38 -> 43**
   - Scope: explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/Changelog.
-- **Block I: Runtime reliability and operations**
+- **Block G: Runtime reliability and operations**
   - Tasks: **46 -> 47 -> 16l -> 39 -> 44 -> 40**
   - Scope: contour-isolated prod/dev service installers for Engine+Client, smoke coverage for install/runtime interaction contracts, safe cache refresh/swap runtime behavior (random + similarity), and automated blue/green nginx cutover.
-- **Block J: Public roadmap and changelog UX**
+- **Block H: Public roadmap and changelog UX**
   - Tasks: **42**
   - Scope: roadmap-style public changelog entries with task statuses and client-side completed/not-completed filters.
 
