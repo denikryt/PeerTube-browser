@@ -6,10 +6,11 @@ Use it before implementing any task bundle.
 ## Recommended implementation order
 
 Block A (`35 -> 32 -> 31 -> 34 -> 36`) is completed and moved to `COMPLETED_TASKS.md`.
+Task 45 is completed and moved to `COMPLETED_TASKS.md`.
 
 ### Execution sequence (recommended)
-1. **45** then **50** (Engine/Client split + bridge ingest, then remove Engine users-like DB dependency)  
-   First establish service boundaries/bridge contract, then finish ranking-input decoupling so Engine recommendations rely on interaction signals only.
+1. **50** (remove Engine users-like DB dependency in recommendation path)  
+   Keep split architecture strict by using request likes + aggregated interaction signals only in Engine ranking flow.
 2. **37** (stable ANN IDs: `video_id+host -> int64`)  
    First establish stable ANN id contract before further similarity tuning.
 3. **30** (incremental similar cache + config defaults)  
@@ -40,8 +41,8 @@ Block A (`35 -> 32 -> 31 -> 34 -> 36`) is completed and moved to `COMPLETED_TASK
   - Tasks: **35 -> 32 -> 31 -> 34 -> 36**
   - Scope: permanent deny/block rules, purge tooling, guaranteed exclusion during sync/crawl/merge, and one integrated regression pass for the whole block.
 - **Block B: Architecture split and federation readiness**
-  - Tasks: **45 -> 50**
-  - Scope: enforce Engine read-only boundary, move user actions to client responsibility, introduce temporary bridge ingest contract, and remove Engine recommendation dependence on local users-like tables.
+  - Tasks: **50**
+  - Scope: finalize split contracts by removing Engine recommendation dependence on local users-like tables and keeping interaction-signal-driven ranking inputs.
 - **Block C: Similarity and recommendation core**
   - Tasks: **37 -> 30 -> 33 -> 12a**
   - Scope: ANN/similarity defaults, impacted recompute, upnext diversity, popular-layer sampling quality.
@@ -68,16 +69,12 @@ Block A (`35 -> 32 -> 31 -> 34 -> 36`) is completed and moved to `COMPLETED_TASK
   - Scope: roadmap-style public changelog entries with task statuses and client-side completed/not-completed filters.
 
 ### Cross-task overlaps and dependencies
-- **45 <-> 3/1/2/4/9/9b/8b/10**: these tasks rely on stable API boundaries and request ownership.  
-  Land architecture split (**45**) first to avoid repeated rewrites of routes and client/server responsibility.
-- **45 <-> 50**: task 45 defines split topology and bridge ingest, while task 50 completes ranking-input decoupling inside Engine recommendation path.  
-  Execute **50** right after **45** to avoid carrying legacy users-like reads into downstream feature/runtime tasks.
-- **45 <-> 30/33/12a**: recommendation work should target post-split Engine contracts.  
-  Keep ranking/similar pipeline changes aligned with read-only Engine and bridge-based signal ingest.
+- **50 <-> 3/1/2/4/9/9b/8b/10**: these tasks rely on stable API boundaries and request ownership.  
+  Keep post-split contracts strict to avoid repeated rewrites of routes and service responsibilities.
 - **50 <-> 30/33/12a**: similarity/recommendation tuning should use final signal-source contract.  
   Land **50** before core recommendation tuning to prevent duplicate rewrites across source/feature selection logic.
-- **45 <-> 38/41/43**: request tracing/logging spans multiple services after split.  
-  Define service boundaries and request-path ownership first, then finalize correlated logging conventions.
+- **50 <-> 38/41/43**: request tracing/logging spans multiple services after split and should reflect final recommendation input sources.  
+  Keep correlated logging conventions aligned with post-50 Engine/Client runtime behavior.
 - **50 <-> 46/47/16l/39/44/40**: runtime/deploy automation and smoke checks should target the finalized signal-source contract as well.  
   Keep installer/smoke/runtime hardening aligned with post-50 Engine/Client behavior to avoid service-level rework.
 - **46 <-> 47**: smoke tests validate the installer contracts directly (unit names, ports, timer modes, cleanup guarantees).  

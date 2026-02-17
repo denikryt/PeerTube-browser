@@ -19,6 +19,10 @@ Expected files (examples):
 Client backend keeps its own users DB (default):
 - `client/backend/db/users.db`
 
+Note: Engine recommendation ranking does not require local `engine/server/db/users.db`.
+Write-derived ranking signals in Engine come from bridge-ingested aggregated
+`interaction_signals`.
+
 ## 2) Build the client
 From the project root:
 ```bash

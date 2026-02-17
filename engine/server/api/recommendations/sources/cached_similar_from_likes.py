@@ -13,8 +13,7 @@ from data.similarity_candidates import SimilarityCandidatesPolicy
 @dataclass(frozen=True)
 class CachedSimilarFromLikesDeps:
     """Dependencies for cache-only similarity candidates sourced from recent likes."""
-    get_or_create_user: Callable[[Any, str], None]
-    fetch_recent_likes: Callable[[Any, str, int], list[dict[str, Any]]]
+    fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]]
     fetch_seed_embedding: Callable[
         [Any, str | None, str | None, str | None], dict[str, Any] | None
     ]
@@ -42,11 +41,7 @@ class CachedSimilarFromLikesSource:
         """Return cached candidates similar to recent likes (no ANN fallback)."""
         import logging
         logging.info("[recommendations] exploit source=cache-optimized")
-        with server.user_db_lock:
-            self.deps.get_or_create_user(server.user_db, user_id)
-            recent_likes = self.deps.fetch_recent_likes(
-                server.user_db, user_id, self.deps.max_likes
-            )
+        recent_likes = self.deps.fetch_recent_likes(user_id, self.deps.max_likes)
         if not recent_likes:
             return []
         if len(recent_likes) > self.deps.max_likes_for_recs:

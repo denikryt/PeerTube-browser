@@ -13,7 +13,7 @@ from recommendations.filters import apply_author_instance_caps
 @dataclass(frozen=True)
 class PopularVideosDeps:
     fetch_popular_videos: Callable[[Any, int], list[dict[str, Any]]]
-    fetch_recent_likes: Callable[[Any, str, int], list[dict[str, Any]]]
+    fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]]
     fetch_embeddings_by_ids: Callable[[Any, list[dict[str, Any]]], dict[str, np.ndarray]]
     like_key: Callable[[Any], str]
     max_likes: int
@@ -39,8 +39,7 @@ class PopularVideosGenerator:
         pool_size = int(config.get("pool_size") or 0)
         max_per_instance = int(config.get("max_per_instance") or 0)
         max_per_author = int(config.get("max_per_author") or 0)
-        with server.user_db_lock:
-            likes = self.deps.fetch_recent_likes(server.user_db, user_id, self.deps.max_likes)
+        likes = self.deps.fetch_recent_likes(user_id, self.deps.max_likes)
 
         pool_start = perf_counter()
         with server.db_lock:

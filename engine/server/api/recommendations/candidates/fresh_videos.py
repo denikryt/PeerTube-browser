@@ -13,7 +13,7 @@ from recommendations.filters import apply_author_instance_caps
 @dataclass(frozen=True)
 class FreshVideosDeps:
     fetch_recent_videos: Callable[[Any, int], list[dict[str, Any]]]
-    fetch_recent_likes: Callable[[Any, str, int], list[dict[str, Any]]]
+    fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]]
     fetch_embeddings_by_ids: Callable[[Any, list[dict[str, Any]]], dict[str, np.ndarray]]
     like_key: Callable[[Any], str]
     max_likes: int
@@ -62,8 +62,7 @@ class FreshVideosGenerator:
         if not pool:
             return []
 
-        with server.user_db_lock:
-            likes = self.deps.fetch_recent_likes(server.user_db, user_id, self.deps.max_likes)
+        likes = self.deps.fetch_recent_likes(user_id, self.deps.max_likes)
         if not likes:
             total_ms = int((perf_counter() - pool_start) * 1000)
             logging.info(

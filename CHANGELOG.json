@@ -129,7 +129,7 @@
     {
       "id": "45",
       "date": "2026-02-16",
-      "status": "Planned",
+      "status": "Done",
       "title": "Engine/Client Architecture Split with Bridge (ActivityPub-Ready)",
       "summary": "Separate Engine into read-only analytics API (including crawler as part of Engine), move user actions to client responsibility, and add a temporary bridge ingest contract prepared for future ActivityPub integration."
     },

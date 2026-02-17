@@ -34,8 +34,11 @@ The recommendation system is a mix of filtering + scoring:
 - popularity,
 - layer mixing (explore/exploit/popular/random/fresh).
 
-Likes are used as a signal to find similar content. This is not a heavy ML system;
-it is a transparent, controllable pipeline.
+Likes are used as a signal to find similar content. Engine reads likes from the
+current request context only (provided by Client/Frontend) and does not depend
+on local `engine/server/db/users.db` for recommendation ranking. Bridge-ingested
+events update aggregated `interaction_signals`, which are also used by ranking.
+This is not a heavy ML system; it is a transparent, controllable pipeline.
 
 ## Current service split
 - Engine API (read): `/recommendations`, `/videos/{id}/similar`, `/videos/similar`, `/api/video`, `/api/health`.

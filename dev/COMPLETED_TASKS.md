@@ -1,5 +1,16 @@
 # Completed tasks
 
+### 45) Engine/Client architecture split: read-only Engine + temporary bridge ingest (ActivityPub-ready) (done)
+**Done:** separated Engine and Client workspaces/services and introduced a temporary bridge ingest contract for write-derived signals.
+
+#### **What was implemented:**
+- Established top-level split into `engine/` and `client/`, with crawler located under `engine/crawler/`.
+- Kept Engine API as read/analytics surface (`/recommendations`, `/videos/{id}/similar`, `/videos/similar`, `/api/video`, `/api/health`) without public user write/profile routes.
+- Kept Client backend as write/profile surface (`/api/user-action`, `/api/user-profile/*`) and publishing path toward Engine.
+- Added Engine internal bridge ingest endpoint (`/internal/events/ingest`) with normalized event schema and idempotent `event_id` handling.
+- Added Engine raw/aggregated interaction storage (`interaction_raw_events`, `interaction_signals`) and ranking usage of aggregated interaction signals.
+- Added split-boundary smoke coverage and bridge-flow checks via `tests/run-arch-split-smoke.sh`.
+
 ### 49) Remove direct Client->Engine code/DB coupling (API-only contract) (done)
 **Done:** enforced strict API-only Client/Engine interaction and removed direct Client coupling to Engine internals.
 

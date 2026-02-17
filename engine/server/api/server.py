@@ -43,7 +43,6 @@ from server_config import (
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
     DEFAULT_SIMILARITY_DB_PATH,
-    DEFAULT_USERS_DB_PATH,
     MAX_LIKES,
     MAX_LIKES_FOR_RECS,
     RECOMMENDATIONS_DEBUG_ENABLED,
@@ -57,7 +56,7 @@ from server_config import (
     DEFAULT_ENABLE_CHANNEL_BLOCKLIST,
     ENGINE_INGEST_MODE,
 )
-from data.db import connect_db, connect_similarity_db, connect_user_db
+from data.db import connect_db, connect_similarity_db
 from data.embeddings import (
     fetch_embeddings_by_ids,
     fetch_seed_embedding,
@@ -72,7 +71,6 @@ from data.random_videos import (
 from data.similarity_candidates import get_similar_candidates
 from data.similarity_cache import ensure_similarity_schema
 from data.interaction_events import ensure_interaction_event_schema
-from data.users import ensure_user_schema, get_or_create_user
 from data.random_cache import connect_random_cache_db, populate_random_cache
 from data.channels import ensure_channels_indexes
 from data.videos import ensure_video_indexes
@@ -186,7 +184,6 @@ class SimilarServer(ThreadingHTTPServer):
         server_address: tuple[str, int],
         handler_class: type[BaseHTTPRequestHandler],
         db: sqlite3.Connection,
-        user_db: sqlite3.Connection,
         similarity_db: sqlite3.Connection | None,
         random_cache_db: sqlite3.Connection | None,
         index: faiss.Index,
@@ -214,7 +211,6 @@ class SimilarServer(ThreadingHTTPServer):
     ) -> None:
         super().__init__(server_address, handler_class)
         self.db = db
-        self.user_db = user_db
         self.index = index
         self.embeddings_dim = embeddings_dim
         self.embeddings_count = embeddings_count
@@ -241,7 +237,6 @@ class SimilarServer(ThreadingHTTPServer):
         self.engine_ingest_mode = engine_ingest_mode
         self.index_lock = threading.Lock()
         self.db_lock = threading.Lock()
-        self.user_db_lock = threading.Lock()
         self.similarity_db_lock = threading.Lock()
         self.random_cache_lock = threading.Lock()
 
@@ -263,7 +258,6 @@ def main() -> None:
     repo_root = script_dir.parents[2]
     db_path = (repo_root / DEFAULT_DB_PATH).resolve()
     index_path = (repo_root / DEFAULT_INDEX_PATH).resolve()
-    users_db_path = (repo_root / DEFAULT_USERS_DB_PATH).resolve()
     similarity_db_path = (repo_root / DEFAULT_SIMILARITY_DB_PATH).resolve()
     random_cache_path = (repo_root / DEFAULT_RANDOM_CACHE_DB_PATH).resolve()
 
@@ -272,8 +266,6 @@ def main() -> None:
     ensure_interaction_event_schema(db)
     ensure_channels_indexes(db)
     ensure_video_indexes(db)
-    users_db = connect_user_db(users_db_path)
-    ensure_user_schema(users_db)
     similarity_db = connect_similarity_db(similarity_db_path)
     ensure_similarity_schema(similarity_db)
     random_cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -302,7 +294,6 @@ def main() -> None:
         )
     embeddings_count = int(index.ntotal)
     recommendation_deps = RecommendationBuilderDeps(
-        get_or_create_user=get_or_create_user,
         fetch_recent_likes=fetch_recent_likes_request,
         fetch_seed_embedding=fetch_seed_embedding,
         fetch_seed_embeddings_for_likes=fetch_seed_embeddings_for_likes,
@@ -344,7 +335,6 @@ def main() -> None:
         (host, port),
         SimilarHandler,
         db,
-        users_db,
         similarity_db,
         random_cache_db,
         index,
@@ -387,7 +377,6 @@ def main() -> None:
     finally:
         server.server_close()
         db.close()
-        users_db.close()
         if similarity_db is not None:
             similarity_db.close()
         if random_cache_db is not None:

@@ -29,7 +29,7 @@ class CandidateGenerator(Protocol):
 @dataclass(frozen=True)
 class MixerDeps:
     like_key: Callable[[Any], str]
-    fetch_recent_likes: Callable[[Any, str, int], list[dict[str, Any]]]
+    fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]]
     max_likes: int
 
 
@@ -54,10 +54,7 @@ class MixingRecommendationStrategy:
         refresh_cache: bool = False,
         mode: str | None = None,
     ) -> list[dict[str, Any]]:
-        with server.user_db_lock:
-            recent_likes = self.deps.fetch_recent_likes(
-                server.user_db, user_id, self.deps.max_likes
-            )
+        recent_likes = self.deps.fetch_recent_likes(user_id, self.deps.max_likes)
         likes_available = bool(recent_likes)
         profile_name, profile_config = resolve_profile_config_with_guest(
             self.config, mode, likes_available
@@ -75,10 +72,7 @@ class MixingRecommendationStrategy:
 
         generator_configs = profile_config.get("generators", profile_config.get("layers", {}))
         generator_order = self._resolve_order(profile_config, generator_configs)
-        with server.user_db_lock:
-            recent_likes = self.deps.fetch_recent_likes(
-                server.user_db, user_id, self.deps.max_likes
-            )
+        recent_likes = self.deps.fetch_recent_likes(user_id, self.deps.max_likes)
         likes_available = bool(recent_likes)
         generator_limits = self._resolve_fetch_limits(
             generator_configs, generator_order, batch_size, profile_config, likes_available

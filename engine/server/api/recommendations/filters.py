@@ -6,25 +6,23 @@ from typing import Any, Callable
 def build_seen_keys(
     server: Any,
     user_id: str,
-    fetch_recent_likes: Callable[[Any, str, int], list[dict[str, Any]]],
+    fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]],
     like_key: Callable[[Any], str],
     max_likes: int,
 ) -> set[str]:
     """Return keys that should be excluded from recommendations."""
-    with server.user_db_lock:
-        likes = fetch_recent_likes(server.user_db, user_id, max_likes)
+    likes = fetch_recent_likes(user_id, max_likes)
     return {like_key(entry) for entry in likes}
 
 
 def has_likes(
     server: Any,
     user_id: str,
-    fetch_recent_likes: Callable[[Any, str, int], list[dict[str, Any]]],
+    fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]],
     max_likes: int,
 ) -> bool:
     """Return True when the user has at least one recent like."""
-    with server.user_db_lock:
-        likes = fetch_recent_likes(server.user_db, user_id, max_likes)
+    likes = fetch_recent_likes(user_id, max_likes)
     return bool(likes)
 
 

@@ -14,10 +14,9 @@ TMP_DIR="$(mktemp -d /tmp/arch-split-smoke.XXXXXX)"
 ENGINE_LOG="${TMP_DIR}/engine.log"
 CLIENT_LOG="${TMP_DIR}/client.log"
 LOG_ROOT_DIR="${ROOT_DIR}/tmp/arch-split-smoke-logs"
-RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
-RUN_LOG="${LOG_ROOT_DIR}/${RUN_ID}.run.log"
-CHECK_LOG="${LOG_ROOT_DIR}/${RUN_ID}.checks.log"
-ERROR_LOG="${LOG_ROOT_DIR}/${RUN_ID}.errors.log"
+RUN_LOG="${LOG_ROOT_DIR}/run-arch-split-smoke.run.log"
+CHECK_LOG="${LOG_ROOT_DIR}/run-arch-split-smoke.checks.log"
+ERROR_LOG="${LOG_ROOT_DIR}/run-arch-split-smoke.errors.log"
 
 ENGINE_PID=""
 CLIENT_PID=""
@@ -419,6 +418,50 @@ run_boundary_contract_check() {
   record_error "${name}: $(sed -n '1,120p' "${TMP_DIR}/${name}.log" | tr '\n' ' ' | sed 's/[[:space:]]\\+/ /g')"
 }
 
+run_engine_users_db_fd_check() {
+  local name="engine_users_db_fd_absent"
+  local users_db_path="${ROOT_DIR}/engine/server/db/users.db"
+  CHECK_COUNT=$((CHECK_COUNT + 1))
+
+  if [[ -z "${ENGINE_PID}" ]]; then
+    log_check_result "FAIL" "${name}" "CHECK" "/proc/<engine-pid>/fd" "ERROR" "Engine process pid is set"
+    record_error "${name}: Engine pid is empty"
+    return
+  fi
+  if [[ ! -d "/proc/${ENGINE_PID}/fd" ]]; then
+    log_check_result "FAIL" "${name}" "CHECK" "/proc/${ENGINE_PID}/fd" "ERROR" "Engine /proc fd directory exists"
+    record_error "${name}: missing /proc/${ENGINE_PID}/fd"
+    return
+  fi
+
+  if python3 - "${ENGINE_PID}" "${users_db_path}" >"${TMP_DIR}/${name}.log" 2>&1 <<'PY'
+import os
+import sys
+
+pid = sys.argv[1]
+users_db = os.path.realpath(sys.argv[2])
+fd_dir = f"/proc/{pid}/fd"
+
+for fd_name in os.listdir(fd_dir):
+    fd_path = os.path.join(fd_dir, fd_name)
+    try:
+        target = os.path.realpath(os.readlink(fd_path))
+    except OSError:
+        continue
+    if target == users_db:
+        print(f"opened users.db fd={fd_path} target={target}")
+        raise SystemExit(1)
+raise SystemExit(0)
+PY
+  then
+    log_check_result "PASS" "${name}" "CHECK" "/proc/${ENGINE_PID}/fd" "OK" "engine/server/db/users.db is not opened by Engine"
+    return
+  fi
+
+  log_check_result "FAIL" "${name}" "CHECK" "/proc/${ENGINE_PID}/fd" "ERROR" "engine/server/db/users.db is not opened by Engine"
+  record_error "${name}: $(sed -n '1,60p' "${TMP_DIR}/${name}.log" | tr '\n' ' ' | sed 's/[[:space:]]\\+/ /g')"
+}
+
 ENGINE_HOST="$(url_part "${ENGINE_URL}" host)"
 ENGINE_PORT="$(url_part "${ENGINE_URL}" port)"
 CLIENT_HOST="$(url_part "${CLIENT_URL}" host)"
@@ -467,6 +510,7 @@ if (( ERROR_COUNT == 0 )); then
     record_error "Engine failed to become healthy within ${STARTUP_TIMEOUT_SECONDS}s"
   else
     log_check_result "PASS" "engine_start_health" "GET" "${ENGINE_URL}/api/health" "200" "=200"
+    run_engine_users_db_fd_check
   fi
 fi
 

@@ -441,10 +441,7 @@ class SimilarHandler(BaseHTTPRequestHandler):
         mode: str,
     ) -> None:
         """Handle similar videos when seed embedding is available."""
-        with self.server.user_db_lock:
-            recent_likes = fetch_recent_likes_request(
-                self.server.user_db, user_id, MAX_LIKES
-            )
+        recent_likes = fetch_recent_likes_request(user_id, MAX_LIKES)
         likes_available = bool(recent_likes)
         profile_name, profile_config = resolve_profile_config_with_guest(
             self.server.recommendation_strategy.config, mode, likes_available

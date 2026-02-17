@@ -41,8 +41,7 @@ class RecommendationBuilderDeps:
     All callables are injected from server/runtime wiring to avoid import
     cycles and to keep this module pure (no DB/index globals).
     """
-    get_or_create_user: Callable[[Any, str], None]
-    fetch_recent_likes: Callable[[Any, str, int], list[dict[str, Any]]]
+    fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]]
     fetch_seed_embedding: Callable[
         [Any, str | None, str | None, str | None], dict[str, Any] | None
     ]
@@ -105,7 +104,6 @@ def build_recommendation_strategy(
         )
 
     ann_deps = AnnSimilarFromLikesDeps(
-        get_or_create_user=deps.get_or_create_user,
         fetch_recent_likes=deps.fetch_recent_likes,
         fetch_seed_embedding=deps.fetch_seed_embedding,
         fetch_seed_embeddings_for_likes=deps.fetch_seed_embeddings_for_likes,
@@ -116,7 +114,6 @@ def build_recommendation_strategy(
         similar_per_like=settings.similar_per_like,
     )
     cached_deps = CachedSimilarFromLikesDeps(
-        get_or_create_user=deps.get_or_create_user,
         fetch_recent_likes=deps.fetch_recent_likes,
         fetch_seed_embedding=deps.fetch_seed_embedding,
         fetch_seed_embeddings_for_likes=deps.fetch_seed_embeddings_for_likes,

@@ -29,7 +29,7 @@ from recommendations.keys import like_key
 
 @dataclass(frozen=True)
 class RelatedPersonalizationDeps:
-    fetch_recent_likes: Callable[[Any, str, int], list[dict[str, Any]]]
+    fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]]
     fetch_embeddings_by_ids: Callable[[Any, list[dict[str, Any]]], dict[str, np.ndarray]]
     max_likes: int
     alpha: float
@@ -46,8 +46,7 @@ def rerank_related_videos(
     if not candidates or not user_id:
         return candidates
 
-    with server.user_db_lock:
-        likes = deps.fetch_recent_likes(server.user_db, user_id, deps.max_likes)
+    likes = deps.fetch_recent_likes(user_id, deps.max_likes)
     if not likes:
         return candidates
 
