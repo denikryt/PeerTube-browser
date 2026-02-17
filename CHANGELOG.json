@@ -220,7 +220,7 @@
     {
       "id": "51",
       "date": "2026-02-17",
-      "status": "Planned",
+      "status": "Done",
       "title": "Uninstall Scripts for Engine/Client Service Installers",
       "summary": "Add symmetric uninstall scripts for Engine and Client plus centralized prod/dev/all uninstall orchestration so contour services and installer-created artifacts can be removed safely and predictably."
     }

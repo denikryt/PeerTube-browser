@@ -45,6 +45,21 @@ sudo bash engine/install-engine-service.sh --mode prod --force
 sudo bash client/install-client-service.sh --mode dev --force --engine-ingest-base http://127.0.0.1:7171
 ```
 
+Uninstall (symmetric):
+```bash
+# Centralized contour uninstall
+sudo bash uninstall-service.sh --mode dev
+sudo bash uninstall-service.sh --mode prod --purge-updater-state
+
+# Wrapper presets
+sudo bash uninstall-service-dev.sh
+sudo bash uninstall-service-prod.sh --purge-updater-state
+
+# Service-specific uninstallers
+sudo bash engine/uninstall-engine-service.sh --mode dev
+sudo bash client/uninstall-client-service.sh --mode dev
+```
+
 ## 3) Build the client
 From the project root:
 ```bash

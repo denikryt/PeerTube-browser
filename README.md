@@ -71,6 +71,30 @@ sudo bash install-service.sh --mode prod --force --with-updater-timer
 sudo bash install-service.sh --mode dev --force --without-updater-timer
 ```
 
+## Service uninstallers (task 51)
+Uninstall topology:
+- Service-specific uninstallers:
+  - `engine/uninstall-engine-service.sh` (`--mode prod|dev`)
+  - `client/uninstall-client-service.sh` (`--mode prod|dev`)
+- Centralized mode uninstaller (source of truth):
+  - `uninstall-service.sh --mode prod|dev|all`
+- Mode wrappers:
+  - `uninstall-service-prod.sh`
+  - `uninstall-service-dev.sh`
+
+Examples:
+```bash
+# Uninstall prod contour
+sudo bash uninstall-service-prod.sh
+
+# Uninstall dev contour and purge updater state artifacts
+sudo bash uninstall-service-dev.sh --purge-updater-state
+
+# Centralized direct mode usage
+sudo bash uninstall-service.sh --mode prod
+sudo bash uninstall-service.sh --mode all --purge-updater-state
+```
+
 ## Split architecture smoke test
 Run the boundary/bridge smoke test:
 ```bash

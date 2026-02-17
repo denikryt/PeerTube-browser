@@ -1,5 +1,24 @@
 # Completed tasks
 
+### 51) Uninstall scripts for service installers (Engine/Client + centralized prod/dev) (done)
+**Done:** implemented symmetric uninstall flow for Engine/Client services with centralized prod/dev/all orchestration and contour-safe cleanup.
+
+#### **What was implemented:**
+- Added service-specific uninstallers with explicit `--mode prod|dev` and optional service-name overrides:
+  - `engine/uninstall-engine-service.sh`
+  - `client/uninstall-client-service.sh`
+- Added centralized uninstaller with mode contract `--mode prod|dev|all`:
+  - `uninstall-service.sh`
+- Added wrapper presets for contour-specific runs:
+  - `uninstall-service-prod.sh`
+  - `uninstall-service-dev.sh`
+- Implemented uninstall behavior for contour units/artifacts:
+  - stop/disable/remove service and timer units,
+  - remove updater sudoers file,
+  - run `systemctl daemon-reload` and `systemctl reset-failed`,
+  - optional updater state cleanup via `--purge-updater-state`.
+- Updated runbooks in `README.md` and `DEPLOYMENT.md` with uninstall usage examples.
+
 ### 46) Prod/Dev service installers: separate Engine/Client installers + centralized mode installer (done)
 **Done:** implemented split service installers for Engine/Client and one centralized prod/dev mode orchestrator with contour isolation.
 
