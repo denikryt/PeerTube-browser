@@ -1,42 +1,73 @@
 # Task Execution Protocol
 
-This protocol defines how to execute one or multiple tasks consistently.
-Use it together with `TASK_EXECUTION_PIPELINE.md`.
+This file defines only the execution procedure (how to execute tasks).
+Hard constraints (what is allowed/forbidden) are defined in `AGENTS.md`.
 
-## Multi-task execution protocol
+## Standard execution flow (single task)
 
-Use this protocol when implementing multiple tasks in one run.
+Use this procedure after an explicit execution command is given.
 
-1. **Read bundle + overlaps first**
-   - Identify shared logic, dependencies, and possible conflicts before coding.
-   - Write a short bundle plan (order + shared components).
+1. **Read in strict order before coding**
+   - Read exact task text for task `X` in `dev/TASK_LIST.md`.
+   - Read `dev/TASK_EXECUTION_PIPELINE.md`.
+   - Read this file (`dev/TASK_EXECUTION_PROTOCOL.md`).
 
-2. **Implement shared primitives first**
-   - If tasks overlap, implement shared contracts/abstractions/utilities first.
-   - Avoid duplicate logic across related modules.
+2. **Check overlaps/dependencies**
+   - For task `X`, inspect overlaps and ordering constraints in `dev/TASK_EXECUTION_PIPELINE.md`.
+   - Identify shared primitives to avoid one-off local implementations.
 
-3. **Implement tasks in dependency order**
-   - Follow `Recommended implementation order` from `TASK_EXECUTION_PIPELINE.md`.
-   - If order must change, note why in task notes.
+3. **Prepare a short implementation plan**
+   - List concrete files/modules to update.
+   - Note validations to run after implementation.
 
-4. **Run one integration pass for the whole bundle**
-   - Verify final behavior after all tasks are applied together.
-   - Check regressions in overlapping areas (shared configs, interfaces, and data flow).
+4. **Implement**
+   - Apply code/doc/config/test changes required by task `X`.
+   - Keep one source of truth per concern; avoid duplicate logic.
 
-5. **Done criteria for multi-task bundle**
-   - One source of truth per concern (no duplicate competing implementations).
-   - All requested tasks work together without conflicting behavior.
-   - Task status/docs are updated consistently (`TASK_LIST.md`, `COMPLETED_TASKS.md`, related docs).
-   - Completed tasks are moved from `TASK_LIST.md` to `COMPLETED_TASKS.md` in the same run.
+5. **Validate**
+   - Run relevant checks/tests/smokes for changed paths.
+   - Verify no regressions in overlapping areas touched by task `X`.
 
-## Update protocol for new tasks
+6. **Requirement closure check (mandatory final stage)**
+   - Re-read the exact task text for task `X` in `dev/TASK_LIST.md`.
+   - Verify each stated requirement is implemented.
+   - If any requirement is not implemented, list it explicitly before reporting result.
 
-For every new task:
+7. **Report implementation result**
+   - Summarize what was changed, what was validated, and any remaining risks.
+   - Do not mark task completed until explicit user confirmation.
 
-1. Assign a block in `TASK_EXECUTION_PIPELINE.md`.
-2. Insert it into global execution order.
-3. Add overlap notes if it intersects existing logic.
-4. Keep `TASK_EXECUTION_PIPELINE.md` and `TASK_LIST.md` consistent.
+## Completion flow (after explicit user confirmation)
+
+When user explicitly confirms task/block completion, update all trackers in the same edit run:
+
+1. Update task state in `dev/TASK_LIST.md` (remove/move confirmed task from future tasks).
+2. Add the task to `dev/COMPLETED_TASKS.md` with consistent wording/style.
+3. Update matching entry in `CHANGELOG.json` to status `Done`.
+4. Remove the confirmed completed task/block from `dev/TASK_EXECUTION_PIPELINE.md` (keep only pending items).
+5. If process rules changed, update this file in the same edit run.
+
+## Multi-task execution flow
+
+Use this when multiple tasks are requested in one execution run.
+
+1. Build execution order from `dev/TASK_EXECUTION_PIPELINE.md`.
+2. Identify overlaps and shared primitives before coding.
+3. Implement shared primitives first.
+4. Execute tasks in dependency order.
+5. Run one integration pass for the whole bundle.
+6. Run a requirement closure check for each executed task against its exact task text.
+7. Apply completion flow only for tasks explicitly confirmed by the user.
+
+## New/edited task update flow
+
+When creating or rewriting a task definition:
+
+1. Inspect real implementation context first (relevant code paths/modules/scripts/tests).
+2. Update `dev/TASK_LIST.md` as one linear list (append new tasks to the end).
+3. Update `CHANGELOG.json` in the same edit run (append new entries to the end, keep ID equal to task number).
+4. Update `dev/TASK_EXECUTION_PIPELINE.md` order/overlaps for pending tasks.
+5. Keep this protocol and `AGENTS.md` consistent if process/policy changed.
 
 ## Bundle command format
 
