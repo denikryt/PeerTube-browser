@@ -10,6 +10,8 @@ Project-level hard constraints for task work in this repository.
 4. User confirmation that a task is completed is separate from execution start and must still be explicit.
 5. Once execution is allowed, follow `dev/TASK_EXECUTION_PROTOCOL.md` as the only process source of truth.
 6. Exception for corrective fixes: if the user asks to fix a bug/regression introduced by the assistant in already changed files, apply that fix immediately without requiring `execute task X`; keep the scope strictly limited to correcting that mistake (no new task scope).
+7. Direct `AGENTS.md` maintenance override: when the user explicitly instructs to edit `AGENTS.md`, apply the requested edits immediately, without requiring `execute task X`.
+8. For direct `AGENTS.md` edit requests, do not block on process-format arguments; execute the edit and report the exact changes.
 
 ## Task and tracking state constraints
 
@@ -37,3 +39,16 @@ Project-level hard constraints for task work in this repository.
 ## Pipeline constraints
 
 1. `dev/TASK_EXECUTION_PIPELINE.md` must contain only pending (not completed) tasks/blocks; do not keep completed entries there with markers like `(completed)`.
+
+## Code docstring constraints
+
+1. Any new or modified functional code must include docstrings/comments in the language-appropriate format.
+2. Coverage is mandatory for:
+   - modules/files,
+   - classes,
+   - functions/methods.
+3. Existing docstrings in touched code must be updated when outdated or inaccurate.
+4. Exclusions: `*.md`, `*.html`, `*.json`, and generated/vendor build artifacts.
+5. Format by language:
+   - Python: triple-quoted docstrings.
+   - JS/TS: JSDoc-style block comments above module/class/function/method declarations.
