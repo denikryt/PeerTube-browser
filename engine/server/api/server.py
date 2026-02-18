@@ -6,11 +6,14 @@ candidate generation, and recommendation mixing into HTTP handlers.
 """
 import logging
 import argparse
+import os
 import sqlite3
 import sys
+import signal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import threading
+from uuid import uuid4
 
 script_dir = Path(__file__).resolve().parent
 server_dir = script_dir.parent
@@ -249,6 +252,27 @@ class SimilarServer(ThreadingHTTPServer):
 def main() -> None:
     """Run the similarity server."""
     args = parse_args()
+    run_id = str(uuid4())
+    stop_reason = "unknown"
+
+    def _signal_name(signum: int) -> str:
+        """Return a stable signal name for lifecycle logging."""
+        try:
+            return signal.Signals(signum).name
+        except ValueError:
+            return str(signum)
+
+    def _handle_shutdown_signal(signum: int, _frame: object) -> None:
+        """Translate SIGTERM/SIGINT into KeyboardInterrupt for graceful shutdown."""
+        nonlocal stop_reason
+        stop_reason = f"signal:{_signal_name(signum)}"
+        raise KeyboardInterrupt
+
+    previous_sigint = signal.getsignal(signal.SIGINT)
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+
     script_dir = Path(__file__).resolve().parent
     host = args.host
     default_port = DEV_SERVER_PORT if args.dev else DEFAULT_SERVER_PORT
@@ -367,6 +391,13 @@ def main() -> None:
     )
 
     logging.info("[similar-server] listening on http://%s:%d", host, port)
+    logging.info(
+        "[service] lifecycle state=start component=engine run_id=%s pid=%d host=%s port=%d",
+        run_id,
+        os.getpid(),
+        host,
+        port,
+    )
     logging.info("[similar-server] log_mode_hint=%s", active_log_profile)
     logging.info(
         "[similar-server] mode=%s random_cache_refresh=%s",
@@ -379,8 +410,17 @@ def main() -> None:
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        logging.info("shutting down")
+        if stop_reason == "unknown":
+            stop_reason = "keyboard_interrupt"
+        logging.info(
+            "[service] lifecycle state=stop component=engine run_id=%s pid=%d reason=%s",
+            run_id,
+            os.getpid(),
+            stop_reason,
+        )
     finally:
+        signal.signal(signal.SIGINT, previous_sigint)
+        signal.signal(signal.SIGTERM, previous_sigterm)
         server.server_close()
         db.close()
         if similarity_db is not None:

@@ -113,6 +113,8 @@ JQ_FILTER='
   | del(.modes)
   | if .event == "access" then
       .message |= sub("^\\[access\\]\\s*"; "")
+    elif .event == "access.start" then
+      .message |= sub("^\\[access\\.start\\]\\s*"; "")
     elif (.event | startswith("recommendations.")) then
       .message |= sub("^\\[recommendations\\]\\s*"; "")
     elif .event == "similarity.cache_hit" then

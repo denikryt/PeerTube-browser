@@ -29,7 +29,9 @@ class _EventRule:
 
 
 _EVENT_RULES = (
+    _EventRule("[access.start]", "access.start", ("focused", "verbose")),
     _EventRule("[access]", "access", ("focused", "verbose")),
+    _EventRule("[service] lifecycle", "service.lifecycle", ("focused", "verbose")),
     _EventRule(
         "[recommendations] layer timing:",
         "recommendations.layer_timing",
@@ -205,6 +207,9 @@ class EngineJsonFormatter(logging.Formatter):
                 payload["context"] = incoming_context
             elif fields:
                 payload["context"] = fields
+        elif event == "service.lifecycle":
+            payload.pop("message", None)
+            payload["context"] = fields
         elif fields:
             payload["context"] = fields
         return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))

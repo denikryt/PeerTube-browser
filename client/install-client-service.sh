@@ -61,6 +61,14 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"
 }
 
+log_lifecycle() {
+  local message="$1"
+  echo "${message}"
+  if command -v logger >/dev/null 2>&1; then
+    logger -t peertube-service-lifecycle "${message}" || true
+  fi
+}
+
 validate_mode() {
   if [[ -z "${MODE}" ]]; then
     fail "Missing required --mode <prod|dev>. Example: --mode prod"
@@ -232,8 +240,10 @@ require_cmd systemctl
 require_cmd journalctl
 
 if (( FORCE_REINSTALL == 1 )); then
-  echo "[force] Reinstalling ${CLIENT_SERVICE_NAME}.service"
+  log_lifecycle "[client-install] force reinstall begin service=${CLIENT_SERVICE_NAME}.service mode=${MODE}"
+  log_lifecycle "[client-install] stopping service=${CLIENT_SERVICE_NAME}.service"
   systemctl stop "${CLIENT_SERVICE_NAME}.service" >/dev/null 2>&1 || true
+  log_lifecycle "[client-install] disabling service=${CLIENT_SERVICE_NAME}.service"
   systemctl disable "${CLIENT_SERVICE_NAME}.service" >/dev/null 2>&1 || true
   rm -f "${UNIT_PATH}"
   systemctl daemon-reload
@@ -246,8 +256,9 @@ printf '%s\n' "${UNIT_CONTENT}" > "${UNIT_PATH}"
 echo "[client-install] Reloading systemd"
 systemctl daemon-reload
 
-echo "[client-install] Enabling and restarting ${CLIENT_SERVICE_NAME}.service"
+log_lifecycle "[client-install] enabling service=${CLIENT_SERVICE_NAME}.service"
 systemctl enable "${CLIENT_SERVICE_NAME}.service" >/dev/null
+log_lifecycle "[client-install] restarting service=${CLIENT_SERVICE_NAME}.service"
 systemctl restart "${CLIENT_SERVICE_NAME}.service"
 
 enabled_state="$(systemctl is-enabled "${CLIENT_SERVICE_NAME}.service" 2>/dev/null || true)"
@@ -263,5 +274,6 @@ if [[ "${enabled_state}" != "enabled" || "${active_state}" != "active" ]]; then
 fi
 
 echo "Client service installed: ${CLIENT_SERVICE_NAME}.service"
+log_lifecycle "[client-install] service active service=${CLIENT_SERVICE_NAME}.service mode=${MODE}"
 echo "Status: systemctl status ${CLIENT_SERVICE_NAME}.service"
 echo "Logs  : journalctl -u ${CLIENT_SERVICE_NAME}.service -f"

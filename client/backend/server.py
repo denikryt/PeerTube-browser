@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import os
+import signal
 import sqlite3
 import time
 import traceback
@@ -745,6 +746,27 @@ def main() -> None:
     """Handle main."""
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    run_id = str(uuid4())
+    stop_reason = "unknown"
+
+    def _signal_name(signum: int) -> str:
+        """Return a stable signal name for lifecycle logging."""
+        try:
+            return signal.Signals(signum).name
+        except ValueError:
+            return str(signum)
+
+    def _handle_shutdown_signal(signum: int, _frame: Any) -> None:
+        """Translate SIGTERM/SIGINT into KeyboardInterrupt for graceful shutdown."""
+        nonlocal stop_reason
+        stop_reason = f"signal:{_signal_name(signum)}"
+        raise KeyboardInterrupt
+
+    previous_sigint = signal.getsignal(signal.SIGINT)
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+
     users_db_path = (ROOT_DIR / args.users_db).resolve()
     users_db_path.parent.mkdir(parents=True, exist_ok=True)
     user_db = connect_db(users_db_path)
@@ -766,13 +788,28 @@ def main() -> None:
             "port": int(args.port),
             "engine_ingest_base": args.engine_ingest_base,
             "publish_mode": _resolve_mode(args.publish_mode),
+            "run_id": run_id,
+            "pid": os.getpid(),
         },
     )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        _emit_client_log(logging.INFO, "service.stop", "client backend shutting down")
+        if stop_reason == "unknown":
+            stop_reason = "keyboard_interrupt"
+        _emit_client_log(
+            logging.INFO,
+            "service.stop",
+            "client backend shutting down",
+            {
+                "reason": stop_reason,
+                "run_id": run_id,
+                "pid": os.getpid(),
+            },
+        )
     finally:
+        signal.signal(signal.SIGINT, previous_sigint)
+        signal.signal(signal.SIGTERM, previous_sigterm)
         server.server_close()
         user_db.close()
 

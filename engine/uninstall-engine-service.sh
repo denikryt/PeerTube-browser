@@ -32,6 +32,14 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"
 }
 
+log_lifecycle() {
+  local message="$1"
+  echo "${message}"
+  if command -v logger >/dev/null 2>&1; then
+    logger -t peertube-service-lifecycle "${message}" || true
+  fi
+}
+
 validate_mode() {
   case "${MODE}" in
     prod|dev) ;;
@@ -117,8 +125,10 @@ if (( DRY_RUN == 0 )); then
   require_cmd systemctl
 fi
 
-echo "[engine-uninstall] Removing ${ENGINE_SERVICE_NAME}.service"
+log_lifecycle "[engine-uninstall] begin service=${ENGINE_SERVICE_NAME}.service mode=${MODE}"
+log_lifecycle "[engine-uninstall] stopping service=${ENGINE_SERVICE_NAME}.service"
 run_cmd systemctl stop "${ENGINE_SERVICE_NAME}.service" >/dev/null 2>&1 || true
+log_lifecycle "[engine-uninstall] disabling service=${ENGINE_SERVICE_NAME}.service"
 run_cmd systemctl disable "${ENGINE_SERVICE_NAME}.service" >/dev/null 2>&1 || true
 run_cmd rm -f "${UNIT_PATH}"
 
@@ -128,3 +138,4 @@ if (( DRY_RUN == 0 )); then
 fi
 
 echo "Engine service removed: ${ENGINE_SERVICE_NAME}.service"
+log_lifecycle "[engine-uninstall] removed service=${ENGINE_SERVICE_NAME}.service mode=${MODE}"

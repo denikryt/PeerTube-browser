@@ -103,13 +103,13 @@ def maybe_attach_debug(
     return attach_debug_info(stable_rows, source_rows)
 
 
-def _parse_client_likes(payload: dict[str, Any], max_items: int) -> list[dict[str, str]]:
+def _parse_client_likes(payload: dict[str, Any]) -> list[dict[str, str]]:
     """Validate client likes JSON to uuid/host pairs."""
     raw = payload.get("likes")
     if not isinstance(raw, list):
         return []
     likes: list[dict[str, str]] = []
-    for entry in raw[: max_items if max_items > 0 else None]:
+    for entry in raw:
         if not isinstance(entry, dict):
             continue
         uuid = entry.get("uuid")
@@ -120,6 +120,46 @@ def _parse_client_likes(payload: dict[str, Any], max_items: int) -> list[dict[st
             continue
         likes.append({"video_uuid": uuid.strip(), "instance_domain": host.strip()})
     return likes
+
+
+def _recommendations_likes_payload_error(
+    path: str, payload: dict[str, Any], max_items: int
+) -> dict[str, Any] | None:
+    """Return API error payload for invalid recommendations likes payload."""
+    if path != "/recommendations" or max_items <= 0:
+        return None
+    raw_likes = payload.get("likes")
+    if not isinstance(raw_likes, list):
+        return None
+    received = len(raw_likes)
+    if received <= max_items:
+        for index, entry in enumerate(raw_likes):
+            if not isinstance(entry, dict):
+                return {
+                    "error": "Invalid likes payload",
+                    "reason": "likes entry must be an object",
+                    "index": index,
+                }
+            uuid = entry.get("uuid")
+            if not isinstance(uuid, str) or not uuid.strip():
+                return {
+                    "error": "Invalid likes payload",
+                    "reason": "likes.uuid must be a non-empty string",
+                    "index": index,
+                }
+            host = entry.get("host")
+            if not isinstance(host, str) or not host.strip():
+                return {
+                    "error": "Invalid likes payload",
+                    "reason": "likes.host must be a non-empty string",
+                    "index": index,
+                }
+        return None
+    return {
+        "error": "Too many likes in request body",
+        "max_allowed": max_items,
+        "received": received,
+    }
 
 
 def _resolve_client_likes(server: Any, likes: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -194,6 +234,15 @@ class SimilarHandler(BaseHTTPRequestHandler):
         proto = self.headers.get("X-Forwarded-Proto", "http").split(",", 1)[0].strip() or "http"
         return f"{proto}://{host}{self.path}"
 
+    def _log_access_start(self) -> None:
+        """Emit request-start access line before request processing begins."""
+        logging.info(
+            "[access.start] ip=%s method=%s url=%s",
+            self._get_client_ip(),
+            self.command or "-",
+            self._get_full_url(),
+        )
+
     def log_message(self, format: str, *args: Any) -> None:
         """Emit structured access logs with real client IP and full URL."""
         status = args[1] if len(args) > 1 else "-"
@@ -209,10 +258,12 @@ class SimilarHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         """Handle CORS preflight."""
+        self._log_access_start()
         respond_options(self)
 
     def do_POST(self) -> None:  # noqa: N802
         """Handle similarity and internal bridge ingest endpoints."""
+        self._log_access_start()
         url = urlparse(self.path)
         if url.path in SIMILAR_POST_ROUTES:
             self._handle_similar_request(method="POST")
@@ -240,6 +291,7 @@ class SimilarHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         """Handle health, profile, and similarity endpoints."""
+        self._log_access_start()
         url = urlparse(self.path)
         if url.path.startswith("/api/") and not self._rate_limit_check(url.path):
             respond_json(self, 429, {"error": "Rate limit exceeded"})
@@ -330,6 +382,12 @@ class SimilarHandler(BaseHTTPRequestHandler):
                 respond_json(self, 400, {"error": str(exc)})
                 return
             if isinstance(body, dict):
+                likes_payload_error = _recommendations_likes_payload_error(
+                    url.path, body, DEFAULT_CLIENT_LIKES_MAX
+                )
+                if likes_payload_error is not None:
+                    respond_json(self, 400, likes_payload_error)
+                    return
                 incoming_payload = {
                     "likes": body.get("likes", []),
                     "user_id": body.get("user_id"),
@@ -339,7 +397,7 @@ class SimilarHandler(BaseHTTPRequestHandler):
                     "[recommendations] incoming likes body=%s",
                     json.dumps(incoming_payload, ensure_ascii=True, separators=(",", ":")),
                 )
-            parsed = _parse_client_likes(body, DEFAULT_CLIENT_LIKES_MAX)
+            parsed = _parse_client_likes(body)
             client_likes = _resolve_client_likes(self.server, parsed)
         set_request_client_likes(client_likes, use_client_likes)
 

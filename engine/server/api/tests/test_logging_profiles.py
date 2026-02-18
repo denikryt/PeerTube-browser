@@ -62,6 +62,17 @@ class EngineJsonFormatterTests(unittest.TestCase):
         self.assertTrue(payload_visible_in_mode(payload, "focused"))
         self.assertTrue(payload_visible_in_mode(payload, "verbose"))
 
+    def test_access_start_is_tagged_for_focused_and_verbose(self) -> None:
+        """Ensure request-start access lines are visible in both modes."""
+        payload = self._format_record(
+            logging.INFO,
+            "[access.start] ip=127.0.0.1 method=POST url=http://127.0.0.1:7171/recommendations",
+        )
+        self.assertEqual(payload["event"], "access.start")
+        self.assertIn("focused", payload["modes"])
+        self.assertIn("verbose", payload["modes"])
+        self.assertEqual(payload["context"]["method"], "POST")
+
     def test_request_id_is_extracted_from_message_prefix(self) -> None:
         """Extract request id from [scope][request_id] message prefix."""
         payload = self._format_record(
@@ -88,6 +99,18 @@ class EngineJsonFormatterTests(unittest.TestCase):
         self.assertEqual(payload["context"]["likes"][0]["uuid"], "u1")
         self.assertEqual(payload["context"]["likes"][0]["host"], "h1")
         self.assertEqual(payload["context"]["mode"], "home")
+
+    def test_service_lifecycle_is_tagged_for_focused_and_verbose(self) -> None:
+        """Ensure service lifecycle lines are visible in both logging modes."""
+        payload = self._format_record(
+            logging.INFO,
+            "[service] lifecycle state=start component=engine run_id=abc pid=123 host=127.0.0.1 port=7171",
+        )
+        self.assertEqual(payload["event"], "service.lifecycle")
+        self.assertNotIn("message", payload)
+        self.assertIn("focused", payload["modes"])
+        self.assertIn("verbose", payload["modes"])
+        self.assertEqual(payload["context"]["state"], "start")
 
     def test_mode_normalization_falls_back_to_verbose(self) -> None:
         """Normalize unsupported mode values to verbose."""
