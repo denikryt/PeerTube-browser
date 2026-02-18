@@ -1,9 +1,7 @@
 .changelog-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
   gap: 12px;
-  flex-wrap: wrap;
+  justify-items: start;
 }
 
 .changelog-tabs {
@@ -129,6 +127,12 @@
   color: #8a3b24;
   border-color: rgba(138, 59, 36, 0.4);
   background: rgba(180, 87, 55, 0.08);
+}
+
+#changelog-meta a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  word-break: break-all;
 }
 
 @media (max-width: 540px) {

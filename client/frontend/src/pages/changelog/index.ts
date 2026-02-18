@@ -21,10 +21,6 @@ const filterTabs = Array.from(
   document.querySelectorAll<HTMLButtonElement>(".changelog-tab[data-status]")
 );
 const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
-const STATUS_LABELS: Record<ChangelogStatus, string> = {
-  Planned: "Not completed",
-  Done: "Completed",
-};
 const STATUS_EMPTY_MESSAGES: Record<ChangelogStatus, string> = {
   Planned: "No planned tasks.",
   Done: "No completed tasks yet.",
@@ -101,7 +97,7 @@ function updateFilterTabState() {
  */
 function renderActiveStatus() {
   const visibleEntries = allEntries.filter((entry) => entry.status === activeStatus);
-  updateSummary(visibleEntries.length);
+  updateSummary();
   if (!visibleEntries.length) {
     setEmptyState(STATUS_EMPTY_MESSAGES[activeStatus]);
     return;
@@ -174,7 +170,7 @@ function setLoadingState(message: string) {
   state.hidden = false;
   state.classList.remove("error");
   state.textContent = message;
-  updateSummary(0);
+  updateSummary();
 }
 
 /**
@@ -196,7 +192,7 @@ function setErrorState(message: string) {
   state.classList.add("error");
   state.textContent = message;
   counts.textContent = "Unavailable";
-  meta.textContent = `Source: ${CHANGELOG_URL}`;
+  renderSourceOnlyMeta();
 }
 
 /**
@@ -210,11 +206,43 @@ function formatDate(value: string): string {
 /**
  * Handle update summary.
  */
-function updateSummary(visibleCount: number) {
+function updateSummary() {
   const plannedCount = allEntries.filter((entry) => entry.status === "Planned").length;
   const doneCount = allEntries.filter((entry) => entry.status === "Done").length;
-  counts.textContent = `Showing ${visibleCount} ${STATUS_LABELS[activeStatus].toLowerCase()} tasks`;
-  meta.textContent = `Not completed: ${plannedCount} • Completed: ${doneCount} • Source: ${CHANGELOG_URL}`;
+  counts.textContent = "";
+  renderMeta(
+    `Not completed: ${plannedCount} • Completed: ${doneCount}`,
+    "Source: "
+  );
+}
+
+/**
+ * Handle render source only meta.
+ */
+function renderSourceOnlyMeta() {
+  renderMeta("", "Source: ");
+}
+
+/**
+ * Handle render meta.
+ */
+function renderMeta(statsLine: string, sourcePrefix: string) {
+  meta.textContent = "";
+  if (statsLine) {
+    const stats = document.createElement("span");
+    stats.textContent = statsLine;
+    meta.appendChild(stats);
+    meta.appendChild(document.createElement("br"));
+  }
+  const sourceText = document.createElement("span");
+  sourceText.textContent = sourcePrefix;
+  const sourceLink = document.createElement("a");
+  sourceLink.href = CHANGELOG_URL;
+  sourceLink.textContent = CHANGELOG_URL;
+  sourceLink.target = "_blank";
+  sourceLink.rel = "noreferrer noopener";
+  meta.appendChild(sourceText);
+  meta.appendChild(sourceLink);
 }
 
 /**
