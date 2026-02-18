@@ -67,12 +67,14 @@ class RateLimiter:
     """Simple in-memory rate limiter by key and time window."""
 
     def __init__(self, max_requests: int, window_seconds: int) -> None:
+        """Initialize the instance."""
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.lock = threading.Lock()
         self.requests: dict[str, deque[float]] = {}
 
     def allow(self, key: str) -> bool:
+        """Handle allow."""
         if self.max_requests <= 0 or self.window_seconds <= 0:
             return True
         now = datetime.now(timezone.utc).timestamp()

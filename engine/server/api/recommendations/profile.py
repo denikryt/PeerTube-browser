@@ -1,9 +1,12 @@
+"""Provide profile runtime helpers."""
+
 from __future__ import annotations
 
 from typing import Any
 
 
 def resolve_profile_config(config: dict[str, Any], mode: str | None) -> dict[str, Any]:
+    """Handle resolve profile config."""
     profiles = config.get("profiles")
     if not profiles:
         return config
@@ -20,6 +23,7 @@ def resolve_profile_config(config: dict[str, Any], mode: str | None) -> dict[str
 def resolve_profile_config_with_guest(
     config: dict[str, Any], mode: str | None, has_likes: bool
 ) -> tuple[str, dict[str, Any]]:
+    """Handle resolve profile config with guest."""
     profiles = config.get("profiles")
     if not profiles:
         return "default", config

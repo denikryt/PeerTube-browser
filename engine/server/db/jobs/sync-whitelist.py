@@ -41,6 +41,7 @@ EXCLUDED_INSTANCE_COLUMNS: set[str] = set()
 
 
 def _load_schema_columns(schema_path: Path, table: str) -> list[str]:
+    """Handle load schema columns."""
     sql = schema_path.read_text(encoding="utf-8")
     marker = f"CREATE TABLE IF NOT EXISTS {table}"
     start = sql.find(marker)
@@ -68,6 +69,7 @@ def _load_schema_columns(schema_path: Path, table: str) -> list[str]:
 
 
 def _schema_columns(schema_path: Path, table: str, exclude: set[str]) -> list[str]:
+    """Handle schema columns."""
     return [col for col in _load_schema_columns(schema_path, table) if col not in exclude]
 
 INSTANCE_COLUMNS = _schema_columns(
@@ -91,6 +93,7 @@ def _table_exists(
     table: str,
     schema: str | None = None,
 ) -> bool:
+    """Handle table exists."""
     master = f"{schema}.sqlite_master" if schema else "sqlite_master"
     row = conn.execute(
         f"SELECT name FROM {master} WHERE type = 'table' AND name = ?;",
@@ -104,6 +107,7 @@ def _table_columns(
     table: str,
     schema: str | None = None,
 ) -> list[str]:
+    """Handle table columns."""
     prefix = f"{schema}." if schema else ""
     return [row[1] for row in conn.execute(f"PRAGMA {prefix}table_info({table});")]
 
@@ -114,6 +118,7 @@ def _assert_columns_exact(
     expected: list[str],
     schema: str | None = None,
 ) -> None:
+    """Handle assert columns exact."""
     if not _table_exists(conn, table, schema=schema):
         raise RuntimeError(
             f"Missing table {schema + '.' if schema else ''}{table}."
@@ -140,6 +145,7 @@ def _assert_columns_superset(
     required: list[str],
     schema: str | None = None,
 ) -> None:
+    """Handle assert columns superset."""
     if not _table_exists(conn, table, schema=schema):
         raise RuntimeError(
             f"Missing table {schema + '.' if schema else ''}{table}."
@@ -155,6 +161,7 @@ def _assert_columns_superset(
 
 
 def ensure_schema_compatibility(conn: sqlite3.Connection) -> None:
+    """Handle ensure schema compatibility."""
     try:
         _assert_columns_exact(conn, TABLE_NAME, INSTANCE_COLUMNS)
         _assert_columns_exact(conn, "channels", CHANNEL_COLUMNS)
@@ -185,6 +192,7 @@ def ensure_schema_compatibility(conn: sqlite3.Connection) -> None:
 
 
 def fetch_hosts(url: str) -> set[str]:
+    """Handle fetch hosts."""
     request = Request(
         url,
         headers={"User-Agent": "peertube-graph-whitelist-sync/1.0"},
@@ -218,6 +226,7 @@ def fetch_hosts(url: str) -> set[str]:
 
 
 def ensure_whitelist_schema(conn: sqlite3.Connection) -> None:
+    """Handle ensure whitelist schema."""
     conn.execute(
         f"""
         CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
@@ -234,6 +243,7 @@ def ensure_whitelist_schema(conn: sqlite3.Connection) -> None:
 
 
 def ensure_content_schema(conn: sqlite3.Connection) -> None:
+    """Handle ensure content schema."""
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS channels (
@@ -314,6 +324,7 @@ def ensure_content_schema(conn: sqlite3.Connection) -> None:
 
 
 def sync_hosts(conn: sqlite3.Connection, hosts: set[str]) -> tuple[int, int]:
+    """Handle sync hosts."""
     existing = {row[0] for row in conn.execute(f"SELECT host FROM {TABLE_NAME}")}
     added = hosts - existing
     to_delete = existing - hosts
@@ -344,6 +355,7 @@ def rebuild_content_tables(
     conn: sqlite3.Connection,
     hosts: set[str],
 ) -> tuple[int, int, int]:
+    """Handle rebuild content tables."""
     conn.execute("DELETE FROM video_embeddings;")
     conn.execute("DELETE FROM videos;")
     conn.execute("DELETE FROM channels;")
@@ -403,6 +415,7 @@ def rebuild_content_tables(
 
 
 def parse_args() -> argparse.Namespace:
+    """Handle parse args."""
     parser = argparse.ArgumentParser(
         description=(
             "Synchronize the PeerTube instance whitelist into a dedicated database."
@@ -443,6 +456,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Handle main."""
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

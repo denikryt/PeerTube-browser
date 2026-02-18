@@ -20,6 +20,7 @@ from scripts.cli_format import CompactHelpFormatter
 
 
 def parse_args() -> argparse.Namespace:
+    """Handle parse args."""
     repo_root = script_dir.parents[4]
     api_dir = repo_root / "engine" / "server" / "api"
     if str(api_dir) not in sys.path:
@@ -49,6 +50,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def table_exists(conn: sqlite3.Connection, table: str, schema: str) -> bool:
+    """Handle table exists."""
     row = conn.execute(
         f"SELECT 1 FROM {schema}.sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
         (table,),
@@ -57,6 +59,7 @@ def table_exists(conn: sqlite3.Connection, table: str, schema: str) -> bool:
 
 
 def table_columns(conn: sqlite3.Connection, table: str, schema: str) -> list[str]:
+    """Handle table columns."""
     return [
         row[1]
         for row in conn.execute(f"PRAGMA {schema}.table_info({table})").fetchall()
@@ -64,10 +67,12 @@ def table_columns(conn: sqlite3.Connection, table: str, schema: str) -> list[str
 
 
 def count_rows(conn: sqlite3.Connection, schema: str, table: str) -> int:
+    """Handle count rows."""
     return int(conn.execute(f"SELECT COUNT(*) FROM {schema}.{table}").fetchone()[0])
 
 
 def load_rules(path: Path) -> list[dict[str, Any]]:
+    """Handle load rules."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     tables = payload.get("tables")
     if not isinstance(tables, list) or not tables:
@@ -81,6 +86,7 @@ def build_upsert_sql(
     keys: list[str],
     update_columns: list[str],
 ) -> str:
+    """Handle build upsert sql."""
     update_expr = ", ".join([f"{col} = excluded.{col}" for col in update_columns])
     cols = ", ".join(columns)
     key_expr = ", ".join(keys)
@@ -92,6 +98,7 @@ def build_upsert_sql(
 
 
 def main() -> None:
+    """Handle main."""
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 

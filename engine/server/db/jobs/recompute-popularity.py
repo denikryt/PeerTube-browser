@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Provide recompute-popularity runtime helpers."""
+
 import argparse
 import logging
 import sqlite3
@@ -14,6 +16,7 @@ from scripts.cli_format import CompactHelpFormatter
 
 
 def ensure_popularity_schema(conn: sqlite3.Connection) -> None:
+    """Handle ensure popularity schema."""
     columns = {row[1] for row in conn.execute("PRAGMA table_info(videos)")}
     if "popularity" not in columns:
         conn.execute("ALTER TABLE videos ADD COLUMN popularity REAL NOT NULL DEFAULT 0")
@@ -23,6 +26,7 @@ def ensure_popularity_schema(conn: sqlite3.Connection) -> None:
 
 
 def main() -> None:
+    """Handle main."""
     parser = argparse.ArgumentParser(
         description="Recompute popularity for all videos.",
         formatter_class=CompactHelpFormatter,

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Provide inspect-embedding runtime helpers."""
+
 import argparse
 import sqlite3
 import sys
@@ -8,6 +10,7 @@ import numpy as np
 
 
 def main() -> None:
+    """Handle main."""
     parser = argparse.ArgumentParser(description="Inspect one embedding from sqlite.")
     repo_root = Path(__file__).resolve().parents[4]
     api_dir = repo_root / "engine" / "server" / "api"

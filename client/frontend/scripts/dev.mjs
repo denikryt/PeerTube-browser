@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+/**
+ * Module `client/frontend/scripts/dev.mjs`: provide runtime functionality.
+ */
+
 import { spawn } from "node:child_process";
 
 const HELP_TEXT = `
@@ -16,6 +20,9 @@ Examples:
   npm run dev -- --client-api-base http://127.0.0.1:7072
 `.trim();
 
+/**
+ * Handle parse port.
+ */
 function parsePort(raw) {
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 1 || value > 65535) {
@@ -24,11 +31,17 @@ function parsePort(raw) {
   return value;
 }
 
+/**
+ * Handle normalize http base.
+ */
 function normalizeHttpBase(value) {
   const raw = String(value || "").trim();
   return raw.startsWith("http") ? raw : "";
 }
 
+/**
+ * Handle parse args.
+ */
 function parseArgs(argv) {
   let clientApiBase = process.env.VITE_CLIENT_API_BASE || "";
   let clientApiPort =

@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/pages/videos/index.ts`: provide runtime functionality.
+ */
+
 import "../../videos.css";
 import { fetchSimilarVideosPayload, parseSimilarQuery, resolveApiBase } from "../../data/videos";
 import { clearLocalLikes } from "../../data/local-likes";
@@ -118,6 +122,9 @@ window.addEventListener("keydown", (event) => {
   closeProfileModal();
 });
 
+/**
+ * Handle load videos.
+ */
 async function loadVideos() {
   state.loading = true;
   summaryCounts.textContent = "";
@@ -149,6 +156,9 @@ async function loadVideos() {
   }
 }
 
+/**
+ * Handle fetch videos payload.
+ */
 async function fetchVideosPayload() {
   if (useSimilar) {
     return fetchSimilarVideosPayload(similarQuery);
@@ -167,6 +177,9 @@ async function fetchVideosPayload() {
   return fetchSimilarVideosPayload(query);
 }
 
+/**
+ * Handle pick sample.
+ */
 function pickSample() {
   if (state.mode === "similar") {
     state.sample = state.rows.slice();
@@ -183,6 +196,9 @@ function pickSample() {
   state.visibleCount = CHUNK_SIZE;
 }
 
+/**
+ * Handle render summary.
+ */
 function renderSummary() {
   const total = state.rows.length;
   const visible = Math.min(state.visibleCount, state.sample.length);
@@ -203,6 +219,9 @@ function renderSummary() {
   if (resetLink) resetLink.hidden = true;
 }
 
+/**
+ * Handle render cards.
+ */
 function renderCards(reset = false) {
   const visibleRows = visibleSample();
   if (!visibleRows.length) {
@@ -224,10 +243,16 @@ function renderCards(reset = false) {
   queueStatsForRows(newRows);
 }
 
+/**
+ * Handle visible sample.
+ */
 function visibleSample() {
   return state.sample.slice(0, state.visibleCount);
 }
 
+/**
+ * Handle load next chunk.
+ */
 function loadNextChunk() {
   const nextCount = Math.min(state.sample.length, state.visibleCount + CHUNK_SIZE);
   if (nextCount <= state.visibleCount) return false;
@@ -237,6 +262,9 @@ function loadNextChunk() {
   return true;
 }
 
+/**
+ * Handle maybe fill viewport.
+ */
 function maybeFillViewport() {
   if (state.loading) return;
   let safety = 0;
@@ -252,6 +280,9 @@ function maybeFillViewport() {
   }
 }
 
+/**
+ * Handle maybe load on scroll.
+ */
 function maybeLoadOnScroll() {
   if (state.loading) return;
   const nearBottom =
@@ -261,6 +292,9 @@ function maybeLoadOnScroll() {
   }
 }
 
+/**
+ * Handle setup infinite scroll.
+ */
 function setupInfiniteScroll() {
   if (feedObserver) {
     feedObserver.disconnect();
@@ -286,6 +320,9 @@ function setupInfiniteScroll() {
   }
 }
 
+/**
+ * Handle render card.
+ */
 function renderCard(row: VideoRow) {
   const title = row.title ?? "Untitled video";
   const thumb = thumbnailUrl(row);
@@ -342,6 +379,9 @@ function renderCard(row: VideoRow) {
   `;
 }
 
+/**
+ * Handle video page url.
+ */
 function videoPageUrl(row: VideoRow) {
   const params = new URLSearchParams();
   const host = row.instance_domain ?? row.instanceDomain ?? "";
@@ -366,6 +406,9 @@ function videoPageUrl(row: VideoRow) {
   return `/video-page.html?${params.toString()}`;
 }
 
+/**
+ * Handle video url.
+ */
 function videoUrl(row: VideoRow) {
   if (row.video_url) return row.video_url;
   if (row.videoUrl) return row.videoUrl;
@@ -377,10 +420,16 @@ function videoUrl(row: VideoRow) {
   return "#";
 }
 
+/**
+ * Handle thumbnail url.
+ */
 function thumbnailUrl(row: VideoRow) {
   return row.thumbnail_url ?? row.thumbnailUrl ?? row.preview_path ?? row.previewPath ?? null;
 }
 
+/**
+ * Handle channel name.
+ */
 function channelName(row: VideoRow) {
   return (
     row.channel_display_name ??
@@ -391,6 +440,9 @@ function channelName(row: VideoRow) {
   );
 }
 
+/**
+ * Handle channel initials.
+ */
 function channelInitials(row: VideoRow) {
   const label = channelName(row).trim();
   if (!label) return "•";
@@ -402,6 +454,9 @@ function channelInitials(row: VideoRow) {
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
+/**
+ * Handle channel avatar url.
+ */
 function channelAvatarUrl(row: VideoRow) {
   return (
     row.channel_avatar_url ??
@@ -414,6 +469,9 @@ function channelAvatarUrl(row: VideoRow) {
   );
 }
 
+/**
+ * Handle channel url.
+ */
 function channelUrl(row: VideoRow) {
   if (row.channel_url) return row.channel_url;
   if (row.channelUrl) return row.channelUrl;
@@ -425,6 +483,9 @@ function channelUrl(row: VideoRow) {
   return "#";
 }
 
+/**
+ * Handle embed url.
+ */
 function embedUrl(row: VideoRow) {
   const raw = row.embed_path ?? row.embedPath ?? "";
   if (raw.startsWith("http")) return raw;
@@ -439,6 +500,9 @@ function embedUrl(row: VideoRow) {
   return "";
 }
 
+/**
+ * Handle published at ms.
+ */
 function publishedAtMs(row: VideoRow) {
   const raw = row.published_at ?? row.publishedAt ?? null;
   if (!raw || !Number.isFinite(raw)) return null;
@@ -447,6 +511,9 @@ function publishedAtMs(row: VideoRow) {
   return value;
 }
 
+/**
+ * Handle format time ago.
+ */
 function formatTimeAgo(timestampMs: number) {
   const now = Date.now();
   const diffMs = Math.max(0, now - timestampMs);
@@ -464,6 +531,9 @@ function formatTimeAgo(timestampMs: number) {
   return `${Math.floor(diffMs / year)} years ago`;
 }
 
+/**
+ * Handle format duration.
+ */
 function formatDuration(value: number | null) {
   if (!value || !Number.isFinite(value)) return "0:00";
   const total = Math.max(0, Math.round(value));
@@ -484,6 +554,9 @@ function shuffle<T>(items: T[]) {
   return items;
 }
 
+/**
+ * Handle icon thumb up.
+ */
 function iconThumbUp() {
   return `
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -493,6 +566,9 @@ function iconThumbUp() {
   `;
 }
 
+/**
+ * Handle icon eye.
+ */
 function iconEye() {
   return `
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -502,6 +578,9 @@ function iconEye() {
   `;
 }
 
+/**
+ * Handle icon thumb down.
+ */
 function iconThumbDown() {
   return `
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -511,6 +590,9 @@ function iconThumbDown() {
   `;
 }
 
+/**
+ * Handle render debug metrics.
+ */
 function renderDebugMetrics(row: VideoRow) {
   if (!debugMode) return "";
   const debug = row.debug ?? null;
@@ -536,16 +618,25 @@ function renderDebugMetrics(row: VideoRow) {
   `;
 }
 
+/**
+ * Handle format debug number.
+ */
 function formatDebugNumber(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "--";
   return Number(value).toFixed(3);
 }
 
+/**
+ * Handle format debug int.
+ */
 function formatDebugInt(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "--";
   return String(Math.trunc(value));
 }
 
+/**
+ * Handle escape html.
+ */
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => {
     switch (char) {
@@ -565,6 +656,9 @@ function escapeHtml(value: string) {
   });
 }
 
+/**
+ * Handle resolve cached stats.
+ */
 function resolveCachedStats(row: VideoRow) {
   const key = resolveVideoKey(row);
   if (!key) return null;
@@ -573,6 +667,9 @@ function resolveCachedStats(row: VideoRow) {
   return null;
 }
 
+/**
+ * Handle resolve video key.
+ */
 function resolveVideoKey(row: VideoRow) {
   const host = resolveInstanceDomain(row);
   const id = resolveVideoId(row);
@@ -580,20 +677,32 @@ function resolveVideoKey(row: VideoRow) {
   return `${host}::${id}`;
 }
 
+/**
+ * Handle resolve instance domain.
+ */
 function resolveInstanceDomain(row: VideoRow) {
   return row.instance_domain ?? row.instanceDomain ?? "";
 }
 
+/**
+ * Handle resolve video id.
+ */
 function resolveVideoId(row: VideoRow) {
   const value = row.video_uuid ?? row.videoUuid ?? row.video_id ?? "";
   return value ? String(value) : "";
 }
 
+/**
+ * Handle format stat value.
+ */
 function formatStatValue(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "--";
   return numberFormat.format(value);
 }
 
+/**
+ * Handle normalize stat value.
+ */
 function normalizeStatValue(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -603,6 +712,9 @@ function normalizeStatValue(value: unknown) {
   return null;
 }
 
+/**
+ * Check whether has server stats.
+ */
 function hasServerStats(row: VideoRow) {
   const hasViews =
     Object.prototype.hasOwnProperty.call(row, "views") ||
@@ -615,6 +727,9 @@ function hasServerStats(row: VideoRow) {
   return hasViews && hasLikes;
 }
 
+/**
+ * Handle resolve server stats.
+ */
 function resolveServerStats(row: VideoRow) {
   return {
     views: normalizeStatValue(row.views ?? row.viewsCount ?? row.views_count),
@@ -623,6 +738,9 @@ function resolveServerStats(row: VideoRow) {
   };
 }
 
+/**
+ * Handle queue stats for rows.
+ */
 function queueStatsForRows(rows: VideoRow[]) {
   if (!rows.length) return;
   const groups = new Map<string, { key: string; id: string }[]>();
@@ -655,6 +773,9 @@ function queueStatsForRows(rows: VideoRow[]) {
   }
 }
 
+/**
+ * Handle fetch stats for host.
+ */
 async function fetchStatsForHost(host: string, entries: { key: string; id: string }[]) {
   const ids = entries.map((entry) => entry.id);
   try {
@@ -678,6 +799,9 @@ async function fetchStatsForHost(host: string, entries: { key: string; id: strin
   }
 }
 
+/**
+ * Handle fetch stats individually.
+ */
 async function fetchStatsIndividually(host: string, entries: { key: string; id: string }[]) {
   await Promise.all(
     entries.map(async (entry) => {
@@ -693,6 +817,9 @@ async function fetchStatsIndividually(host: string, entries: { key: string; id: 
   );
 }
 
+/**
+ * Handle fetch batch stats.
+ */
 async function fetchBatchStats(host: string, ids: string[]) {
   const url = new URL(`https://${host}/api/v1/videos`);
   for (const id of ids) {
@@ -724,6 +851,9 @@ async function fetchBatchStats(host: string, ids: string[]) {
   return stats;
 }
 
+/**
+ * Handle fetch single stats.
+ */
 async function fetchSingleStats(host: string, id: string) {
   const url = `https://${host}/api/v1/videos/${encodeURIComponent(id)}`;
   const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -735,6 +865,9 @@ async function fetchSingleStats(host: string, id: string) {
   return { views, likes, dislikes };
 }
 
+/**
+ * Handle apply stats to dom.
+ */
 function applyStatsToDom(key: string, stats: LiveStats) {
   const escaped = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(key) : key;
   const card = cards.querySelector<HTMLElement>(`[data-video-key="${escaped}"]`);
@@ -747,6 +880,9 @@ function applyStatsToDom(key: string, stats: LiveStats) {
   if (dislikesEl) dislikesEl.textContent = formatStatValue(stats.dislikes);
 }
 
+/**
+ * Handle open profile modal.
+ */
 function openProfileModal(likes: VideoRow[]) {
   if (!profileModal || !profileModalBody) return;
   profileModalBody.innerHTML = renderLikes(likes);
@@ -754,11 +890,17 @@ function openProfileModal(likes: VideoRow[]) {
   profileModalBody.focus();
 }
 
+/**
+ * Handle close profile modal.
+ */
 function closeProfileModal() {
   if (!profileModal) return;
   profileModal.setAttribute("hidden", "true");
 }
 
+/**
+ * Handle render likes.
+ */
 function renderLikes(likes: VideoRow[]) {
   if (!likes.length) {
     return `<div class="empty">No likes yet.</div>`;
@@ -785,11 +927,17 @@ function renderLikes(likes: VideoRow[]) {
     .join("");
 }
 
+/**
+ * Handle resolve feed mode.
+ */
 function resolveFeedMode(searchParams: URLSearchParams) {
   const raw = searchParams.get("mode");
   return raw === "random" ? "random" : "recommendations";
 }
 
+/**
+ * Handle set feed mode.
+ */
 function setFeedMode(mode: "random" | "recommendations") {
   const next = new URLSearchParams(window.location.search);
   if (mode === "random") {

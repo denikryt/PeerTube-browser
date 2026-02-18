@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/data/cache.ts`: provide runtime functionality.
+ */
+
 interface CacheEntry<T> {
   expiresAt: number;
   payload: T;

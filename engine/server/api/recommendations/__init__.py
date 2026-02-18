@@ -1,9 +1,12 @@
+"""Provide recommendations runtime helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Protocol
 
 
 class RecommendationStrategy(Protocol):
+    """Represent recommendation strategy behavior."""
     name: str
 
     def generate_recommendations(

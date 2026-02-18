@@ -1,3 +1,7 @@
+/**
+ * Module `engine/crawler/src/http.ts`: provide runtime functionality.
+ */
+
 import { setTimeout as sleep } from "node:timers/promises";
 import { setDefaultResultOrder } from "node:dns";
 import { execFile } from "node:child_process";
@@ -13,14 +17,23 @@ export interface HttpOptions {
   log?: (message: string) => void;
 }
 
+/**
+ * Represent no network error behavior.
+ */
 export class NoNetworkError extends Error {
   code = "NO_NETWORK";
+  /**
+   * Initialize the instance.
+   */
   constructor(message: string) {
     super(message);
     this.name = "NoNetworkError";
   }
 }
 
+/**
+ * Check whether is no network error.
+ */
 export function isNoNetworkError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   if (error instanceof NoNetworkError) return true;
@@ -119,6 +132,9 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
   }
 }
 
+/**
+ * Handle fetch via curl.
+ */
 async function fetchViaCurl(url: string, timeoutMs: number): Promise<Response> {
   const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
   try {
@@ -144,6 +160,9 @@ async function fetchViaCurl(url: string, timeoutMs: number): Promise<Response> {
   }
 }
 
+/**
+ * Handle extract error reason.
+ */
 function extractErrorReason(error: unknown): string {
   if (error instanceof Error) {
     const reasons = collectErrorDetails(error);
@@ -158,6 +177,9 @@ function extractErrorReason(error: unknown): string {
   }
 }
 
+/**
+ * Handle extract error debug.
+ */
 function extractErrorDebug(error: unknown): string {
   if (!error || typeof error !== "object") return "";
   const err = error as {
@@ -181,6 +203,9 @@ function extractErrorDebug(error: unknown): string {
   return parts.join("\n");
 }
 
+/**
+ * Handle collect error details.
+ */
 function collectErrorDetails(error: Error): string[] {
   const details: string[] = [];
   const seen = new Set<string>();
@@ -209,6 +234,9 @@ function collectErrorDetails(error: Error): string[] {
   return details;
 }
 
+/**
+ * Handle pick reason token.
+ */
 function pickReasonToken(message: string): string {
   const trimmed = message.trim();
   const split = trimmed.split("|", 1)[0];
@@ -216,6 +244,9 @@ function pickReasonToken(message: string): string {
   return firstLine.trim();
 }
 
+/**
+ * Handle parse retry after.
+ */
 function parseRetryAfter(value: string | null): number | undefined {
   if (!value) return undefined;
   const seconds = Number(value);

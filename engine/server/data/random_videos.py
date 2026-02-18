@@ -1,3 +1,5 @@
+"""Provide random videos runtime helpers."""
+
 from __future__ import annotations
 
 import sqlite3

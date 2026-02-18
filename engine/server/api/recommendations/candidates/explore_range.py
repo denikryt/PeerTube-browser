@@ -1,3 +1,5 @@
+"""Provide explore range runtime helpers."""
+
 from __future__ import annotations
 
 import logging
@@ -12,6 +14,7 @@ from recommendations.filters import apply_author_instance_caps
 
 @dataclass(frozen=True)
 class ExploreRangeDeps:
+    """Represent explore range deps behavior."""
     fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]]
     fetch_embeddings_by_ids: Callable[[Any, list[dict[str, Any]]], dict[str, np.ndarray]]
     like_key: Callable[[Any], str]
@@ -21,9 +24,11 @@ class ExploreRangeDeps:
 
 
 class ExploreRangeGenerator:
+    """Represent explore range generator behavior."""
     name = "explore"
 
     def __init__(self, deps: ExploreRangeDeps) -> None:
+        """Initialize the instance."""
         self.deps = deps
 
     def get_candidates(
@@ -34,6 +39,7 @@ class ExploreRangeGenerator:
         refresh_cache: bool = False,
         config: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        """Handle get candidates."""
         if limit <= 0:
             return []
         config = config or {}
@@ -144,6 +150,7 @@ class ExploreRangeGenerator:
         return filtered[:limit]
 
     def _fetch_pool(self, server: Any, limit: int) -> list[dict[str, Any]]:
+        """Handle fetch pool."""
         rows = self.deps.fetch_random_rows_from_cache(server, limit)
         if rows:
             return rows
@@ -152,6 +159,7 @@ class ExploreRangeGenerator:
 
 
 def _sample_pool(pool: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    """Handle sample pool."""
     if limit <= 0 or not pool:
         return []
     if len(pool) <= limit:
@@ -162,6 +170,7 @@ def _sample_pool(pool: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]
 
 
 def _normalize_vectors(vectors: list[np.ndarray]) -> list[np.ndarray]:
+    """Handle normalize vectors."""
     normalized: list[np.ndarray] = []
     for vector in vectors:
         normed = _normalize_vector(vector)
@@ -171,6 +180,7 @@ def _normalize_vectors(vectors: list[np.ndarray]) -> list[np.ndarray]:
 
 
 def _normalize_vector(vector: np.ndarray) -> np.ndarray | None:
+    """Handle normalize vector."""
     norm = float(np.linalg.norm(vector))
     if not np.isfinite(norm) or norm == 0:
         return None
@@ -178,6 +188,7 @@ def _normalize_vector(vector: np.ndarray) -> np.ndarray | None:
 
 
 def _max_similarity(vector: np.ndarray, liked_vectors: list[np.ndarray]) -> float:
+    """Handle max similarity."""
     if not liked_vectors:
         return 0.0
     best = -1.0

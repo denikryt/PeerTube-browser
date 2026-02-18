@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/vite.config.ts`: provide runtime functionality.
+ */
+
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
@@ -27,6 +31,9 @@ export default defineConfig({
         secure: true,
       },
     },
+    /**
+     * Handle configure server.
+     */
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
         if (!req.url) return next();
@@ -42,6 +49,9 @@ export default defineConfig({
   },
   preview: {
     port: 5173,
+    /**
+     * Handle configure preview server.
+     */
     configurePreviewServer(server) {
       server.middlewares.use((req, _res, next) => {
         if (!req.url) return next();

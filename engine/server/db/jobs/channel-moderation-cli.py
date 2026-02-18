@@ -28,6 +28,7 @@ UUID_RE = re.compile(
 
 
 def parse_args() -> argparse.Namespace:
+    """Handle parse args."""
     repo_root = script_dir.parents[4]
     parser = argparse.ArgumentParser(
         description="Manage channel blocklist entries.",
@@ -66,12 +67,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def connect(path: Path) -> sqlite3.Connection:
+    """Handle connect."""
     conn = sqlite3.connect(path.as_posix())
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def require_host(value: str | None) -> str:
+    """Handle require host."""
     host = normalize_host(value)
     if not host:
         raise SystemExit(f"Invalid host: {value}")
@@ -79,6 +82,7 @@ def require_host(value: str | None) -> str:
 
 
 def parse_video_ref(video_url: str) -> tuple[str, str]:
+    """Handle parse video ref."""
     parsed = urlparse(video_url)
     host = require_host(parsed.hostname)
 
@@ -113,6 +117,7 @@ def resolve_channel_from_video(
     *,
     video_url: str,
 ) -> tuple[str, str]:
+    """Handle resolve channel from video."""
     host, video_ref = parse_video_ref(video_url)
 
     where = "(video_uuid = ? OR video_id = ?)"
@@ -155,6 +160,7 @@ def upsert_channel_status(
     reason: str | None,
     source_video_url: str | None,
 ) -> None:
+    """Handle upsert channel status."""
     ts = now_ms()
     conn.execute(
         """
@@ -188,6 +194,7 @@ def upsert_channel_status(
 
 
 def main() -> None:
+    """Handle main."""
     args = parse_args()
     db_path = Path(args.db).resolve()
 

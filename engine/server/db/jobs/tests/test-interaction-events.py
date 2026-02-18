@@ -16,11 +16,13 @@ from data.interaction_events import ensure_interaction_event_schema, ingest_inte
 
 
 def assert_eq(actual: object, expected: object, message: str) -> None:
+    """Handle assert eq."""
     if actual != expected:
         raise AssertionError(f"{message}: expected={expected} actual={actual}")
 
 
 def main() -> None:
+    """Handle main."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     ensure_interaction_event_schema(conn)

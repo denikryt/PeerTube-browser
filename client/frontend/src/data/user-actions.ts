@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/data/user-actions.ts`: provide runtime functionality.
+ */
+
 import { resolveClientApiBase } from "./api-base";
 
 interface UserActionInput {
@@ -6,6 +10,9 @@ interface UserActionInput {
   action: "like";
 }
 
+/**
+ * Handle send user action.
+ */
 export async function sendUserAction(apiBase: string, input: UserActionInput): Promise<void> {
   const clientApiBase = resolveClientApiBase(apiBase);
   const response = await fetch(new URL("/api/user-action", clientApiBase), {
@@ -26,6 +33,9 @@ export async function sendUserAction(apiBase: string, input: UserActionInput): P
   }
 }
 
+/**
+ * Handle safe json.
+ */
 async function safeJson(response: Response): Promise<{ error?: string } | null> {
   try {
     return (await response.json()) as { error?: string };

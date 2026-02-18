@@ -37,6 +37,7 @@ class DenylistHelpFormatter(
 
 
 def parse_args() -> argparse.Namespace:
+    """Handle parse args."""
     repo_root = script_dir.parents[4]
     help_overview = (
         "Commands:\n"
@@ -105,12 +106,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def connect(path: Path) -> sqlite3.Connection:
+    """Handle connect."""
     conn = sqlite3.connect(path.as_posix())
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def _fmt_fields(**fields: object) -> str:
+    """Handle fmt fields."""
     parts: list[str] = []
     for key, value in fields.items():
         parts.append(f"{key}={value}")
@@ -118,6 +121,7 @@ def _fmt_fields(**fields: object) -> str:
 
 
 def log_info(event: str, **fields: object) -> None:
+    """Handle log info."""
     if fields:
         print(f"INFO [{event}] {_fmt_fields(**fields)}")
     else:
@@ -125,6 +129,7 @@ def log_info(event: str, **fields: object) -> None:
 
 
 def log_info_block(event: str, **fields: object) -> None:
+    """Handle log info block."""
     print(f"INFO [{event}]")
     for key, value in fields.items():
         if isinstance(value, dict):
@@ -136,6 +141,7 @@ def log_info_block(event: str, **fields: object) -> None:
 
 
 def require_host(value: str) -> str:
+    """Handle require host."""
     host = normalize_host(value)
     if not host:
         raise SystemExit(f"Invalid host: {value}")
@@ -143,6 +149,7 @@ def require_host(value: str) -> str:
 
 
 def upsert_block(conn: sqlite3.Connection, host: str, reason: str | None, note: str | None) -> None:
+    """Handle upsert block."""
     ts = now_ms()
     conn.execute(
         """
@@ -160,6 +167,7 @@ def upsert_block(conn: sqlite3.Connection, host: str, reason: str | None, note: 
 
 
 def upsert_unblock(conn: sqlite3.Connection, host: str) -> None:
+    """Handle upsert unblock."""
     ts = now_ms()
     conn.execute(
         """
@@ -179,6 +187,7 @@ def collect_post_check_counts(
     similarity_conn: sqlite3.Connection | None,
     host: str,
 ) -> dict[str, int]:
+    """Handle collect post check counts."""
     counts = purge_host_data(main_conn, host, dry_run=True)
     if similarity_conn is None:
         counts.update(
@@ -195,6 +204,7 @@ def collect_post_check_counts(
 
 
 def run_purge(args: argparse.Namespace, host: str) -> None:
+    """Handle run purge."""
     if args.purge_now and not args.dry_run and not args.yes:
         raise SystemExit("Refusing destructive purge without --yes.")
 
@@ -296,6 +306,7 @@ def run_purge(args: argparse.Namespace, host: str) -> None:
 
 
 def main() -> None:
+    """Handle main."""
     args = parse_args()
     db_path = Path(args.db).resolve()
     db_path.parent.mkdir(parents=True, exist_ok=True)

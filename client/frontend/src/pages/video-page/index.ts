@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/pages/video-page/index.ts`: provide runtime functionality.
+ */
+
 import "../../video.css";
 import { fetchSimilarVideosPayload, resolveApiBase } from "../../data/videos";
 import { sendUserAction } from "../../data/user-actions";
@@ -64,6 +68,9 @@ if (likeButton && dislikeButton) {
   dislikeButton.addEventListener("click", () => toggleReaction(dislikeButton, likeButton));
 }
 
+/**
+ * Handle load video.
+ */
 async function loadVideo() {
   const metadata = await fetchVideoMetadata();
   currentMetadata = metadata;
@@ -201,6 +208,9 @@ async function loadVideo() {
   }
 }
 
+/**
+ * Handle load similar videos.
+ */
 async function loadSimilarVideos() {
   if (!similarSection || !similarCards) return;
   if (!seedId) {
@@ -233,6 +243,9 @@ async function loadSimilarVideos() {
   }
 }
 
+/**
+ * Handle channel name.
+ */
 function channelName(row: VideoRow | null) {
   return (
     row?.channel_display_name ??
@@ -245,6 +258,9 @@ function channelName(row: VideoRow | null) {
   );
 }
 
+/**
+ * Handle channel initials.
+ */
 function channelInitials(label: string) {
   const trimmed = label.trim();
   if (!trimmed) return "•";
@@ -256,6 +272,9 @@ function channelInitials(label: string) {
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
+/**
+ * Handle render channel avatar.
+ */
 function renderChannelAvatar(avatarUrl: string, label: string) {
   if (avatarUrl) {
     return `<img src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" />`;
@@ -264,6 +283,9 @@ function renderChannelAvatar(avatarUrl: string, label: string) {
   return `<span>${escapeHtml(channelInitials(label))}</span>`;
 }
 
+/**
+ * Handle channel url for.
+ */
 function channelUrlFor(row: VideoRow | null) {
   if (!row) return "";
   if (row.channel_url) return row.channel_url;
@@ -278,6 +300,9 @@ function channelUrlFor(row: VideoRow | null) {
   return "";
 }
 
+/**
+ * Handle label from url.
+ */
 function labelFromUrl(value: string) {
   if (!value) return "";
   try {
@@ -311,6 +336,9 @@ type VideoMetadata = {
   publishedAt?: number | null;
 };
 
+/**
+ * Handle fetch video metadata.
+ */
 async function fetchVideoMetadata(): Promise<VideoMetadata | null> {
   const source = resolveVideoSource();
   if (!source?.host || !source.id) return null;
@@ -319,6 +347,9 @@ async function fetchVideoMetadata(): Promise<VideoMetadata | null> {
   return fetchVideoMetadataFromInstance(source);
 }
 
+/**
+ * Handle fetch video metadata from server.
+ */
 async function fetchVideoMetadataFromServer(source: { host: string; id: string; url: string }) {
   try {
     const url = new URL("/api/video", apiBase);
@@ -359,6 +390,9 @@ async function fetchVideoMetadataFromServer(source: { host: string; id: string; 
   }
 }
 
+/**
+ * Handle fetch video metadata from instance.
+ */
 async function fetchVideoMetadataFromInstance(source: { host: string; id: string; url: string }) {
   try {
     const url = `https://${source.host}/api/v1/videos/${encodeURIComponent(source.id)}`;
@@ -426,6 +460,9 @@ async function fetchVideoMetadataFromInstance(source: { host: string; id: string
   }
 }
 
+/**
+ * Handle fetch channel metadata.
+ */
 async function fetchChannelMetadata(host: string, channelId: string) {
   try {
     const url = `https://${host}/api/v1/video-channels/${encodeURIComponent(channelId)}`;
@@ -448,6 +485,9 @@ async function fetchChannelMetadata(host: string, channelId: string) {
   }
 }
 
+/**
+ * Handle fetch instance metadata.
+ */
 async function fetchInstanceMetadata(host: string) {
   try {
     const url = `https://${host}/api/v1/config`;
@@ -483,6 +523,9 @@ async function fetchInstanceMetadata(host: string) {
   }
 }
 
+/**
+ * Handle resolve video source.
+ */
 function resolveVideoSource() {
   const urlCandidates = [fallback.url, fallback.embed].filter(Boolean);
   const parsed = urlCandidates.map((item) => parseVideoUrl(item)).find((item) => item?.host);
@@ -493,6 +536,9 @@ function resolveVideoSource() {
   return { host, id, url };
 }
 
+/**
+ * Handle parse video url.
+ */
 function parseVideoUrl(value: string) {
   if (!value) return null;
   try {
@@ -508,6 +554,9 @@ function parseVideoUrl(value: string) {
   }
 }
 
+/**
+ * Handle get string.
+ */
 function getString(source: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = source[key];
@@ -516,6 +565,9 @@ function getString(source: Record<string, unknown>, keys: string[]) {
   return "";
 }
 
+/**
+ * Handle resolve asset candidate.
+ */
 function resolveAssetCandidate(host: string, value: unknown) {
   if (!value) return "";
   if (typeof value === "string") return resolveApiAssetUrl(host, value);
@@ -534,6 +586,9 @@ function resolveAssetCandidate(host: string, value: unknown) {
   return "";
 }
 
+/**
+ * Handle resolve peer tube avatar url.
+ */
 function resolvePeerTubeAvatarUrl(host: string, source: Record<string, unknown>) {
   const avatar = (source.avatar ?? source.channelAvatar ?? source.accountAvatar) as
     | Record<string, unknown>
@@ -550,12 +605,18 @@ function resolvePeerTubeAvatarUrl(host: string, source: Record<string, unknown>)
   return path ? resolveApiAssetUrl(host, path) : "";
 }
 
+/**
+ * Handle resolve api asset url.
+ */
 function resolveApiAssetUrl(host: string, value: string) {
   if (!value) return "";
   if (value.startsWith("http")) return value;
   return `https://${host}${value.startsWith("/") ? value : `/${value}`}`;
 }
 
+/**
+ * Handle instance initials.
+ */
 function instanceInitials(label: string) {
   const trimmed = label.trim();
   if (!trimmed) return "•";
@@ -567,6 +628,9 @@ function instanceInitials(label: string) {
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
+/**
+ * Handle normalize timestamp ms.
+ */
 function normalizeTimestampMs(value: unknown) {
   if (value == null) return null;
   const raw = Number(value);
@@ -575,17 +639,26 @@ function normalizeTimestampMs(value: unknown) {
   return raw;
 }
 
+/**
+ * Handle published at ms.
+ */
 function publishedAtMs(row: VideoRow) {
   const value = row.published_at ?? row.publishedAt ?? null;
   return normalizeTimestampMs(value);
 }
 
+/**
+ * Handle normalize number.
+ */
 function normalizeNumber(value: unknown) {
   if (value == null) return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 }
 
+/**
+ * Handle format time ago.
+ */
 function formatTimeAgo(timestampMs: number) {
   const now = Date.now();
   const diffMs = Math.max(0, now - timestampMs);
@@ -603,11 +676,17 @@ function formatTimeAgo(timestampMs: number) {
   return `${Math.floor(diffMs / year)} years ago`;
 }
 
+/**
+ * Handle format stat value.
+ */
 function formatStatValue(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "--";
   return statsNumberFormat.format(value);
 }
 
+/**
+ * Handle normalize stat value.
+ */
 function normalizeStatValue(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -617,6 +696,9 @@ function normalizeStatValue(value: unknown) {
   return null;
 }
 
+/**
+ * Handle resolve similar key.
+ */
 function resolveSimilarKey(row: VideoRow) {
   const host = row.instance_domain ?? row.instanceDomain ?? "";
   const id = row.video_uuid ?? row.videoUuid ?? row.video_id ?? "";
@@ -624,6 +706,9 @@ function resolveSimilarKey(row: VideoRow) {
   return `${host}::${id}`;
 }
 
+/**
+ * Handle resolve similar stats.
+ */
 function resolveSimilarStats(row: VideoRow) {
   const key = resolveSimilarKey(row);
   if (!key) return null;
@@ -633,6 +718,9 @@ function resolveSimilarStats(row: VideoRow) {
   return normalizeStatValue(row.views ?? row.views_count ?? row.viewsCount) ?? null;
 }
 
+/**
+ * Check whether has server stats.
+ */
 function hasServerStats(row: VideoRow) {
   const hasViews =
     Object.prototype.hasOwnProperty.call(row, "views") ||
@@ -645,6 +733,9 @@ function hasServerStats(row: VideoRow) {
   return hasViews && hasLikes;
 }
 
+/**
+ * Handle queue similar stats.
+ */
 function queueSimilarStats(rows: VideoRow[]) {
   if (!rows.length) return;
   const groups = new Map<string, { key: string; id: string }[]>();
@@ -674,6 +765,9 @@ function queueSimilarStats(rows: VideoRow[]) {
   }
 }
 
+/**
+ * Handle fetch similar stats for host.
+ */
 async function fetchSimilarStatsForHost(host: string, entries: { key: string; id: string }[]) {
   const ids = entries.map((entry) => entry.id);
   try {
@@ -697,6 +791,9 @@ async function fetchSimilarStatsForHost(host: string, entries: { key: string; id
   }
 }
 
+/**
+ * Handle fetch views individually.
+ */
 async function fetchViewsIndividually(host: string, entries: { key: string; id: string }[]) {
   await Promise.all(
     entries.map(async (entry) => {
@@ -711,6 +808,9 @@ async function fetchViewsIndividually(host: string, entries: { key: string; id: 
   );
 }
 
+/**
+ * Handle fetch batch views.
+ */
 async function fetchBatchViews(host: string, ids: string[]) {
   const url = new URL(`https://${host}/api/v1/videos`);
   for (const id of ids) {
@@ -739,6 +839,9 @@ async function fetchBatchViews(host: string, ids: string[]) {
   return stats;
 }
 
+/**
+ * Handle fetch single views.
+ */
 async function fetchSingleViews(host: string, id: string) {
   const url = `https://${host}/api/v1/videos/${encodeURIComponent(id)}`;
   const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -747,6 +850,9 @@ async function fetchSingleViews(host: string, id: string) {
   return normalizeStatValue(record.views ?? record.viewsCount ?? record.views_count);
 }
 
+/**
+ * Handle apply similar stats to dom.
+ */
 function applySimilarStatsToDom(key: string, views: number | null) {
   if (!similarCards) return;
   const escaped = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(key) : key;
@@ -756,6 +862,9 @@ function applySimilarStatsToDom(key: string, views: number | null) {
   if (viewsEl) viewsEl.textContent = formatStatValue(views);
 }
 
+/**
+ * Handle embed url for.
+ */
 function embedUrlFor(row: VideoRow | null) {
   if (!row) return "";
   const raw = row.embed_path ?? row.embedPath ?? "";
@@ -771,6 +880,9 @@ function embedUrlFor(row: VideoRow | null) {
   return "";
 }
 
+/**
+ * Handle video url for.
+ */
 function videoUrlFor(row: VideoRow | null) {
   if (!row) return "";
   if (row.video_url) return row.video_url;
@@ -783,6 +895,9 @@ function videoUrlFor(row: VideoRow | null) {
   return "";
 }
 
+/**
+ * Handle video page url.
+ */
 function videoPageUrl(row: VideoRow) {
   const params = new URLSearchParams();
   const host = row.instance_domain ?? row.instanceDomain ?? "";
@@ -806,10 +921,16 @@ function videoPageUrl(row: VideoRow) {
   return `/video-page.html?${params.toString()}`;
 }
 
+/**
+ * Handle thumbnail url.
+ */
 function thumbnailUrl(row: VideoRow) {
   return row.thumbnail_url ?? row.thumbnailUrl ?? row.preview_path ?? row.previewPath ?? null;
 }
 
+/**
+ * Handle render similar card.
+ */
 function renderSimilarCard(row: VideoRow) {
   const title = row.title ?? "Untitled video";
   const thumb = thumbnailUrl(row);
@@ -837,6 +958,9 @@ function renderSimilarCard(row: VideoRow) {
   `;
 }
 
+/**
+ * Handle format duration.
+ */
 function formatDuration(value: number | null) {
   if (!value || !Number.isFinite(value)) return "0:00";
   const total = Math.max(0, Math.round(value));
@@ -849,6 +973,9 @@ function formatDuration(value: number | null) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+/**
+ * Handle toggle reaction.
+ */
 function toggleReaction(active: HTMLButtonElement, other: HTMLButtonElement) {
   const wasActive = active.classList.contains("active");
   active.classList.toggle("active", !wasActive);
@@ -858,6 +985,9 @@ function toggleReaction(active: HTMLButtonElement, other: HTMLButtonElement) {
   return !wasActive;
 }
 
+/**
+ * Handle handle like action.
+ */
 async function handleLikeAction() {
   if (!seedId) return;
   if (!(likeButton instanceof HTMLButtonElement)) return;
@@ -880,12 +1010,18 @@ async function handleLikeAction() {
   }
 }
 
+/**
+ * Handle resolve like uuid.
+ */
 function resolveLikeUuid(id: string, metadata: VideoMetadata | null) {
   const candidate = metadata?.videoUuid ?? "";
   if (candidate) return candidate;
   return looksLikeUuid(id) ? id : "";
 }
 
+/**
+ * Handle resolve like host.
+ */
 function resolveLikeHost(hostParam: string | null, metadata: VideoMetadata | null) {
   const host = hostParam?.trim();
   if (host) return host;
@@ -894,14 +1030,23 @@ function resolveLikeHost(hostParam: string | null, metadata: VideoMetadata | nul
   return "";
 }
 
+/**
+ * Handle looks like uuid.
+ */
 function looksLikeUuid(value: string) {
   return /^[0-9a-fA-F-]{32,36}$/.test(value);
 }
 
+/**
+ * Handle number format.
+ */
 function numberFormat() {
   return new Intl.NumberFormat("en-US");
 }
 
+/**
+ * Handle icon eye.
+ */
 function iconEye() {
   return `
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -911,6 +1056,9 @@ function iconEye() {
   `;
 }
 
+/**
+ * Handle icon thumb up.
+ */
 function iconThumbUp() {
   return `
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -920,6 +1068,9 @@ function iconThumbUp() {
   `;
 }
 
+/**
+ * Handle icon thumb down.
+ */
 function iconThumbDown() {
   return `
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -929,6 +1080,9 @@ function iconThumbDown() {
   `;
 }
 
+/**
+ * Handle apply action icons.
+ */
 function applyActionIcons() {
   if (likeButton instanceof HTMLButtonElement) {
     likeButton.insertAdjacentHTML("afterbegin", iconThumbUp());
@@ -940,6 +1094,9 @@ function applyActionIcons() {
 
 applyActionIcons();
 
+/**
+ * Handle escape html.
+ */
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => {
     switch (char) {

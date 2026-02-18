@@ -1,3 +1,7 @@
+/**
+ * Module `engine/crawler/src/channels-videos-count-worker.ts`: provide runtime functionality.
+ */
+
 import { ChannelStore } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile } from "./host-filters.js";
@@ -32,6 +36,9 @@ interface ChannelProgressState {
 
 type StatusReporter = (message: string) => void;
 
+/**
+ * Handle crawl channel videos count.
+ */
 export async function crawlChannelVideosCount(options: ChannelVideosCountOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
@@ -61,6 +68,9 @@ export async function crawlChannelVideosCount(options: ChannelVideosCountOptions
   store.close();
 }
 
+/**
+ * Handle worker loop.
+ */
 async function workerLoop(
   queue: string[],
   store: ChannelStore,
@@ -74,6 +84,9 @@ async function workerLoop(
   }
 }
 
+/**
+ * Handle process instance.
+ */
 async function processInstance(
   host: string,
   store: ChannelStore,
@@ -99,6 +112,9 @@ async function processInstance(
   }
 }
 
+/**
+ * Handle update videos count for instance.
+ */
 async function updateVideosCountForInstance(
   host: string,
   store: ChannelStore,
@@ -164,6 +180,9 @@ async function updateVideosCountForInstance(
   return { total: channels.length, updated };
 }
 
+/**
+ * Handle fetch channel videos count.
+ */
 async function fetchChannelVideosCount(
   host: string,
   channelName: string,
@@ -187,6 +206,9 @@ async function fetchChannelVideosCount(
   }
 }
 
+/**
+ * Handle fetch with fallback.
+ */
 async function fetchWithFallback(
   host: string,
   channelName: string,
@@ -212,6 +234,9 @@ async function fetchWithFallback(
   }
 }
 
+/**
+ * Handle build channel videos url.
+ */
 function buildChannelVideosUrl(
   host: string,
   channelName: string,
@@ -245,17 +270,26 @@ async function mapWithConcurrency<T>(
   await Promise.all(workers);
 }
 
+/**
+ * Handle format progress.
+ */
 function formatProgress(progress: ChannelProgressState) {
   const total = Math.max(0, progress.totalChannels);
   const withVideos = Math.max(0, progress.channelsWithVideosCount);
   return `[channels-videos] progress updated=${progress.updatedThisRun} errors=${progress.channelsWithError} with_videos=${withVideos} total=${total}`;
 }
 
+/**
+ * Handle update progress.
+ */
 function updateProgress(progress: ChannelProgressState) {
   const line = formatProgress(progress);
   console.log(line);
 }
 
+/**
+ * Handle update status.
+ */
 function updateStatus(message: string) {
   console.log(message);
 }

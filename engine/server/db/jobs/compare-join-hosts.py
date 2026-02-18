@@ -29,6 +29,7 @@ DEFAULT_URL = (
 
 
 def parse_args() -> argparse.Namespace:
+    """Handle parse args."""
     repo_root = script_dir.parents[4]
     parser = argparse.ArgumentParser(
         description=(
@@ -52,6 +53,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def fetch_hosts_from_url(url: str) -> set[str]:
+    """Handle fetch hosts from url."""
     request = Request(url, headers={"User-Agent": "peertube-browser-compare/1.0"})
     try:
         with urlopen(request, timeout=30) as response:
@@ -62,6 +64,7 @@ def fetch_hosts_from_url(url: str) -> set[str]:
 
 
 def hosts_from_payload(payload: object) -> set[str]:
+    """Handle hosts from payload."""
     if isinstance(payload, dict) and "data" in payload:
         entries = payload["data"]
     elif isinstance(payload, list):
@@ -84,6 +87,7 @@ def hosts_from_payload(payload: object) -> set[str]:
 
 
 def load_local_hosts(db_path: Path) -> set[str]:
+    """Handle load local hosts."""
     conn = sqlite3.connect(db_path.as_posix())
     try:
         if not table_exists(conn, "instances"):
@@ -95,6 +99,7 @@ def load_local_hosts(db_path: Path) -> set[str]:
 
 
 def load_local_blocked_hosts(db_path: Path) -> set[str]:
+    """Handle load local blocked hosts."""
     conn = sqlite3.connect(db_path.as_posix())
     conn.row_factory = sqlite3.Row
     try:
@@ -105,6 +110,7 @@ def load_local_blocked_hosts(db_path: Path) -> set[str]:
 
 
 def table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    """Handle table exists."""
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
         (table,),
@@ -113,6 +119,7 @@ def table_exists(conn: sqlite3.Connection, table: str) -> bool:
 
 
 def print_list(title: str, hosts: list[str]) -> None:
+    """Handle print list."""
     print()
     print(title)
     if not hosts:
@@ -123,6 +130,7 @@ def print_list(title: str, hosts: list[str]) -> None:
 
 
 def main() -> None:
+    """Handle main."""
     args = parse_args()
     db_path = Path(args.db).resolve()
     if not db_path.exists():

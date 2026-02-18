@@ -29,6 +29,7 @@ except ImportError as exc:  # pragma: no cover
 
 @dataclass
 class EmbeddingRow:
+    """Represent embedding row behavior."""
     rowid: int
     embedding: np.ndarray
 
@@ -40,6 +41,7 @@ def iter_embeddings(
     dim: int,
     batch_size: int,
 ) -> Iterable[list[EmbeddingRow]]:
+    """Handle iter embeddings."""
     cursor = conn.execute(query, params)
     while True:
         rows = cursor.fetchmany(batch_size)
@@ -62,6 +64,7 @@ def fetch_training_samples(
     dim: int,
     sample_size: int,
 ) -> np.ndarray:
+    """Handle fetch training samples."""
     total = conn.execute("SELECT COUNT(*) FROM video_embeddings").fetchone()[0]
     if total == 0:
         raise RuntimeError("No embeddings found.")
@@ -89,6 +92,7 @@ def fetch_training_samples(
 
 
 def normalize_vectors(vectors: np.ndarray) -> None:
+    """Handle normalize vectors."""
     faiss.normalize_L2(vectors)
 
 
@@ -98,6 +102,7 @@ def build_index(
     m: int,
     nbits: int,
 ) -> faiss.Index:
+    """Handle build index."""
     if dim % m != 0:
         raise ValueError(f"dim={dim} must be divisible by m={m} for PQ")
     quantizer = faiss.IndexFlatIP(dim)
@@ -108,6 +113,7 @@ def build_index(
 
 
 def main() -> None:
+    """Handle main."""
     parser = argparse.ArgumentParser(
         description="Build a FAISS ANN index from existing video embeddings.",
         formatter_class=CompactHelpFormatter,

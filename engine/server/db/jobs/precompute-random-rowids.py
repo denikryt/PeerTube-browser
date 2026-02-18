@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Provide precompute-random-rowids runtime helpers."""
+
 import argparse
 import logging
 import sqlite3
@@ -12,6 +14,7 @@ from data.random_cache import connect_random_cache_db, populate_random_cache
 
 
 def connect_source_db(path: Path) -> sqlite3.Connection:
+    """Handle connect source db."""
     quoted = path.as_posix()
     uri = f"file:{quoted}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
@@ -20,6 +23,7 @@ def connect_source_db(path: Path) -> sqlite3.Connection:
 
 
 def main() -> None:
+    """Handle main."""
     parser = argparse.ArgumentParser(description="Precompute random rowid cache.")
     repo_root = script_dir.parents[4]
     api_dir = repo_root / "engine" / "server" / "api"

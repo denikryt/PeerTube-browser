@@ -1,9 +1,12 @@
+"""Provide whitelist migrations runtime helpers."""
+
 from __future__ import annotations
 
 import sqlite3
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    """Handle table exists."""
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?;",
         (table,),
@@ -12,10 +15,12 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
 
 
 def _columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    """Handle columns."""
     return [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
 
 
 def migrate_instances_schema(conn: sqlite3.Connection, table_name: str) -> None:
+    """Handle migrate instances schema."""
     if not _table_exists(conn, table_name):
         return
     columns = _columns(conn, table_name)
@@ -108,6 +113,7 @@ def migrate_instances_schema(conn: sqlite3.Connection, table_name: str) -> None:
 
 
 def migrate_channels_schema(conn: sqlite3.Connection) -> None:
+    """Handle migrate channels schema."""
     if not _table_exists(conn, "channels"):
         return
     columns = _columns(conn, "channels")
@@ -224,6 +230,7 @@ def migrate_channels_schema(conn: sqlite3.Connection) -> None:
 
 
 def migrate_videos_schema(conn: sqlite3.Connection) -> None:
+    """Handle migrate videos schema."""
     if not _table_exists(conn, "videos"):
         return
     columns = _columns(conn, "videos")
@@ -354,6 +361,7 @@ def migrate_videos_schema(conn: sqlite3.Connection) -> None:
 
 
 def migrate_whitelist_schema(conn: sqlite3.Connection, table_name: str) -> None:
+    """Handle migrate whitelist schema."""
     migrate_instances_schema(conn, table_name)
     migrate_channels_schema(conn)
     migrate_videos_schema(conn)

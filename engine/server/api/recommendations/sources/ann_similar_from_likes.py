@@ -1,6 +1,9 @@
+"""Provide ann similar from likes runtime helpers."""
+
 from __future__ import annotations
 
-"""ANN-backed similarity source for recommendations, via shared candidates pipeline."""
+# ANN-backed similarity source for recommendations, via shared candidates pipeline.
+
 
 import random
 from dataclasses import dataclass
@@ -29,9 +32,11 @@ class AnnSimilarFromLikesDeps:
 
 
 class AnnSimilarFromLikesSource:
+    """Represent ann similar from likes source behavior."""
     name = "ann"
 
     def __init__(self, deps: AnnSimilarFromLikesDeps) -> None:
+        """Initialize the instance."""
         self.deps = deps
 
     def get_candidates(

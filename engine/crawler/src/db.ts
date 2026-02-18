@@ -1,3 +1,7 @@
+/**
+ * Module `engine/crawler/src/db.ts`: provide runtime functionality.
+ */
+
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -35,6 +39,9 @@ const DEPRECATED_CHANNEL_COLUMNS = new Set([
   "videos_count_error_at"
 ]);
 
+/**
+ * Handle get columns.
+ */
 function getColumns(db: Database.Database, table: string): string[] {
   return db
     .prepare(`PRAGMA table_info(${table})`)
@@ -42,6 +49,9 @@ function getColumns(db: Database.Database, table: string): string[] {
     .map((row) => (row as { name: string }).name);
 }
 
+/**
+ * Handle table exists.
+ */
 function tableExists(db: Database.Database, table: string): boolean {
   const row = db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
@@ -49,6 +59,9 @@ function tableExists(db: Database.Database, table: string): boolean {
   return Boolean(row?.name);
 }
 
+/**
+ * Handle apply base schema.
+ */
 function applyBaseSchema(db: Database.Database) {
   db.exec(schemaSql);
   migrateInstances(db);
@@ -57,6 +70,9 @@ function applyBaseSchema(db: Database.Database) {
   db.exec(schemaSql);
 }
 
+/**
+ * Handle migrate instances.
+ */
 function migrateInstances(db: Database.Database) {
   if (!tableExists(db, "instances")) return;
   const columns = getColumns(db, "instances");
@@ -151,6 +167,9 @@ function migrateInstances(db: Database.Database) {
   `);
 }
 
+/**
+ * Handle migrate channels.
+ */
 function migrateChannels(db: Database.Database) {
   if (!tableExists(db, "channels")) return;
   const columns = getColumns(db, "channels");
@@ -252,6 +271,9 @@ function migrateChannels(db: Database.Database) {
   `);
 }
 
+/**
+ * Handle migrate videos.
+ */
 function migrateVideos(db: Database.Database) {
   if (!tableExists(db, "videos")) return;
   const columns = getColumns(db, "videos");
@@ -468,10 +490,16 @@ export interface VideoUpsertRow {
   lastCheckedAt: number;
 }
 
+/**
+ * Represent crawler store behavior.
+ */
 export class CrawlerStore {
   private db: Database.Database;
   private hasStateTable = false;
 
+  /**
+   * Initialize the instance.
+   */
   constructor(options: StoreOptions) {
     const dir = path.dirname(options.dbPath);
     fs.mkdirSync(dir, { recursive: true });
@@ -485,6 +513,9 @@ export class CrawlerStore {
     this.initSchema(options);
   }
 
+  /**
+   * Handle init schema.
+   */
   private initSchema(options: StoreOptions) {
     applyBaseSchema(this.db);
     if (options.collectGraph) {
@@ -496,6 +527,9 @@ export class CrawlerStore {
     }
   }
 
+  /**
+   * Handle ensure edges.
+   */
   private ensureEdges() {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS edges (
@@ -506,6 +540,9 @@ export class CrawlerStore {
     `);
   }
 
+  /**
+   * Handle ensure queue.
+   */
   private ensureQueue() {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS queue (
@@ -515,6 +552,9 @@ export class CrawlerStore {
     `);
   }
 
+  /**
+   * Handle ensure crawl state.
+   */
   private ensureCrawlState() {
     this.hasStateTable = true;
     this.db.exec(`
@@ -525,10 +565,16 @@ export class CrawlerStore {
     `);
   }
 
+  /**
+   * Handle close.
+   */
   close() {
     this.db.close();
   }
 
+  /**
+   * Handle set state.
+   */
   setState(key: string, value: string) {
     if (!this.hasStateTable) return;
     const stmt = this.db.prepare(
@@ -537,6 +583,9 @@ export class CrawlerStore {
     stmt.run(key, value);
   }
 
+  /**
+   * Handle get state.
+   */
   getState(key: string): string | undefined {
     if (!this.hasStateTable) return undefined;
     const row = this.db.prepare("SELECT value FROM crawl_state WHERE key = ?").get(key) as
@@ -545,6 +594,9 @@ export class CrawlerStore {
     return row?.value;
   }
 
+  /**
+   * Handle increment state.
+   */
   incrementState(key: string, delta: number) {
     if (!Number.isFinite(delta) || delta === 0) return;
     const current = this.getState(key);
@@ -553,6 +605,9 @@ export class CrawlerStore {
     this.setState(key, String(nextValue));
   }
 
+  /**
+   * Handle ensure instance.
+   */
   ensureInstance(host: string) {
     const transaction = this.db.transaction((value: string) => {
       this.db.prepare("INSERT OR IGNORE INTO instances (host) VALUES (?)").run(value);
@@ -565,6 +620,9 @@ export class CrawlerStore {
     transaction(host);
   }
 
+  /**
+   * Handle enqueue host.
+   */
   enqueueHost(host: string, delayMs = 0) {
     const status = this.getCrawlStatus(host);
     if (status === "done" || status === "processing") return;
@@ -574,6 +632,9 @@ export class CrawlerStore {
     stmt.run(host, Date.now() + delayMs);
   }
 
+  /**
+   * Handle claim next host.
+   */
   claimNextHost(): string | null {
     const now = Date.now();
     const transaction = this.db.transaction(() => {
@@ -595,6 +656,9 @@ export class CrawlerStore {
     return transaction();
   }
 
+  /**
+   * Handle next queue time.
+   */
   nextQueueTime(): number | null {
     const row = this.db
       .prepare("SELECT enqueued_at FROM queue ORDER BY enqueued_at ASC LIMIT 1")
@@ -602,6 +666,9 @@ export class CrawlerStore {
     return row ? row.enqueued_at : null;
   }
 
+  /**
+   * Handle mark done.
+   */
   markDone(host: string) {
     this.db
       .prepare(
@@ -615,6 +682,9 @@ export class CrawlerStore {
       .run(Date.now(), host);
   }
 
+  /**
+   * Handle mark error.
+   */
   markError(host: string, error: string) {
     this.db
       .prepare(
@@ -628,6 +698,9 @@ export class CrawlerStore {
       .run(Date.now(), host);
   }
 
+  /**
+   * Handle get error count.
+   */
   getErrorCount(host: string): number {
     const row = this.db
       .prepare("SELECT error_count FROM instance_crawl_progress WHERE host = ?")
@@ -635,6 +708,9 @@ export class CrawlerStore {
     return row?.error_count ?? 0;
   }
 
+  /**
+   * Handle get crawl status.
+   */
   private getCrawlStatus(host: string): string | undefined {
     const row = this.db
       .prepare("SELECT status FROM instance_crawl_progress WHERE host = ?")
@@ -642,6 +718,9 @@ export class CrawlerStore {
     return row?.status;
   }
 
+  /**
+   * Handle insert edge.
+   */
   insertEdge(source: string, target: string) {
     if (source === target) return;
     this.db
@@ -649,6 +728,9 @@ export class CrawlerStore {
       .run(source, target);
   }
 
+  /**
+   * Handle recover queue.
+   */
   recoverQueue(allowedHosts?: Set<string>) {
     this.db
       .prepare("UPDATE instance_crawl_progress SET status = 'pending' WHERE status = 'processing'")
@@ -665,10 +747,16 @@ export class CrawlerStore {
   }
 }
 
+/**
+ * Represent channel store behavior.
+ */
 export class ChannelStore {
   private db: Database.Database;
   private upsertStmt: Database.Statement;
 
+  /**
+   * Initialize the instance.
+   */
   constructor(options: ChannelStoreOptions) {
     const dir = path.dirname(options.dbPath);
     fs.mkdirSync(dir, { recursive: true });
@@ -697,20 +785,32 @@ export class ChannelStore {
     );
   }
 
+  /**
+   * Handle init schema.
+   */
   private initSchema() {
     applyBaseSchema(this.db);
   }
 
+  /**
+   * Handle close.
+   */
   close() {
     this.db.close();
   }
 
+  /**
+   * Handle ensure instance.
+   */
   private ensureInstance(host: string) {
     this.db
       .prepare("INSERT OR IGNORE INTO instances (host) VALUES (?)")
       .run(host);
   }
 
+  /**
+   * Handle mark instance done.
+   */
   markInstanceDone(host: string) {
     this.ensureInstance(host);
     this.db
@@ -720,6 +820,9 @@ export class ChannelStore {
       .run(host);
   }
 
+  /**
+   * Handle mark instance error.
+   */
   markInstanceError(host: string, error: string) {
     this.ensureInstance(host);
     const now = Date.now();
@@ -730,6 +833,9 @@ export class ChannelStore {
       .run(error, now, "channels", host);
   }
 
+  /**
+   * Handle mark instance health ok.
+   */
   markInstanceHealthOk(host: string) {
     this.ensureInstance(host);
     const now = Date.now();
@@ -740,6 +846,9 @@ export class ChannelStore {
       .run("ok", now, host);
   }
 
+  /**
+   * Handle mark instance health error.
+   */
   markInstanceHealthError(host: string, error: string) {
     this.ensureInstance(host);
     const now = Date.now();
@@ -750,6 +859,9 @@ export class ChannelStore {
       .run("error", now, error, host);
   }
 
+  /**
+   * Handle list instances.
+   */
   listInstances(): string[] {
     const rows = this.db
       .prepare("SELECT host FROM instances ORDER BY host ASC")
@@ -757,6 +869,9 @@ export class ChannelStore {
     return rows.map((row) => row.host);
   }
 
+  /**
+   * Handle list existing channel ids.
+   */
   listExistingChannelIds(instanceDomain: string, ids: string[]): Set<string> {
     if (ids.length === 0) return new Set();
     const placeholders = ids.map(() => "?").join(", ");
@@ -771,6 +886,9 @@ export class ChannelStore {
     return new Set(rows.map((row) => row.channel_id));
   }
 
+  /**
+   * Handle list instances needing health.
+   */
   listInstancesNeedingHealth(minAgeMs: number): string[] {
     const cutoff = Date.now() - Math.max(0, minAgeMs);
     const rows = this.db
@@ -784,6 +902,9 @@ export class ChannelStore {
     return rows.map((row) => row.host);
   }
 
+  /**
+   * Handle list error instances needing health.
+   */
   listErrorInstancesNeedingHealth(minAgeMs: number): string[] {
     const cutoff = Date.now() - Math.max(0, minAgeMs);
     const rows = this.db
@@ -798,6 +919,9 @@ export class ChannelStore {
     return rows.map((row) => row.host);
   }
 
+  /**
+   * Handle list channel instances.
+   */
   listChannelInstances(): string[] {
     const rows = this.db
       .prepare(
@@ -810,6 +934,9 @@ export class ChannelStore {
     return rows.map((row) => row.instance_domain);
   }
 
+  /**
+   * Handle prepare channel progress.
+   */
   prepareChannelProgress(hosts: string[], resume: boolean) {
     if (!resume) {
       this.db.prepare("DELETE FROM channel_crawl_progress").run();
@@ -830,6 +957,9 @@ export class ChannelStore {
     transaction(hosts);
   }
 
+  /**
+   * Handle prune channel progress.
+   */
   private pruneChannelProgress(hosts: string[]) {
     if (hosts.length === 0) {
       this.db.prepare("DELETE FROM channel_crawl_progress").run();
@@ -844,6 +974,9 @@ export class ChannelStore {
       .run(...hosts);
   }
 
+  /**
+   * Handle list channel work items.
+   */
   listChannelWorkItems(): ChannelProgressRow[] {
     const rows = this.db
       .prepare(
@@ -860,6 +993,9 @@ export class ChannelStore {
     }));
   }
 
+  /**
+   * Handle update channel progress.
+   */
   updateChannelProgress(host: string, status: ChannelCrawlStatus, lastStart: number) {
     this.db
       .prepare(
@@ -870,6 +1006,9 @@ export class ChannelStore {
       .run(status, lastStart, Date.now(), host);
   }
 
+  /**
+   * Handle upsert channels.
+   */
   upsertChannels(rows: ChannelUpsertRow[]) {
     if (rows.length === 0) return;
     const transaction = this.db.transaction((items: ChannelUpsertRow[]) => {
@@ -889,6 +1028,9 @@ export class ChannelStore {
     transaction(rows);
   }
 
+  /**
+   * Handle list channels for instance.
+   */
   listChannelsForInstance(instanceDomain: string): ChannelRow[] {
     const rows = this.db
       .prepare(
@@ -902,6 +1044,9 @@ export class ChannelStore {
     return rows;
   }
 
+  /**
+   * Handle get channel counts.
+   */
   getChannelCounts(): ChannelCounts {
     const row = this.db
       .prepare(
@@ -919,6 +1064,9 @@ export class ChannelStore {
     };
   }
 
+  /**
+   * Handle update channel videos count.
+   */
   updateChannelVideosCount(channelId: string, instanceDomain: string, videosCount: number) {
     this.db
       .prepare(
@@ -929,6 +1077,9 @@ export class ChannelStore {
       .run(videosCount, channelId, instanceDomain);
   }
 
+  /**
+   * Handle update channel videos count error.
+   */
   updateChannelVideosCountError(channelId: string, instanceDomain: string, message: string) {
     this.db
       .prepare(
@@ -939,6 +1090,9 @@ export class ChannelStore {
       .run(message, Date.now(), "videos_count", channelId, instanceDomain);
   }
 
+  /**
+   * Handle update channel health ok.
+   */
   updateChannelHealthOk(channelId: string, instanceDomain: string) {
     this.db
       .prepare(
@@ -949,6 +1103,9 @@ export class ChannelStore {
       .run("ok", Date.now(), channelId, instanceDomain);
   }
 
+  /**
+   * Handle update channel health error.
+   */
   updateChannelHealthError(channelId: string, instanceDomain: string, message: string) {
     this.db
       .prepare(
@@ -960,11 +1117,17 @@ export class ChannelStore {
   }
 }
 
+/**
+ * Represent video store behavior.
+ */
 export class VideoStore {
   private db: Database.Database;
   private upsertStmt: Database.Statement;
   private state = new Map<string, string>();
 
+  /**
+   * Initialize the instance.
+   */
   constructor(options: VideoStoreOptions) {
     const dir = path.dirname(options.dbPath);
     fs.mkdirSync(dir, { recursive: true });
@@ -1033,22 +1196,37 @@ export class VideoStore {
     );
   }
 
+  /**
+   * Handle init schema.
+   */
   private initSchema() {
     applyBaseSchema(this.db);
   }
 
+  /**
+   * Handle close.
+   */
   close() {
     this.db.close();
   }
 
+  /**
+   * Handle set state.
+   */
   setState(key: string, value: string) {
     this.state.set(key, value);
   }
 
+  /**
+   * Handle get state.
+   */
   getState(key: string): string | undefined {
     return this.state.get(key);
   }
 
+  /**
+   * Handle increment state.
+   */
   incrementState(key: string, delta: number) {
     if (!Number.isFinite(delta) || delta === 0) return;
     const current = this.getState(key);
@@ -1057,6 +1235,9 @@ export class VideoStore {
     this.setState(key, String(nextValue));
   }
 
+  /**
+   * Handle list instances.
+   */
   listInstances(): string[] {
     const rows = this.db.prepare("SELECT host FROM instances ORDER BY host ASC").all() as {
       host: string;
@@ -1064,6 +1245,9 @@ export class VideoStore {
     return rows.map((row) => row.host);
   }
 
+  /**
+   * Handle list existing video ids.
+   */
   listExistingVideoIds(instanceDomain: string, ids: string[]): Set<string> {
     if (ids.length === 0) return new Set();
     const placeholders = ids.map(() => "?").join(", ");
@@ -1075,6 +1259,9 @@ export class VideoStore {
     return new Set(rows.map((row) => row.video_id));
   }
 
+  /**
+   * Handle list channels with videos.
+   */
   listChannelsWithVideos(minVideos: number, instances: string[]): VideoChannelRow[] {
     if (instances.length === 0) return [];
     const placeholders = instances.map(() => "?").join(", ");
@@ -1090,6 +1277,9 @@ export class VideoStore {
     return rows;
   }
 
+  /**
+   * Handle list videos for tags.
+   */
   listVideosForTags(mode: "missing" | "present" = "missing"): VideoTagRow[] {
     const whereClause =
       mode === "present"
@@ -1110,6 +1300,9 @@ export class VideoStore {
     }));
   }
 
+  /**
+   * Handle list videos for comments.
+   */
   listVideosForComments(resume: boolean): VideoTagRow[] {
     const whereClause = resume
       ? "AND comments_count IS NULL AND invalid_reason IS NULL"
@@ -1129,6 +1322,9 @@ export class VideoStore {
     }));
   }
 
+  /**
+   * Handle prepare video progress.
+   */
   prepareVideoProgress(channels: VideoChannelRow[], resume: boolean) {
     if (!resume) {
       this.db.prepare("DELETE FROM video_crawl_progress").run();
@@ -1149,6 +1345,9 @@ export class VideoStore {
     transaction(channels);
   }
 
+  /**
+   * Handle prune video progress.
+   */
   private pruneVideoProgress(channels: VideoChannelRow[]) {
     if (channels.length === 0) {
       this.db.prepare("DELETE FROM video_crawl_progress").run();
@@ -1194,6 +1393,9 @@ export class VideoStore {
     transaction();
   }
 
+  /**
+   * Handle list video work items.
+   */
   listVideoWorkItems(statuses: VideoCrawlStatus[]): VideoProgressRow[] {
     const placeholders = statuses.map(() => "?").join(", ");
     const rows = this.db
@@ -1245,6 +1447,9 @@ export class VideoStore {
       );
   }
 
+  /**
+   * Handle upsert videos.
+   */
   upsertVideos(rows: VideoUpsertRow[]) {
     if (rows.length === 0) return;
     const transaction = this.db.transaction((items: VideoUpsertRow[]) => {
@@ -1281,6 +1486,9 @@ export class VideoStore {
     transaction(rows);
   }
 
+  /**
+   * Handle update video tags.
+   */
   updateVideoTags(videoId: string, instanceDomain: string, tagsJson: string) {
     this.db
       .prepare(
@@ -1291,6 +1499,9 @@ export class VideoStore {
       .run(tagsJson, videoId, instanceDomain);
   }
 
+  /**
+   * Handle update video comments.
+   */
   updateVideoComments(videoId: string, instanceDomain: string, commentsCount: number) {
     this.db
       .prepare(
@@ -1301,6 +1512,9 @@ export class VideoStore {
       .run(commentsCount, videoId, instanceDomain);
   }
 
+  /**
+   * Handle update video invalid.
+   */
   updateVideoInvalid(videoId: string, instanceDomain: string, reason: string) {
     this.db
       .prepare(
@@ -1311,6 +1525,9 @@ export class VideoStore {
       .run(reason, Date.now(), reason, Date.now(), videoId, instanceDomain);
   }
 
+  /**
+   * Handle update video error.
+   */
   updateVideoError(videoId: string, instanceDomain: string, message: string) {
     this.db
       .prepare(
@@ -1322,6 +1539,9 @@ export class VideoStore {
   }
 }
 
+/**
+ * Handle delete instances in chunks.
+ */
 function deleteInstancesInChunks(db: Database.Database, instances: string[]) {
   if (instances.length === 0) return;
   const chunkSize = 500;

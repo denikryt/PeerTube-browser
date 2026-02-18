@@ -17,6 +17,7 @@ from scripts.cli_format import CompactHelpFormatter
 
 
 def parse_tags(tags_json: str | None) -> list[str]:
+    """Handle parse tags."""
     if not tags_json:
         return []
     try:
@@ -31,6 +32,7 @@ def parse_tags(tags_json: str | None) -> list[str]:
 
 
 def build_text(row: sqlite3.Row) -> str | None:
+    """Handle build text."""
     parts: list[str] = []
     title = (row["title"] or "").strip()
     description = (row["description"] or "").strip()
@@ -58,6 +60,7 @@ def build_text(row: sqlite3.Row) -> str | None:
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
+    """Handle init schema."""
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS video_embeddings (
@@ -76,6 +79,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
 
 def main() -> None:
+    """Handle main."""
     parser = argparse.ArgumentParser(
         description=(
             "Build sentence embeddings for videos and store them in video_embeddings. "

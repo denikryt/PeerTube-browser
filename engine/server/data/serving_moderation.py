@@ -1,6 +1,9 @@
+"""Provide serving moderation runtime helpers."""
+
 from __future__ import annotations
 
-"""Shared serving-time moderation helper used by API handlers and tests."""
+# Shared serving-time moderation helper used by API handlers and tests.
+
 
 import logging
 from typing import Any

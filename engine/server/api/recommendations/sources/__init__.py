@@ -1,6 +1,9 @@
+"""Provide sources runtime helpers."""
+
 from __future__ import annotations
 
-"""Source registry and factory for "similar from likes" recommendation inputs."""
+# Source registry and factory for "similar from likes" recommendation inputs.
+
 
 from typing import Any, Protocol
 

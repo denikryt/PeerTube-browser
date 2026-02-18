@@ -1,3 +1,7 @@
+/**
+ * Module `engine/crawler/src/instances-health-cli.ts`: provide runtime functionality.
+ */
+
 import { Command } from "commander";
 import { ChannelStore } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
@@ -64,6 +68,9 @@ try {
   throw error;
 }
 
+/**
+ * Handle check instances health.
+ */
 async function checkInstancesHealth(options: InstanceHealthOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
   const minAgeMs = computeMinAgeMs(options);
@@ -95,6 +102,9 @@ async function checkInstancesHealth(options: InstanceHealthOptions) {
   store.close();
 }
 
+/**
+ * Handle worker loop.
+ */
 async function workerLoop(
   queue: string[],
   store: ChannelStore,
@@ -109,6 +119,9 @@ async function workerLoop(
   }
 }
 
+/**
+ * Handle process instance.
+ */
 async function processInstance(
   host: string,
   store: ChannelStore,
@@ -135,6 +148,9 @@ async function processInstance(
   }
 }
 
+/**
+ * Handle fetch instance health.
+ */
 async function fetchInstanceHealth(
   host: string,
   options: InstanceHealthOptions,
@@ -156,22 +172,34 @@ async function fetchInstanceHealth(
   }
 }
 
+/**
+ * Handle build health url.
+ */
 function buildHealthUrl(host: string, protocol: string) {
   return `${protocol}//${host}/api/v1/video-channels?start=0&count=1`;
 }
 
+/**
+ * Handle parse optional number.
+ */
 function parseOptionalNumber(value: unknown): number | null {
   if (value === undefined || value === null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * Handle parse optional host.
+ */
 function parseOptionalHost(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * Handle compute min age ms.
+ */
 function computeMinAgeMs(options: InstanceHealthOptions): number {
   const days = Math.max(0, options.minAgeDays ?? 0);
   const mins = Math.max(0, options.minAgeMin ?? 0);
@@ -183,6 +211,9 @@ function computeMinAgeMs(options: InstanceHealthOptions): number {
   );
 }
 
+/**
+ * Handle format min age label.
+ */
 function formatMinAgeLabel(options: InstanceHealthOptions): string {
   const parts: string[] = [];
   if (options.minAgeDays !== null) parts.push(`days=${options.minAgeDays}`);

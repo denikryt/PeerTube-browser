@@ -1,7 +1,10 @@
+"""Provide server config runtime helpers."""
+
 import os
 
 
 def _resolve_mode_env(name: str, default: str) -> str:
+    """Handle resolve mode env."""
     raw = os.environ.get(name, default).strip().lower()
     return raw if raw in {"bridge", "activitypub"} else default
 

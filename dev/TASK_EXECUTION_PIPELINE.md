@@ -26,8 +26,8 @@ Use it before implementing any task bundle.
    Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
 10. **16l** then **39** then **44** then **40** (cache runtime safety + similarity shadow swap + zero-downtime deploy)  
    Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache shadow cutover, then blue/green nginx switch automation.
-11. **16** then **11** then **53** (docs + baseline docstrings + full docstring coverage)  
-   Finalize documentation polish after behavior/stability changes land; run strict repository-wide docstring pass last.
+11. **16**, **11** (docs + docstrings)  
+   Finalize documentation polish after behavior/stability changes land.
 12. **42** (public roadmap changelog with status + client filters)  
    Implement after major feature blocks to avoid repeated migration/status churn while core tasks are still changing.
 
@@ -45,8 +45,8 @@ Use it before implementing any task bundle.
   - Tasks: **8c -> 8**
   - Scope: outbound click analytics and optional styling-system consolidation.
 - **Block E: Documentation and maintenance**
-  - Tasks: **16 -> 11 -> 53**
-  - Scope: recommendations docs alignment, baseline docstrings, and strict full docstring coverage.
+  - Tasks: **16 -> 11**
+  - Scope: recommendations docs alignment and missing docstrings.
 - **Block F: Logging and observability**
   - Tasks: **41 -> 38 -> 43**
   - Scope: explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/Changelog.
@@ -88,9 +88,7 @@ Use it before implementing any task bundle.
   Update changelog workflow and instructions together to avoid conflicting write rules.
 - **42** should land late in the sequence.  
   It changes public task-tracking format; doing it early causes repeated migrations while many tasks are still moving between planned/in-progress/done.
-- **11 <-> 53**: both target code-level documentation and can overlap heavily in touched files.  
-  Treat **53** as stricter repository-wide coverage pass after **11** baseline to avoid duplicate rewrites.
-- **16 / 11 / 53** depend on nearly all feature tasks.  
+- **16 / 11** depend on nearly all feature tasks.  
   Doing them earlier causes repeated rewrites.
 
 ## Multi-task execution protocol

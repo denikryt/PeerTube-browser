@@ -1,6 +1,9 @@
+"""Provide cached similar from likes runtime helpers."""
+
 from __future__ import annotations
 
-"""Cache-optimized similarity source for recommendations via shared candidates pipeline."""
+# Cache-optimized similarity source for recommendations via shared candidates pipeline.
+
 
 import random
 from dataclasses import dataclass
@@ -30,9 +33,11 @@ class CachedSimilarFromLikesDeps:
 
 
 class CachedSimilarFromLikesSource:
+    """Represent cached similar from likes source behavior."""
     name = "cache-optimized"
 
     def __init__(self, deps: CachedSimilarFromLikesDeps) -> None:
+        """Initialize the instance."""
         self.deps = deps
 
     def get_candidates(

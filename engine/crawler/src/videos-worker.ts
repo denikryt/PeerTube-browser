@@ -1,3 +1,7 @@
+/**
+ * Module `engine/crawler/src/videos-worker.ts`: provide runtime functionality.
+ */
+
 import { setTimeout as sleep } from "node:timers/promises";
 import Database from "better-sqlite3";
 import {
@@ -121,6 +125,9 @@ interface ChannelMeta {
   channelUrl: string | null;
 }
 
+/**
+ * Handle crawl videos.
+ */
 export async function crawlVideos(options: VideoCrawlOptions) {
   if (options.updateTags) {
     await crawlVideoTags(options, "present");
@@ -189,6 +196,9 @@ export async function crawlVideos(options: VideoCrawlOptions) {
   }
 }
 
+/**
+ * Handle crawl video comments.
+ */
 async function crawlVideoComments(options: VideoCrawlOptions) {
   const store = new VideoStore({ dbPath: options.dbPath });
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
@@ -211,6 +221,9 @@ async function crawlVideoComments(options: VideoCrawlOptions) {
   store.close();
 }
 
+/**
+ * Handle crawl video tags.
+ */
 async function crawlVideoTags(options: VideoCrawlOptions, mode: "missing" | "present") {
   const store = new VideoStore({ dbPath: options.dbPath });
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
@@ -233,6 +246,9 @@ async function crawlVideoTags(options: VideoCrawlOptions, mode: "missing" | "pre
   store.close();
 }
 
+/**
+ * Handle worker loop.
+ */
 async function workerLoop(
   queue: string[],
   grouped: Map<string, VideoProgressRow[]>,
@@ -250,6 +266,9 @@ async function workerLoop(
   }
 }
 
+/**
+ * Handle process instance.
+ */
 async function processInstance(
   host: string,
   items: VideoProgressRow[],
@@ -269,6 +288,9 @@ async function processInstance(
   console.log(`[videos] done ${normalizedHost}`);
 }
 
+/**
+ * Handle comments worker loop.
+ */
 async function commentsWorkerLoop(
   queue: string[],
   grouped: Map<string, VideoTagRow[]>,
@@ -284,6 +306,9 @@ async function commentsWorkerLoop(
   }
 }
 
+/**
+ * Handle tag worker loop.
+ */
 async function tagWorkerLoop(
   queue: string[],
   grouped: Map<string, VideoTagRow[]>,
@@ -299,6 +324,9 @@ async function tagWorkerLoop(
   }
 }
 
+/**
+ * Handle process tag instance.
+ */
 async function processTagInstance(
   host: string,
   items: VideoTagRow[],
@@ -341,6 +369,9 @@ async function processTagInstance(
   console.log(`[tags] done ${normalizedHost}`);
 }
 
+/**
+ * Handle process comments instance.
+ */
 async function processCommentsInstance(
   host: string,
   items: VideoTagRow[],
@@ -383,6 +414,9 @@ async function processCommentsInstance(
   console.log(`[comments] done ${normalizedHost}`);
 }
 
+/**
+ * Handle process channel.
+ */
 async function processChannel(
   host: string,
   item: VideoProgressRow,
@@ -428,6 +462,9 @@ async function processChannel(
   }
 }
 
+/**
+ * Handle crawl channel videos.
+ */
 async function crawlChannelVideos(
   host: string,
   channel: {
@@ -533,6 +570,9 @@ async function crawlChannelVideos(
   return { localCount, totalCount };
 }
 
+/**
+ * Handle fetch page.
+ */
 async function fetchPage(
   host: string,
   channelName: string,
@@ -573,6 +613,9 @@ async function fetchPage(
   }
 }
 
+/**
+ * Handle build channel videos url.
+ */
 function buildChannelVideosUrl(
   host: string,
   channelName: string,
@@ -587,6 +630,9 @@ function buildChannelVideosUrl(
   )}/videos?start=${start}&count=${count}&sort=${encodeURIComponent(safeSort)}`;
 }
 
+/**
+ * Handle to video row.
+ */
 function toVideoRow(
   video: PeerTubeVideo,
   host: string,
@@ -649,6 +695,9 @@ function toVideoRow(
   };
 }
 
+/**
+ * Handle group by instance.
+ */
 function groupByInstance(items: VideoProgressRow[]) {
   const grouped = new Map<string, VideoProgressRow[]>();
   for (const item of items) {
@@ -659,6 +708,9 @@ function groupByInstance(items: VideoProgressRow[]) {
   return grouped;
 }
 
+/**
+ * Handle group by instance tags.
+ */
 function groupByInstanceTags(items: VideoTagRow[]) {
   const grouped = new Map<string, VideoTagRow[]>();
   for (const item of items) {
@@ -669,6 +721,9 @@ function groupByInstanceTags(items: VideoTagRow[]) {
   return grouped;
 }
 
+/**
+ * Handle group by instance comments.
+ */
 function groupByInstanceComments(items: VideoTagRow[]) {
   const grouped = new Map<string, VideoTagRow[]>();
   for (const item of items) {
@@ -700,10 +755,16 @@ async function mapWithConcurrency<T>(
   await Promise.all(workers);
 }
 
+/**
+ * Handle to nullable string.
+ */
 function toNullableString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+/**
+ * Handle to nullable number.
+ */
 function toNullableNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.length > 0) {
@@ -713,6 +774,9 @@ function toNullableNumber(value: unknown): number | null {
   return null;
 }
 
+/**
+ * Handle to nullable timestamp.
+ */
 function toNullableTimestamp(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.length > 0) {
@@ -722,27 +786,42 @@ function toNullableTimestamp(value: unknown): number | null {
   return null;
 }
 
+/**
+ * Handle to nullable boolean.
+ */
 function toNullableBoolean(value: unknown): number | null {
   if (typeof value === "boolean") return value ? 1 : 0;
   return null;
 }
 
+/**
+ * Handle to tags json.
+ */
 function toTagsJson(value: unknown): string | null {
   if (!Array.isArray(value)) return null;
   const tags = value.filter((tag) => typeof tag === "string");
   return JSON.stringify(tags);
 }
 
+/**
+ * Handle to comments count.
+ */
 function toCommentsCount(value: unknown): number | null {
   return toNullableNumber(value);
 }
 
+/**
+ * Handle to string id.
+ */
 function toStringId(value: unknown): string | null {
   if (typeof value === "string" && value.length > 0) return value;
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return null;
 }
 
+/**
+ * Handle extract category.
+ */
 function extractCategory(value: PeerTubeVideo["category"]): string | null {
   if (typeof value === "string" && value.length > 0) return value;
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
@@ -755,6 +834,9 @@ function extractCategory(value: PeerTubeVideo["category"]): string | null {
   return null;
 }
 
+/**
+ * Handle resolve asset url.
+ */
 function resolveAssetUrl(value: unknown, host: string, protocol: string): string | null {
   const candidate = extractAssetValue(value);
   if (!candidate) return null;
@@ -767,6 +849,9 @@ function resolveAssetUrl(value: unknown, host: string, protocol: string): string
   return `${protocol}//${host}/${candidate}`;
 }
 
+/**
+ * Handle extract asset value.
+ */
 function extractAssetValue(value: unknown): string | null {
   if (typeof value === "string" && value.length > 0) return value;
   if (value && typeof value === "object") {
@@ -780,6 +865,9 @@ function extractAssetValue(value: unknown): string | null {
   return null;
 }
 
+/**
+ * Handle fetch video detail.
+ */
 async function fetchVideoDetail(
   host: string,
   videoUuid: string,
@@ -802,6 +890,9 @@ async function fetchVideoDetail(
   }
 }
 
+/**
+ * Handle fetch video tags.
+ */
 async function fetchVideoTags(
   host: string,
   videoUuid: string,
@@ -811,6 +902,9 @@ async function fetchVideoTags(
   return toTagsJson(detail.tags);
 }
 
+/**
+ * Handle fetch video comments.
+ */
 async function fetchVideoComments(
   host: string,
   videoUuid: string,
@@ -820,10 +914,16 @@ async function fetchVideoComments(
   return toCommentsCount(detail.comments ?? detail.commentsCount ?? detail.comments_count);
 }
 
+/**
+ * Handle build video detail url.
+ */
 function buildVideoDetailUrl(host: string, videoUuid: string, protocol: string) {
   return `${protocol}//${host}/api/v1/videos/${encodeURIComponent(videoUuid)}`;
 }
 
+/**
+ * Handle open existing db.
+ */
 function openExistingDb(options: VideoCrawlOptions): Database.Database | null {
   if (!options.existingDbPath || options.existingDbPath.trim().length === 0) {
     return null;
@@ -834,6 +934,9 @@ function openExistingDb(options: VideoCrawlOptions): Database.Database | null {
   });
 }
 
+/**
+ * Handle query external existing video ids.
+ */
 function queryExternalExistingVideoIds(
   db: Database.Database | null,
   instanceDomain: string,
@@ -852,23 +955,35 @@ function queryExternalExistingVideoIds(
   return new Set(rows.map((row) => row.video_id));
 }
 
+/**
+ * Handle extract http status.
+ */
 function extractHttpStatus(message: string): number | null {
   const match = message.match(/HTTP (\d{3})/);
   if (!match) return null;
   return Number(match[1]);
 }
 
+/**
+ * Handle extract error code.
+ */
 function extractErrorCode(error: unknown): string | null {
   if (!error || typeof error !== "object") return null;
   const err = error as { code?: string; cause?: { code?: string } };
   return err.cause?.code ?? err.code ?? null;
 }
 
+/**
+ * Check whether is cert expired.
+ */
 function isCertExpired(code: string | null, message: string): boolean {
   if (typeof code === "string" && code.toUpperCase() === "CERT_HAS_EXPIRED") return true;
   return message.toLowerCase().includes("certificate has expired");
 }
 
+/**
+ * Check whether is tls error.
+ */
 function isTlsError(code: string | null, message: string): boolean {
   if (typeof code === "string") {
     const upper = code.toUpperCase();
@@ -880,6 +995,9 @@ function isTlsError(code: string | null, message: string): boolean {
   return lowered.includes("certificate") || lowered.includes("ssl") || lowered.includes("tls");
 }
 
+/**
+ * Check whether is timeout error.
+ */
 function isTimeoutError(code: string | null, message: string): boolean {
   if (typeof code === "string") {
     const upper = code.toUpperCase();

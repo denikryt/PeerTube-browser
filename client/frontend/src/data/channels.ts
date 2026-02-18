@@ -1,8 +1,15 @@
+/**
+ * Module `client/frontend/src/data/channels.ts`: provide runtime functionality.
+ */
+
 import type { ChannelRow, ChannelsPayload } from "../types/channels";
 import { fetchJsonWithCache } from "./cache";
 import { resolveClientApiBase } from "./api-base";
 const DEFAULT_CACHE_TTL_MS = 30 * 1000;
 
+/**
+ * Handle resolve api base.
+ */
 export function resolveApiBase(apiBase?: string | null) {
   return resolveClientApiBase(apiBase);
 }
@@ -21,6 +28,9 @@ type FetchChannelsOptions = {
   dir?: "asc" | "desc";
 };
 
+/**
+ * Handle fetch channels payload.
+ */
 export async function fetchChannelsPayload(options: FetchChannelsOptions = {}) {
   const apiBase = resolveApiBase(options.apiBase);
   const url = new URL("/api/channels", apiBase);

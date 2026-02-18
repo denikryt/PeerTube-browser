@@ -1,13 +1,15 @@
+"""Provide moderation runtime helpers."""
+
 from __future__ import annotations
 
-"""Shared moderation primitives for deny/block/ignore flows.
+# Shared moderation primitives for deny/block/ignore flows.
+#
+# This module centralizes:
+# - moderation schema creation,
+# - host normalization,
+# - serving-time row filtering (denylist + blocked channels),
+# - purge helpers for host-linked rows in main/similarity databases.
 
-This module centralizes:
-- moderation schema creation,
-- host normalization,
-- serving-time row filtering (denylist + blocked channels),
-- purge helpers for host-linked rows in main/similarity databases.
-"""
 
 import re
 import sqlite3
@@ -25,6 +27,7 @@ class ModerationFilterStats:
 
     @property
     def total_filtered(self) -> int:
+        """Handle total filtered."""
         return self.filtered_by_denylist + self.filtered_by_blocked_channel
 
 
@@ -317,6 +320,7 @@ def ensure_similarity_purge_indexes(conn: sqlite3.Connection) -> bool:
 
 
 def _host_table_column_pairs() -> list[tuple[str, str]]:
+    """Handle host table column pairs."""
     return [
         ("video_embeddings", "instance_domain"),
         ("videos", "instance_domain"),
@@ -333,6 +337,7 @@ def _count_host_rows(
     normalized_host: str,
     table_column_pairs: list[tuple[str, str]],
 ) -> dict[str, int]:
+    """Handle count host rows."""
     counts: dict[str, int] = {}
     for table, column in table_column_pairs:
         if not _table_exists(conn, table):
@@ -349,6 +354,7 @@ def _count_host_rows(
 def _lookup_denied_hosts(
     conn: sqlite3.Connection, hosts: set[str]
 ) -> set[str]:
+    """Handle lookup denied hosts."""
     if not hosts:
         return set()
 
@@ -374,6 +380,7 @@ def _lookup_blocked_channels(
     conn: sqlite3.Connection,
     pairs: set[tuple[str, str]],
 ) -> set[tuple[str, str]]:
+    """Handle lookup blocked channels."""
     if not pairs or not _table_exists(conn, "channel_moderation"):
         return set()
 
@@ -398,6 +405,7 @@ def _lookup_blocked_channels(
 
 
 def _row_host(row: dict[str, object]) -> str | None:
+    """Handle row host."""
     raw = row.get("instance_domain")
     if raw is None:
         raw = row.get("instanceDomain")
@@ -408,6 +416,7 @@ def _row_host(row: dict[str, object]) -> str | None:
 
 
 def _row_channel_id(row: dict[str, object]) -> str | None:
+    """Handle row channel id."""
     raw = row.get("channel_id")
     if raw is None:
         raw = row.get("channelId")
@@ -417,6 +426,7 @@ def _row_channel_id(row: dict[str, object]) -> str | None:
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    """Handle table exists."""
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
         (table,),
@@ -425,6 +435,7 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
 
 
 def _row_value(rows: list[sqlite3.Row], key: str) -> set[object]:
+    """Handle row value."""
     values: set[object] = set()
     for row in rows:
         values.add(row[key])

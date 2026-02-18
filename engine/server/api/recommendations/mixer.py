@@ -1,3 +1,5 @@
+"""Provide mixer runtime helpers."""
+
 from __future__ import annotations
 
 import logging
@@ -12,6 +14,7 @@ from recommendations.profile import resolve_profile_config_with_guest
 from recommendations.scoring import build_scoring_settings, score_candidate
 
 class CandidateGenerator(Protocol):
+    """Represent candidate generator behavior."""
     name: str
 
     def get_candidates(
@@ -28,12 +31,14 @@ class CandidateGenerator(Protocol):
 
 @dataclass(frozen=True)
 class MixerDeps:
+    """Represent mixer deps behavior."""
     like_key: Callable[[Any], str]
     fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]]
     max_likes: int
 
 
 class MixingRecommendationStrategy:
+    """Represent mixing recommendation strategy behavior."""
     name = "mixed"
 
     def __init__(
@@ -42,6 +47,7 @@ class MixingRecommendationStrategy:
         config: dict[str, Any],
         deps: MixerDeps,
     ) -> None:
+        """Initialize the instance."""
         self.generators = generators
         self.config = config
         self.deps = deps
@@ -54,6 +60,7 @@ class MixingRecommendationStrategy:
         refresh_cache: bool = False,
         mode: str | None = None,
     ) -> list[dict[str, Any]]:
+        """Handle generate recommendations."""
         recent_likes = self.deps.fetch_recent_likes(user_id, self.deps.max_likes)
         likes_available = bool(recent_likes)
         profile_name, profile_config = resolve_profile_config_with_guest(
@@ -127,6 +134,7 @@ class MixingRecommendationStrategy:
     def _resolve_order(
         self, profile_config: dict[str, Any], layer_configs: dict[str, Any]
     ) -> list[str]:
+        """Handle resolve order."""
         configured_order = profile_config.get("mixing", {}).get("order")
         if configured_order:
             return [name for name in configured_order if name in layer_configs]
@@ -140,6 +148,7 @@ class MixingRecommendationStrategy:
         profile_config: dict[str, Any],
         has_likes: bool,
     ) -> dict[str, int]:
+        """Handle resolve fetch limits."""
         enabled_layers = []
         for name in layer_order:
             config = layer_configs.get(name, {})
@@ -196,6 +205,7 @@ class MixingRecommendationStrategy:
         layer_order: Iterable[str],
         batch_size: int,
     ) -> dict[str, int]:
+        """Handle resolve output targets."""
         enabled_layers = [
             name
             for name in layer_order
@@ -252,6 +262,7 @@ class MixingRecommendationStrategy:
         targets: dict[str, int],
         layer_order: Iterable[str],
     ) -> list[str]:
+        """Handle build layer schedule."""
         if not targets:
             return []
         schedule: list[str] = []
@@ -287,6 +298,7 @@ class MixingRecommendationStrategy:
         profile_config: dict[str, Any],
         profile_name: str,
     ) -> list[dict[str, Any]]:
+        """Handle soft mix candidates."""
         if not candidates_by_layer:
             return []
 
@@ -390,6 +402,7 @@ class MixingRecommendationStrategy:
         seen_keys: set[str],
         profile_config: dict[str, Any],
     ) -> list[dict[str, Any]]:
+        """Handle apply post filters."""
         output: list[dict[str, Any]] = []
         layer_counts: dict[str, int] = {}
         skip_counts = {
@@ -402,6 +415,7 @@ class MixingRecommendationStrategy:
         max_caps = {str(k): int(v) for k, v in (soft_caps.get("max") or {}).items()}
 
         def can_take(layer: str | None, candidate: dict[str, Any]) -> bool:
+            """Check whether can take."""
             key = self.deps.like_key(candidate)
             if key in seen_keys:
                 skip_counts["seen"] += 1
@@ -414,6 +428,7 @@ class MixingRecommendationStrategy:
             return True
 
         def take(layer: str | None, candidate: dict[str, Any]) -> None:
+            """Handle take."""
             key = self.deps.like_key(candidate)
             seen_keys.add(key)
             if layer:

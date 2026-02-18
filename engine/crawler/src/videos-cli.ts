@@ -1,3 +1,7 @@
+/**
+ * Module `engine/crawler/src/videos-cli.ts`: provide runtime functionality.
+ */
+
 import { Command } from "commander";
 import { crawlVideos } from "./videos-worker.js";
 import { isNoNetworkError } from "./http.js";

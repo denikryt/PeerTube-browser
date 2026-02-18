@@ -1,3 +1,5 @@
+"""Provide similar from likes runtime helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,6 +10,7 @@ from recommendations.sources import SimilarFromLikesSource
 
 @dataclass(frozen=True)
 class SimilarFromLikesDeps:
+    """Represent similar from likes deps behavior."""
     source: SimilarFromLikesSource
     fallback_source: SimilarFromLikesSource | None = None
     fetch_random_rows_from_cache: Callable[[Any, int], list[dict[str, Any]]] | None = None
@@ -15,9 +18,11 @@ class SimilarFromLikesDeps:
 
 
 class SimilarFromLikesGenerator:
+    """Represent similar from likes generator behavior."""
     name = "likes"
 
     def __init__(self, deps: SimilarFromLikesDeps) -> None:
+        """Initialize the instance."""
         self.deps = deps
 
     def get_candidates(
@@ -28,6 +33,7 @@ class SimilarFromLikesGenerator:
         refresh_cache: bool = False,
         config: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        """Handle get candidates."""
         rows = self.deps.source.get_candidates(server, user_id, limit, refresh_cache)
         if rows or self.deps.fallback_source is None:
             return rows

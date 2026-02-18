@@ -65,6 +65,7 @@ class FixtureContext:
 
 
 def parse_args() -> argparse.Namespace:
+    """Handle parse args."""
     parser = argparse.ArgumentParser(
         description="Run moderation integration test against temporary fixture DBs.",
         formatter_class=CompactHelpFormatter,
@@ -119,6 +120,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def connect(path: Path) -> sqlite3.Connection:
+    """Handle connect."""
     conn = sqlite3.connect(path.as_posix())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA temp_store = MEMORY")
@@ -126,6 +128,7 @@ def connect(path: Path) -> sqlite3.Connection:
 
 
 def connect_ro(path: Path) -> sqlite3.Connection:
+    """Handle connect ro."""
     uri = f"file:{path.as_posix()}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
@@ -134,10 +137,12 @@ def connect_ro(path: Path) -> sqlite3.Connection:
 
 
 def count_rows(conn: sqlite3.Connection, table: str) -> int:
+    """Handle count rows."""
     return int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
 
 
 def ensure_main_schema(conn: sqlite3.Connection) -> None:
+    """Handle ensure main schema."""
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS instances (
@@ -180,6 +185,7 @@ def ensure_main_schema(conn: sqlite3.Connection) -> None:
 
 
 def ensure_similarity_schema(conn: sqlite3.Connection) -> None:
+    """Handle ensure similarity schema."""
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS similarity_sources (
@@ -207,6 +213,7 @@ def ensure_similarity_schema(conn: sqlite3.Connection) -> None:
 
 
 def assert_eq(actual: object, expected: object, message: str) -> None:
+    """Handle assert eq."""
     if actual != expected:
         raise AssertionError(f"{message}: expected={expected} actual={actual}")
 
@@ -216,6 +223,7 @@ def _insert_similarity_seed(
     ctx: FixtureContext,
     ts: int,
 ) -> None:
+    """Handle insert similarity seed."""
     with similarity_conn:
         similarity_conn.executemany(
             """
@@ -266,6 +274,7 @@ def _insert_similarity_seed(
 
 
 def _insert_moderation_seed(main_conn: sqlite3.Connection, ctx: FixtureContext, ts: int) -> None:
+    """Handle insert moderation seed."""
     with main_conn:
         main_conn.execute(
             """
@@ -321,6 +330,7 @@ def _insert_moderation_seed(main_conn: sqlite3.Connection, ctx: FixtureContext, 
 
 
 def seed_synthetic_fixtures(main_db: Path, similarity_db: Path) -> FixtureContext:
+    """Handle seed synthetic fixtures."""
     logging.info("[seed] mode=synthetic main_db=%s similarity_db=%s", main_db, similarity_db)
 
     ctx = FixtureContext(
@@ -451,6 +461,7 @@ def _host_candidates(
     required_hosts: int,
     min_videos_per_host: int,
 ) -> list[str]:
+    """Handle host candidates."""
     rows = src.execute(
         """
         SELECT
@@ -479,6 +490,7 @@ def _host_is_eligible(
     *,
     min_videos_per_host: int,
 ) -> bool:
+    """Handle host is eligible."""
     row = src.execute(
         """
         SELECT
@@ -505,6 +517,7 @@ def _sample_channels_for_host(
     host: str,
     limit: int,
 ) -> list[dict[str, str]]:
+    """Handle sample channels for host."""
     rows = src.execute(
         """
         SELECT
@@ -540,12 +553,14 @@ def _sample_videos_for_host(
     channel_ids: list[str],
     limit: int,
 ) -> list[dict[str, str]]:
+    """Handle sample videos for host."""
     if not channel_ids:
         return []
     selected: list[dict[str, str]] = []
     selected_keys: set[tuple[str, str]] = set()
 
     def _append_row(row: sqlite3.Row) -> None:
+        """Handle append row."""
         key = (str(row["video_id"]), str(row["instance_domain"]))
         if key in selected_keys:
             return
@@ -615,6 +630,7 @@ def _sample_embeddings_for_videos(
     host: str,
     video_ids: list[str],
 ) -> list[tuple[object, ...]]:
+    """Handle sample embeddings for videos."""
     if not video_ids:
         return []
     placeholders = ", ".join(["?"] * len(video_ids))
@@ -649,6 +665,7 @@ def _sample_embeddings_for_videos(
 
 
 def _pick_video_for_channel(videos: list[dict[str, str]], channel_id: str) -> VideoRef:
+    """Handle pick video for channel."""
     for video in videos:
         if video["channel_id"] == channel_id:
             return VideoRef(
@@ -661,6 +678,7 @@ def _pick_video_for_channel(videos: list[dict[str, str]], channel_id: str) -> Vi
 
 
 def _pick_any_video(videos: list[dict[str, str]]) -> VideoRef:
+    """Handle pick any video."""
     if not videos:
         raise RuntimeError("Host sample has no videos")
     v = videos[0]
@@ -682,6 +700,7 @@ def seed_prod_sample_fixtures(
     sample_videos_per_host: int,
     target_host: str | None = None,
 ) -> FixtureContext:
+    """Handle seed prod sample fixtures."""
     if sample_hosts < 4:
         raise RuntimeError("--sample-hosts must be >= 4")
     if sample_channels_per_host < 2:
@@ -902,6 +921,7 @@ def seed_prod_sample_fixtures(
 
 
 def run_test(main_db: Path, similarity_db: Path, ctx: FixtureContext) -> None:
+    """Handle run test."""
     logging.info("[test] start moderation integration")
 
     # Step 1: purge ignored host data.
@@ -972,7 +992,9 @@ def run_test(main_db: Path, similarity_db: Path, ctx: FixtureContext) -> None:
         ]
 
         class _ServerStub:
+            """Represent server stub behavior."""
             def __init__(self, db: sqlite3.Connection) -> None:
+                """Initialize the instance."""
                 self.db = db
                 self.db_lock = threading.Lock()
                 self.enable_instance_ignore = True
@@ -1062,6 +1084,7 @@ def run_test(main_db: Path, similarity_db: Path, ctx: FixtureContext) -> None:
 
 
 def main() -> None:
+    """Handle main."""
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     if args.target_host and not args.sample_from_prod:

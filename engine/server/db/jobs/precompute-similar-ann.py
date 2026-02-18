@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Provide precompute-similar-ann runtime helpers."""
+
 import argparse
 import logging
 import sqlite3
@@ -113,12 +115,14 @@ SIMILARITY_ITEM_COLUMNS = [
 
 
 def connect_db(path: Path) -> sqlite3.Connection:
+    """Handle connect db."""
     conn = sqlite3.connect(path.as_posix())
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def connect_source_db(path: Path) -> sqlite3.Connection:
+    """Handle connect source db."""
     quoted = path.as_posix()
     uri = f"file:{quoted}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
@@ -129,6 +133,7 @@ def connect_source_db(path: Path) -> sqlite3.Connection:
 def iter_embedding_rows_by_rowids(
     conn: sqlite3.Connection, rowids: list[int], batch_size: int = 512
 ):
+    """Handle iter embedding rows by rowids."""
     if not rowids:
         return
     for start in range(0, len(rowids), batch_size):
@@ -144,6 +149,7 @@ def iter_embedding_rows_by_rowids(
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
+    """Handle ensure schema."""
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS similarity_sources (
@@ -198,6 +204,7 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 
 def _ensure_similarity_item_columns(conn: sqlite3.Connection) -> None:
+    """Handle ensure similarity item columns."""
     existing = {
         row["name"]
         for row in conn.execute("PRAGMA table_info(similarity_items)").fetchall()
@@ -209,6 +216,7 @@ def _ensure_similarity_item_columns(conn: sqlite3.Connection) -> None:
 
 
 def fetch_metadata(conn: sqlite3.Connection, rowids: list[int]) -> dict[int, dict[str, Any]]:
+    """Handle fetch metadata."""
     if not rowids:
         return {}
     placeholders = ", ".join("?" for _ in rowids)
@@ -255,6 +263,7 @@ def fetch_metadata(conn: sqlite3.Connection, rowids: list[int]) -> dict[int, dic
 
 
 def _extract_similarity_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+    """Handle extract similarity metadata."""
     return {field: meta.get(field) for field in SIMILARITY_ITEM_METADATA_FIELDS}
 
 
@@ -264,6 +273,7 @@ def record_similarities(
     items: list[dict[str, Any]],
     computed_at: int,
 ) -> None:
+    """Handle record similarities."""
     conn.execute(
         """
         INSERT INTO similarity_sources (video_id, instance_domain, computed_at)
@@ -328,6 +338,7 @@ def record_similarities(
 
 
 def main() -> None:
+    """Handle main."""
     parser = argparse.ArgumentParser(
         description="Precompute similar videos with FAISS.",
         formatter_class=CompactHelpFormatter,

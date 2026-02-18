@@ -1,23 +1,25 @@
+"""Provide related personalization runtime helpers."""
+
 from __future__ import annotations
 
-"""Re-rank related (similar) videos using user likes without changing the pool.
+# Re-rank related (similar) videos using user likes without changing the pool.
+#
+# This module is a *post-processing* step for related videos returned by recommendations
+# when a seed video is provided. It does not perform ANN search, does not add/remove
+# candidates, and does not touch cache. It only reorders the existing list.
+#
+# Pipeline:
+# 1) Fetch recent likes for the user (limited by max_likes).
+# 2) Fetch embeddings for likes and for the candidate pool.
+# 3) For each candidate, compute:
+#    - base_score: candidate["score"] from similarity search (default 0.0)
+#    - user_score: max cosine similarity between candidate vector and any liked vector
+# 4) Final score = alpha * base_score + beta * user_score
+# 5) Sort by final score (desc), stable by original index.
+#
+# If any required data is missing (no user_id, no likes, missing embeddings), the
+# input list is returned unchanged.
 
-This module is a *post-processing* step for related videos returned by recommendations
-when a seed video is provided. It does not perform ANN search, does not add/remove
-candidates, and does not touch cache. It only reorders the existing list.
-
-Pipeline:
-1) Fetch recent likes for the user (limited by max_likes).
-2) Fetch embeddings for likes and for the candidate pool.
-3) For each candidate, compute:
-   - base_score: candidate["score"] from similarity search (default 0.0)
-   - user_score: max cosine similarity between candidate vector and any liked vector
-4) Final score = alpha * base_score + beta * user_score
-5) Sort by final score (desc), stable by original index.
-
-If any required data is missing (no user_id, no likes, missing embeddings), the
-input list is returned unchanged.
-"""
 
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -29,6 +31,7 @@ from recommendations.keys import like_key
 
 @dataclass(frozen=True)
 class RelatedPersonalizationDeps:
+    """Represent related personalization deps behavior."""
     fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]]
     fetch_embeddings_by_ids: Callable[[Any, list[dict[str, Any]]], dict[str, np.ndarray]]
     max_likes: int
@@ -81,6 +84,7 @@ def rerank_related_videos(
 
 
 def _normalize_vectors(vectors: list[np.ndarray]) -> list[np.ndarray]:
+    """Handle normalize vectors."""
     normalized: list[np.ndarray] = []
     for vector in vectors:
         normed = _normalize_vector(vector)
@@ -90,6 +94,7 @@ def _normalize_vectors(vectors: list[np.ndarray]) -> list[np.ndarray]:
 
 
 def _normalize_vector(vector: np.ndarray) -> np.ndarray | None:
+    """Handle normalize vector."""
     norm = float(np.linalg.norm(vector))
     if not np.isfinite(norm) or norm == 0:
         return None
@@ -97,6 +102,7 @@ def _normalize_vector(vector: np.ndarray) -> np.ndarray | None:
 
 
 def _max_similarity(vector: np.ndarray, liked_vectors: list[np.ndarray]) -> float:
+    """Handle max similarity."""
     if not liked_vectors:
         return 0.0
     best = -1.0

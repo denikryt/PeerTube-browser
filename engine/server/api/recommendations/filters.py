@@ -1,3 +1,5 @@
+"""Provide filters runtime helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Callable
@@ -53,6 +55,7 @@ def apply_author_instance_caps(
         seen = set()
 
     def author_key(entry: dict[str, Any]) -> str | None:
+        """Handle author key."""
         channel_id = entry.get("channel_id") or entry.get("channelId")
         if not channel_id:
             return None
@@ -60,6 +63,7 @@ def apply_author_instance_caps(
         return f"{channel_id}::{instance}"
 
     def instance_key(entry: dict[str, Any]) -> str:
+        """Handle instance key."""
         return str(entry.get("instance_domain") or entry.get("instanceDomain") or "")
 
     filtered: list[dict[str, Any]] = []

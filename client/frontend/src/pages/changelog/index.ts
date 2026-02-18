@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/pages/changelog/index.ts`: provide runtime functionality.
+ */
+
 import "../../videos.css";
 import "../../changelog.css";
 import {
@@ -22,6 +26,9 @@ if (!counts || !meta || !state || !list) {
 
 void loadChangelog();
 
+/**
+ * Handle load changelog.
+ */
 async function loadChangelog() {
   setLoadingState("Loading changelog...");
 
@@ -47,6 +54,9 @@ async function loadChangelog() {
   }
 }
 
+/**
+ * Handle render entries.
+ */
 function renderEntries(entries: ChangelogEntry[], unseenCount: number) {
   state.hidden = true;
   list.hidden = false;
@@ -65,6 +75,9 @@ function renderEntries(entries: ChangelogEntry[], unseenCount: number) {
   meta.textContent = "";
 }
 
+/**
+ * Handle render entry.
+ */
 function renderEntry(entry: ChangelogEntry, isNew: boolean): HTMLElement {
   const article = document.createElement("article");
   article.className = `changelog-card${isNew ? " is-new" : ""}`;
@@ -87,6 +100,9 @@ function renderEntry(entry: ChangelogEntry, isNew: boolean): HTMLElement {
   return article;
 }
 
+/**
+ * Handle render seen separator.
+ */
 function renderSeenSeparator(): HTMLElement {
   const separator = document.createElement("div");
   separator.className = "changelog-separator";
@@ -94,6 +110,9 @@ function renderSeenSeparator(): HTMLElement {
   return separator;
 }
 
+/**
+ * Handle set loading state.
+ */
 function setLoadingState(message: string) {
   list.hidden = true;
   state.hidden = false;
@@ -103,6 +122,9 @@ function setLoadingState(message: string) {
   meta.textContent = "";
 }
 
+/**
+ * Handle set empty state.
+ */
 function setEmptyState(message: string) {
   list.hidden = true;
   state.hidden = false;
@@ -112,6 +134,9 @@ function setEmptyState(message: string) {
   meta.textContent = "";
 }
 
+/**
+ * Handle set error state.
+ */
 function setErrorState(message: string) {
   list.hidden = true;
   state.hidden = false;
@@ -121,6 +146,9 @@ function setErrorState(message: string) {
   meta.textContent = "";
 }
 
+/**
+ * Handle format date.
+ */
 function formatDate(value: string): string {
   const date = new Date(`${value}T00:00:00Z`);
   return dateFormat.format(date);

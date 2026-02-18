@@ -1,3 +1,5 @@
+"""Provide similarity cache runtime helpers."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -148,6 +150,7 @@ def ensure_similarity_schema(conn: sqlite3.Connection) -> None:
 
 
 def _ensure_similarity_item_columns(conn: sqlite3.Connection) -> None:
+    """Handle ensure similarity item columns."""
     existing = {
         row["name"]
         for row in conn.execute("PRAGMA table_info(similarity_items)").fetchall()

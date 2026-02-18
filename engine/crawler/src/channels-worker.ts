@@ -1,3 +1,7 @@
+/**
+ * Module `engine/crawler/src/channels-worker.ts`: provide runtime functionality.
+ */
+
 import { ChannelStore, type ChannelProgressRow, type ChannelUpsertRow } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile } from "./host-filters.js";
@@ -57,6 +61,9 @@ interface PeerTubeVideoChannel {
 }
 
 
+/**
+ * Handle crawl channels.
+ */
 export async function crawlChannels(options: ChannelCrawlOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
@@ -88,6 +95,9 @@ export async function crawlChannels(options: ChannelCrawlOptions) {
   store.close();
 }
 
+/**
+ * Handle check channel health.
+ */
 export async function checkChannelHealth(options: ChannelCrawlOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
@@ -108,6 +118,9 @@ export async function checkChannelHealth(options: ChannelCrawlOptions) {
   store.close();
 }
 
+/**
+ * Handle worker loop.
+ */
 async function workerLoop(
   queue: ChannelProgressRow[],
   store: ChannelStore,
@@ -124,6 +137,9 @@ async function workerLoop(
   }
 }
 
+/**
+ * Handle health worker loop.
+ */
 async function healthWorkerLoop(
   queue: string[],
   store: ChannelStore,
@@ -136,6 +152,9 @@ async function healthWorkerLoop(
   }
 }
 
+/**
+ * Handle process instance.
+ */
 async function processInstance(
   item: ChannelProgressRow,
   store: ChannelStore,
@@ -193,6 +212,9 @@ async function processInstance(
   }
 }
 
+/**
+ * Handle process health instance.
+ */
 async function processHealthInstance(
   host: string,
   store: ChannelStore,
@@ -212,6 +234,9 @@ async function processHealthInstance(
   let hadError = false;
   const totalChannels = channels.length;
   let processedChannels = 0;
+  /**
+   * Handle next processed.
+   */
   const nextProcessed = () => {
     processedChannels += 1;
     return processedChannels;
@@ -242,6 +267,9 @@ async function processHealthInstance(
   console.log(`[channels-health] done ${normalizedHost} error=${hadError}`);
 }
 
+/**
+ * Handle crawl instance channels.
+ */
 async function crawlInstanceChannels(
   host: string,
   startAt: number,
@@ -320,6 +348,9 @@ async function crawlInstanceChannels(
   return { localCount, totalCount };
 }
 
+/**
+ * Handle take rows within limit.
+ */
 function takeRowsWithinLimit(
   rows: ChannelUpsertRow[],
   limitState: ChannelInsertLimitState
@@ -336,6 +367,9 @@ function takeRowsWithinLimit(
   return accepted;
 }
 
+/**
+ * Handle fetch page.
+ */
 async function fetchPage(
   host: string,
   start: number,
@@ -361,10 +395,16 @@ async function fetchPage(
   }
 }
 
+/**
+ * Handle build url.
+ */
 function buildUrl(host: string, start: number, count: number, protocol: string) {
   return `${protocol}//${host}/api/v1/video-channels?start=${start}&count=${count}`;
 }
 
+/**
+ * Handle fetch channel health.
+ */
 async function fetchChannelHealth(
   host: string,
   channelName: string,
@@ -373,6 +413,9 @@ async function fetchChannelHealth(
   await fetchWithFallback(host, channelName, options, "https:");
 }
 
+/**
+ * Handle fetch with fallback.
+ */
 async function fetchWithFallback(
   host: string,
   channelName: string,
@@ -395,6 +438,9 @@ async function fetchWithFallback(
   }
 }
 
+/**
+ * Handle build channel videos url.
+ */
 function buildChannelVideosUrl(
   host: string,
   channelName: string,
@@ -429,6 +475,9 @@ async function mapWithConcurrency<T>(
 }
 
 
+/**
+ * Handle extract channel host.
+ */
 function extractChannelHost(channel: PeerTubeVideoChannel): string | null {
   const host =
     channel.host ?? channel.account?.host ?? channel.ownerAccount?.host ?? extractHostFromUrl(channel.account?.url);
@@ -436,6 +485,9 @@ function extractChannelHost(channel: PeerTubeVideoChannel): string | null {
   return normalizeHost(host);
 }
 
+/**
+ * Handle extract host from url.
+ */
 function extractHostFromUrl(value?: string) {
   if (!value) return null;
   try {
@@ -451,14 +503,23 @@ function extractHostFromUrl(value?: string) {
   }
 }
 
+/**
+ * Handle normalize host.
+ */
 function normalizeHost(host: string) {
   return host.trim().toLowerCase();
 }
 
+/**
+ * Handle to nullable string.
+ */
 function toNullableString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+/**
+ * Handle to nullable number.
+ */
 function toNullableNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.length > 0) {
@@ -468,11 +529,17 @@ function toNullableNumber(value: unknown): number | null {
   return null;
 }
 
+/**
+ * Handle get channel avatar url.
+ */
 function getChannelAvatarUrl(channel: PeerTubeVideoChannel, host: string, protocol: string) {
   const avatar = pickBestAvatar(channel.avatars) ?? channel.avatar;
   return resolveAvatarUrl(avatar, host, protocol);
 }
 
+/**
+ * Handle pick best avatar.
+ */
 function pickBestAvatar(avatars: PeerTubeAvatar[] | undefined) {
   if (!avatars || avatars.length === 0) return undefined;
   let best = avatars[0];
@@ -484,6 +551,9 @@ function pickBestAvatar(avatars: PeerTubeAvatar[] | undefined) {
   return best;
 }
 
+/**
+ * Handle resolve avatar url.
+ */
 function resolveAvatarUrl(avatar: PeerTubeAvatar | undefined, host: string, protocol: string) {
   if (!avatar) return null;
   const candidate = avatar.url ?? avatar.path ?? avatar.staticPath;
@@ -497,6 +567,9 @@ function resolveAvatarUrl(avatar: PeerTubeAvatar | undefined, host: string, prot
   return `${protocol}//${host}/${candidate}`;
 }
 
+/**
+ * Handle extract http status.
+ */
 function extractHttpStatus(message: string): number | null {
   const match = message.match(/HTTP (\d{3})/);
   if (!match) return null;

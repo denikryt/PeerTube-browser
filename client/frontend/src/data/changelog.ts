@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/data/changelog.ts`: provide runtime functionality.
+ */
+
 export type ChangelogEntry = {
   date: string;
   title: string;
@@ -12,6 +16,9 @@ export const CHANGELOG_URL =
   "https://raw.githubusercontent.com/denikryt/PeerTube-Browser/main/CHANGELOG.json";
 export const CHANGELOG_SEEN_ID_KEY = "changelog_seen_id";
 
+/**
+ * Handle fetch changelog entries.
+ */
 export async function fetchChangelogEntries(): Promise<ChangelogEntry[]> {
   const response = await fetch(CHANGELOG_URL, { cache: "no-store" });
   if (!response.ok) {
@@ -21,23 +28,38 @@ export async function fetchChangelogEntries(): Promise<ChangelogEntry[]> {
   return normalizeEntries(payload);
 }
 
+/**
+ * Handle make changelog entry id.
+ */
 export function makeChangelogEntryId(entry: ChangelogEntry): string {
   return `${entry.date}|${entry.title}`;
 }
 
+/**
+ * Handle get latest changelog id.
+ */
 export function getLatestChangelogId(entries: ChangelogEntry[]): string | null {
   if (!entries.length) return null;
   return makeChangelogEntryId(entries[0]);
 }
 
+/**
+ * Handle read seen changelog id.
+ */
 export function readSeenChangelogId(): string | null {
   return localStorage.getItem(CHANGELOG_SEEN_ID_KEY);
 }
 
+/**
+ * Handle write seen changelog id.
+ */
 export function writeSeenChangelogId(id: string): void {
   localStorage.setItem(CHANGELOG_SEEN_ID_KEY, id);
 }
 
+/**
+ * Handle count unseen entries.
+ */
 export function countUnseenEntries(
   entries: ChangelogEntry[],
   seenId: string | null
@@ -49,6 +71,9 @@ export function countUnseenEntries(
   return seenIndex;
 }
 
+/**
+ * Handle normalize entries.
+ */
 function normalizeEntries(payload: unknown): ChangelogEntry[] {
   const rawList = extractRawEntries(payload);
   const normalized: ChangelogEntry[] = [];
@@ -71,6 +96,9 @@ function normalizeEntries(payload: unknown): ChangelogEntry[] {
   return normalized;
 }
 
+/**
+ * Handle extract raw entries.
+ */
 function extractRawEntries(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload;
   if (!payload || typeof payload !== "object") return [];
@@ -79,12 +107,18 @@ function extractRawEntries(payload: unknown): unknown[] {
   return container.entries;
 }
 
+/**
+ * Handle normalize string.
+ */
 function normalizeString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value.trim();
   return cleaned.length ? cleaned : null;
 }
 
+/**
+ * Check whether is iso date.
+ */
 function isIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = Date.parse(`${value}T00:00:00Z`);

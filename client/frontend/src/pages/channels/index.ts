@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/pages/channels/index.ts`: provide runtime functionality.
+ */
+
 import "../../channels.css";
 import { fetchChannelsPayload } from "../../data/channels";
 import type { ChannelRow } from "../../types/channels";
@@ -57,7 +61,13 @@ wireSorters();
 updateSortIndicators();
 void loadChannels();
 
+/**
+ * Handle wire filters.
+ */
 function wireFilters() {
+  /**
+   * Handle on change.
+   */
   const onChange = () => {
     filterState.search = (searchInput?.value ?? "").trim();
     filterState.instance = (instanceInput?.value ?? "").trim();
@@ -111,6 +121,9 @@ function wireFilters() {
   });
 }
 
+/**
+ * Handle wire sorters.
+ */
 function wireSorters() {
   sortButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -128,6 +141,9 @@ function wireSorters() {
   });
 }
 
+/**
+ * Handle schedule load.
+ */
 function scheduleLoad() {
   window.clearTimeout(filterDebounceTimer);
   filterDebounceTimer = window.setTimeout(() => {
@@ -135,10 +151,16 @@ function scheduleLoad() {
   }, FILTER_DEBOUNCE_MS);
 }
 
+/**
+ * Handle max page count.
+ */
 function maxPageCount() {
   return Math.max(1, Math.ceil(state.total / state.pageSize));
 }
 
+/**
+ * Handle load channels.
+ */
 async function loadChannels() {
   const requestSeq = ++state.requestSeq;
   state.loading = true;
@@ -189,6 +211,9 @@ async function loadChannels() {
   }
 }
 
+/**
+ * Handle render summary.
+ */
 function renderSummary() {
   const total = state.total;
   const maxPage = maxPageCount();
@@ -215,10 +240,16 @@ function renderSummary() {
   if (pageNext) pageNext.toggleAttribute("disabled", state.loading || state.page >= maxPage);
 }
 
+/**
+ * Handle render loading row.
+ */
 function renderLoadingRow() {
   body.innerHTML = `<tr><td class="empty" colspan="6">Loading...</td></tr>`;
 }
 
+/**
+ * Handle render table.
+ */
 function renderTable() {
   if (state.rows.length === 0) {
     body.innerHTML = `<tr><td class="empty" colspan="6">No results found.</td></tr>`;
@@ -257,11 +288,17 @@ function renderTable() {
     .join("");
 }
 
+/**
+ * Handle default sort dir.
+ */
 function defaultSortDir(key: SortKey): SortDir {
   if (key === "name" || key === "instance") return "asc";
   return "desc";
 }
 
+/**
+ * Handle update sort indicators.
+ */
 function updateSortIndicators() {
   sortButtons.forEach((button) => {
     const key = button.dataset.sort;
@@ -273,10 +310,16 @@ function updateSortIndicators() {
   });
 }
 
+/**
+ * Handle channel label.
+ */
 function channelLabel(row: ChannelRow) {
   return row.display_name ?? row.channel_name ?? row.channel_id ?? "unknown";
 }
 
+/**
+ * Handle channel url.
+ */
 function channelUrl(row: ChannelRow) {
   if (row.channel_url) return row.channel_url;
   if (row.channel_name && row.instance_domain) {
@@ -285,6 +328,9 @@ function channelUrl(row: ChannelRow) {
   return "#";
 }
 
+/**
+ * Handle escape html.
+ */
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => {
     switch (char) {

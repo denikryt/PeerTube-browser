@@ -1,11 +1,13 @@
+"""Provide similarity candidates runtime helpers."""
+
 from __future__ import annotations
 
-"""Unified similarity candidate pipeline (cache -> filters -> ranking -> rows).
+# Unified similarity candidate pipeline (cache -> filters -> ranking -> rows).
+#
+# This module provides a single entry point for building similar candidates used by
+# recommendation routes. It centralizes cache policy, ANN fallback,
+# and filtering rules (seed exclusion, per-author limits, and error thresholds).
 
-This module provides a single entry point for building similar candidates used by
-recommendation routes. It centralizes cache policy, ANN fallback,
-and filtering rules (seed exclusion, per-author limits, and error thresholds).
-"""
 
 import logging
 from time import perf_counter

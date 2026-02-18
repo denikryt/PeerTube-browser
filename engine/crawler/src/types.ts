@@ -1,3 +1,7 @@
+/**
+ * Module `engine/crawler/src/types.ts`: provide runtime functionality.
+ */
+
 export type CrawlStatus = "pending" | "processing" | "done" | "error";
 
 export interface CrawlOptions {

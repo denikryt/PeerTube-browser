@@ -1,3 +1,7 @@
+/**
+ * Module `engine/crawler/src/instances-cli.ts`: provide runtime functionality.
+ */
+
 import { Command } from "commander";
 import { crawl } from "./crawler.js";
 import { isNoNetworkError } from "./http.js";

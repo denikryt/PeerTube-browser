@@ -16,6 +16,7 @@ TABLE_NAME = "instances"
 
 
 def parse_args() -> argparse.Namespace:
+    """Handle parse args."""
     parser = argparse.ArgumentParser(
         description="Migrate whitelist.db schema in-place.",
         formatter_class=CompactHelpFormatter,
@@ -44,6 +45,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def backup_db(path: Path) -> Path:
+    """Handle backup db."""
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     backup_path = path.with_name(f"{path.name}.bak-{timestamp}")
     backup_path.write_bytes(path.read_bytes())
@@ -59,6 +61,7 @@ def backup_db(path: Path) -> Path:
 
 
 def main() -> None:
+    """Handle main."""
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

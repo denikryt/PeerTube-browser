@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/changelog-badge.ts`: provide runtime functionality.
+ */
+
 import {
   fetchChangelogEntries,
   getLatestChangelogId,
@@ -11,6 +15,9 @@ window.addEventListener("changelog:seen-updated", () => {
   updateBadgeVisibility(false);
 });
 
+/**
+ * Handle refresh changelog badge.
+ */
 async function refreshChangelogBadge() {
   const links = getChangelogLinks();
   if (!links.length) return;
@@ -29,12 +36,18 @@ async function refreshChangelogBadge() {
   }
 }
 
+/**
+ * Handle get changelog links.
+ */
 function getChangelogLinks(): HTMLAnchorElement[] {
   return Array.from(
     document.querySelectorAll<HTMLAnchorElement>(CHANGELOG_LINK_SELECTOR)
   );
 }
 
+/**
+ * Handle update badge visibility.
+ */
 function updateBadgeVisibility(show: boolean) {
   const links = getChangelogLinks();
   for (const link of links) {

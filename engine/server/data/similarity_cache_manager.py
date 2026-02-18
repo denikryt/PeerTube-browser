@@ -1,13 +1,15 @@
+"""Provide similarity cache manager runtime helpers."""
+
 from __future__ import annotations
 
-"""Centralized cache policy helpers for similarity candidates.
+# Centralized cache policy helpers for similarity candidates.
+#
+# This module encapsulates all cache validity rules for similarity candidates:
+# - when cached rows are allowed to be read
+# - when cache entries must be refreshed
+# - when writes are permitted
+# It keeps cache behavior consistent across recommendation routes.
 
-This module encapsulates all cache validity rules for similarity candidates:
-- when cached rows are allowed to be read
-- when cache entries must be refreshed
-- when writes are permitted
-It keeps cache behavior consistent across recommendation routes.
-"""
 
 import logging
 import sqlite3
@@ -31,6 +33,7 @@ class SimilarityCachePolicy:
 
 
 def _source_label(source: dict[str, Any]) -> str:
+    """Handle source label."""
     video_id = source.get("video_id")
     instance = source.get("instance_domain") or ""
     return f"{video_id}@{instance}" if video_id else str(source)

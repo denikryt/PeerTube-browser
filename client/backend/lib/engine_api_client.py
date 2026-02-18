@@ -13,6 +13,7 @@ class EngineApiError(RuntimeError):
 
 
 def _post_json(url: str, payload: dict[str, Any], timeout: int = 6) -> tuple[int, dict[str, Any]]:
+    """Handle post json."""
     data = json.dumps(payload).encode("utf-8")
     request = Request(
         url,

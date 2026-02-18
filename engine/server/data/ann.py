@@ -1,3 +1,5 @@
+"""Provide ann runtime helpers."""
+
 from __future__ import annotations
 
 import logging
@@ -115,6 +117,7 @@ def search_index(
 
 
 def _author_key(channel_id: str | None, instance_domain: str | None) -> str | None:
+    """Handle author key."""
     if not channel_id:
         return None
     return f"{channel_id}::{instance_domain or ''}"

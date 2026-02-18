@@ -1,3 +1,7 @@
+/**
+ * Module `engine/crawler/src/crawler.ts`: provide runtime functionality.
+ */
+
 import { setTimeout as sleep } from "node:timers/promises";
 import { CrawlerStore } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
@@ -6,6 +10,9 @@ import type { CrawlOptions, Page, ServerFollowItem } from "./types.js";
 
 const PAGE_SIZE = 50;
 
+/**
+ * Handle crawl.
+ */
 export async function crawl(options: CrawlOptions) {
   const store = new CrawlerStore({
     dbPath: options.dbPath,
@@ -62,6 +69,9 @@ export async function crawl(options: CrawlOptions) {
   store.close();
 }
 
+/**
+ * Handle worker loop.
+ */
 async function workerLoop(
   store: CrawlerStore,
   options: CrawlOptions,
@@ -111,6 +121,9 @@ async function workerLoop(
   }
 }
 
+/**
+ * Handle process host.
+ */
 async function processHost(
   host: string,
   store: CrawlerStore,
@@ -153,6 +166,9 @@ async function processHost(
   }
 }
 
+/**
+ * Handle fetch all.
+ */
 async function fetchAll(
   host: string,
   kind: "following" | "followers",
@@ -179,6 +195,9 @@ async function fetchAll(
   return results;
 }
 
+/**
+ * Handle fetch page.
+ */
 async function fetchPage(
   host: string,
   kind: string,
@@ -203,11 +222,17 @@ async function fetchPage(
   }
 }
 
+/**
+ * Handle build url.
+ */
 function buildUrl(host: string, kind: string, start: number, count: number, protocol: string) {
   const base = `${protocol}//${host}`;
   return `${base}/api/v1/server/${kind}?start=${start}&count=${count}`;
 }
 
+/**
+ * Handle ensure url.
+ */
 function ensureUrl(input: string) {
   if (input.startsWith("http://") || input.startsWith("https://")) {
     return input;
@@ -215,6 +240,9 @@ function ensureUrl(input: string) {
   return `https://${input}`;
 }
 
+/**
+ * Handle fetch whitelist hosts.
+ */
 async function fetchWhitelistHosts(url: string, options: CrawlOptions): Promise<string[]> {
   const payload = await fetchJsonWithRetry<unknown>(url, {
     timeoutMs: options.timeoutMs,
@@ -240,6 +268,9 @@ async function fetchWhitelistHosts(url: string, options: CrawlOptions): Promise<
   return Array.from(hosts);
 }
 
+/**
+ * Handle extract whitelist entries.
+ */
 function extractWhitelistEntries(payload: unknown): unknown[] {
   if (Array.isArray(payload)) {
     return payload;
@@ -253,6 +284,9 @@ function extractWhitelistEntries(payload: unknown): unknown[] {
   throw new Error("Unexpected whitelist JSON shape.");
 }
 
+/**
+ * Handle extract whitelist host.
+ */
 function extractWhitelistHost(entry: unknown): string | null {
   if (!entry) return null;
   if (typeof entry === "string" || typeof entry === "number") {
@@ -269,14 +303,23 @@ function extractWhitelistHost(entry: unknown): string | null {
   return null;
 }
 
+/**
+ * Handle extract following host.
+ */
 function extractFollowingHost(item: ServerFollowItem, currentHost: string): string | null {
   return extractHostFromRef(item.following, currentHost);
 }
 
+/**
+ * Handle extract follower host.
+ */
 function extractFollowerHost(item: ServerFollowItem, currentHost: string): string | null {
   return extractHostFromRef(item.follower, currentHost);
 }
 
+/**
+ * Handle extract host from ref.
+ */
 function extractHostFromRef(ref: ServerFollowItem["following"], currentHost: string): string | null {
   if (!ref) return null;
   const host = parseHost(ref);
@@ -285,6 +328,9 @@ function extractHostFromRef(ref: ServerFollowItem["following"], currentHost: str
   return host;
 }
 
+/**
+ * Handle parse host.
+ */
 function parseHost(ref: ServerFollowItem["following"]): string | null {
   if (!ref) return null;
   if (typeof ref === "string") {
@@ -300,6 +346,9 @@ function parseHost(ref: ServerFollowItem["following"]): string | null {
   return null;
 }
 
+/**
+ * Handle parse host string.
+ */
 function parseHostString(value: string): string | null {
   return normalizeHostToken(value);
 }

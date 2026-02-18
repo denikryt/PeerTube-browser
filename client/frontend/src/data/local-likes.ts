@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/data/local-likes.ts`: provide runtime functionality.
+ */
+
 export type StoredLike = {
   video_uuid: string;
   instance_domain: string;
@@ -11,6 +15,9 @@ export type RequestLike = {
 const STORAGE_KEY = "localLikes:v1";
 const MAX_LIKES = 50;
 
+/**
+ * Handle add local like.
+ */
 export function addLocalLike(videoUuid: string, instanceDomain: string, maxItems = MAX_LIKES) {
   if (!videoUuid || !instanceDomain) return;
   const likes = loadLikes();
@@ -29,6 +36,9 @@ export function addLocalLike(videoUuid: string, instanceDomain: string, maxItems
   saveLikes(filtered);
 }
 
+/**
+ * Handle get random likes.
+ */
 export function getRandomLikes(maxItems = 5): RequestLike[] {
   const likes = loadLikes();
   if (!likes.length) return [];
@@ -40,10 +50,16 @@ export function getRandomLikes(maxItems = 5): RequestLike[] {
   }));
 }
 
+/**
+ * Handle get stored likes.
+ */
 export function getStoredLikes(): StoredLike[] {
   return loadLikes();
 }
 
+/**
+ * Handle clear local likes.
+ */
 export function clearLocalLikes() {
   try {
     window.localStorage.removeItem(STORAGE_KEY);
@@ -52,6 +68,9 @@ export function clearLocalLikes() {
   }
 }
 
+/**
+ * Handle load likes.
+ */
 function loadLikes(): StoredLike[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -66,6 +85,9 @@ function loadLikes(): StoredLike[] {
   }
 }
 
+/**
+ * Handle save likes.
+ */
 function saveLikes(likes: StoredLike[]) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(likes));
@@ -74,6 +96,9 @@ function saveLikes(likes: StoredLike[]) {
   }
 }
 
+/**
+ * Handle normalize like.
+ */
 function normalizeLike(entry: unknown): StoredLike {
   if (!entry || typeof entry !== "object") {
     return { video_uuid: "", instance_domain: "" };

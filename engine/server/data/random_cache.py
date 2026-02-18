@@ -1,3 +1,5 @@
+"""Provide random cache runtime helpers."""
+
 from __future__ import annotations
 
 import logging
@@ -7,12 +9,14 @@ from pathlib import Path
 
 
 def connect_random_cache_db(path: Path) -> sqlite3.Connection:
+    """Handle connect random cache db."""
     conn = sqlite3.connect(path.as_posix(), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def ensure_random_cache_schema(conn: sqlite3.Connection) -> None:
+    """Handle ensure random cache schema."""
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS random_rowids (
@@ -32,6 +36,7 @@ def populate_random_cache(
     max_per_instance: int = 0,
     max_per_author: int = 0,
 ) -> int:
+    """Handle populate random cache."""
     if size <= 0:
         return 0
     ensure_random_cache_schema(cache_db)
@@ -80,6 +85,7 @@ def populate_random_cache(
     chunk_size = 10000
 
     def try_add(entry: sqlite3.Row) -> bool:
+        """Handle try add."""
         rowid = int(entry["rowid"])
         if rowid in seen:
             return False
@@ -102,6 +108,7 @@ def populate_random_cache(
         return True
 
     def scan_range(range_start: int, range_end: int) -> None:
+        """Handle scan range."""
         nonlocal scanned
         if range_end < range_start:
             return
@@ -160,6 +167,7 @@ def populate_random_cache(
 
 
 def fetch_random_rowids(cache_db: sqlite3.Connection, limit: int) -> list[int]:
+    """Handle fetch random rowids."""
     if limit <= 0:
         return []
     count_row = cache_db.execute("SELECT COUNT(*) FROM random_rowids").fetchone()

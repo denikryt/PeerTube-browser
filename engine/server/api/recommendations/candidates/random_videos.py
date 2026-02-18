@@ -1,3 +1,5 @@
+"""Provide random videos runtime helpers."""
+
 from __future__ import annotations
 
 import logging
@@ -12,6 +14,7 @@ from recommendations.filters import apply_author_instance_caps
 
 @dataclass(frozen=True)
 class RandomVideosDeps:
+    """Represent random videos deps behavior."""
     fetch_random_rows_from_cache: Callable[[Any, int], list[dict[str, Any]]]
     fetch_random_rows: Callable[[Any, int], list[dict[str, Any]]]
     fetch_recent_likes: Callable[[str, int], list[dict[str, Any]]]
@@ -21,9 +24,11 @@ class RandomVideosDeps:
 
 
 class RandomVideosGenerator:
+    """Represent random videos generator behavior."""
     name = "random"
 
     def __init__(self, deps: RandomVideosDeps) -> None:
+        """Initialize the instance."""
         self.deps = deps
 
     def get_candidates(
@@ -34,6 +39,7 @@ class RandomVideosGenerator:
         refresh_cache: bool = False,
         config: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        """Handle get candidates."""
         if limit <= 0:
             return []
         config = config or {}
@@ -123,6 +129,7 @@ class RandomVideosGenerator:
         return filtered if filtered else pool
 
     def _fetch_pool(self, server: Any, limit: int) -> list[dict[str, Any]]:
+        """Handle fetch pool."""
         rows = self.deps.fetch_random_rows_from_cache(server, limit)
         if rows:
             return rows
@@ -136,6 +143,7 @@ class RandomVideosGenerator:
         max_per_instance: int,
         max_per_author: int,
     ) -> list[dict[str, Any]]:
+        """Handle fetch pool with caps."""
         if limit <= 0:
             return []
         if max_per_instance <= 0 and max_per_author <= 0:
@@ -170,6 +178,7 @@ class RandomVideosGenerator:
 
 
 def _normalize_vectors(vectors: list[np.ndarray]) -> list[np.ndarray]:
+    """Handle normalize vectors."""
     normalized: list[np.ndarray] = []
     for vector in vectors:
         normed = _normalize_vector(vector)
@@ -179,6 +188,7 @@ def _normalize_vectors(vectors: list[np.ndarray]) -> list[np.ndarray]:
 
 
 def _normalize_vector(vector: np.ndarray) -> np.ndarray | None:
+    """Handle normalize vector."""
     norm = float(np.linalg.norm(vector))
     if not np.isfinite(norm) or norm == 0:
         return None
@@ -186,6 +196,7 @@ def _normalize_vector(vector: np.ndarray) -> np.ndarray | None:
 
 
 def _max_similarity(vector: np.ndarray, liked_vectors: list[np.ndarray]) -> float:
+    """Handle max similarity."""
     if not liked_vectors:
         return 0.0
     best = -1.0

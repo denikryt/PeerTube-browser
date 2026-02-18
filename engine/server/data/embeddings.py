@@ -1,3 +1,5 @@
+"""Provide embeddings runtime helpers."""
+
 from __future__ import annotations
 
 import json
@@ -115,6 +117,7 @@ def fetch_seed_embedding(
 def _fetch_seed_by_uuid(
     conn: sqlite3.Connection, uuid: str, host: str | None
 ) -> dict[str, Any] | None:
+    """Handle fetch seed by uuid."""
     sql = """
         SELECT
           e.rowid AS rowid,
@@ -142,6 +145,7 @@ def _fetch_seed_by_uuid(
 def _fetch_seed_by_id(
     conn: sqlite3.Connection, video_id: str, host: str | None
 ) -> dict[str, Any] | None:
+    """Handle fetch seed by id."""
     sql = """
         SELECT
           e.rowid AS rowid,
@@ -167,6 +171,7 @@ def _fetch_seed_by_id(
 
 
 def _seed_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
+    """Handle seed from row."""
     if not row:
         return None
     embedding = np.frombuffer(row["embedding"], dtype=np.float32)
@@ -300,4 +305,5 @@ def fetch_embeddings_by_ids(
 
 
 def _chunk(values: list[Any], size: int) -> list[list[Any]]:
+    """Handle chunk."""
     return [values[index : index + size] for index in range(0, len(values), size)]

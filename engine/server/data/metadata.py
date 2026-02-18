@@ -1,3 +1,5 @@
+"""Provide metadata runtime helpers."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -101,6 +103,7 @@ def fetch_metadata(
 
 
 def _chunk(values: list[Any], size: int) -> list[list[Any]]:
+    """Handle chunk."""
     return [values[index : index + size] for index in range(0, len(values), size)]
 
 

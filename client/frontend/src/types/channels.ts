@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/types/channels.ts`: provide runtime functionality.
+ */
+
 export interface ChannelRow {
   channel_id: string;
   channel_name: string | null;

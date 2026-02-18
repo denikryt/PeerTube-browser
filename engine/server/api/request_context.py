@@ -1,3 +1,5 @@
+"""Provide request context runtime helpers."""
+
 import threading
 from typing import Any
 
@@ -5,11 +7,13 @@ _REQUEST_CONTEXT = threading.local()
 
 
 def set_request_client_likes(likes: list[dict[str, Any]] | None, use_client: bool) -> None:
+    """Handle set request client likes."""
     _REQUEST_CONTEXT.client_likes = likes if use_client else []
     _REQUEST_CONTEXT.use_client_likes = bool(use_client)
 
 
 def clear_request_context() -> None:
+    """Handle clear request context."""
     if hasattr(_REQUEST_CONTEXT, "client_likes"):
         delattr(_REQUEST_CONTEXT, "client_likes")
     if hasattr(_REQUEST_CONTEXT, "use_client_likes"):

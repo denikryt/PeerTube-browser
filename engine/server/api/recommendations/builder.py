@@ -1,15 +1,17 @@
+"""Provide builder runtime helpers."""
+
 from __future__ import annotations
 
-"""Recommendation pipeline builder.
+# Recommendation pipeline builder.
+#
+# This module centralizes:
+# - selection of "similar from likes" source (ANN vs cache-optimized + fallback),
+# - construction of generator deps with error-threshold filtering,
+# - creation of the mixing strategy with configured generator ordering/ratios.
+#
+# It does not run queries directly; it only composes dependencies and returns a
+# ready-to-use recommendation strategy.
 
-This module centralizes:
-- selection of "similar from likes" source (ANN vs cache-optimized + fallback),
-- construction of generator deps with error-threshold filtering,
-- creation of the mixing strategy with configured generator ordering/ratios.
-
-It does not run queries directly; it only composes dependencies and returns a
-ready-to-use recommendation strategy.
-"""
 
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -84,21 +86,25 @@ def build_recommendation_strategy(
     - MixingRecommendationStrategy configured with exploit/explore/fresh generators.
     """
     def fetch_random_rows_filtered(conn: Any, limit: int) -> list[dict[str, Any]]:
+        """Handle fetch random rows filtered."""
         return deps.fetch_random_rows(
             conn, limit, error_threshold=settings.video_error_threshold
         )
 
     def fetch_random_rows_from_cache_filtered(server: Any, limit: int) -> list[dict[str, Any]]:
+        """Handle fetch random rows from cache filtered."""
         return deps.fetch_random_rows_from_cache(
             server, limit, error_threshold=settings.video_error_threshold
         )
 
     def fetch_recent_videos_filtered(conn: Any, limit: int) -> list[dict[str, Any]]:
+        """Handle fetch recent videos filtered."""
         return deps.fetch_recent_videos(
             conn, limit, error_threshold=settings.video_error_threshold
         )
 
     def fetch_popular_videos_filtered(conn: Any, limit: int) -> list[dict[str, Any]]:
+        """Handle fetch popular videos filtered."""
         return deps.fetch_popular_videos(
             conn, limit, error_threshold=settings.video_error_threshold
         )

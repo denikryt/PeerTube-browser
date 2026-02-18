@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/types/videos.ts`: provide runtime functionality.
+ */
+
 export interface VideoRow {
   video_id?: string;
   video_uuid?: string | null;

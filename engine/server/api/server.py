@@ -105,6 +105,7 @@ DEV_SERVER_PORT = 7071
 
 
 def _parse_port(value: str) -> int:
+    """Handle parse port."""
     port = int(value)
     if port < 1 or port > 65535:
         raise argparse.ArgumentTypeError("port must be in range 1..65535")
@@ -112,6 +113,7 @@ def _parse_port(value: str) -> int:
 
 
 def parse_args() -> argparse.Namespace:
+    """Handle parse args."""
     parser = argparse.ArgumentParser(
         description="Run PeerTube Browser API server.",
         formatter_class=CompactHelpFormatter,
@@ -209,6 +211,7 @@ class SimilarServer(ThreadingHTTPServer):
         enable_channel_blocklist: bool,
         engine_ingest_mode: str,
     ) -> None:
+        """Initialize the instance."""
         super().__init__(server_address, handler_class)
         self.db = db
         self.index = index

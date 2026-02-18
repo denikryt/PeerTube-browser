@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/data/user-profile.ts`: provide runtime functionality.
+ */
+
 import type { VideoRow } from "../types/videos";
 import { getStoredLikes } from "./local-likes";
 import { resolveClientApiBase } from "./api-base";
@@ -9,6 +13,9 @@ interface UserProfileResponse {
 
 const USE_LOCAL_LIKES_PROFILE = true;
 
+/**
+ * Handle fetch user profile likes.
+ */
 export async function fetchUserProfileLikes(apiBase: string): Promise<VideoRow[]> {
   const clientApiBase = resolveClientApiBase(apiBase);
   if (USE_LOCAL_LIKES_PROFILE) {
@@ -43,6 +50,9 @@ export async function fetchUserProfileLikes(apiBase: string): Promise<VideoRow[]
   return Array.isArray(payload.likes) ? payload.likes : [];
 }
 
+/**
+ * Handle reset user profile likes.
+ */
 export async function resetUserProfileLikes(apiBase: string): Promise<VideoRow[]> {
   const clientApiBase = resolveClientApiBase(apiBase);
   const response = await fetch(new URL("/api/user-profile/reset", clientApiBase), {
@@ -60,6 +70,9 @@ export async function resetUserProfileLikes(apiBase: string): Promise<VideoRow[]
   return Array.isArray(payload.likes) ? payload.likes : [];
 }
 
+/**
+ * Handle read error message.
+ */
 async function readErrorMessage(response: Response): Promise<string | null> {
   try {
     const payload = (await response.json()) as { error?: string };

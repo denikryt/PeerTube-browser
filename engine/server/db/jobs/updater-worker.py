@@ -33,6 +33,7 @@ from data.moderation import (
 
 
 def parse_args() -> argparse.Namespace:
+    """Handle parse args."""
     repo_root = script_dir.parents[4]
     api_dir = repo_root / "engine" / "server" / "api"
     if str(api_dir) not in sys.path:
@@ -231,6 +232,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def setup_logging(log_path: Path) -> None:
+    """Handle setup logging."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
     handlers = [logging.StreamHandler(sys.stdout), logging.FileHandler(log_path, "a")]
     logging.basicConfig(
@@ -241,6 +243,7 @@ def setup_logging(log_path: Path) -> None:
 
 
 def _pid_alive(pid: int) -> bool:
+    """Handle pid alive."""
     if pid <= 0:
         return False
     try:
@@ -254,6 +257,7 @@ def _pid_alive(pid: int) -> bool:
 
 @contextmanager
 def single_run_lock(lock_path: Path):
+    """Handle single run lock."""
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = None
     try:
@@ -291,6 +295,7 @@ def single_run_lock(lock_path: Path):
 
 
 def run_cmd(cmd: list[str], cwd: Path | None = None) -> None:
+    """Handle run cmd."""
     start = time.monotonic()
     display = " ".join(shlex.quote(part) for part in cmd)
     logging.info("run: %s", display)
@@ -306,6 +311,7 @@ def systemctl_cmd(
     action: str,
     use_sudo: bool,
 ) -> list[str]:
+    """Handle systemctl cmd."""
     cmd = [systemctl_bin, action, service_name]
     if use_sudo:
         return ["sudo", "-n", *cmd]
@@ -313,6 +319,7 @@ def systemctl_cmd(
 
 
 def fetch_join_hosts(url: str) -> set[str]:
+    """Handle fetch join hosts."""
     request = Request(
         url,
         headers={"User-Agent": "peertube-browser-updater/1.0"},
@@ -342,6 +349,7 @@ def fetch_join_hosts(url: str) -> set[str]:
 
 
 def list_prod_hosts(prod_db: Path) -> set[str]:
+    """Handle list prod hosts."""
     conn = sqlite3.connect(prod_db.as_posix())
     try:
         rows = conn.execute("SELECT host FROM instances").fetchall()
@@ -351,6 +359,7 @@ def list_prod_hosts(prod_db: Path) -> set[str]:
 
 
 def load_denied_hosts(prod_db: Path) -> set[str]:
+    """Handle load denied hosts."""
     conn = sqlite3.connect(prod_db.as_posix())
     conn.row_factory = sqlite3.Row
     try:
@@ -361,6 +370,7 @@ def load_denied_hosts(prod_db: Path) -> set[str]:
 
 
 def write_hosts_file(hosts: set[str], prefix: str) -> Path | None:
+    """Handle write hosts file."""
     if not hosts:
         return None
     handle = tempfile.NamedTemporaryFile(
@@ -385,6 +395,7 @@ def purge_hosts(
     hosts: set[str],
     dry_run: bool,
 ) -> dict[str, int]:
+    """Handle purge hosts."""
     summary: dict[str, int] = {}
     if not hosts:
         return summary
@@ -413,6 +424,7 @@ def purge_hosts(
 
 
 def purge_hosts_from_staging(staging_db: Path, hosts: set[str]) -> dict[str, int]:
+    """Handle purge hosts from staging."""
     summary: dict[str, int] = {}
     if not hosts:
         return summary
@@ -429,6 +441,7 @@ def purge_hosts_from_staging(staging_db: Path, hosts: set[str]) -> dict[str, int
 
 
 def remove_db_with_sidecars(path: Path) -> None:
+    """Handle remove db with sidecars."""
     for candidate in (
         path,
         path.with_suffix(path.suffix + "-wal"),
@@ -439,6 +452,7 @@ def remove_db_with_sidecars(path: Path) -> None:
 
 
 def init_staging_db(staging_db: Path, schema_path: Path) -> None:
+    """Handle init staging db."""
     remove_db_with_sidecars(staging_db)
     schema_sql = schema_path.read_text(encoding="utf-8")
     conn = sqlite3.connect(staging_db.as_posix())
@@ -460,6 +474,7 @@ def init_staging_db(staging_db: Path, schema_path: Path) -> None:
 def shared_columns(
     conn: sqlite3.Connection, left_schema: str, left_table: str, right_schema: str, right_table: str
 ) -> list[str]:
+    """Handle shared columns."""
     main_cols = [row[1] for row in conn.execute(f"PRAGMA {left_schema}.table_info({left_table})")]
     stage_cols = {
         row[1] for row in conn.execute(f"PRAGMA {right_schema}.table_info({right_table})")
@@ -468,6 +483,7 @@ def shared_columns(
 
 
 def seed_staging_from_prod(prod_db: Path, staging_db: Path) -> None:
+    """Handle seed staging from prod."""
     conn = sqlite3.connect(staging_db.as_posix())
     attached = False
     try:
@@ -510,6 +526,7 @@ def seed_staging_from_prod(prod_db: Path, staging_db: Path) -> None:
 
 
 def count_staging_deltas(prod_db: Path, staging_db: Path) -> dict[str, int]:
+    """Handle count staging deltas."""
     conn = sqlite3.connect(prod_db.as_posix())
     try:
         conn.execute("ATTACH DATABASE ? AS stage", (staging_db.as_posix(),))
@@ -668,6 +685,7 @@ def inject_replace_embedding_for_test(prod_db: Path, staging_db: Path) -> bool:
 
 
 def main() -> None:
+    """Handle main."""
     args = parse_args()
     setup_logging(Path(args.logs).resolve())
 

@@ -1,3 +1,7 @@
+/**
+ * Module `engine/crawler/src/channels-cli.ts`: provide runtime functionality.
+ */
+
 import { Command } from "commander";
 import { checkChannelHealth, crawlChannels } from "./channels-worker.js";
 import { isNoNetworkError } from "./http.js";

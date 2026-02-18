@@ -1,3 +1,7 @@
+/**
+ * Module `client/frontend/src/data/videos.ts`: provide runtime functionality.
+ */
+
 import type { VideoRow, VideosPayload } from "../types/videos";
 import { fetchJsonWithCache } from "./cache";
 import { getRandomLikes } from "./local-likes";
@@ -14,6 +18,9 @@ export interface SimilarQuery {
 
 const STATIC_VIDEO_URLS = ["/videos.json", "./videos.json", "videos.json"];
 
+/**
+ * Handle parse similar query.
+ */
 export function parseSimilarQuery(params: URLSearchParams): SimilarQuery {
   return {
     id: params.get("id"),
@@ -25,10 +32,16 @@ export function parseSimilarQuery(params: URLSearchParams): SimilarQuery {
   };
 }
 
+/**
+ * Handle resolve api base.
+ */
 export function resolveApiBase(query: SimilarQuery) {
   return resolveClientApiBase(query.apiBase);
 }
 
+/**
+ * Handle build similar url.
+ */
 export function buildSimilarUrl(query: SimilarQuery) {
   const apiBase = resolveApiBase(query);
   const url = new URL("/recommendations", apiBase);
@@ -40,6 +53,9 @@ export function buildSimilarUrl(query: SimilarQuery) {
   return url.toString();
 }
 
+/**
+ * Handle fetch static videos payload.
+ */
 export async function fetchStaticVideosPayload(options: { cacheTtlMs?: number } = {}) {
   let lastError: string | null = null;
   for (const url of STATIC_VIDEO_URLS) {
@@ -55,6 +71,9 @@ export async function fetchStaticVideosPayload(options: { cacheTtlMs?: number } 
   throw new Error(lastError ?? "Failed to load videos.json");
 }
 
+/**
+ * Handle fetch similar videos payload.
+ */
 export async function fetchSimilarVideosPayload(query: SimilarQuery) {
   const url = buildSimilarUrl(query);
   const likes = getRandomLikes();

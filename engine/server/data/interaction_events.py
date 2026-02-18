@@ -1,3 +1,5 @@
+"""Provide interaction events runtime helpers."""
+
 from __future__ import annotations
 
 import json
@@ -165,6 +167,7 @@ def normalize_event_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _event_deltas(event_type: str) -> dict[str, float]:
+    """Handle event deltas."""
     if event_type == "Like":
         return {
             "likes_count": 1,
@@ -188,6 +191,7 @@ def _event_deltas(event_type: str) -> dict[str, float]:
 
 
 def _clean_text(value: Any) -> str | None:
+    """Handle clean text."""
     if not isinstance(value, str):
         return None
     normalized = value.strip()

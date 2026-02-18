@@ -65,11 +65,13 @@ PROXY_ALLOWED_BODY_KEYS: dict[str, set[str]] = {
 
 
 def _resolve_mode(value: str, default: str = "bridge") -> str:
+    """Handle resolve mode."""
     normalized = value.strip().lower()
     return normalized if normalized in {"bridge", "activitypub"} else default
 
 
 def parse_args() -> argparse.Namespace:
+    """Handle parse args."""
     parser = argparse.ArgumentParser(description="Run PeerTube Client backend service.")
     parser.add_argument("--host", default=DEFAULT_CLIENT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_CLIENT_PORT)
@@ -80,6 +82,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def connect_db(path: Path) -> sqlite3.Connection:
+    """Handle connect db."""
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
@@ -97,6 +100,7 @@ class ClientBackendServer(ThreadingHTTPServer):
         publish_mode: str,
         rate_limiter: RateLimiter,
     ) -> None:
+        """Initialize the instance."""
         super().__init__(server_address, handler_class)
         self.user_db = user_db
         self.engine_ingest_base = engine_ingest_base.rstrip("/")
@@ -108,9 +112,11 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
     """HTTP handler for Client backend write/profile endpoints."""
 
     def do_OPTIONS(self) -> None:  # noqa: N802
+        """Handle do options."""
         respond_options(self)
 
     def do_GET(self) -> None:  # noqa: N802
+        """Handle do get."""
         url = urlparse(self.path)
         params = parse_qs(url.query)
         if url.path in PROXY_READ_GET_ROUTES:
@@ -150,6 +156,7 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         respond_json(self, 404, {"error": "Not found"})
 
     def do_POST(self) -> None:  # noqa: N802
+        """Handle do post."""
         url = urlparse(self.path)
         if url.path in PROXY_READ_POST_ROUTES:
             if not self._rate_limit_check(url.path):
@@ -184,11 +191,13 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         respond_json(self, 404, {"error": "Not found"})
 
     def _rate_limit_check(self, path: str) -> bool:
+        """Handle rate limit check."""
         ip = self.client_address[0] if self.client_address else "unknown"
         key = f"{ip}:{path}"
         return self.server.rate_limiter.allow(key)
 
     def _handle_engine_read_proxy_get(self, path: str, params: dict[str, list[str]]) -> None:
+        """Handle handle engine read proxy get."""
         allowed = PROXY_ALLOWED_QUERY_PARAMS.get(path, set())
         sanitized: dict[str, str] = {}
         for key, values in params.items():
@@ -206,6 +215,7 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         self._proxy_engine_request("GET", path, sanitized_query=sanitized)
 
     def _handle_engine_read_proxy_post(self, path: str, url: Any) -> None:
+        """Handle handle engine read proxy post."""
         query_params = parse_qs(url.query)
         allowed_query = PROXY_ALLOWED_QUERY_PARAMS.get(path, set())
         sanitized_query: dict[str, str] = {}
@@ -267,6 +277,7 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         sanitized_query: dict[str, str] | None = None,
         body: dict[str, Any] | None = None,
     ) -> None:
+        """Handle proxy engine request."""
         sanitized_query = sanitized_query or {}
         upstream = f"{self.server.engine_ingest_base}{path}"
         if sanitized_query:
@@ -341,6 +352,7 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         return
 
     def _handle_user_action(self) -> None:
+        """Handle handle user action."""
         try:
             body = read_json_body(self)
         except ValueError as exc:
@@ -432,6 +444,7 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_user_profile_reset(self) -> None:
+        """Handle handle user profile reset."""
         body = read_json_body(self)
         user_id_raw = body.get("user_id") if isinstance(body, dict) else None
         user_id = resolve_user_id(str(user_id_raw) if user_id_raw is not None else None)
@@ -445,6 +458,7 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_user_profile_likes_get(self, params: dict[str, list[str]]) -> None:
+        """Handle handle user profile likes get."""
         user_id = resolve_user_id(params.get("user_id", params.get("userId", [None]))[0])
         limit = _parse_int(params.get("limit", [None])[0])
         limit = min(limit, MAX_LIKES) if limit > 0 else MAX_LIKES
@@ -459,6 +473,7 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         respond_json(self, 200, {"user_id": user_id, "likes": rows, "updatedAt": now_ms()})
 
     def _handle_user_profile_likes_from_client(self) -> None:
+        """Handle handle user profile likes from client."""
         try:
             body = read_json_body(self)
         except ValueError as exc:
@@ -477,6 +492,7 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         respond_json(self, 200, {"likes": rows, "updatedAt": now_ms()})
 
     def _handle_client_publish_event(self) -> None:
+        """Handle handle client publish event."""
         try:
             body = read_json_body(self)
         except ValueError as exc:
@@ -495,6 +511,7 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
 
 
 def _publish_to_engine_bridge(engine_ingest_base: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Handle publish to engine bridge."""
     data = json.dumps(payload).encode("utf-8")
     request = Request(
         f"{engine_ingest_base}/internal/events/ingest",
@@ -518,6 +535,7 @@ def _publish_to_engine_bridge(engine_ingest_base: str, payload: dict[str, Any]) 
 def _publish_event(
     publish_mode: str, engine_ingest_base: str, payload: dict[str, Any]
 ) -> dict[str, Any]:
+    """Handle publish event."""
     if _resolve_mode(publish_mode) != "bridge":
         return {
             "ok": False,
@@ -528,6 +546,7 @@ def _publish_event(
 
 
 def _parse_int(value: str | None) -> int:
+    """Handle parse int."""
     try:
         parsed = int(value or "0")
     except ValueError:
@@ -536,6 +555,7 @@ def _parse_int(value: str | None) -> int:
 
 
 def _parse_client_likes(payload: dict[str, Any], max_items: int) -> list[dict[str, str]]:
+    """Handle parse client likes."""
     raw = payload.get("likes")
     if not isinstance(raw, list):
         return []
@@ -554,6 +574,7 @@ def _parse_client_likes(payload: dict[str, Any], max_items: int) -> list[dict[st
 
 
 def main() -> None:
+    """Handle main."""
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     users_db_path = (ROOT_DIR / args.users_db).resolve()

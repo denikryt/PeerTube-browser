@@ -1,3 +1,5 @@
+"""Provide scoring runtime helpers."""
+
 from __future__ import annotations
 
 import logging
@@ -11,6 +13,7 @@ from data.time import now_ms
 
 @dataclass(frozen=True)
 class ScoringSettings:
+    """Represent scoring settings behavior."""
     similarity_weight: float
     freshness_weight: float
     popularity_weight: float
@@ -21,6 +24,7 @@ class ScoringSettings:
 
 
 def build_scoring_settings(config: dict[str, Any]) -> ScoringSettings:
+    """Handle build scoring settings."""
     scoring = config.get("scoring", {})
     weights = scoring.get("weights", {})
     popularity = scoring.get("popularity", {})
@@ -41,6 +45,7 @@ def score_candidate(
     layer_name: str | None = None,
     now_ms_value: int | None = None,
 ) -> float:
+    """Handle score candidate."""
     if now_ms_value is None:
         now_ms_value = now_ms()
     similarity = _extract_similarity(candidate)
@@ -149,6 +154,7 @@ def score_and_rank_list(
     layer_name: str | None = None,
     now_ms_value: int | None = None,
 ) -> list[dict[str, Any]]:
+    """Handle score and rank list."""
     if not candidates:
         return []
     settings = build_scoring_settings(config)
@@ -165,6 +171,7 @@ def score_and_rank_list(
 
 
 def _extract_similarity(candidate: dict[str, Any]) -> float:
+    """Handle extract similarity."""
     raw = candidate.get("similarity_score")
     if raw is None:
         raw = candidate.get("score")
@@ -184,6 +191,7 @@ def _extract_similarity(candidate: dict[str, Any]) -> float:
 def _freshness_score(
     published_at: int | None, now_ms_value: int, settings: ScoringSettings
 ) -> float:
+    """Handle freshness score."""
     if not published_at:
         return 0.0
     age_ms = max(now_ms_value - int(published_at), 0)
@@ -197,6 +205,7 @@ def _freshness_score(
 def _popularity_score(
     views: int | None, likes: int | None, settings: ScoringSettings
 ) -> float:
+    """Handle popularity score."""
     view_count = max(int(views or 0), 0)
     like_count = max(int(likes or 0), 0)
     weighted = (
@@ -212,6 +221,7 @@ def _popularity_score(
 def _apply_jitter(
     items: list[tuple[str | None, dict[str, Any]]], window: int
 ) -> list[tuple[str | None, dict[str, Any]]]:
+    """Handle apply jitter."""
     if window <= 1 or len(items) <= 1:
         return list(items)
     jittered: list[tuple[str | None, dict[str, Any]]] = []
@@ -228,6 +238,7 @@ def _mix_by_ratio(
     ratio: float,
     limit: int,
 ) -> list[tuple[str | None, dict[str, Any]]]:
+    """Handle mix by ratio."""
     if ratio <= 0:
         return list(exploit_pool)[:limit]
     if ratio >= 1:

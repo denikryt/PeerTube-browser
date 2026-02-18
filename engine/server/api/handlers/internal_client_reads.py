@@ -9,6 +9,7 @@ from http_utils import read_json_body, respond_json
 
 
 def _like_key(entry: dict[str, Any]) -> str:
+    """Handle like key."""
     return f"{entry.get('video_id') or ''}::{entry.get('instance_domain') or ''}"
 
 

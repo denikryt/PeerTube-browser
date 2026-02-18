@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Provide ensure-video-indexes runtime helpers."""
+
 import argparse
 import logging
 import sys
@@ -12,6 +14,7 @@ from data.videos import ensure_video_indexes
 
 
 def main() -> None:
+    """Handle main."""
     parser = argparse.ArgumentParser(
         description="Create video/embedding indexes used by seed lookups."
     )

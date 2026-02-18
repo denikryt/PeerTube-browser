@@ -31,6 +31,7 @@ from server_config import DEFAULT_DB_PATH, DEFAULT_INDEX_PATH, DEFAULT_SIMILARIT
 
 
 def parse_args() -> argparse.Namespace:
+    """Handle parse args."""
     default_source_db = (repo_root / DEFAULT_DB_PATH).resolve()
     default_workdir = repo_root / "tmp" / "orchestrator-smoke"
     default_instances_json = (script_dir / "test-instances.json").resolve()
@@ -139,6 +140,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def setup_logging(run_dir: Path) -> Path:
+    """Handle setup logging."""
     run_dir.mkdir(parents=True, exist_ok=True)
     log_path = run_dir / "smoke.log"
     logging.basicConfig(
@@ -150,6 +152,7 @@ def setup_logging(run_dir: Path) -> Path:
 
 
 def table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    """Handle table exists."""
     row = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
     ).fetchone()
@@ -157,6 +160,7 @@ def table_exists(conn: sqlite3.Connection, table: str) -> bool:
 
 
 def column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """Handle column exists."""
     if not table_exists(conn, table):
         return False
     rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
@@ -164,12 +168,14 @@ def column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
 
 
 def count_rows(conn: sqlite3.Connection, table: str) -> int:
+    """Handle count rows."""
     if not table_exists(conn, table):
         return 0
     return int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
 
 
 def db_metrics(db_path: Path) -> dict[str, int]:
+    """Handle db metrics."""
     conn = sqlite3.connect(db_path.as_posix())
     try:
         metrics: dict[str, int] = {
@@ -192,6 +198,7 @@ def db_metrics(db_path: Path) -> dict[str, int]:
 def create_table_and_indexes_from_source(
     dst_conn: sqlite3.Connection, table: str
 ) -> None:
+    """Handle create table and indexes from source."""
     row = dst_conn.execute(
         "SELECT sql FROM src.sqlite_master WHERE type='table' AND name=?",
         (table,),
@@ -222,6 +229,7 @@ def copy_and_prune_prod(
     seed_videos_limit: int,
     preferred_hosts: list[str],
 ) -> list[str]:
+    """Handle copy and prune prod."""
     mini_prod_db.parent.mkdir(parents=True, exist_ok=True)
     if mini_prod_db.exists():
         mini_prod_db.unlink()
@@ -337,6 +345,7 @@ def copy_and_prune_prod(
 
 
 def load_hosts_from_json(instances_json: Path, max_instances: int) -> list[str]:
+    """Handle load hosts from json."""
     if not instances_json.exists():
         logging.warning("instances JSON not found, fallback to DB selection: %s", instances_json)
         return []
@@ -374,6 +383,7 @@ def load_hosts_from_json(instances_json: Path, max_instances: int) -> list[str]:
 
 
 def find_free_port() -> int:
+    """Handle find free port."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.bind(("127.0.0.1", 0))
@@ -386,6 +396,7 @@ def find_free_port() -> int:
 def start_whitelist_server(
     python_bin: str, whitelist_dir: Path, port: int, log_path: Path
 ) -> tuple[subprocess.Popen[Any], Any]:
+    """Handle start whitelist server."""
     log_file = open(log_path, "a", encoding="utf-8")
     process = subprocess.Popen(
         [python_bin, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
@@ -404,6 +415,7 @@ def run_orchestrator(
     extra_flags: list[str] | None = None,
     expect_success: bool = True,
 ) -> dict[str, int]:
+    """Handle run orchestrator."""
     cmd = [
         args.python_bin,
         (jobs_dir / "updater-worker.py").as_posix(),
@@ -468,6 +480,7 @@ def run_orchestrator(
 
 
 def assert_worker_log(worker_log: Path) -> str:
+    """Handle assert worker log."""
     text = worker_log.read_text(encoding="utf-8")
     required_markers = [
         "instances-cli.js",
@@ -488,6 +501,7 @@ def assert_worker_log(worker_log: Path) -> str:
 
 
 def parse_stage_durations(worker_log_text: str) -> dict[str, int]:
+    """Handle parse stage durations."""
     marker_to_stage = {
         "instances-cli.js": "instances_crawl",
         "channels-cli.js": "channels_crawl",
@@ -515,6 +529,7 @@ def parse_stage_durations(worker_log_text: str) -> dict[str, int]:
 
 
 def assert_test_paths(paths: dict[str, Path], run_dir: Path) -> None:
+    """Handle assert test paths."""
     prod_path = (repo_root / DEFAULT_DB_PATH).resolve()
     guarded_keys = (
         "prod_db",
@@ -538,6 +553,7 @@ def assert_test_paths(paths: dict[str, Path], run_dir: Path) -> None:
 
 
 def load_merge_rules(path: Path) -> list[dict[str, Any]]:
+    """Handle load merge rules."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     tables = payload.get("tables")
     if not isinstance(tables, list):
@@ -556,10 +572,12 @@ def load_merge_rules(path: Path) -> list[dict[str, Any]]:
 
 
 def table_columns(conn: sqlite3.Connection, schema: str, table: str) -> list[str]:
+    """Handle table columns."""
     return [row[1] for row in conn.execute(f"PRAGMA {schema}.table_info({table})").fetchall()]
 
 
 def count_new_rows_by_keys(base_db: Path, stage_db: Path, table: str, keys: list[str]) -> int:
+    """Handle count new rows by keys."""
     if not keys:
         return 0
     conn = sqlite3.connect(base_db.as_posix())
@@ -584,6 +602,7 @@ def count_new_rows_by_keys(base_db: Path, stage_db: Path, table: str, keys: list
 
 
 def count_duplicate_groups(db_path: Path, table: str, keys: list[str]) -> int:
+    """Handle count duplicate groups."""
     if not keys:
         return 0
     conn = sqlite3.connect(db_path.as_posix())
@@ -609,6 +628,7 @@ def count_insert_only_changed_rows(
     keys: list[str],
     ignore_columns: set[str] | None = None,
 ) -> int:
+    """Handle count insert only changed rows."""
     if not keys:
         return 0
     conn = sqlite3.connect(after_db.as_posix())
@@ -643,6 +663,7 @@ def count_insert_only_changed_rows(
 def count_stage_overlap_by_keys(
     before_db: Path, stage_db: Path, table: str, keys: list[str]
 ) -> int:
+    """Handle count stage overlap by keys."""
     if not keys:
         return 0
     conn = sqlite3.connect(before_db.as_posix())
@@ -665,6 +686,7 @@ def count_stage_overlap_by_keys(
 def count_stage_after_mismatch_rows(
     stage_db: Path, after_db: Path, table: str, keys: list[str]
 ) -> int:
+    """Handle count stage after mismatch rows."""
     if not keys:
         return 0
     conn = sqlite3.connect(after_db.as_posix())
@@ -694,11 +716,13 @@ def count_stage_after_mismatch_rows(
 
 
 def assert_lock_released(lock_file: Path) -> None:
+    """Handle assert lock released."""
     if lock_file.exists():
         raise RuntimeError(f"Worker lock file was not released: {lock_file}")
 
 
 def assert_db_integrity(db_path: Path) -> None:
+    """Handle assert db integrity."""
     conn = sqlite3.connect(db_path.as_posix())
     try:
         row = conn.execute("PRAGMA integrity_check").fetchone()
@@ -715,6 +739,7 @@ def validate_outputs(
     before_snapshot: Path,
     expect_replace_overlap: bool,
 ) -> dict[str, Any]:
+    """Handle validate outputs."""
     checks: dict[str, Any] = {}
     if not paths["staging_db"].exists():
         raise RuntimeError("staging DB is missing after worker run.")
@@ -812,6 +837,7 @@ def validate_outputs(
 
 
 def copy_db(src: Path, dst: Path) -> None:
+    """Handle copy db."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 
@@ -822,6 +848,7 @@ def run_failure_scenarios(
     before_snapshot: Path,
     whitelist_url: str,
 ) -> dict[str, Any]:
+    """Handle run failure scenarios."""
     scenarios = [
         ("before_merge", "--fail-before-merge", True),
         ("during_ann_build", "--fail-during-ann-build", False),
@@ -871,6 +898,7 @@ def run_failure_scenarios(
 
 
 def main() -> None:
+    """Handle main."""
     args = parse_args()
     run_id = time.strftime("%Y%m%d-%H%M%S")
     run_dir = Path(args.workdir).resolve() / run_id

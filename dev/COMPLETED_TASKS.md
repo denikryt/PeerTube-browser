@@ -1,5 +1,25 @@
 # Completed tasks
 
+### 53) Full docstring coverage across functional code files (modules/classes/functions) (done)
+**Done:** added and normalized module/class/function docstrings across functional source files with language-appropriate formatting and required exclusions.
+
+#### **What was implemented:**
+- Added/updated Python docstrings in functional `*.py` files for:
+  - module docstrings,
+  - class docstrings,
+  - function/method docstrings.
+- Added/updated JS/TS JSDoc comments in functional source files for:
+  - module headers,
+  - classes,
+  - functions/methods.
+- Kept scope exclusions required by task:
+  - no changes for `*.md`, `*.html`, `*.json`,
+  - no changes in generated artifacts (including crawler `dist` output).
+- Ran repository-wide coverage checks for included source sets and confirmed no uncovered modules/classes/functions remain in scope.
+- Ran syntax validation checks:
+  - `python3 -m compileall client/backend engine/server`,
+  - `node --check client/frontend/scripts/dev.mjs`.
+
 ### 52) Route all Engine read requests through Client backend (UI must not call Engine directly) (done)
 **Done:** routed frontend read flows through Client backend proxy endpoints and removed direct Engine read usage from UI code.
 
