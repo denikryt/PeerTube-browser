@@ -55,7 +55,9 @@ from server_config import (
     DEFAULT_ENABLE_INSTANCE_IGNORE,
     DEFAULT_ENABLE_CHANNEL_BLOCKLIST,
     ENGINE_INGEST_MODE,
+    DEFAULT_RECOMMENDATIONS_LOG_PROFILE,
 )
+from logging_profiles import configure_engine_logging
 from data.db import connect_db, connect_similarity_db
 from data.embeddings import (
     fetch_embeddings_by_ids,
@@ -256,7 +258,7 @@ def main() -> None:
     else:
         random_cache_refresh = bool(args.random_cache_refresh)
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    active_log_profile = configure_engine_logging(DEFAULT_RECOMMENDATIONS_LOG_PROFILE)
 
     repo_root = script_dir.parents[2]
     db_path = (repo_root / DEFAULT_DB_PATH).resolve()
@@ -365,6 +367,7 @@ def main() -> None:
     )
 
     logging.info("[similar-server] listening on http://%s:%d", host, port)
+    logging.info("[similar-server] log_profile=%s", active_log_profile)
     logging.info(
         "[similar-server] mode=%s random_cache_refresh=%s",
         "dev" if args.dev else "default",

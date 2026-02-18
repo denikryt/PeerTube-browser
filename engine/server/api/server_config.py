@@ -9,6 +9,12 @@ def _resolve_mode_env(name: str, default: str) -> str:
     return raw if raw in {"bridge", "activitypub"} else default
 
 
+def _resolve_log_profile_env(name: str, default: str) -> str:
+    """Handle resolve log profile env."""
+    raw = os.environ.get(name, default).strip().lower()
+    return raw if raw in {"verbose", "focused"} else default
+
+
 # Pool size for popular candidates (0 uses per-request limit).
 DEFAULT_POPULAR_POOL_SIZE = 5000
 # Pool size for fresh candidates (0 uses DEFAULT_SIMILAR_PER_LIKE).
@@ -353,3 +359,10 @@ DEFAULT_HIDE_BLOCKED_IN_VIDEO_API = False
 # bridge: accept /internal/events/ingest from trusted client service.
 # activitypub: bridge endpoint remains disabled; AP subscriber path will own writes.
 ENGINE_INGEST_MODE = _resolve_mode_env("ENGINE_INGEST_MODE", "bridge")
+
+# Recommendation/similarity log profile.
+# verbose: all current logs (default).
+# focused: compact human-readable subset for recommendation request flow.
+DEFAULT_RECOMMENDATIONS_LOG_PROFILE = _resolve_log_profile_env(
+    "RECOMMENDATIONS_LOG_PROFILE", "verbose"
+)
