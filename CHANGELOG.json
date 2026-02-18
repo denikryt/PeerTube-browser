@@ -279,6 +279,14 @@
       "title": "Structured JSON Logs with Mode-Based Filtering",
       "summary": "Emit mode-tagged JSON log events and add operator tooling to view focused or verbose streams from journalctl without restarting Engine.",
       "time": "14:10:25"
+    },
+    {
+      "id": "55",
+      "date": "2026-02-18",
+      "status": "Planned",
+      "title": "Strict Error on Excess Likes in Recommendations Request",
+      "summary": "Return an explicit 400 error when recommendations payload contains more likes than allowed instead of silently truncating the list.",
+      "time": "19:13:37"
     }
   ]
 }

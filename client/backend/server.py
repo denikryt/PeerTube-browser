@@ -8,6 +8,7 @@ import logging
 import os
 import sqlite3
 import time
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 from uuid import uuid4
+from datetime import datetime, timezone
 
 from lib.engine_api_client import (EngineApiError, fetch_metadata_for_entries,
                                    resolve_video_seed, resolve_videos_by_uuid_host)
@@ -70,6 +72,25 @@ def _resolve_mode(value: str, default: str = "bridge") -> str:
     return normalized if normalized in {"bridge", "activitypub"} else default
 
 
+def _emit_client_log(
+    level: int,
+    event: str,
+    message: str,
+    context: dict[str, Any] | None = None,
+) -> None:
+    """Emit one structured JSON log line for Client backend service."""
+    payload: dict[str, Any] = {
+        "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+        "level": logging.getLevelName(level),
+        "service": "client-backend",
+        "event": event,
+        "message": message,
+    }
+    if context:
+        payload["context"] = context
+    logging.log(level, json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
+
+
 def parse_args() -> argparse.Namespace:
     """Handle parse args."""
     parser = argparse.ArgumentParser(description="Run PeerTube Client backend service.")
@@ -110,6 +131,45 @@ class ClientBackendServer(ThreadingHTTPServer):
 
 class ClientBackendHandler(BaseHTTPRequestHandler):
     """HTTP handler for Client backend write/profile endpoints."""
+
+    def _get_client_ip(self) -> str:
+        """Handle get client ip."""
+        forwarded_for = self.headers.get("X-Forwarded-For", "").strip()
+        if forwarded_for:
+            first = forwarded_for.split(",", 1)[0].strip()
+            if first:
+                return first
+        real_ip = self.headers.get("X-Real-IP", "").strip()
+        if real_ip:
+            return real_ip
+        if self.client_address:
+            return self.client_address[0]
+        return "unknown"
+
+    def _get_full_url(self) -> str:
+        """Handle get full url."""
+        host = self.headers.get("Host", "").strip()
+        if not host:
+            return self.path
+        proto = self.headers.get("X-Forwarded-Proto", "http").split(",", 1)[0].strip() or "http"
+        return f"{proto}://{host}{self.path}"
+
+    def log_message(self, format: str, *args: Any) -> None:
+        """Emit readable access logs instead of BaseHTTPRequestHandler defaults."""
+        status = args[1] if len(args) > 1 else "-"
+        size = args[2] if len(args) > 2 else "-"
+        _emit_client_log(
+            logging.INFO,
+            "client.access",
+            "request finished",
+            {
+                "ip": self._get_client_ip(),
+                "method": self.command or "-",
+                "url": self._get_full_url(),
+                "status": str(status),
+                "bytes": str(size),
+            },
+        )
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         """Handle do options."""
@@ -264,9 +324,20 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
                 sanitized_likes.append({"uuid": uuid.strip(), "host": host.strip()})
             sanitized_body["likes"] = sanitized_likes
         if path == "/recommendations":
-            logging.info(
-                "[client-backend] engine_proxy_recommendations_body=%s",
-                json.dumps(sanitized_body, ensure_ascii=True, separators=(",", ":")),
+            likes_count, likes_list, likes_omitted = _summarize_proxy_likes(
+                sanitized_body.get("likes")
+            )
+            _emit_client_log(
+                logging.INFO,
+                "recommendations.incoming_likes",
+                "incoming likes payload",
+                {
+                    "likes_count": likes_count,
+                    "likes": likes_list,
+                    "likes_omitted": likes_omitted,
+                    "user_id": sanitized_body.get("user_id"),
+                    "mode": sanitized_body.get("mode"),
+                },
             )
         self._proxy_engine_request(
             "POST",
@@ -287,6 +358,7 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
         upstream = f"{self.server.engine_ingest_base}{path}"
         if sanitized_query:
             upstream = f"{upstream}?{urlencode(sanitized_query)}"
+        started_at = time.perf_counter()
         request_data: bytes | None = None
         headers = {"accept": "application/json"}
         if method == "POST":
@@ -307,6 +379,7 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
                 with urlopen(request, timeout=ENGINE_PROXY_TIMEOUT_SECONDS) as response:
                     payload = response.read()
                     status = int(response.status)
+                    duration_ms = int((time.perf_counter() - started_at) * 1000)
                     content_type = response.headers.get("content-type", "application/json; charset=utf-8")
                     self.send_response(status)
                     self.send_header("content-type", content_type)
@@ -316,11 +389,24 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
                     self.send_header("content-length", str(len(payload)))
                     self.end_headers()
                     self.wfile.write(payload)
+                    _emit_client_log(
+                        logging.INFO,
+                        "engine.proxy",
+                        "proxy request completed",
+                        {
+                            "method": method,
+                            "path": path,
+                            "status": status,
+                            "attempt": attempt + 1,
+                            "duration_ms": duration_ms,
+                        },
+                    )
                     return
             except HTTPError as exc:
                 payload = exc.read() if exc.fp else b""
                 if payload:
                     content_type = exc.headers.get("content-type", "application/json; charset=utf-8")
+                    duration_ms = int((time.perf_counter() - started_at) * 1000)
                     self.send_response(int(exc.code))
                     self.send_header("content-type", content_type)
                     self.send_header("access-control-allow-origin", "*")
@@ -329,7 +415,33 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
                     self.send_header("content-length", str(len(payload)))
                     self.end_headers()
                     self.wfile.write(payload)
+                    _emit_client_log(
+                        logging.INFO,
+                        "engine.proxy",
+                        "proxy request completed",
+                        {
+                            "method": method,
+                            "path": path,
+                            "status": int(exc.code),
+                            "attempt": attempt + 1,
+                            "duration_ms": duration_ms,
+                        },
+                    )
                     return
+                duration_ms = int((time.perf_counter() - started_at) * 1000)
+                _emit_client_log(
+                    logging.WARNING,
+                    "engine.proxy",
+                    "proxy request failed",
+                    {
+                        "method": method,
+                        "path": path,
+                        "status": int(exc.code),
+                        "attempt": attempt + 1,
+                        "duration_ms": duration_ms,
+                        "error": "no-payload",
+                    },
+                )
                 respond_json(self, int(exc.code), {"error": f"Engine read proxy HTTP {int(exc.code)}"})
                 return
             except (URLError, TimeoutError) as exc:
@@ -339,12 +451,41 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
                     continue
                 break
             except Exception as exc:  # pragma: no cover
+                duration_ms = int((time.perf_counter() - started_at) * 1000)
+                _emit_client_log(
+                    logging.ERROR,
+                    "engine.proxy",
+                    "proxy request exception",
+                    {
+                        "method": method,
+                        "path": path,
+                        "status": 502,
+                        "attempt": attempt + 1,
+                        "duration_ms": duration_ms,
+                        "error": str(exc),
+                        "traceback": traceback.format_exc(),
+                    },
+                )
                 respond_json(
                     self,
                     502,
                     {"error": "Engine read proxy failed", "code": "ENGINE_PROXY_FAILURE", "detail": str(exc)},
                 )
                 return
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        _emit_client_log(
+            logging.WARNING,
+            "engine.proxy",
+            "proxy request unavailable",
+            {
+                "method": method,
+                "path": path,
+                "status": 502,
+                "attempts": ENGINE_PROXY_RETRY_COUNT + 1,
+                "duration_ms": duration_ms,
+                "error": str(last_transport_error) if last_transport_error is not None else "unknown transport error",
+            },
+        )
         respond_json(
             self,
             502,
@@ -578,10 +719,32 @@ def _parse_client_likes(payload: dict[str, Any], max_items: int) -> list[dict[st
     return likes
 
 
+def _summarize_proxy_likes(
+    raw_likes: Any, max_items: int = 6
+) -> tuple[int, list[str], int]:
+    """Return compact like list and omitted count for client service logs."""
+    if not isinstance(raw_likes, list):
+        return 0, [], 0
+    parts: list[str] = []
+    total = 0
+    for entry in raw_likes:
+        if not isinstance(entry, dict):
+            continue
+        uuid = str(entry.get("uuid") or "").strip()
+        host = str(entry.get("host") or "").strip()
+        if not uuid or not host:
+            continue
+        total += 1
+        if len(parts) < max_items:
+            parts.append(f"{uuid}@{host}")
+    omitted = total - len(parts)
+    return total, parts, omitted
+
+
 def main() -> None:
     """Handle main."""
     args = parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     users_db_path = (ROOT_DIR / args.users_db).resolve()
     users_db_path.parent.mkdir(parents=True, exist_ok=True)
     user_db = connect_db(users_db_path)
@@ -594,17 +757,21 @@ def main() -> None:
         args.publish_mode,
         RateLimiter(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS),
     )
-    logging.info(
-        "[client-backend] listening on http://%s:%s engine_ingest=%s publish_mode=%s",
-        args.host,
-        args.port,
-        args.engine_ingest_base,
-        _resolve_mode(args.publish_mode),
+    _emit_client_log(
+        logging.INFO,
+        "service.start",
+        "client backend listening",
+        {
+            "host": args.host,
+            "port": int(args.port),
+            "engine_ingest_base": args.engine_ingest_base,
+            "publish_mode": _resolve_mode(args.publish_mode),
+        },
     )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        logging.info("shutting down")
+        _emit_client_log(logging.INFO, "service.stop", "client backend shutting down")
     finally:
         server.server_close()
         user_db.close()

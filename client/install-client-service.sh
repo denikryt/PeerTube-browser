@@ -2,10 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-$PROJECT_ROOT}"
 SERVICE_USER="${SUDO_USER:-$(id -un)}"
 
-MODE="prod"
+MODE=""
 CLIENT_SERVICE_NAME=""
 CLIENT_HOST="127.0.0.1"
 CLIENT_PORT=""
@@ -24,13 +25,13 @@ DEFAULT_USERS_DB_DEV="client/backend/db/users-dev.db"
 
 print_usage() {
   cat <<'EOF_USAGE'
-Usage: sudo ./client/install-client-service.sh [options]
+Usage: sudo ./client/install-client-service.sh --mode <prod|dev> [options]
 
 Install/update Client backend systemd service for prod/dev contour.
 
 Options:
-  --mode <prod|dev>           Contour mode (default: prod)
-  --project-dir <path>        Project root path (default: script directory)
+  --mode <prod|dev>           Required contour mode
+  --project-dir <path>        Project root path (default: script parent directory)
   --service-user <user>       Unix user to run service as (default: SUDO_USER/current user)
   --service-name <name>       Override Client unit base name (default: peertube-client[-dev])
   --host <host>               Client bind host (default: 127.0.0.1)
@@ -41,6 +42,13 @@ Options:
   --force                     Force reinstall selected service unit (stop/disable/remove/recreate)
   --dry-run                   Print planned actions without writing system files
   -h, --help                  Show this help
+
+Examples:
+  sudo ./client/install-client-service.sh --mode prod
+  sudo ./client/install-client-service.sh --mode dev
+  sudo ./client/install-client-service.sh --mode dev --service-name peertube-client-dev --port 7172
+  sudo ./client/install-client-service.sh --mode prod --engine-ingest-base http://127.0.0.1:7070
+  sudo ./client/install-client-service.sh --mode dev --dry-run
 EOF_USAGE
 }
 
@@ -54,6 +62,9 @@ require_cmd() {
 }
 
 validate_mode() {
+  if [[ -z "${MODE}" ]]; then
+    fail "Missing required --mode <prod|dev>. Example: --mode prod"
+  fi
   case "${MODE}" in
     prod|dev) ;;
     *) fail "Invalid --mode: ${MODE} (expected prod|dev)" ;;

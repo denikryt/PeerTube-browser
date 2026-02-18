@@ -30,6 +30,8 @@ Use it before implementing any task bundle.
    Finalize documentation polish after behavior/stability changes land.
 12. **42** (public roadmap changelog with status + client filters)  
    Implement after major feature blocks to avoid repeated migration/status churn while core tasks are still changing.
+13. **55** (strict likes-count validation for recommendations request)  
+   Enforce explicit API error contract for oversized likes payloads before rollout of additional recommendation debugging flows.
 
 ### Functional blocks (aligned with the same order)
 - **Block A: Similarity and recommendation core**
@@ -56,6 +58,9 @@ Use it before implementing any task bundle.
 - **Block H: Public roadmap and changelog UX**
   - Tasks: **42**
   - Scope: roadmap-style public changelog entries with task statuses and client-side completed/not-completed filters.
+- **Block I: API contract hardening**
+  - Tasks: **55**
+  - Scope: explicit `400` contract for oversized recommendations likes payloads instead of silent truncation.
 
 ### Cross-task overlaps and dependencies
 - **37 <-> 30 <-> 33**: same ANN/similarity core and ID contracts.  
@@ -88,6 +93,8 @@ Use it before implementing any task bundle.
   Update changelog workflow and instructions together to avoid conflicting write rules.
 - **42** should land late in the sequence.  
   It changes public task-tracking format; doing it early causes repeated migrations while many tasks are still moving between planned/in-progress/done.
+- **55 <-> 52**: frontend reads go through Client gateway, which proxies recommendations body to Engine.  
+  Explicit `400` response on oversized likes in **55** must stay consistent with client-side proxy error surfacing from **52**.
 - **16 / 11** depend on nearly all feature tasks.  
   Doing them earlier causes repeated rewrites.
 

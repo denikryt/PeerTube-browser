@@ -2,10 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-$PROJECT_ROOT}"
 SERVICE_USER="${SUDO_USER:-$(id -un)}"
 
-MODE="prod"
+MODE=""
 ENGINE_SERVICE_NAME=""
 ENGINE_HOST="127.0.0.1"
 ENGINE_PORT=""
@@ -17,13 +18,13 @@ DEFAULT_DEV_ENGINE_PORT=7171
 
 print_usage() {
   cat <<'EOF_USAGE'
-Usage: sudo ./engine/install-engine-service.sh [options]
+Usage: sudo ./engine/install-engine-service.sh --mode <prod|dev> [options]
 
 Install/update Engine systemd service for prod/dev contour.
 
 Options:
-  --mode <prod|dev>         Contour mode (default: prod)
-  --project-dir <path>      Project root path (default: script directory)
+  --mode <prod|dev>         Required contour mode
+  --project-dir <path>      Project root path (default: script parent directory)
   --service-user <user>     Unix user to run service as (default: SUDO_USER/current user)
   --service-name <name>     Override Engine unit base name (default: peertube-engine[-dev])
   --host <host>             Engine bind host (default: 127.0.0.1)
@@ -31,6 +32,13 @@ Options:
   --force                   Force reinstall selected service unit (stop/disable/remove/recreate)
   --dry-run                 Print planned actions without writing system files
   -h, --help                Show this help
+
+Examples:
+  sudo ./engine/install-engine-service.sh --mode prod
+  sudo ./engine/install-engine-service.sh --mode dev
+  sudo ./engine/install-engine-service.sh --mode dev --service-name peertube-engine-dev --port 7171
+  sudo ./engine/install-engine-service.sh --mode prod --host 127.0.0.1 --port 7070
+  sudo ./engine/install-engine-service.sh --mode dev --dry-run
 EOF_USAGE
 }
 
@@ -44,6 +52,9 @@ require_cmd() {
 }
 
 validate_mode() {
+  if [[ -z "${MODE}" ]]; then
+    fail "Missing required --mode <prod|dev>. Example: --mode prod"
+  fi
   case "${MODE}" in
     prod|dev) ;;
     *) fail "Invalid --mode: ${MODE} (expected prod|dev)" ;;
