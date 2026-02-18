@@ -12,6 +12,9 @@ Project-level hard constraints for task work in this repository.
 6. Exception for corrective fixes: if the user asks to fix a bug/regression introduced by the assistant in already changed files, apply that fix immediately without requiring `execute task X`; keep the scope strictly limited to correcting that mistake (no new task scope).
 7. Direct `AGENTS.md` maintenance override: when the user explicitly instructs to edit `AGENTS.md`, apply the requested edits immediately, without requiring `execute task X`.
 8. For direct `AGENTS.md` edit requests, do not block on process-format arguments; execute the edit and report the exact changes.
+9. Direct edit command override (repository-wide): when the user explicitly instructs to make concrete code/config/script/file edits, apply those edits immediately without requiring `execute task X`.
+10. Treat such direct edit commands as side edits (outside task execution flow) unless the user explicitly frames them as task execution.
+11. For direct edit commands, do not block on task-command format; execute the requested edits and report changes.
 
 ## Task and tracking state constraints
 

@@ -22,8 +22,8 @@ Use it before implementing any task bundle.
    Finalize popular-layer behavior before exposing it as user-facing feed mode.
 8. **10** (search page) and **8c** (about outbound analytics)  
    Mostly orthogonal product features.
-9. **41** then **38** then **54** then **43** (timestamped lifecycle logs + request correlation + structured JSON mode filtering + static-page visit logs)  
-   Establish timestamp/request-id logging contract first, then add structured JSON mode-tagged events for stable operator filtering, then extend observability to nginx-served static pages.
+9. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
+   Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
 10. **16l** then **39** then **44** then **40** (cache runtime safety + similarity shadow swap + zero-downtime deploy)  
    Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache shadow cutover, then blue/green nginx switch automation.
 11. **16**, **11** (docs + docstrings)  
@@ -48,8 +48,8 @@ Use it before implementing any task bundle.
   - Tasks: **16 -> 11**
   - Scope: recommendations docs alignment and missing docstrings.
 - **Block F: Logging and observability**
-  - Tasks: **41 -> 38 -> 54 -> 43**
-  - Scope: explicit timestamped request logs, request-id correlation, structured JSON mode-tagged filtering for operator readability, and static-page visit visibility for About/Changelog.
+  - Tasks: **41 -> 38 -> 43**
+  - Scope: explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/Changelog.
 - **Block G: Runtime reliability and operations**
   - Tasks: **16l -> 39 -> 44 -> 40**
   - Scope: safe cache refresh/swap runtime behavior (random + similarity) and automated blue/green nginx cutover.
@@ -68,12 +68,6 @@ Use it before implementing any task bundle.
   Weighted-random in popular should be finished before exposing/locking popular mode UX.
 - **41 <-> 38**: same logging contract and request context propagation.  
   Introduce timestamp/log format first (**41**), then request lifecycle + shared request id (**38**) to avoid duplicate logging rewrites.
-- **38 <-> 54**: structured mode-tagged JSON logs depend on stable request correlation fields.  
-  Add shared request-id lifecycle fields first (**38**), then move to structured per-event mode filtering (**54**) to avoid rework.
-- **41 <-> 54**: both define application log schema/format expectations.  
-  Keep timestamp format contract from **41** and carry it unchanged into JSON event fields in **54**.
-- **54 <-> 43**: structured app logging and nginx static-page logging should share correlation/operability conventions.  
-  Land structured app log filtering first (**54**), then align static-page runbook/correlation checks in **43**.
 - **38 <-> 43**: both rely on cross-log correlation (`request_id`, timestamp conventions, runbook).  
   Implement request-trace contract first (**38**), then static-page visit visibility in nginx (**43**).
 - **8c <-> 43**: both touch About-page observability and can overlap in intent (analytics vs logging).  

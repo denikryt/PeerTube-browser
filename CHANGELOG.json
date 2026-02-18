@@ -241,7 +241,7 @@
     {
       "id": "54",
       "date": "2026-02-18",
-      "status": "Planned",
+      "status": "Done",
       "title": "Structured JSON Logs with Mode-Based Filtering",
       "summary": "Emit mode-tagged JSON log events and add operator tooling to view focused or verbose streams from journalctl without restarting Engine."
     }

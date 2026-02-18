@@ -367,7 +367,7 @@ def main() -> None:
     )
 
     logging.info("[similar-server] listening on http://%s:%d", host, port)
-    logging.info("[similar-server] log_profile=%s", active_log_profile)
+    logging.info("[similar-server] log_mode_hint=%s", active_log_profile)
     logging.info(
         "[similar-server] mode=%s random_cache_refresh=%s",
         "dev" if args.dev else "default",

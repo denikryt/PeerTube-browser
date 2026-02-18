@@ -1,5 +1,22 @@
 # Completed tasks
 
+### 54) Structured JSON logs with mode-based filtering for Engine runtime logs (done)
+**Done:** switched Engine service logging to structured JSON events with per-event mode tags and added a strict operator log-view tool for mode-based filtering without process restarts.
+
+#### **What was implemented:**
+- Replaced plain text root formatter with JSON event formatter in Engine API runtime:
+  - one JSON object per log line with stable fields (`ts`, `level`, `event`, `message`, `request_id`, optional `context`).
+- Added event-to-mode tagging contract for recommendation/similarity flow:
+  - focused and verbose mode targets are encoded as per-event tags.
+- Preserved warning/error visibility across all mode views.
+- Preserved request correlation:
+  - request id is propagated through request context and emitted in structured logs for request-path events.
+- Added strict mode-based log viewer script:
+  - `engine/watch-engine-logs.sh`
+  - supports strict positional/flag formats and `journalctl + jq` filtering by mode without restarting Engine.
+- Added tests/validation coverage:
+  - unit tests for JSON formatter, mode normalization/filter behavior, request-id extraction, and smoke JSON event stream checks.
+
 ### 53) Full docstring coverage across functional code files (modules/classes/functions) (done)
 **Done:** added and normalized module/class/function docstrings across functional source files with language-appropriate formatting and required exclusions.
 

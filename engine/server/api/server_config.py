@@ -360,9 +360,9 @@ DEFAULT_HIDE_BLOCKED_IN_VIDEO_API = False
 # activitypub: bridge endpoint remains disabled; AP subscriber path will own writes.
 ENGINE_INGEST_MODE = _resolve_mode_env("ENGINE_INGEST_MODE", "bridge")
 
-# Recommendation/similarity log profile.
-# verbose: all current logs (default).
-# focused: compact human-readable subset for recommendation request flow.
+# Recommendation/similarity log view mode hint.
+# verbose: full stream.
+# focused: compact operational subset for live viewer scripts.
 DEFAULT_RECOMMENDATIONS_LOG_PROFILE = _resolve_log_profile_env(
     "RECOMMENDATIONS_LOG_PROFILE", "verbose"
 )

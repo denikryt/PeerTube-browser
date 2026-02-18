@@ -16,6 +16,7 @@ Key steps:
 - Build candidate pools, score, mix, and return stable rows.
 """
 import logging
+import json
 from time import perf_counter
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
@@ -43,7 +44,12 @@ from server_config import (
     MAX_LIKES,
 )
 from http_utils import read_json_body, respond_json, respond_options, resolve_user_id
-from request_context import clear_request_context, set_request_client_likes, fetch_recent_likes_request
+from request_context import (
+    clear_request_context,
+    fetch_recent_likes_request,
+    set_request_client_likes,
+    set_request_id,
+)
 from handlers.internal_events import handle_internal_events_ingest
 from handlers.internal_client_reads import (
     handle_internal_video_resolve,
@@ -323,6 +329,16 @@ class SimilarHandler(BaseHTTPRequestHandler):
             except ValueError as exc:
                 respond_json(self, 400, {"error": str(exc)})
                 return
+            if isinstance(body, dict):
+                incoming_payload = {
+                    "likes": body.get("likes", []),
+                    "user_id": body.get("user_id"),
+                    "mode": body.get("mode"),
+                }
+                logging.info(
+                    "[recommendations] incoming likes body=%s",
+                    json.dumps(incoming_payload, ensure_ascii=True, separators=(",", ":")),
+                )
             parsed = _parse_client_likes(body, DEFAULT_CLIENT_LIKES_MAX)
             client_likes = _resolve_client_likes(self.server, parsed)
         set_request_client_likes(client_likes, use_client_likes)
@@ -621,6 +637,7 @@ class SimilarHandler(BaseHTTPRequestHandler):
             host_param or "",
             uuid_param or "",
         )
+        set_request_id(request_id)
 
         try:
             if random_param and random_param != "0":
@@ -699,6 +716,8 @@ class SimilarHandler(BaseHTTPRequestHandler):
         except Exception as exc:  # pragma: no cover
             logging.exception("server error")
             respond_json(self, 500, {"error": str(exc)})
+        finally:
+            clear_request_context()
 
 
 def _parse_int(value: str | None) -> int:

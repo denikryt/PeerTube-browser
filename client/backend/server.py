@@ -263,6 +263,11 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
                     continue
                 sanitized_likes.append({"uuid": uuid.strip(), "host": host.strip()})
             sanitized_body["likes"] = sanitized_likes
+        if path == "/recommendations":
+            logging.info(
+                "[client-backend] engine_proxy_recommendations_body=%s",
+                json.dumps(sanitized_body, ensure_ascii=True, separators=(",", ":")),
+            )
         self._proxy_engine_request(
             "POST",
             path,
