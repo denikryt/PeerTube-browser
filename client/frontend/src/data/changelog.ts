@@ -5,6 +5,7 @@
 export type ChangelogEntry = {
   id: string;
   date: string;
+  time: string;
   status: ChangelogStatus;
   title: string;
   summary: string;
@@ -17,7 +18,7 @@ type ChangelogPayload = {
 };
 
 export const CHANGELOG_URL =
-  "https://raw.githubusercontent.com/denikryt/PeerTube-Browser/main/CHANGELOG.json";
+  "https://raw.githubusercontent.com/denikryt/PeerTube-browser/refs/heads/dev/CHANGELOG.json";
 export const CHANGELOG_SEEN_ID_KEY = "changelog_seen_id";
 
 /**
@@ -65,6 +66,7 @@ function normalizeEntries(payload: unknown): ChangelogEntry[] {
     if (!item || typeof item !== "object") continue;
     const candidate = item as Record<string, unknown>;
     const date = normalizeString(candidate.date);
+    const time = normalizeTime(candidate.time);
     const title = normalizeString(candidate.title);
     const summary = normalizeString(candidate.summary);
     if (!date || !title || !summary) continue;
@@ -72,14 +74,22 @@ function normalizeEntries(payload: unknown): ChangelogEntry[] {
     const status = normalizeStatus(candidate.status);
     if (!id || !status) continue;
     if (!isIsoDate(date)) continue;
-    normalized.push({ id, date, status, title, summary });
+    normalized.push({ id, date, time: time ?? "00:00:00", status, title, summary });
   }
 
   normalized.sort((a, b) => {
-    if (a.date === b.date) {
+    const aTimestamp = parseTimestamp(a.date, a.time);
+    const bTimestamp = parseTimestamp(b.date, b.time);
+    if (aTimestamp !== bTimestamp) {
+      return bTimestamp - aTimestamp;
+    }
+    if (a.date === b.date && a.time === b.time) {
       return a.id.localeCompare(b.id);
     }
-    return a.date < b.date ? 1 : -1;
+    if (a.date !== b.date) {
+      return a.date < b.date ? 1 : -1;
+    }
+    return a.time < b.time ? 1 : -1;
   });
   return normalized;
 }
@@ -123,4 +133,31 @@ function isIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = Date.parse(`${value}T00:00:00Z`);
   return Number.isFinite(parsed);
+}
+
+/**
+ * Normalize optional changelog time (HH:MM:SS).
+ */
+function normalizeTime(value: unknown): string | null {
+  const normalized = normalizeString(value);
+  if (!normalized) return null;
+  if (!/^\d{2}:\d{2}:\d{2}$/.test(normalized)) return null;
+  const [hhRaw, mmRaw, ssRaw] = normalized.split(":");
+  const hh = Number(hhRaw);
+  const mm = Number(mmRaw);
+  const ss = Number(ssRaw);
+  if (!Number.isInteger(hh) || !Number.isInteger(mm) || !Number.isInteger(ss)) return null;
+  if (hh < 0 || hh > 23) return null;
+  if (mm < 0 || mm > 59) return null;
+  if (ss < 0 || ss > 59) return null;
+  return normalized;
+}
+
+/**
+ * Convert changelog date+time to unix timestamp for stable sorting.
+ */
+function parseTimestamp(date: string, time: string): number {
+  const parsed = Date.parse(`${date}T${time}Z`);
+  if (!Number.isFinite(parsed)) return 0;
+  return parsed;
 }

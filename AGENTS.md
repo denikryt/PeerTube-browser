@@ -38,6 +38,9 @@ Project-level hard constraints for task work in this repository.
 9. Task-number identity is canonical: one task number in `dev/TASK_LIST.md` -> one entry with the same `id` in `CHANGELOG.json` (no duplicates, no aliases).
 10. New tasks in `CHANGELOG.json` must be added only at the end of the `entries` array (append-only); do not insert/reorder by category or any other grouping.
 11. New tasks in `dev/TASK_LIST.md` must be added only at the end of the file as a single linear list entry; do not place new tasks into category sections and do not regroup existing tasks by categories.
+12. Every `CHANGELOG.json` entry must include both `date` (`YYYY-MM-DD`) and `time` (`HH:MM:SS`).
+13. For newly created changelog entries, set `time` from the current local time at write moment (`time.now` semantics).
+14. When bulk-updating existing entries with missing `time`, keep the current entry order unchanged and assign times in that same order (monotonic by entry sequence).
 
 ## Pipeline constraints
 
