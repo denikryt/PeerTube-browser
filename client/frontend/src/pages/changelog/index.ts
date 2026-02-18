@@ -7,10 +7,11 @@ import "../../changelog.css";
 import {
   CHANGELOG_URL,
   fetchChangelogEntries,
-  getLatestChangelogId,
-  readSeenChangelogId,
-  writeSeenChangelogId,
+  getLatestChangelogSeenState,
+  readSeenChangelogState,
+  writeSeenChangelogState,
   type ChangelogEntry,
+  type ChangelogSeenState,
   type ChangelogStatus,
 } from "../../data/changelog";
 
@@ -29,7 +30,7 @@ const STATUS_EMPTY_MESSAGES: Record<ChangelogStatus, string> = {
 
 let allEntries: ChangelogEntry[] = [];
 let activeStatus: ChangelogStatus = "Planned";
-let sessionSeenId: string | null = null;
+let sessionSeenState: ChangelogSeenState | null = null;
 
 if (!counts || !meta || !state || !list || filterTabs.length === 0) {
   throw new Error("Missing changelog elements");
@@ -45,7 +46,7 @@ async function loadChangelog() {
   setLoadingState("Loading changelog...");
 
   try {
-    sessionSeenId = readSeenChangelogId();
+    sessionSeenState = readSeenChangelogState();
     const entries = await fetchChangelogEntries();
     allEntries = entries;
     if (!entries.length) {
@@ -55,9 +56,12 @@ async function loadChangelog() {
 
     renderActiveStatus();
 
-    const latestId = getLatestChangelogId(entries);
-    if (latestId) {
-      writeSeenChangelogId(latestId);
+    const latestSeenState = getLatestChangelogSeenState(entries);
+    if (latestSeenState) {
+      writeSeenChangelogState({
+        id: latestSeenState.id,
+        status: latestSeenState.status ?? "Planned",
+      });
       window.dispatchEvent(new Event("changelog:seen-updated"));
     }
   } catch (error) {
@@ -100,7 +104,7 @@ function updateFilterTabState() {
  */
 function renderActiveStatus() {
   const visibleEntries = allEntries.filter((entry) => entry.status === activeStatus);
-  const unreadEntryIds = buildUnreadEntryIdSet(allEntries, sessionSeenId);
+  const unreadEntryIds = buildUnreadEntryIdSet(allEntries, sessionSeenState);
   updateSummary();
   if (!visibleEntries.length) {
     setEmptyState(STATUS_EMPTY_MESSAGES[activeStatus]);
@@ -134,17 +138,24 @@ function renderEntries(entries: ChangelogEntry[], unreadEntryIds: Set<string>) {
 }
 
 /**
- * Handle build unread entry id set from latest entries down to seen id.
+ * Handle build unread entry id set from latest entries down to seen state.
  */
-function buildUnreadEntryIdSet(entries: ChangelogEntry[], seenId: string | null): Set<string> {
+function buildUnreadEntryIdSet(
+  entries: ChangelogEntry[],
+  seenState: ChangelogSeenState | null
+): Set<string> {
   if (!entries.length) return new Set();
-  if (!seenId) return new Set(entries.map((entry) => entry.id));
-  const seenIndex = entries.findIndex((entry) => entry.id === seenId);
-  if (seenIndex <= 0) return new Set();
+  if (!seenState) return new Set(entries.map((entry) => entry.id));
+  const seenIndex = entries.findIndex((entry) => entry.id === seenState.id);
   if (seenIndex < 0) {
     return new Set(entries.map((entry) => entry.id));
   }
-  return new Set(entries.slice(0, seenIndex).map((entry) => entry.id));
+  const unreadIds = new Set(entries.slice(0, seenIndex).map((entry) => entry.id));
+  const seenEntry = entries[seenIndex];
+  if (seenState.status && seenEntry.status !== seenState.status) {
+    unreadIds.add(seenEntry.id);
+  }
+  return unreadIds;
 }
 
 /**

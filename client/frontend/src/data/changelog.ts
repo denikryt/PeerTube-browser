@@ -13,6 +13,11 @@ export type ChangelogEntry = {
 
 export type ChangelogStatus = "Planned" | "Done";
 
+export type ChangelogSeenState = {
+  id: string;
+  status: ChangelogStatus | null;
+};
+
 type ChangelogPayload = {
   entries?: unknown;
 };
@@ -34,25 +39,45 @@ export async function fetchChangelogEntries(): Promise<ChangelogEntry[]> {
 }
 
 /**
- * Handle get latest changelog id.
+ * Handle get latest changelog seen state.
  */
-export function getLatestChangelogId(entries: ChangelogEntry[]): string | null {
+export function getLatestChangelogSeenState(entries: ChangelogEntry[]): ChangelogSeenState | null {
   if (!entries.length) return null;
-  return entries[0].id;
+  return { id: entries[0].id, status: entries[0].status };
 }
 
 /**
- * Handle read seen changelog id.
+ * Handle read seen changelog state from localStorage.
+ * Supports both legacy plain-id value and new JSON {id,status}.
  */
-export function readSeenChangelogId(): string | null {
-  return localStorage.getItem(CHANGELOG_SEEN_ID_KEY);
+export function readSeenChangelogState(): ChangelogSeenState | null {
+  const raw = localStorage.getItem(CHANGELOG_SEEN_ID_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+    const candidate = parsed as Record<string, unknown>;
+    const id = normalizeString(candidate.id);
+    if (!id) return null;
+    return { id, status: normalizeStatus(candidate.status) };
+  } catch {
+    const id = normalizeString(raw);
+    if (!id) return null;
+    return { id, status: null };
+  }
 }
 
 /**
- * Handle write seen changelog id.
+ * Handle write seen changelog state to localStorage.
  */
-export function writeSeenChangelogId(id: string): void {
-  localStorage.setItem(CHANGELOG_SEEN_ID_KEY, id);
+export function writeSeenChangelogState(state: {
+  id: string;
+  status: ChangelogStatus;
+}): void {
+  localStorage.setItem(
+    CHANGELOG_SEEN_ID_KEY,
+    JSON.stringify({ id: state.id, status: state.status })
+  );
 }
 
 /**

@@ -4,8 +4,8 @@
 
 import {
   fetchChangelogEntries,
-  getLatestChangelogId,
-  readSeenChangelogId,
+  getLatestChangelogSeenState,
+  readSeenChangelogState,
 } from "./data/changelog";
 
 const CHANGELOG_LINK_SELECTOR = 'a.nav-link[href="/changelog.html"]';
@@ -24,13 +24,19 @@ async function refreshChangelogBadge() {
 
   try {
     const entries = await fetchChangelogEntries();
-    const latestId = getLatestChangelogId(entries);
-    if (!latestId) {
+    const latestSeen = getLatestChangelogSeenState(entries);
+    if (!latestSeen) {
       updateBadgeVisibility(false);
       return;
     }
-    const seenId = readSeenChangelogId();
-    updateBadgeVisibility(seenId !== latestId);
+    const seenState = readSeenChangelogState();
+    if (!seenState) {
+      updateBadgeVisibility(true);
+      return;
+    }
+    updateBadgeVisibility(
+      seenState.id !== latestSeen.id || seenState.status !== latestSeen.status
+    );
   } catch {
     updateBadgeVisibility(false);
   }
