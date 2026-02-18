@@ -18,7 +18,7 @@ type ChangelogPayload = {
 };
 
 export const CHANGELOG_URL =
-  "https://raw.githubusercontent.com/denikryt/PeerTube-browser/refs/heads/main/CHANGELOG.json";
+  "https://raw.githubusercontent.com/denikryt/PeerTube-browser/refs/heads/dev/CHANGELOG.json";
 export const CHANGELOG_SEEN_ID_KEY = "changelog_seen_id";
 
 /**
