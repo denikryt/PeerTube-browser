@@ -283,7 +283,7 @@
     {
       "id": "55",
       "date": "2026-02-18",
-      "status": "Planned",
+      "status": "Done",
       "title": "Strict Error on Excess Likes in Recommendations Request",
       "summary": "Return an explicit 400 error when recommendations payload contains more likes than allowed instead of silently truncating the list.",
       "time": "19:13:37"

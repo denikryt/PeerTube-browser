@@ -1,5 +1,15 @@
 # Completed tasks
 
+### 55) Strict error on too many likes in recommendations request (done)
+**Done:** recommendations request validation now returns explicit client errors for invalid `likes` payload size/shape instead of silently accepting malformed input.
+
+#### **What was implemented:**
+- Added strict likes-count guard in recommendations request path:
+  - if `likes` count exceeds `DEFAULT_CLIENT_LIKES_MAX`, Engine returns `400` with machine-readable details (`error`, `max_allowed`, `received`).
+- Kept request body-size guard behavior unchanged.
+- Removed silent truncation behavior for oversized likes payloads.
+- Tightened likes item validation path so invalid `uuid`/`host` entries are surfaced as explicit client error responses instead of being silently skipped.
+
 ### 54) Structured JSON logs with mode-based filtering for Engine runtime logs (done)
 **Done:** switched Engine service logging to structured JSON events with per-event mode tags and added a strict operator log-view tool for mode-based filtering without process restarts.
 
