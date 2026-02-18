@@ -207,6 +207,14 @@ class EngineJsonFormatter(logging.Formatter):
                 payload["context"] = incoming_context
             elif fields:
                 payload["context"] = fields
+        elif event == "access.start":
+            payload["message"] = "request started"
+            if fields:
+                payload["context"] = fields
+        elif event == "access":
+            payload["message"] = "request finished"
+            if fields:
+                payload["context"] = fields
         elif event == "service.lifecycle":
             payload.pop("message", None)
             payload["context"] = fields

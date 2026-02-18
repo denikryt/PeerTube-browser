@@ -69,9 +69,21 @@ class EngineJsonFormatterTests(unittest.TestCase):
             "[access.start] ip=127.0.0.1 method=POST url=http://127.0.0.1:7171/recommendations",
         )
         self.assertEqual(payload["event"], "access.start")
+        self.assertEqual(payload["message"], "request started")
         self.assertIn("focused", payload["modes"])
         self.assertIn("verbose", payload["modes"])
         self.assertEqual(payload["context"]["method"], "POST")
+
+    def test_access_message_does_not_duplicate_context(self) -> None:
+        """Keep access message concise while details stay in context fields."""
+        payload = self._format_record(
+            logging.INFO,
+            "[access] ip=127.0.0.1 method=POST url=http://127.0.0.1:7171/recommendations status=200 bytes=-",
+        )
+        self.assertEqual(payload["event"], "access")
+        self.assertEqual(payload["message"], "request finished")
+        self.assertEqual(payload["context"]["status"], "200")
+        self.assertEqual(payload["context"]["url"], "http://127.0.0.1:7171/recommendations")
 
     def test_request_id_is_extracted_from_message_prefix(self) -> None:
         """Extract request id from [scope][request_id] message prefix."""

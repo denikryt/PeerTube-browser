@@ -12,8 +12,25 @@ export type RequestLike = {
   host: string;
 };
 
+type LocalLikesPayload = {
+  likes?: unknown;
+};
+
+type LocalLikesDebugApi = {
+  readRaw: () => string | null;
+  readArray: () => StoredLike[];
+};
+
 const STORAGE_KEY = "localLikes:v1";
 const MAX_LIKES = 50;
+
+declare global {
+  interface Window {
+    __peerTubeLocalLikes?: LocalLikesDebugApi;
+  }
+}
+
+installLocalLikesDebugHelper();
 
 /**
  * Handle add local like.
@@ -58,6 +75,24 @@ export function getStoredLikes(): StoredLike[] {
 }
 
 /**
+ * Handle read local-likes storage as normalized array.
+ */
+export function readLocalLikesStorageArray(): StoredLike[] {
+  return parseLocalLikesStorageValue(readLocalLikesStorageRaw());
+}
+
+/**
+ * Handle read local-likes raw storage value.
+ */
+export function readLocalLikesStorageRaw(): string | null {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Handle clear local likes.
  */
 export function clearLocalLikes() {
@@ -69,20 +104,43 @@ export function clearLocalLikes() {
 }
 
 /**
- * Handle load likes.
+ * Handle parse local-likes storage value to normalized array.
  */
-function loadLikes(): StoredLike[] {
+export function parseLocalLikesStorageValue(raw: string | null): StoredLike[] {
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((entry) => normalizeLike(entry))
-      .filter((entry) => Boolean(entry.video_uuid && entry.instance_domain));
+    if (Array.isArray(parsed)) {
+      return normalizeLikesList(parsed);
+    }
+    if (parsed && typeof parsed === "object") {
+      const payload = parsed as LocalLikesPayload;
+      if (Array.isArray(payload.likes)) {
+        return normalizeLikesList(payload.likes);
+      }
+    }
+    return [];
   } catch {
     return [];
   }
+}
+
+/**
+ * Handle expose local-likes debug helper in browser runtime.
+ */
+function installLocalLikesDebugHelper() {
+  if (typeof window === "undefined") return;
+  window.__peerTubeLocalLikes = {
+    readRaw: () => readLocalLikesStorageRaw(),
+    readArray: () => readLocalLikesStorageArray()
+  };
+}
+
+/**
+ * Handle load likes.
+ */
+function loadLikes(): StoredLike[] {
+  return parseLocalLikesStorageValue(readLocalLikesStorageRaw());
 }
 
 /**
@@ -94,6 +152,15 @@ function saveLikes(likes: StoredLike[]) {
   } catch {
     // Ignore storage errors.
   }
+}
+
+/**
+ * Handle normalize likes list.
+ */
+function normalizeLikesList(list: unknown[]): StoredLike[] {
+  return list
+    .map((entry) => normalizeLike(entry))
+    .filter((entry) => Boolean(entry.video_uuid && entry.instance_domain));
 }
 
 /**
