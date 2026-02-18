@@ -24,9 +24,31 @@
 
       <main class="videos-main">
         <section class="summary">
-          <div>
-            <div id="changelog-counts"></div>
-            <div id="changelog-meta" class="summary-meta"></div>
+          <div class="changelog-toolbar">
+            <div>
+              <div id="changelog-counts"></div>
+              <div id="changelog-meta" class="summary-meta"></div>
+            </div>
+            <div class="changelog-tabs" role="tablist" aria-label="Changelog status filters">
+              <button
+                class="changelog-tab is-active"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                data-status="Planned"
+              >
+                Not completed
+              </button>
+              <button
+                class="changelog-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                data-status="Done"
+              >
+                Completed
+              </button>
+            </div>
           </div>
         </section>
 

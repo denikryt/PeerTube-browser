@@ -1,3 +1,51 @@
+.changelog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.changelog-tabs {
+  display: inline-flex;
+  gap: 8px;
+  padding: 6px;
+  margin: 0;
+  border: 1px solid #e0d8cc;
+  border-radius: 14px;
+  background: #f6f1e8;
+}
+
+.changelog-tab {
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #4a3f34;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.changelog-tab:hover {
+  background: rgba(58, 50, 42, 0.08);
+}
+
+.changelog-tab.is-active {
+  background: #3a322a;
+  color: #fefbf6;
+  box-shadow: 0 6px 16px rgba(32, 24, 12, 0.2);
+}
+
+.changelog-tab:focus-visible {
+  outline: 2px solid #3a322a;
+  outline-offset: 2px;
+}
+
 .changelog-list {
   display: grid;
   gap: 14px;
@@ -13,36 +61,42 @@
   gap: 8px;
 }
 
-.changelog-card.is-new {
-  border-color: rgba(216, 77, 45, 0.45);
-  background: rgba(216, 77, 45, 0.06);
+.changelog-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.changelog-separator {
-  margin: 4px 0;
-  text-align: center;
-  font-size: 0.8rem;
+.changelog-card.is-done {
+  border-color: rgba(66, 148, 87, 0.32);
+}
+
+.changelog-card.is-planned {
+  border-color: rgba(138, 120, 82, 0.25);
+}
+
+.changelog-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  position: relative;
 }
 
-.changelog-separator::before,
-.changelog-separator::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  width: calc(50% - 88px);
-  border-top: 1px solid var(--line);
+.changelog-status.is-done {
+  background: rgba(66, 148, 87, 0.14);
+  color: #1f6f35;
 }
 
-.changelog-separator::before {
-  left: 0;
-}
-
-.changelog-separator::after {
-  right: 0;
+.changelog-status.is-planned {
+  background: rgba(138, 120, 82, 0.14);
+  color: #5f4f36;
 }
 
 .changelog-date {
@@ -75,4 +129,16 @@
   color: #8a3b24;
   border-color: rgba(138, 59, 36, 0.4);
   background: rgba(180, 87, 55, 0.08);
+}
+
+@media (max-width: 540px) {
+  .changelog-tabs {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .changelog-tab {
+    flex: 1;
+    text-align: center;
+  }
 }

@@ -3,10 +3,14 @@
  */
 
 export type ChangelogEntry = {
+  id: string;
   date: string;
+  status: ChangelogStatus;
   title: string;
   summary: string;
 };
+
+export type ChangelogStatus = "Planned" | "Done";
 
 type ChangelogPayload = {
   entries?: unknown;
@@ -29,18 +33,11 @@ export async function fetchChangelogEntries(): Promise<ChangelogEntry[]> {
 }
 
 /**
- * Handle make changelog entry id.
- */
-export function makeChangelogEntryId(entry: ChangelogEntry): string {
-  return `${entry.date}|${entry.title}`;
-}
-
-/**
  * Handle get latest changelog id.
  */
 export function getLatestChangelogId(entries: ChangelogEntry[]): string | null {
   if (!entries.length) return null;
-  return makeChangelogEntryId(entries[0]);
+  return entries[0].id;
 }
 
 /**
@@ -58,20 +55,6 @@ export function writeSeenChangelogId(id: string): void {
 }
 
 /**
- * Handle count unseen entries.
- */
-export function countUnseenEntries(
-  entries: ChangelogEntry[],
-  seenId: string | null
-): number {
-  if (!entries.length) return 0;
-  if (!seenId) return entries.length;
-  const seenIndex = entries.findIndex((entry) => makeChangelogEntryId(entry) === seenId);
-  if (seenIndex < 0) return entries.length;
-  return seenIndex;
-}
-
-/**
  * Handle normalize entries.
  */
 function normalizeEntries(payload: unknown): ChangelogEntry[] {
@@ -85,12 +68,17 @@ function normalizeEntries(payload: unknown): ChangelogEntry[] {
     const title = normalizeString(candidate.title);
     const summary = normalizeString(candidate.summary);
     if (!date || !title || !summary) continue;
+    const id = normalizeString(candidate.id);
+    const status = normalizeStatus(candidate.status);
+    if (!id || !status) continue;
     if (!isIsoDate(date)) continue;
-    normalized.push({ date, title, summary });
+    normalized.push({ id, date, status, title, summary });
   }
 
   normalized.sort((a, b) => {
-    if (a.date === b.date) return 0;
+    if (a.date === b.date) {
+      return a.id.localeCompare(b.id);
+    }
     return a.date < b.date ? 1 : -1;
   });
   return normalized;
@@ -114,6 +102,18 @@ function normalizeString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value.trim();
   return cleaned.length ? cleaned : null;
+}
+
+/**
+ * Handle normalize status.
+ */
+function normalizeStatus(value: unknown): ChangelogStatus | null {
+  const normalized = normalizeString(value);
+  if (!normalized) return null;
+  if (normalized === "Planned" || normalized === "Done") {
+    return normalized;
+  }
+  return null;
 }
 
 /**

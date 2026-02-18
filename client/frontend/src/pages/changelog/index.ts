@@ -6,24 +6,38 @@ import "../../videos.css";
 import "../../changelog.css";
 import {
   CHANGELOG_URL,
-  countUnseenEntries,
   fetchChangelogEntries,
   getLatestChangelogId,
-  readSeenChangelogId,
   writeSeenChangelogId,
   type ChangelogEntry,
+  type ChangelogStatus,
 } from "../../data/changelog";
 
 const counts = document.getElementById("changelog-counts");
 const meta = document.getElementById("changelog-meta");
 const state = document.getElementById("changelog-state");
 const list = document.getElementById("changelog-list");
+const filterTabs = Array.from(
+  document.querySelectorAll<HTMLButtonElement>(".changelog-tab[data-status]")
+);
 const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
+const STATUS_LABELS: Record<ChangelogStatus, string> = {
+  Planned: "Not completed",
+  Done: "Completed",
+};
+const STATUS_EMPTY_MESSAGES: Record<ChangelogStatus, string> = {
+  Planned: "No planned tasks.",
+  Done: "No completed tasks yet.",
+};
 
-if (!counts || !meta || !state || !list) {
+let allEntries: ChangelogEntry[] = [];
+let activeStatus: ChangelogStatus = "Planned";
+
+if (!counts || !meta || !state || !list || filterTabs.length === 0) {
   throw new Error("Missing changelog elements");
 }
 
+wireFilterTabs();
 void loadChangelog();
 
 /**
@@ -34,14 +48,13 @@ async function loadChangelog() {
 
   try {
     const entries = await fetchChangelogEntries();
+    allEntries = entries;
     if (!entries.length) {
       setEmptyState("Changelog is empty.");
       return;
     }
 
-    const previousSeenId = readSeenChangelogId();
-    const unseenCount = countUnseenEntries(entries, previousSeenId);
-    renderEntries(entries, unseenCount);
+    renderActiveStatus();
 
     const latestId = getLatestChangelogId(entries);
     if (latestId) {
@@ -55,36 +68,77 @@ async function loadChangelog() {
 }
 
 /**
+ * Handle wire filter tabs.
+ */
+function wireFilterTabs() {
+  for (const button of filterTabs) {
+    const status = parseStatus(button.dataset.status);
+    if (!status) continue;
+    button.addEventListener("click", () => {
+      if (activeStatus === status) return;
+      activeStatus = status;
+      updateFilterTabState();
+      renderActiveStatus();
+    });
+  }
+  updateFilterTabState();
+}
+
+/**
+ * Handle update filter tab state.
+ */
+function updateFilterTabState() {
+  for (const button of filterTabs) {
+    const status = parseStatus(button.dataset.status);
+    const isActive = status === activeStatus;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  }
+}
+
+/**
+ * Handle render active status.
+ */
+function renderActiveStatus() {
+  const visibleEntries = allEntries.filter((entry) => entry.status === activeStatus);
+  updateSummary(visibleEntries.length);
+  if (!visibleEntries.length) {
+    setEmptyState(STATUS_EMPTY_MESSAGES[activeStatus]);
+    return;
+  }
+  renderEntries(visibleEntries);
+}
+
+/**
  * Handle render entries.
  */
-function renderEntries(entries: ChangelogEntry[], unseenCount: number) {
+function renderEntries(entries: ChangelogEntry[]) {
   state.hidden = true;
   list.hidden = false;
   list.innerHTML = "";
 
   const fragment = document.createDocumentFragment();
-  for (const [index, entry] of entries.entries()) {
-    if (index === unseenCount && unseenCount > 0 && unseenCount < entries.length) {
-      fragment.appendChild(renderSeenSeparator());
-    }
-    fragment.appendChild(renderEntry(entry, index < unseenCount));
+  for (const entry of entries) {
+    fragment.appendChild(renderEntry(entry));
   }
   list.appendChild(fragment);
-
-  counts.textContent = `Showing ${entries.length} updates`;
-  meta.textContent = "";
 }
 
 /**
  * Handle render entry.
  */
-function renderEntry(entry: ChangelogEntry, isNew: boolean): HTMLElement {
+function renderEntry(entry: ChangelogEntry): HTMLElement {
   const article = document.createElement("article");
-  article.className = `changelog-card${isNew ? " is-new" : ""}`;
+  article.className = `changelog-card ${entry.status === "Done" ? "is-done" : "is-planned"}`;
+
+  const cardHeader = document.createElement("div");
+  cardHeader.className = "changelog-card-header";
 
   const dateNode = document.createElement("p");
   dateNode.className = "changelog-date";
   dateNode.textContent = formatDate(entry.date);
+
+  const statusNode = renderStatusBadge(entry.status);
 
   const titleNode = document.createElement("h2");
   titleNode.className = "changelog-title";
@@ -94,20 +148,22 @@ function renderEntry(entry: ChangelogEntry, isNew: boolean): HTMLElement {
   summaryNode.className = "changelog-summary";
   summaryNode.textContent = entry.summary;
 
-  article.appendChild(dateNode);
+  cardHeader.appendChild(dateNode);
+  cardHeader.appendChild(statusNode);
+  article.appendChild(cardHeader);
   article.appendChild(titleNode);
   article.appendChild(summaryNode);
   return article;
 }
 
 /**
- * Handle render seen separator.
+ * Handle render status badge.
  */
-function renderSeenSeparator(): HTMLElement {
-  const separator = document.createElement("div");
-  separator.className = "changelog-separator";
-  separator.textContent = "Previously seen";
-  return separator;
+function renderStatusBadge(status: ChangelogStatus): HTMLElement {
+  const badge = document.createElement("span");
+  badge.className = `changelog-status ${status === "Done" ? "is-done" : "is-planned"}`;
+  badge.textContent = status === "Done" ? "✓ Done" : "Planned";
+  return badge;
 }
 
 /**
@@ -118,8 +174,7 @@ function setLoadingState(message: string) {
   state.hidden = false;
   state.classList.remove("error");
   state.textContent = message;
-  counts.textContent = "";
-  meta.textContent = "";
+  updateSummary(0);
 }
 
 /**
@@ -130,8 +185,6 @@ function setEmptyState(message: string) {
   state.hidden = false;
   state.classList.remove("error");
   state.textContent = message;
-  counts.textContent = "No updates";
-  meta.textContent = "";
 }
 
 /**
@@ -143,7 +196,7 @@ function setErrorState(message: string) {
   state.classList.add("error");
   state.textContent = message;
   counts.textContent = "Unavailable";
-  meta.textContent = "";
+  meta.textContent = `Source: ${CHANGELOG_URL}`;
 }
 
 /**
@@ -152,4 +205,24 @@ function setErrorState(message: string) {
 function formatDate(value: string): string {
   const date = new Date(`${value}T00:00:00Z`);
   return dateFormat.format(date);
+}
+
+/**
+ * Handle update summary.
+ */
+function updateSummary(visibleCount: number) {
+  const plannedCount = allEntries.filter((entry) => entry.status === "Planned").length;
+  const doneCount = allEntries.filter((entry) => entry.status === "Done").length;
+  counts.textContent = `Showing ${visibleCount} ${STATUS_LABELS[activeStatus].toLowerCase()} tasks`;
+  meta.textContent = `Not completed: ${plannedCount} • Completed: ${doneCount} • Source: ${CHANGELOG_URL}`;
+}
+
+/**
+ * Handle parse status.
+ */
+function parseStatus(value: string | undefined): ChangelogStatus | null {
+  if (value === "Planned" || value === "Done") {
+    return value;
+  }
+  return null;
 }
