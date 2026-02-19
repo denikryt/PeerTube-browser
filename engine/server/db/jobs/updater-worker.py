@@ -218,7 +218,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "Run embeddings + FAISS build in GPU mode. "
-            "No CPU fallback: command fails on GPU error."
+            "If a GPU stage fails, updater retries that stage in CPU mode."
         ),
     )
     accel_group.add_argument(
@@ -302,6 +302,46 @@ def run_cmd(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, cwd=cwd, check=True)
     elapsed_ms = int((time.monotonic() - start) * 1000)
     logging.info("done: %s (%dms)", cmd[0], elapsed_ms)
+
+
+def _to_cpu_cmd(cmd: list[str]) -> list[str]:
+    """Convert command from GPU flags to explicit CPU mode."""
+    cpu_cmd: list[str] = []
+    index = 0
+    while index < len(cmd):
+        token = cmd[index]
+        if token == "--gpu":
+            index += 1
+            continue
+        if token == "--gpu-device":
+            index += 2
+            continue
+        cpu_cmd.append(token)
+        index += 1
+    if "--cpu" not in cpu_cmd:
+        cpu_cmd.append("--cpu")
+    return cpu_cmd
+
+
+def run_with_cpu_fallback(
+    cmd: list[str],
+    *,
+    stage: str,
+    cwd: Path | None = None,
+) -> None:
+    """Run a GPU command and retry it on CPU if the GPU attempt fails."""
+    if "--gpu" not in cmd:
+        run_cmd(cmd, cwd=cwd)
+        return
+    try:
+        run_cmd(cmd, cwd=cwd)
+    except subprocess.CalledProcessError as exc:
+        logging.warning(
+            "%s GPU run failed (exit=%s); retrying in CPU mode",
+            stage,
+            exc.returncode,
+        )
+        run_cmd(_to_cpu_cmd(cmd), cwd=cwd)
 
 
 def systemctl_cmd(
@@ -914,7 +954,13 @@ def main() -> None:
                 ]
                 if args.use_gpu:
                     embeddings_cmd.append("--gpu")
-                run_cmd(embeddings_cmd, cwd=repo_root)
+                else:
+                    embeddings_cmd.append("--cpu")
+                run_with_cpu_fallback(
+                    embeddings_cmd,
+                    stage="build-video-embeddings",
+                    cwd=repo_root,
+                )
                 if args.inject_replace_embedding_for_test:
                     inject_replace_embedding_for_test(prod_db=prod_db, staging_db=staging_db)
 
@@ -1000,30 +1046,41 @@ def main() -> None:
                 ]
                 if args.use_gpu:
                     ann_cmd.append("--gpu")
-                run_cmd(ann_cmd, cwd=repo_root)
+                else:
+                    ann_cmd.append("--cpu")
+                run_with_cpu_fallback(
+                    ann_cmd,
+                    stage="build-ann-index",
+                    cwd=repo_root,
+                )
                 if args.fail_after_merge_before_similarity:
                     raise RuntimeError(
                         "Injected failure: after merge/ANN and before similarity precompute"
                     )
-                run_cmd(
-                    [
-                        args.python_bin,
-                        (script_dir / "precompute-similar-ann.py").as_posix(),
-                        "--db",
-                        prod_db.as_posix(),
-                        "--index",
-                        index_path.as_posix(),
-                        "--out",
-                        similarity_db.as_posix(),
-                        "--top-k",
-                        "1000",
-                        "--nprobe",
-                        "16",
-                        "--gpu",
-                        "--gpu-device",
-                        "0",
-                        "--incremental",
-                    ],
+                precompute_cmd = [
+                    args.python_bin,
+                    (script_dir / "precompute-similar-ann.py").as_posix(),
+                    "--db",
+                    prod_db.as_posix(),
+                    "--index",
+                    index_path.as_posix(),
+                    "--out",
+                    similarity_db.as_posix(),
+                    "--top-k",
+                    "1000",
+                    "--nprobe",
+                    "16",
+                    "--search-batch-size",
+                    "1024",
+                    "--recreate-out-db",
+                ]
+                if args.use_gpu:
+                    precompute_cmd.extend(["--gpu", "--gpu-device", "0"])
+                else:
+                    precompute_cmd.append("--cpu")
+                run_with_cpu_fallback(
+                    precompute_cmd,
+                    stage="precompute-similar-ann",
                     cwd=repo_root,
                 )
             finally:

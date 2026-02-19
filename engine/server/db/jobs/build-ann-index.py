@@ -182,7 +182,7 @@ def main() -> None:
             "Bits per PQ code; higher improves accuracy but increases index size."
         ),
     )
-    accel_group = parser.add_mutually_exclusive_group()
+    accel_group = parser.add_mutually_exclusive_group(required=True)
     accel_group.add_argument(
         "--gpu",
         dest="use_gpu",
@@ -195,7 +195,6 @@ def main() -> None:
         action="store_false",
         help="Build/train ANN index on CPU.",
     )
-    parser.set_defaults(use_gpu=False)
     parser.add_argument(
         "--normalize",
         action="store_true",
