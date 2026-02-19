@@ -6,7 +6,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from request_context import fetch_request_id
@@ -192,7 +192,7 @@ class EngineJsonFormatter(logging.Formatter):
         fields = _extract_fields(message)
 
         payload: dict[str, Any] = {
-            "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+            "ts": datetime.now().astimezone().isoformat(timespec="milliseconds"),
             "level": record.levelname,
             "event": event,
             "message": message,
