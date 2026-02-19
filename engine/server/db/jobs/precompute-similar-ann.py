@@ -299,7 +299,7 @@ def main() -> None:
         default=256,
         help="ANN query batch size (number of source videos per FAISS search call).",
     )
-    accel_group = parser.add_mutually_exclusive_group(required=True)
+    accel_group = parser.add_mutually_exclusive_group(required=False)
     accel_group.add_argument(
         "--cpu",
         action="store_true",
@@ -318,11 +318,18 @@ def main() -> None:
     )
     parser.add_argument("--reset", action="store_true", help="Clear existing cache.")
     parser.add_argument(
+        "--reset-only",
+        action="store_true",
+        help="Clear existing cache tables and exit without computing similarities.",
+    )
+    parser.add_argument(
         "--incremental",
         action="store_true",
         help="Compute only for videos that do not exist in similarity_sources.",
     )
     args = parser.parse_args()
+    if not args.reset_only and not (args.cpu or args.gpu):
+        parser.error("one of --cpu or --gpu is required unless --reset-only is used")
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -378,6 +385,15 @@ def main() -> None:
         ensure_schema(out_db)
         if args.reset:
             out_db.executescript("DELETE FROM similarity_items; DELETE FROM similarity_sources;")
+            out_db.commit()
+        if args.reset_only:
+            if not args.reset:
+                out_db.executescript(
+                    "DELETE FROM similarity_items; DELETE FROM similarity_sources;"
+                )
+                out_db.commit()
+            logging.info("reset-only completed: output cache cleared")
+            return
 
         dim_row = src_db.execute("SELECT embedding_dim FROM video_embeddings LIMIT 1").fetchone()
         if not dim_row:
