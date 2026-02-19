@@ -3,6 +3,7 @@
 
 import argparse
 import logging
+import signal
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -148,6 +149,67 @@ def iter_embedding_rows_by_rowids(
             yield row
 
 
+def iter_row_batches(row_iter: Any, batch_size: int):
+    """Yield source rows in fixed-size batches for vectorized ANN search."""
+    if batch_size <= 0:
+        batch_size = 1
+    batch: list[Any] = []
+    for row in row_iter:
+        batch.append(row)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def build_query_batch(rows: list[Any], dim_value: int) -> tuple[list[Any], np.ndarray]:
+    """Build a float32 query matrix from valid embedding rows."""
+    valid_rows: list[Any] = []
+    vectors: list[np.ndarray] = []
+    for row in rows:
+        if row["embedding_dim"] != dim_value:
+            continue
+        embedding = np.frombuffer(row["embedding"], dtype=np.float32)
+        if embedding.shape[0] != dim_value:
+            continue
+        valid_rows.append(row)
+        vectors.append(embedding)
+    if not valid_rows:
+        return [], np.empty((0, dim_value), dtype=np.float32)
+    return valid_rows, np.vstack(vectors)
+
+
+def set_nprobe(index: faiss.Index, nprobe: int) -> None:
+    """Set FAISS nprobe on IVF-like indexes (CPU and GPU wrappers)."""
+    ivf_index = None
+    if hasattr(faiss, "extract_index_ivf"):
+        try:
+            ivf_index = faiss.extract_index_ivf(index)
+        except Exception:  # pragma: no cover
+            ivf_index = None
+    if ivf_index is not None:
+        ivf_index.nprobe = nprobe
+    if hasattr(index, "nprobe"):
+        index.nprobe = nprobe
+    elif hasattr(index, "index") and hasattr(index.index, "nprobe"):
+        index.index.nprobe = nprobe
+
+
+def move_index_to_gpu(index: faiss.Index, device: int) -> tuple[faiss.Index, Any]:
+    """Move a CPU FAISS index to GPU and keep resources alive."""
+    if device < 0:
+        raise RuntimeError("GPU mode requested with invalid --gpu-device (< 0).")
+    if not hasattr(faiss, "StandardGpuResources") or not hasattr(faiss, "index_cpu_to_gpu"):
+        raise RuntimeError(
+            "GPU mode requested but installed FAISS has no GPU support. "
+            "Install faiss-gpu (matching CUDA) or run without --gpu."
+        )
+    gpu_resources = faiss.StandardGpuResources()
+    gpu_index = faiss.index_cpu_to_gpu(gpu_resources, device, index)
+    return gpu_index, gpu_resources
+
+
 def ensure_schema(conn: sqlite3.Connection) -> None:
     """Handle ensure schema."""
     conn.executescript(
@@ -262,6 +324,23 @@ def fetch_metadata(conn: sqlite3.Connection, rowids: list[int]) -> dict[int, dic
     return {row["rowid"]: dict(row) for row in rows}
 
 
+def fetch_metadata_chunked(
+    conn: sqlite3.Connection,
+    rowids: list[int],
+    chunk_size: int = 5000,
+) -> dict[int, dict[str, Any]]:
+    """Fetch metadata for many rowids in chunks to stay under SQLite variable limits."""
+    if not rowids:
+        return {}
+    if chunk_size <= 0:
+        chunk_size = 5000
+    merged: dict[int, dict[str, Any]] = {}
+    for start in range(0, len(rowids), chunk_size):
+        chunk = rowids[start : start + chunk_size]
+        merged.update(fetch_metadata(conn, chunk))
+    return merged
+
+
 def _extract_similarity_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     """Handle extract similarity metadata."""
     return {field: meta.get(field) for field in SIMILARITY_ITEM_METADATA_FIELDS}
@@ -357,6 +436,29 @@ def main() -> None:
     parser.add_argument("--out", default=str(default_out), help="Output cache database.")
     parser.add_argument("--top-k", type=int, default=20, help="Similar items to keep.")
     parser.add_argument("--nprobe", type=int, default=16, help="FAISS nprobe setting.")
+    parser.add_argument(
+        "--search-batch-size",
+        type=int,
+        default=256,
+        help="ANN query batch size (number of source videos per FAISS search call).",
+    )
+    accel_group = parser.add_mutually_exclusive_group(required=True)
+    accel_group.add_argument(
+        "--cpu",
+        action="store_true",
+        help="Use FAISS CPU search acceleration.",
+    )
+    accel_group.add_argument(
+        "--gpu",
+        action="store_true",
+        help="Use FAISS GPU search acceleration.",
+    )
+    parser.add_argument(
+        "--gpu-device",
+        type=int,
+        default=None,
+        help="CUDA device id used when --gpu is enabled (default: 0).",
+    )
     parser.add_argument("--reset", action="store_true", help="Clear existing cache.")
     parser.add_argument(
         "--incremental",
@@ -367,98 +469,165 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
-    src_db = connect_source_db(Path(args.db))
-    out_db = connect_db(Path(args.out))
-    ensure_schema(out_db)
-    if args.reset:
-        out_db.executescript("DELETE FROM similarity_items; DELETE FROM similarity_sources;")
+    stop_requested = False
+    stop_reason = "completed"
 
-    dim_row = src_db.execute("SELECT embedding_dim FROM video_embeddings LIMIT 1").fetchone()
-    if not dim_row:
-        raise RuntimeError("No embeddings found in database.")
-    dim_value = int(dim_row[0])
+    def _signal_name(signum: int) -> str:
+        """Return a stable signal name for lifecycle logs."""
+        try:
+            return signal.Signals(signum).name
+        except ValueError:
+            return str(signum)
 
-    index = faiss.read_index(str(args.index), faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY)
-    if hasattr(index, "nprobe"):
-        index.nprobe = args.nprobe
-    if index.d != dim_value:
-        raise RuntimeError(
-            f"Index dimension {index.d} does not match database dimension {dim_value}"
+    def _request_soft_stop(signum: int, _frame: Any) -> None:
+        """Request graceful shutdown and let the current batch finish."""
+        nonlocal stop_requested, stop_reason
+        if stop_requested:
+            return
+        stop_requested = True
+        stop_reason = f"signal:{_signal_name(signum)}"
+        logging.warning(
+            "soft-stop requested by %s; finishing current batch and committing",
+            _signal_name(signum),
         )
 
-    if args.incremental:
-        # Incremental mode compares source embeddings with already-computed rows
-        # from the output cache DB. We materialize only rowids first to avoid
-        # lock contention while writing to the output DB.
-        out_uri = f"file:{Path(args.out).as_posix()}?mode=ro"
-        src_db.execute("ATTACH DATABASE ? AS out_cache", (out_uri,))
-        pending_rowids = [
-            int(row["rowid"])
-            for row in src_db.execute(
+    managed_signals = [signal.SIGINT, signal.SIGTERM]
+    if hasattr(signal, "SIGTSTP"):
+        managed_signals.append(signal.SIGTSTP)
+    previous_handlers = {sig: signal.getsignal(sig) for sig in managed_signals}
+    for sig in managed_signals:
+        signal.signal(sig, _request_soft_stop)
+
+    try:
+        src_db = connect_source_db(Path(args.db))
+        out_db = connect_db(Path(args.out))
+        ensure_schema(out_db)
+        if args.reset:
+            out_db.executescript("DELETE FROM similarity_items; DELETE FROM similarity_sources;")
+
+        dim_row = src_db.execute("SELECT embedding_dim FROM video_embeddings LIMIT 1").fetchone()
+        if not dim_row:
+            raise RuntimeError("No embeddings found in database.")
+        dim_value = int(dim_row[0])
+
+        index = faiss.read_index(str(args.index), faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY)
+        # Keep a reference so FAISS GPU resources live for the full run.
+        gpu_resources = None
+        if args.cpu:
+            logging.info("faiss acceleration=cpu")
+            if args.gpu_device is not None:
+                raise RuntimeError("--gpu-device can be used only together with --gpu.")
+        else:
+            gpu_device = 0 if args.gpu_device is None else args.gpu_device
+            index, gpu_resources = move_index_to_gpu(index, gpu_device)
+            logging.info("faiss acceleration=gpu device=%d", gpu_device)
+        set_nprobe(index, args.nprobe)
+        if index.d != dim_value:
+            raise RuntimeError(
+                f"Index dimension {index.d} does not match database dimension {dim_value}"
+            )
+
+        if args.incremental:
+            # Incremental mode compares source embeddings with already-computed rows
+            # from the output cache DB. We materialize only rowids first to avoid
+            # lock contention while writing to the output DB.
+            out_uri = f"file:{Path(args.out).as_posix()}?mode=ro"
+            src_db.execute("ATTACH DATABASE ? AS out_cache", (out_uri,))
+            pending_rowids = [
+                int(row["rowid"])
+                for row in src_db.execute(
+                    """
+                    SELECT e.rowid
+                    FROM video_embeddings e
+                    LEFT JOIN out_cache.similarity_sources s
+                      ON s.video_id = e.video_id
+                     AND s.instance_domain = e.instance_domain
+                    WHERE s.video_id IS NULL
+                    """
+                )
+            ]
+            src_db.execute("DETACH DATABASE out_cache")
+            row_iter = iter_embedding_rows_by_rowids(src_db, pending_rowids)
+        else:
+            row_iter = src_db.execute(
                 """
-                SELECT e.rowid
-                FROM video_embeddings e
-                LEFT JOIN out_cache.similarity_sources s
-                  ON s.video_id = e.video_id
-                 AND s.instance_domain = e.instance_domain
-                WHERE s.video_id IS NULL
+                SELECT rowid, video_id, instance_domain, embedding, embedding_dim
+                FROM video_embeddings
                 """
             )
-        ]
-        src_db.execute("DETACH DATABASE out_cache")
-        row_iter = iter_embedding_rows_by_rowids(src_db, pending_rowids)
-    else:
-        row_iter = src_db.execute(
-            """
-            SELECT rowid, video_id, instance_domain, embedding, embedding_dim
-            FROM video_embeddings
-            """
-        )
-    computed_at = int(datetime.now(timezone.utc).timestamp() * 1000)
-    processed = 0
-    for row in row_iter:
-        if row["embedding_dim"] != dim_value:
-            continue
-        embedding = np.frombuffer(row["embedding"], dtype=np.float32)
-        if embedding.shape[0] != dim_value:
-            continue
-        scores, ids = index.search(embedding.reshape(1, -1), args.top_k + 1)
-        rowids = [int(item) for item in ids[0] if int(item) > 0]
-        metadata = fetch_metadata(src_db, rowids)
-        items: list[dict[str, Any]] = []
-        for score, rowid in zip(scores[0], ids[0]):
-            rowid_int = int(rowid)
-            if rowid_int == row["rowid"]:
-                continue
-            meta = metadata.get(rowid_int)
-            if not meta:
-                continue
-            items.append(
-                {
-                    "video_id": meta["video_id"],
-                    "instance_domain": meta["instance_domain"],
-                    "score": float(score),
-                    **_extract_similarity_metadata(meta),
-                }
-            )
-            if len(items) >= args.top_k:
-                break
-        record_similarities(
-            out_db,
-            {"video_id": row["video_id"], "instance_domain": row["instance_domain"]},
-            [
-                {**item, "rank": index}
-                for index, item in enumerate(items, start=1)
-            ],
-            computed_at,
-        )
-        processed += 1
-        if processed % 500 == 0:
-            out_db.commit()
-            logging.info("processed %d videos", processed)
+        computed_at = int(datetime.now(timezone.utc).timestamp() * 1000)
+        processed = 0
+        if args.search_batch_size <= 0:
+            raise RuntimeError("--search-batch-size must be > 0")
+        try:
+            for source_batch in iter_row_batches(row_iter, args.search_batch_size):
+                valid_rows, query_batch = build_query_batch(source_batch, dim_value)
+                if not valid_rows:
+                    if stop_requested:
+                        break
+                    continue
 
-    out_db.commit()
-    logging.info("done. processed=%d", processed)
+                scores_batch, ids_batch = index.search(query_batch, args.top_k + 1)
+                batch_rowids = sorted(
+                    {
+                        int(rowid)
+                        for ids_row in ids_batch
+                        for rowid in ids_row
+                        if int(rowid) > 0
+                    }
+                )
+                metadata_by_rowid = fetch_metadata_chunked(src_db, batch_rowids)
+
+                for row, scores_row, ids_row in zip(valid_rows, scores_batch, ids_batch):
+                    items: list[dict[str, Any]] = []
+                    for score, rowid in zip(scores_row, ids_row):
+                        rowid_int = int(rowid)
+                        if rowid_int == row["rowid"] or rowid_int <= 0:
+                            continue
+                        meta = metadata_by_rowid.get(rowid_int)
+                        if not meta:
+                            continue
+                        items.append(
+                            {
+                                "video_id": meta["video_id"],
+                                "instance_domain": meta["instance_domain"],
+                                "score": float(score),
+                                **_extract_similarity_metadata(meta),
+                            }
+                        )
+                        if len(items) >= args.top_k:
+                            break
+                    record_similarities(
+                        out_db,
+                        {"video_id": row["video_id"], "instance_domain": row["instance_domain"]},
+                        [
+                            {**item, "rank": rank}
+                            for rank, item in enumerate(items, start=1)
+                        ],
+                        computed_at,
+                    )
+                    processed += 1
+                    if processed % 500 == 0:
+                        out_db.commit()
+                        logging.info("processed %d videos", processed)
+                    if stop_requested:
+                        break
+                if stop_requested:
+                    break
+        except KeyboardInterrupt:
+            stop_requested = True
+            stop_reason = "keyboard_interrupt"
+            logging.warning("soft-stop requested by KeyboardInterrupt; committing")
+
+        out_db.commit()
+        if stop_requested:
+            logging.info("soft-stop complete reason=%s processed=%d", stop_reason, processed)
+        else:
+            logging.info("done. processed=%d", processed)
+        _ = gpu_resources
+    finally:
+        for sig, handler in previous_handlers.items():
+            signal.signal(sig, handler)
 
 
 if __name__ == "__main__":
