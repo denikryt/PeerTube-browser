@@ -11,6 +11,7 @@ FORCE_REINSTALL_SET=0
 FORCE_REINSTALL=0
 WITH_UPDATER_TIMER_SET=0
 WITH_UPDATER_TIMER=0
+REINSTALL_UPDATER_ONLY=0
 
 ENGINE_HOST="127.0.0.1"
 CLIENT_HOST="127.0.0.1"
@@ -93,6 +94,7 @@ Options:
   --updater-oncalendar <expr>   Systemd OnCalendar expression for updater timer
   --updater-flags <flags>       Extra flags for updater-worker.py
   --updater-week-state-dir <path>  Week-state directory path for updater gate
+  --reinstall-updater-only     Reinstall only updater units (skip Engine/Client installers)
 
   --force                  Force reinstall selected contour units
   --no-force               Disable force reinstall
@@ -381,6 +383,7 @@ install_contour() {
   local engine_ingest_base
   local with_timer
   local force_reinstall
+  local updater_force_reinstall
   local week_state_dir
 
   engine_service_name="$(resolve_default_engine_service "${contour}")"
@@ -413,6 +416,13 @@ install_contour() {
 
   if (( FORCE_REINSTALL_SET == 1 )); then force_reinstall="${FORCE_REINSTALL}"; fi
   if (( WITH_UPDATER_TIMER_SET == 1 )); then with_timer="${WITH_UPDATER_TIMER}"; fi
+  if (( REINSTALL_UPDATER_ONLY == 1 && WITH_UPDATER_TIMER_SET == 0 )); then
+    with_timer=1
+  fi
+  updater_force_reinstall="${force_reinstall}"
+  if (( REINSTALL_UPDATER_ONLY == 1 )); then
+    updater_force_reinstall=1
+  fi
 
   validate_service_name "${engine_service_name}"
   validate_service_name "${client_service_name}"
@@ -431,7 +441,7 @@ install_contour() {
     engine_ingest_base="http://${engine_host}:${engine_port}"
   fi
 
-  echo "[install-service] contour=${contour} force=${force_reinstall} updater_timer=${with_timer}"
+  echo "[install-service] contour=${contour} force=${force_reinstall} updater_timer=${with_timer} updater_only=${REINSTALL_UPDATER_ONLY}"
   echo "[install-service] contour=${contour} engine=${engine_service_name} ${engine_host}:${engine_port}"
   echo "[install-service] contour=${contour} client=${client_service_name} ${client_host}:${client_port} ingest=${engine_ingest_base}"
 
@@ -472,8 +482,10 @@ install_contour() {
     client_cmd+=(--dry-run)
   fi
 
-  run_cmd "${engine_cmd[@]}"
-  run_cmd "${client_cmd[@]}"
+  if (( REINSTALL_UPDATER_ONLY == 0 )); then
+    run_cmd "${engine_cmd[@]}"
+    run_cmd "${client_cmd[@]}"
+  fi
 
   install_updater_for_contour \
     "${contour}" \
@@ -481,7 +493,7 @@ install_contour() {
     "${updater_service_name}" \
     "${updater_timer_name}" \
     "${with_timer}" \
-    "${force_reinstall}" \
+    "${updater_force_reinstall}" \
     "${week_state_dir}"
 }
 
@@ -575,6 +587,10 @@ while [[ $# -gt 0 ]]; do
       UPDATER_WEEK_STATE_DIR="${2:-}"
       UPDATER_WEEK_STATE_DIR_SET=1
       shift 2
+      ;;
+    --reinstall-updater-only)
+      REINSTALL_UPDATER_ONLY=1
+      shift
       ;;
     --force)
       FORCE_REINSTALL_SET=1

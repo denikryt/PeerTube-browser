@@ -126,12 +126,18 @@ def main() -> None:
             "Without --force, only videos missing embeddings are processed."
         ),
     )
-    parser.add_argument(
+    accel_group = parser.add_mutually_exclusive_group(required=True)
+    accel_group.add_argument(
+        "--cpu",
+        dest="use_gpu",
+        action="store_false",
+        help="Run embedding generation on CPU.",
+    )
+    accel_group.add_argument(
         "--gpu",
+        dest="use_gpu",
         action="store_true",
-        help=(
-            "Use CUDA for embedding generation. Fails if CUDA is not available."
-        ),
+        help="Run embedding generation on GPU (CUDA).",
     )
     args = parser.parse_args()
 
@@ -145,8 +151,8 @@ def main() -> None:
     conn.row_factory = sqlite3.Row
     init_schema(conn)
 
-    device = "cuda" if args.gpu else "cpu"
-    if args.gpu and not torch.cuda.is_available():
+    device = "cuda" if args.use_gpu else "cpu"
+    if args.use_gpu and not torch.cuda.is_available():
         raise RuntimeError("GPU requested but CUDA is not available.")
     logging.info("loading model name=%s device=%s", args.model_name, device)
     model = SentenceTransformer(args.model_name, device=device)

@@ -16,7 +16,6 @@ except ImportError as exc:  # pragma: no cover
 
 from data.embeddings import normalize_vector
 from data.metadata import fetch_metadata
-from data.similarity_cache import extract_similarity_metadata
 
 
 def compute_similar_items(server: Any, seed: dict[str, Any], limit: int) -> list[dict[str, Any]]:
@@ -76,7 +75,6 @@ def compute_similar_items(server: Any, seed: dict[str, Any], limit: int) -> list
                 "video_id": meta["video_id"],
                 "instance_domain": meta["instance_domain"],
                 "score": float(score),
-                **extract_similarity_metadata(meta),
             }
         )
         if author_limit > 0 and author_key:
