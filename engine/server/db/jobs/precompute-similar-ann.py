@@ -19,7 +19,7 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 script_dir = Path(__file__).resolve().parent
-server_dir = script_dir.parents[2]
+server_dir = script_dir.parents[1]
 if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
 
@@ -343,14 +343,14 @@ def main() -> None:
         description="Precompute similar videos with FAISS.",
         formatter_class=CompactHelpFormatter,
     )
-    repo_root = script_dir.parents[4]
+    repo_root = script_dir.parents[3]
     api_dir = repo_root / "engine" / "server" / "api"
     if str(api_dir) not in sys.path:
         sys.path.insert(0, str(api_dir))
     from server_config import DEFAULT_DB_PATH
 
     default_db = (repo_root / DEFAULT_DB_PATH).resolve()
-    default_index = script_dir.parent / "video-embeddings.faiss"
+    default_index = script_dir.parent / "whitelist-video-embeddings.faiss"
     default_out = script_dir.parent / "similarity-cache.db"
     parser.add_argument("--db", default=str(default_db), help="Path to crawl database.")
     parser.add_argument("--index", default=str(default_index), help="Path to FAISS index.")
