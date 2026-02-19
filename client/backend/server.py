@@ -17,7 +17,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 from uuid import uuid4
-from datetime import datetime, timezone
+from datetime import datetime
 
 from lib.engine_api_client import (EngineApiError, fetch_metadata_for_entries,
                                    resolve_video_seed, resolve_videos_by_uuid_host)
@@ -81,7 +81,7 @@ def _emit_client_log(
 ) -> None:
     """Emit one structured JSON log line for Client backend service."""
     payload: dict[str, Any] = {
-        "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+        "ts": datetime.now().astimezone().isoformat(timespec="milliseconds"),
         "level": logging.getLevelName(level),
         "service": "client-backend",
         "event": event,
