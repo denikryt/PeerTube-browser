@@ -5,7 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
 SERVICE_USER="${SUDO_USER:-$(id -un)}"
 
-MODE="prod" # prod | dev | all
+MODE="" # prod | dev | all
+MODE_SET=0
 DRY_RUN=0
 FORCE_REINSTALL_SET=0
 FORCE_REINSTALL=0
@@ -31,8 +32,6 @@ UPDATER_SERVICE_NAME_SET=0
 UPDATER_TIMER_NAME_SET=0
 CLIENT_ENGINE_INGEST_BASE_URL=""
 CLIENT_ENGINE_INGEST_BASE_URL_SET=0
-CLIENT_USERS_DB=""
-CLIENT_USERS_DB_SET=0
 CLIENT_PUBLISH_MODE="bridge"
 
 UPDATER_TIMER_ONCALENDAR="${UPDATER_TIMER_ONCALENDAR:-Fri *-*-* 20:00:00}"
@@ -46,7 +45,6 @@ DEFAULT_PROD_UPDATER_SERVICE="peertube-updater"
 DEFAULT_PROD_UPDATER_TIMER="peertube-updater"
 DEFAULT_PROD_ENGINE_PORT=7070
 DEFAULT_PROD_CLIENT_PORT=7072
-DEFAULT_PROD_USERS_DB="client/backend/db/users.db"
 DEFAULT_PROD_UPDATER_STATE_DIR="/var/lib/peertube-browser"
 
 DEFAULT_DEV_ENGINE_SERVICE="peertube-engine-dev"
@@ -55,7 +53,6 @@ DEFAULT_DEV_UPDATER_SERVICE="peertube-updater-dev"
 DEFAULT_DEV_UPDATER_TIMER="peertube-updater-dev"
 DEFAULT_DEV_ENGINE_PORT=7171
 DEFAULT_DEV_CLIENT_PORT=7172
-DEFAULT_DEV_USERS_DB="client/backend/db/users-dev.db"
 DEFAULT_DEV_UPDATER_STATE_DIR="/var/lib/peertube-browser-dev"
 
 print_usage() {
@@ -65,16 +62,17 @@ Usage: sudo ./install-service.sh [options]
 Centralized installer/orchestrator for Engine + Client contours.
 
 Modes:
-  --mode prod      Install/update prod contour (default)
+  --mode prod      Install/update prod contour
   --mode dev       Install/update dev contour
   --mode all       Install/update both prod and dev contours sequentially
 
-Default contour behavior (when flags are omitted):
+Default contour behavior per selected --mode
+(when --force/--no-force and --with-updater-timer/--without-updater-timer are omitted):
   prod: --force + --with-updater-timer
   dev : --force + --without-updater-timer
 
 Options:
-  --mode <prod|dev|all>       Installation contour mode
+  --mode <prod|dev|all>       Required installation contour mode
   --contour <prod|dev|all>    Alias for --mode
   --project-dir <path>        Project root path (default: script directory)
   --service-user <user>       Unix user for Engine/Client/updater units
@@ -90,7 +88,6 @@ Options:
   --updater-timer-name <name>   Updater timer base name override (single-contour mode only)
 
   --client-engine-ingest-base-url <url>  Client -> Engine ingest base override
-  --client-users-db <path>               Client users DB path relative to project root
   --client-publish-mode <mode>           Client publish mode (default: bridge)
 
   --with-updater-timer      Enable contour updater timer/service
@@ -117,6 +114,9 @@ require_cmd() {
 }
 
 validate_mode() {
+  if (( MODE_SET == 0 )); then
+    fail "Missing required --mode <prod|dev|all>."
+  fi
   case "${MODE}" in
     prod|dev|all) ;;
     *) fail "Invalid --mode: ${MODE} (expected prod|dev|all)" ;;
@@ -206,15 +206,6 @@ resolve_default_client_port() {
   fi
 }
 
-resolve_default_users_db() {
-  local contour="$1"
-  if [[ "${contour}" == "prod" ]]; then
-    printf '%s' "${DEFAULT_PROD_USERS_DB}"
-  else
-    printf '%s' "${DEFAULT_DEV_USERS_DB}"
-  fi
-}
-
 resolve_default_updater_state_dir() {
   local contour="$1"
   if [[ "${contour}" == "prod" ]]; then
@@ -228,7 +219,7 @@ ensure_single_contour_overrides_only() {
   if [[ "${MODE}" != "all" ]]; then
     return
   fi
-  if (( ENGINE_HOST_SET == 1 || CLIENT_HOST_SET == 1 || ENGINE_PORT_SET == 1 || CLIENT_PORT_SET == 1 || ENGINE_SERVICE_NAME_SET == 1 || CLIENT_SERVICE_NAME_SET == 1 || UPDATER_SERVICE_NAME_SET == 1 || UPDATER_TIMER_NAME_SET == 1 || CLIENT_ENGINE_INGEST_BASE_URL_SET == 1 || CLIENT_USERS_DB_SET == 1 )); then
+  if (( ENGINE_HOST_SET == 1 || CLIENT_HOST_SET == 1 || ENGINE_PORT_SET == 1 || CLIENT_PORT_SET == 1 || ENGINE_SERVICE_NAME_SET == 1 || CLIENT_SERVICE_NAME_SET == 1 || UPDATER_SERVICE_NAME_SET == 1 || UPDATER_TIMER_NAME_SET == 1 || CLIENT_ENGINE_INGEST_BASE_URL_SET == 1 )); then
     fail "Contour-specific overrides are not allowed with --mode all. Run per contour or use defaults."
   fi
 }
@@ -383,7 +374,6 @@ install_contour() {
   local client_port
   local engine_host
   local client_host
-  local users_db
   local engine_ingest_base
   local with_timer
   local force_reinstall
@@ -398,7 +388,6 @@ install_contour() {
   client_port="$(resolve_default_client_port "${contour}")"
   engine_host="${ENGINE_HOST}"
   client_host="${CLIENT_HOST}"
-  users_db="$(resolve_default_users_db "${contour}")"
   week_state_dir="$(resolve_default_updater_state_dir "${contour}")"
 
   if [[ "${contour}" == "prod" ]]; then
@@ -415,7 +404,6 @@ install_contour() {
   if (( UPDATER_TIMER_NAME_SET == 1 )); then updater_timer_name="${UPDATER_TIMER_NAME}"; fi
   if (( ENGINE_PORT_SET == 1 )); then engine_port="${ENGINE_PORT}"; fi
   if (( CLIENT_PORT_SET == 1 )); then client_port="${CLIENT_PORT}"; fi
-  if (( CLIENT_USERS_DB_SET == 1 )); then users_db="${CLIENT_USERS_DB}"; fi
   if (( UPDATER_WEEK_STATE_DIR_SET == 1 )); then week_state_dir="${UPDATER_WEEK_STATE_DIR}"; fi
 
   if (( FORCE_REINSTALL_SET == 1 )); then force_reinstall="${FORCE_REINSTALL}"; fi
@@ -476,7 +464,6 @@ install_contour() {
     --host "${client_host}"
     --port "${client_port}"
     --engine-ingest-base "${engine_ingest_base}"
-    --users-db "${users_db}"
     --publish-mode "${CLIENT_PUBLISH_MODE}"
   )
   if (( force_reinstall == 1 )); then
@@ -505,6 +492,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode|--contour)
       MODE="${2:-}"
+      MODE_SET=1
       shift 2
       ;;
     --project-dir)
@@ -558,11 +546,6 @@ while [[ $# -gt 0 ]]; do
     --client-engine-ingest-base-url)
       CLIENT_ENGINE_INGEST_BASE_URL="${2:-}"
       CLIENT_ENGINE_INGEST_BASE_URL_SET=1
-      shift 2
-      ;;
-    --client-users-db)
-      CLIENT_USERS_DB="${2:-}"
-      CLIENT_USERS_DB_SET=1
       shift 2
       ;;
     --client-publish-mode)

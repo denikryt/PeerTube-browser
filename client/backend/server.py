@@ -97,7 +97,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run PeerTube Client backend service.")
     parser.add_argument("--host", default=DEFAULT_CLIENT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_CLIENT_PORT)
-    parser.add_argument("--users-db", default=DEFAULT_USERS_DB_PATH)
     parser.add_argument("--engine-ingest-base", default=DEFAULT_ENGINE_INGEST_BASE)
     parser.add_argument("--publish-mode", default=_resolve_mode(DEFAULT_CLIENT_PUBLISH_MODE))
     return parser.parse_args()
@@ -779,7 +778,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, _handle_shutdown_signal)
     signal.signal(signal.SIGTERM, _handle_shutdown_signal)
 
-    users_db_path = (ROOT_DIR / args.users_db).resolve()
+    users_db_path = (ROOT_DIR / DEFAULT_USERS_DB_PATH).resolve()
     users_db_path.parent.mkdir(parents=True, exist_ok=True)
     user_db = connect_db(users_db_path)
     ensure_user_schema(user_db)

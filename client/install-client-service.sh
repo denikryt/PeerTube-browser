@@ -11,7 +11,6 @@ CLIENT_SERVICE_NAME=""
 CLIENT_HOST="127.0.0.1"
 CLIENT_PORT=""
 ENGINE_INGEST_BASE=""
-USERS_DB_PATH=""
 PUBLISH_MODE="bridge"
 FORCE_REINSTALL=0
 DRY_RUN=0
@@ -20,8 +19,6 @@ DEFAULT_PROD_CLIENT_PORT=7072
 DEFAULT_DEV_CLIENT_PORT=7172
 DEFAULT_PROD_ENGINE_PORT=7070
 DEFAULT_DEV_ENGINE_PORT=7171
-DEFAULT_USERS_DB_PROD="client/backend/db/users.db"
-DEFAULT_USERS_DB_DEV="client/backend/db/users-dev.db"
 
 print_usage() {
   cat <<'EOF_USAGE'
@@ -37,7 +34,6 @@ Options:
   --host <host>               Client bind host (default: 127.0.0.1)
   --port <port>               Client bind port (default: 7072 prod, 7172 dev)
   --engine-ingest-base <url>  Engine ingest base URL for Client bridge (default: contour-local)
-  --users-db <path>           Users DB path relative to project root (default: contour-specific)
   --publish-mode <mode>       Client publish mode (default: bridge)
   --force                     Force reinstall selected service unit (stop/disable/remove/recreate)
   --dry-run                   Print planned actions without writing system files
@@ -121,10 +117,6 @@ while [[ $# -gt 0 ]]; do
       ENGINE_INGEST_BASE="${2:-}"
       shift 2
       ;;
-    --users-db)
-      USERS_DB_PATH="${2:-}"
-      shift 2
-      ;;
     --publish-mode)
       PUBLISH_MODE="${2:-}"
       shift 2
@@ -175,18 +167,9 @@ if [[ -z "${ENGINE_INGEST_BASE}" ]]; then
   fi
 fi
 
-if [[ -z "${USERS_DB_PATH}" ]]; then
-  if [[ "${MODE}" == "prod" ]]; then
-    USERS_DB_PATH="${DEFAULT_USERS_DB_PROD}"
-  else
-    USERS_DB_PATH="${DEFAULT_USERS_DB_DEV}"
-  fi
-fi
-
 [[ -n "${CLIENT_HOST}" ]] || fail "--host cannot be empty"
 [[ -n "${SERVICE_USER}" ]] || fail "--service-user cannot be empty"
 [[ -n "${ENGINE_INGEST_BASE}" ]] || fail "--engine-ingest-base cannot be empty"
-[[ -n "${USERS_DB_PATH}" ]] || fail "--users-db cannot be empty"
 [[ -n "${PUBLISH_MODE}" ]] || fail "--publish-mode cannot be empty"
 
 PROJECT_DIR="$(realpath "${PROJECT_DIR}")"
@@ -210,7 +193,7 @@ User=${SERVICE_USER}
 WorkingDirectory=${PROJECT_DIR}
 Environment=PYTHONUNBUFFERED=1
 Environment=CLIENT_PUBLISH_MODE=${PUBLISH_MODE}
-ExecStart=${VENV_PY} ${CLIENT_PY} --host ${CLIENT_HOST} --port ${CLIENT_PORT} --users-db ${USERS_DB_PATH} --engine-ingest-base ${ENGINE_INGEST_BASE} --publish-mode ${PUBLISH_MODE}
+ExecStart=${VENV_PY} ${CLIENT_PY} --host ${CLIENT_HOST} --port ${CLIENT_PORT} --engine-ingest-base ${ENGINE_INGEST_BASE} --publish-mode ${PUBLISH_MODE}
 Restart=on-failure
 TimeoutStopSec=20
 
@@ -225,7 +208,6 @@ if (( DRY_RUN == 1 )); then
   echo "  host=${CLIENT_HOST}"
   echo "  port=${CLIENT_PORT}"
   echo "  engine_ingest_base=${ENGINE_INGEST_BASE}"
-  echo "  users_db=${USERS_DB_PATH}"
   echo "  publish_mode=${PUBLISH_MODE}"
   echo "  user=${SERVICE_USER}"
   echo "  unit=${UNIT_PATH}"
