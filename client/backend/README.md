@@ -17,7 +17,7 @@ Write/profile API service for PeerTube Browser Client.
 CLIENT_PUBLISH_MODE=bridge ./venv/bin/python3 client/backend/server.py \
   --host 127.0.0.1 \
   --port 7172 \
-  --engine-ingest-base http://127.0.0.1:7171
+  --engine-url http://127.0.0.1:7171
 ```
 
 `CLIENT_PUBLISH_MODE`:

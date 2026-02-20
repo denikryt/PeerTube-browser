@@ -42,7 +42,7 @@ sudo bash install-service-dev.sh --without-updater-timer
 Service-specific installers (each supports its own `--mode prod|dev`):
 ```bash
 sudo bash engine/install-engine-service.sh --mode prod --force
-sudo bash client/install-client-service.sh --mode dev --force --engine-ingest-base http://127.0.0.1:7171
+sudo bash client/install-client-service.sh --mode dev --force --engine-url http://127.0.0.1:7171
 ```
 
 Uninstall (symmetric):
@@ -85,7 +85,7 @@ From the project root:
 ```bash
 CLIENT_PUBLISH_MODE=bridge ./venv/bin/python3 client/backend/server.py \
   --port 7072 \
-  --engine-ingest-base http://127.0.0.1:7070
+  --engine-url http://127.0.0.1:7070
 ```
 
 Boundary contract (mandatory):

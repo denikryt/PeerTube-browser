@@ -30,8 +30,8 @@ ENGINE_SERVICE_NAME_SET=0
 CLIENT_SERVICE_NAME_SET=0
 UPDATER_SERVICE_NAME_SET=0
 UPDATER_TIMER_NAME_SET=0
-CLIENT_ENGINE_INGEST_BASE_URL=""
-CLIENT_ENGINE_INGEST_BASE_URL_SET=0
+CLIENT_ENGINE_URL=""
+CLIENT_ENGINE_URL_SET=0
 CLIENT_PUBLISH_MODE="bridge"
 
 UPDATER_TIMER_ONCALENDAR="${UPDATER_TIMER_ONCALENDAR:-Fri *-*-* 20:00:00}"
@@ -87,7 +87,7 @@ Options:
   --updater-service-name <name> Updater service base name override (single-contour mode only)
   --updater-timer-name <name>   Updater timer base name override (single-contour mode only)
 
-  --client-engine-ingest-base-url <url>  Client -> Engine ingest base override
+  --client-engine-url <url>              Client -> Engine URL override
   --client-publish-mode <mode>           Client publish mode (default: bridge)
 
   --with-updater-timer      Enable contour updater timer/service
@@ -219,7 +219,7 @@ ensure_single_contour_overrides_only() {
   if [[ "${MODE}" != "all" ]]; then
     return
   fi
-  if (( ENGINE_HOST_SET == 1 || CLIENT_HOST_SET == 1 || ENGINE_PORT_SET == 1 || CLIENT_PORT_SET == 1 || ENGINE_SERVICE_NAME_SET == 1 || CLIENT_SERVICE_NAME_SET == 1 || UPDATER_SERVICE_NAME_SET == 1 || UPDATER_TIMER_NAME_SET == 1 || CLIENT_ENGINE_INGEST_BASE_URL_SET == 1 )); then
+  if (( ENGINE_HOST_SET == 1 || CLIENT_HOST_SET == 1 || ENGINE_PORT_SET == 1 || CLIENT_PORT_SET == 1 || ENGINE_SERVICE_NAME_SET == 1 || CLIENT_SERVICE_NAME_SET == 1 || UPDATER_SERVICE_NAME_SET == 1 || UPDATER_TIMER_NAME_SET == 1 || CLIENT_ENGINE_URL_SET == 1 )); then
     fail "Contour-specific overrides are not allowed with --mode all. Run per contour or use defaults."
   fi
 }
@@ -427,8 +427,8 @@ install_contour() {
     fail "Engine and Client ports must differ for contour=${contour}"
   fi
 
-  if (( CLIENT_ENGINE_INGEST_BASE_URL_SET == 1 )); then
-    engine_ingest_base="${CLIENT_ENGINE_INGEST_BASE_URL}"
+  if (( CLIENT_ENGINE_URL_SET == 1 )); then
+    engine_ingest_base="${CLIENT_ENGINE_URL}"
   else
     engine_ingest_base="http://${engine_host}:${engine_port}"
   fi
@@ -463,7 +463,7 @@ install_contour() {
     --service-name "${client_service_name}"
     --host "${client_host}"
     --port "${client_port}"
-    --engine-ingest-base "${engine_ingest_base}"
+    --engine-url "${engine_ingest_base}"
     --publish-mode "${CLIENT_PUBLISH_MODE}"
   )
   if (( force_reinstall == 1 )); then
@@ -543,9 +543,9 @@ while [[ $# -gt 0 ]]; do
       UPDATER_TIMER_NAME_SET=1
       shift 2
       ;;
-    --client-engine-ingest-base-url)
-      CLIENT_ENGINE_INGEST_BASE_URL="${2:-}"
-      CLIENT_ENGINE_INGEST_BASE_URL_SET=1
+    --client-engine-url)
+      CLIENT_ENGINE_URL="${2:-}"
+      CLIENT_ENGINE_URL_SET=1
       shift 2
       ;;
     --client-publish-mode)

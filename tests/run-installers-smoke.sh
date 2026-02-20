@@ -809,7 +809,7 @@ run_contract_matrix() {
   check_cmd_success "help_install_engine" bash "${ROOT_DIR}/engine/install-engine-service.sh" --help || true
   check_output_contains "help_install_engine_mode_flag" "${TMP_DIR}/help_install_engine.log" "--mode <prod|dev>" || true
   check_cmd_success "help_install_client" bash "${ROOT_DIR}/client/install-client-service.sh" --help || true
-  check_output_contains "help_install_client_ingest_flag" "${TMP_DIR}/help_install_client.log" "--engine-ingest-base" || true
+  check_output_contains "help_install_client_engine_url_flag" "${TMP_DIR}/help_install_client.log" "--engine-url" || true
   check_cmd_success "help_uninstall_engine" bash "${ROOT_DIR}/engine/uninstall-engine-service.sh" --help || true
   check_output_contains "help_uninstall_engine_mode_flag" "${TMP_DIR}/help_uninstall_engine.log" "--mode <prod|dev>" || true
   check_cmd_success "help_uninstall_client" bash "${ROOT_DIR}/client/uninstall-client-service.sh" --help || true
@@ -961,7 +961,7 @@ run_live_contour_service_specific_dev() {
 
   check_cmd_success "dev_specific_preclean_uninstall" bash "${ROOT_DIR}/uninstall-service.sh" --mode dev --project-dir "${ROOT_DIR}" --purge-updater-state || true
   check_cmd_success "dev_specific_install_engine" bash "${ROOT_DIR}/engine/install-engine-service.sh" --mode dev --project-dir "${ROOT_DIR}" --force || true
-  check_cmd_success "dev_specific_install_client" bash "${ROOT_DIR}/client/install-client-service.sh" --mode dev --project-dir "${ROOT_DIR}" --force --engine-ingest-base "http://127.0.0.1:${DEV_ENGINE_PORT}" || true
+  check_cmd_success "dev_specific_install_client" bash "${ROOT_DIR}/client/install-client-service.sh" --mode dev --project-dir "${ROOT_DIR}" --force --engine-url "http://127.0.0.1:${DEV_ENGINE_PORT}" || true
 
   assert_service_active "dev_specific_engine_active" "${DEV_ENGINE_SERVICE}.service" || true
   assert_service_active "dev_specific_client_active" "${DEV_CLIENT_SERVICE}.service" || true

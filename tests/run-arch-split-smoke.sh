@@ -530,7 +530,7 @@ if (( ERROR_COUNT == 0 )); then
   log "Starting Client process"
   CLIENT_PUBLISH_MODE=bridge "${RUNTIME_PY}" "${ROOT_DIR}/client/backend/server.py" \
     --host "${CLIENT_HOST}" --port "${CLIENT_PORT}" \
-    --engine-ingest-base "${ENGINE_URL}" >"${CLIENT_LOG}" 2>&1 &
+    --engine-url "${ENGINE_URL}" >"${CLIENT_LOG}" 2>&1 &
   CLIENT_PID="$!"
 
   CHECK_COUNT=$((CHECK_COUNT + 1))

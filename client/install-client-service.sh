@@ -10,7 +10,7 @@ MODE=""
 CLIENT_SERVICE_NAME=""
 CLIENT_HOST="127.0.0.1"
 CLIENT_PORT=""
-ENGINE_INGEST_BASE=""
+ENGINE_URL=""
 PUBLISH_MODE="bridge"
 FORCE_REINSTALL=0
 DRY_RUN=0
@@ -33,7 +33,7 @@ Options:
   --service-name <name>       Override Client unit base name (default: peertube-client[-dev])
   --host <host>               Client bind host (default: 127.0.0.1)
   --port <port>               Client bind port (default: 7072 prod, 7172 dev)
-  --engine-ingest-base <url>  Engine ingest base URL for Client bridge (default: contour-local)
+  --engine-url <url>          Engine base URL for Client bridge (default: contour-local)
   --publish-mode <mode>       Client publish mode (default: bridge)
   --force                     Force reinstall selected service unit (stop/disable/remove/recreate)
   --dry-run                   Print planned actions without writing system files
@@ -43,7 +43,7 @@ Examples:
   sudo ./client/install-client-service.sh --mode prod
   sudo ./client/install-client-service.sh --mode dev
   sudo ./client/install-client-service.sh --mode dev --service-name peertube-client-dev --port 7172
-  sudo ./client/install-client-service.sh --mode prod --engine-ingest-base http://127.0.0.1:7070
+  sudo ./client/install-client-service.sh --mode prod --engine-url http://127.0.0.1:7070
   sudo ./client/install-client-service.sh --mode dev --dry-run
 EOF_USAGE
 }
@@ -113,8 +113,8 @@ while [[ $# -gt 0 ]]; do
       CLIENT_PORT="${2:-}"
       shift 2
       ;;
-    --engine-ingest-base)
-      ENGINE_INGEST_BASE="${2:-}"
+    --engine-url)
+      ENGINE_URL="${2:-}"
       shift 2
       ;;
     --publish-mode)
@@ -159,17 +159,17 @@ if [[ -z "${CLIENT_PORT}" ]]; then
 fi
 validate_port "${CLIENT_PORT}"
 
-if [[ -z "${ENGINE_INGEST_BASE}" ]]; then
+if [[ -z "${ENGINE_URL}" ]]; then
   if [[ "${MODE}" == "prod" ]]; then
-    ENGINE_INGEST_BASE="http://127.0.0.1:${DEFAULT_PROD_ENGINE_PORT}"
+    ENGINE_URL="http://127.0.0.1:${DEFAULT_PROD_ENGINE_PORT}"
   else
-    ENGINE_INGEST_BASE="http://127.0.0.1:${DEFAULT_DEV_ENGINE_PORT}"
+    ENGINE_URL="http://127.0.0.1:${DEFAULT_DEV_ENGINE_PORT}"
   fi
 fi
 
 [[ -n "${CLIENT_HOST}" ]] || fail "--host cannot be empty"
 [[ -n "${SERVICE_USER}" ]] || fail "--service-user cannot be empty"
-[[ -n "${ENGINE_INGEST_BASE}" ]] || fail "--engine-ingest-base cannot be empty"
+[[ -n "${ENGINE_URL}" ]] || fail "--engine-url cannot be empty"
 [[ -n "${PUBLISH_MODE}" ]] || fail "--publish-mode cannot be empty"
 
 PROJECT_DIR="$(realpath "${PROJECT_DIR}")"
@@ -193,7 +193,7 @@ User=${SERVICE_USER}
 WorkingDirectory=${PROJECT_DIR}
 Environment=PYTHONUNBUFFERED=1
 Environment=CLIENT_PUBLISH_MODE=${PUBLISH_MODE}
-ExecStart=${VENV_PY} ${CLIENT_PY} --host ${CLIENT_HOST} --port ${CLIENT_PORT} --engine-ingest-base ${ENGINE_INGEST_BASE} --publish-mode ${PUBLISH_MODE}
+ExecStart=${VENV_PY} ${CLIENT_PY} --host ${CLIENT_HOST} --port ${CLIENT_PORT} --engine-url ${ENGINE_URL} --publish-mode ${PUBLISH_MODE}
 Restart=on-failure
 TimeoutStopSec=20
 
@@ -207,7 +207,7 @@ if (( DRY_RUN == 1 )); then
   echo "  service=${CLIENT_SERVICE_NAME}"
   echo "  host=${CLIENT_HOST}"
   echo "  port=${CLIENT_PORT}"
-  echo "  engine_ingest_base=${ENGINE_INGEST_BASE}"
+  echo "  engine_url=${ENGINE_URL}"
   echo "  publish_mode=${PUBLISH_MODE}"
   echo "  user=${SERVICE_USER}"
   echo "  unit=${UNIT_PATH}"

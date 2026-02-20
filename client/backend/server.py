@@ -32,7 +32,7 @@ ROOT_DIR = SCRIPT_DIR.parent.parent
 
 DEFAULT_CLIENT_HOST = "127.0.0.1"
 DEFAULT_CLIENT_PORT = 7172
-DEFAULT_ENGINE_INGEST_BASE = "http://127.0.0.1:7171"
+DEFAULT_ENGINE_INGEST_BASE = "http://127.0.0.1:7070"
 DEFAULT_USERS_DB_PATH = "client/backend/db/users.db"
 DEFAULT_CLIENT_PUBLISH_MODE = os.environ.get("CLIENT_PUBLISH_MODE", "bridge").strip().lower()
 MAX_LIKES = 100
@@ -97,7 +97,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run PeerTube Client backend service.")
     parser.add_argument("--host", default=DEFAULT_CLIENT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_CLIENT_PORT)
-    parser.add_argument("--engine-ingest-base", default=DEFAULT_ENGINE_INGEST_BASE)
+    parser.add_argument("--engine-url", dest="engine_ingest_base", default=DEFAULT_ENGINE_INGEST_BASE)
     parser.add_argument("--publish-mode", default=_resolve_mode(DEFAULT_CLIENT_PUBLISH_MODE))
     return parser.parse_args()
 
