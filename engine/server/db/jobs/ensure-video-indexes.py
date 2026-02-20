@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 script_dir = Path(__file__).resolve().parent
-sys.path.append(str(script_dir.parents[2]))
+sys.path.append(str(script_dir.parents[1]))
 
 from data.db import connect_db
 from data.videos import ensure_video_indexes
@@ -18,7 +18,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Create video/embedding indexes used by seed lookups."
     )
-    repo_root = script_dir.parents[4]
+    repo_root = script_dir.parents[3]
     api_dir = repo_root / "engine" / "server" / "api"
     if str(api_dir) not in sys.path:
         sys.path.insert(0, str(api_dir))

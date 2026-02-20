@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 script_dir = Path(__file__).resolve().parent
-sys.path.append(str(script_dir.parents[2]))
+sys.path.append(str(script_dir.parents[1]))
 
 from data.random_cache import connect_random_cache_db, populate_random_cache
 
@@ -25,7 +25,7 @@ def connect_source_db(path: Path) -> sqlite3.Connection:
 def main() -> None:
     """Handle main."""
     parser = argparse.ArgumentParser(description="Precompute random rowid cache.")
-    repo_root = script_dir.parents[4]
+    repo_root = script_dir.parents[3]
     api_dir = repo_root / "engine" / "server" / "api"
     if str(api_dir) not in sys.path:
         sys.path.insert(0, str(api_dir))

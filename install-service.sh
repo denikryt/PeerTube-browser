@@ -69,6 +69,10 @@ Modes:
   --mode dev       Install/update dev contour
   --mode all       Install/update both prod and dev contours sequentially
 
+Default contour behavior (when flags are omitted):
+  prod: --force + --with-updater-timer
+  dev : --force + --without-updater-timer
+
 Options:
   --mode <prod|dev|all>       Installation contour mode
   --contour <prod|dev|all>    Alias for --mode
@@ -402,7 +406,7 @@ install_contour() {
     force_reinstall=1
   else
     with_timer=0
-    force_reinstall=0
+    force_reinstall=1
   fi
 
   if (( ENGINE_SERVICE_NAME_SET == 1 )); then engine_service_name="${ENGINE_SERVICE_NAME}"; fi

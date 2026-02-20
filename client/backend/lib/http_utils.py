@@ -1,6 +1,7 @@
 """HTTP and request utilities for Client backend."""
 from __future__ import annotations
 
+import errno
 import json
 import threading
 from collections import deque
@@ -9,6 +10,24 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any
 
 DEFAULT_USER_ID = "local-user"
+
+
+def _is_client_disconnect_error(exc: OSError) -> bool:
+    """Return True when the client socket closes during response write."""
+    return exc.errno in {errno.EPIPE, errno.ECONNRESET}
+
+
+def _finish_response(handler: BaseHTTPRequestHandler, body: bytes = b"") -> bool:
+    """Flush headers and body, suppressing expected client disconnect errors."""
+    try:
+        handler.end_headers()
+        if body:
+            handler.wfile.write(body)
+    except OSError as exc:
+        if _is_client_disconnect_error(exc):
+            return False
+        raise
+    return True
 
 
 def resolve_user_id(raw: str | None) -> str:
@@ -20,7 +39,7 @@ def resolve_user_id(raw: str | None) -> str:
     return DEFAULT_USER_ID
 
 
-def respond_json(handler: BaseHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
+def respond_json(handler: BaseHTTPRequestHandler, status: int, payload: dict[str, Any]) -> bool:
     """Send a JSON response with CORS headers."""
     body = json.dumps(payload, indent=2).encode("utf-8")
     handler.send_response(status)
@@ -29,18 +48,33 @@ def respond_json(handler: BaseHTTPRequestHandler, status: int, payload: dict[str
     handler.send_header("access-control-allow-methods", "GET, POST, OPTIONS")
     handler.send_header("access-control-allow-headers", "content-type")
     handler.send_header("content-length", str(len(body)))
-    handler.end_headers()
-    handler.wfile.write(body)
+    return _finish_response(handler, body)
 
 
-def respond_options(handler: BaseHTTPRequestHandler) -> None:
+def respond_bytes(
+    handler: BaseHTTPRequestHandler,
+    status: int,
+    payload: bytes,
+    content_type: str = "application/octet-stream",
+) -> bool:
+    """Send a non-JSON response payload with CORS headers."""
+    handler.send_response(status)
+    handler.send_header("content-type", content_type)
+    handler.send_header("access-control-allow-origin", "*")
+    handler.send_header("access-control-allow-methods", "GET, POST, OPTIONS")
+    handler.send_header("access-control-allow-headers", "content-type")
+    handler.send_header("content-length", str(len(payload)))
+    return _finish_response(handler, payload)
+
+
+def respond_options(handler: BaseHTTPRequestHandler) -> bool:
     """Respond to CORS preflight requests."""
     handler.send_response(204)
     handler.send_header("access-control-allow-origin", "*")
     handler.send_header("access-control-allow-methods", "GET, POST, OPTIONS")
     handler.send_header("access-control-allow-headers", "content-type")
     handler.send_header("access-control-max-age", "600")
-    handler.end_headers()
+    return _finish_response(handler)
 
 
 def read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, Any]:

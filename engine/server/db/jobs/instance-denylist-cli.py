@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 script_dir = Path(__file__).resolve().parent
-server_dir = script_dir.parents[2]
+server_dir = script_dir.parents[1]
 if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
 api_dir = server_dir / "api"
@@ -38,7 +38,7 @@ class DenylistHelpFormatter(
 
 def parse_args() -> argparse.Namespace:
     """Handle parse args."""
-    repo_root = script_dir.parents[4]
+    repo_root = script_dir.parents[3]
     help_overview = (
         "Commands:\n"
         "  block --host HOST [--reason TEXT] [--note TEXT] [--purge-now] [--dry-run] [--yes]\n"

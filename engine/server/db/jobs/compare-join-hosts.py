@@ -12,7 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 script_dir = Path(__file__).resolve().parent
-server_dir = script_dir.parents[2]
+server_dir = script_dir.parents[1]
 if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
 api_dir = server_dir / "api"
@@ -30,7 +30,7 @@ DEFAULT_URL = (
 
 def parse_args() -> argparse.Namespace:
     """Handle parse args."""
-    repo_root = script_dir.parents[4]
+    repo_root = script_dir.parents[3]
     parser = argparse.ArgumentParser(
         description=(
             "Compare JoinPeerTube host list with local instances table and show "

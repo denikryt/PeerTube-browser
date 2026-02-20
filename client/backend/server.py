@@ -22,7 +22,7 @@ from datetime import datetime
 from lib.engine_api_client import (EngineApiError, fetch_metadata_for_entries,
                                    resolve_video_seed, resolve_videos_by_uuid_host)
 from lib.http_utils import (RateLimiter, read_json_body, resolve_user_id,
-                            respond_json, respond_options)
+                            respond_bytes, respond_json, respond_options)
 from lib.time_utils import now_ms
 from lib.users_store import (clear_likes, ensure_user_schema, fetch_recent_likes,
                              get_or_create_user, record_like, remove_like)
@@ -382,14 +382,20 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
                     status = int(response.status)
                     duration_ms = int((time.perf_counter() - started_at) * 1000)
                     content_type = response.headers.get("content-type", "application/json; charset=utf-8")
-                    self.send_response(status)
-                    self.send_header("content-type", content_type)
-                    self.send_header("access-control-allow-origin", "*")
-                    self.send_header("access-control-allow-methods", "GET, POST, OPTIONS")
-                    self.send_header("access-control-allow-headers", "content-type")
-                    self.send_header("content-length", str(len(payload)))
-                    self.end_headers()
-                    self.wfile.write(payload)
+                    if not respond_bytes(self, status, payload, content_type):
+                        _emit_client_log(
+                            logging.INFO,
+                            "engine.proxy",
+                            "client disconnected before proxy response write",
+                            {
+                                "method": method,
+                                "path": path,
+                                "status": status,
+                                "attempt": attempt + 1,
+                                "duration_ms": duration_ms,
+                            },
+                        )
+                        return
                     _emit_client_log(
                         logging.INFO,
                         "engine.proxy",
@@ -408,14 +414,20 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
                 if payload:
                     content_type = exc.headers.get("content-type", "application/json; charset=utf-8")
                     duration_ms = int((time.perf_counter() - started_at) * 1000)
-                    self.send_response(int(exc.code))
-                    self.send_header("content-type", content_type)
-                    self.send_header("access-control-allow-origin", "*")
-                    self.send_header("access-control-allow-methods", "GET, POST, OPTIONS")
-                    self.send_header("access-control-allow-headers", "content-type")
-                    self.send_header("content-length", str(len(payload)))
-                    self.end_headers()
-                    self.wfile.write(payload)
+                    if not respond_bytes(self, int(exc.code), payload, content_type):
+                        _emit_client_log(
+                            logging.INFO,
+                            "engine.proxy",
+                            "client disconnected before proxy response write",
+                            {
+                                "method": method,
+                                "path": path,
+                                "status": int(exc.code),
+                                "attempt": attempt + 1,
+                                "duration_ms": duration_ms,
+                            },
+                        )
+                        return
                     _emit_client_log(
                         logging.INFO,
                         "engine.proxy",

@@ -4,23 +4,25 @@ set -euo pipefail
 show_help() {
   cat <<'EOF'
 Usage:
-  watch-engine-logs.sh
-  watch-engine-logs.sh MODE UNIT [SINCE]
-  watch-engine-logs.sh --mode MODE --unit UNIT [--since SINCE]
+  watch-engine-logs.sh -dev [--mode MODE] [--since SINCE]
+  watch-engine-logs.sh -prod [--mode MODE] [--since SINCE]
 
-Arguments:
-  MODE   Log view mode: focused | verbose (default: focused)
-  UNIT   systemd unit name (default: peertube-engine)
-  SINCE  Optional journalctl --since value (example: "10 min ago", "today")
+Environment flags (required):
+  -dev, --dev    Use peertube-engine-dev.service
+  -prod, --prod  Use peertube-engine.service
+
+Options:
+  --mode MODE    Log view mode: focused | verbose (default: focused)
+  --since SINCE  Optional journalctl --since value (example: "10 min ago", "today")
 
 Examples:
-  bash engine/watch-engine-logs.sh
-  bash engine/watch-engine-logs.sh focused peertube-engine-dev.service
-  bash engine/watch-engine-logs.sh focused peertube-engine "10 min ago"
-  bash engine/watch-engine-logs.sh --mode focused --unit peertube-engine-dev.service --since "30 min ago"
+  bash engine/watch-engine-logs.sh -dev
+  bash engine/watch-engine-logs.sh -prod
+  bash engine/watch-engine-logs.sh -prod --mode verbose
+  bash engine/watch-engine-logs.sh --dev --since "30 min ago"
 
 Notes:
-  - Argument order is strict. Mixed formats are rejected.
+  - Argument order is flexible.
   - Reads live logs from journalctl and filters JSON records by .modes.
   - WARNING/ERROR/CRITICAL are shown in all modes.
 EOF
@@ -32,8 +34,9 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
 fi
 
 MODE="focused"
-UNIT="peertube-engine"
+UNIT=""
 SINCE=""
+SINCE_SET=0
 
 KNOWN_MODES=("focused" "verbose")
 is_known_mode() {
@@ -47,41 +50,59 @@ is_known_mode() {
 }
 
 if [[ $# -eq 0 ]]; then
-  MODE="focused"
-  UNIT="peertube-engine"
-  SINCE=""
-elif [[ "$1" == "--"* ]]; then
-  if [[ $# -lt 4 ]]; then
-    echo "Invalid args. Required: --mode MODE --unit UNIT [--since SINCE]" >&2
-    echo "Use --help for usage." >&2
-    exit 1
-  fi
-  if [[ "$1" != "--mode" || "$3" != "--unit" ]]; then
-    echo "Invalid flag order. Required: --mode MODE --unit UNIT [--since SINCE]" >&2
-    echo "Use --help for usage." >&2
-    exit 1
-  fi
-  MODE="$2"
-  UNIT="$4"
-  shift 4
-  if [[ $# -eq 0 ]]; then
-    SINCE=""
-  elif [[ $# -eq 2 && "$1" == "--since" ]]; then
-    SINCE="$2"
-  else
-    echo "Invalid trailing args. Allowed only: --since SINCE" >&2
-    echo "Use --help for usage." >&2
-    exit 1
-  fi
-else
-  if [[ $# -ne 2 && $# -ne 3 ]]; then
-    echo "Invalid positional args. Required: MODE UNIT [SINCE]" >&2
-    echo "Use --help for usage." >&2
-    exit 1
-  fi
-  MODE="$1"
-  UNIT="$2"
-  SINCE="${3:-}"
+  echo "Missing environment flag: choose -dev or -prod. Use --help for usage." >&2
+  exit 1
+fi
+
+while [[ $# -gt 0 ]]; do
+  case "${1}" in
+    -dev|--dev)
+      if [[ -n "${UNIT}" ]]; then
+        echo "Only one environment flag is allowed: -dev or -prod." >&2
+        exit 1
+      fi
+      UNIT="peertube-engine-dev.service"
+      shift
+      ;;
+    -prod|--prod)
+      if [[ -n "${UNIT}" ]]; then
+        echo "Only one environment flag is allowed: -dev or -prod." >&2
+        exit 1
+      fi
+      UNIT="peertube-engine.service"
+      shift
+      ;;
+    --mode)
+      if [[ $# -lt 2 ]]; then
+        echo "Option --mode requires a value. Use --help for usage." >&2
+        exit 1
+      fi
+      MODE="${2}"
+      shift 2
+      ;;
+    --since)
+      if [[ $# -lt 2 ]]; then
+        echo "Option --since requires a value. Use --help for usage." >&2
+        exit 1
+      fi
+      if [[ ${SINCE_SET} -eq 1 ]]; then
+        echo "Option --since can be provided only once." >&2
+        exit 1
+      fi
+      SINCE="${2}"
+      SINCE_SET=1
+      shift 2
+      ;;
+    *)
+      echo "Invalid args. Use --help for usage." >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "${UNIT}" ]]; then
+  echo "Missing environment flag: choose -dev or -prod. Use --help for usage." >&2
+  exit 1
 fi
 
 if ! command -v journalctl >/dev/null 2>&1; then
@@ -93,8 +114,8 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ -z "${MODE}" || -z "${UNIT}" ]]; then
-  echo "MODE and UNIT must be non-empty." >&2
+if [[ -z "${MODE}" ]]; then
+  echo "MODE must be non-empty." >&2
   exit 1
 fi
 

@@ -13,7 +13,7 @@ from typing import Iterable
 import numpy as np
 
 script_dir = Path(__file__).resolve().parent
-server_dir = script_dir.parents[2]
+server_dir = script_dir.parents[1]
 if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
 

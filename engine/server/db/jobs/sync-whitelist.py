@@ -14,7 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 script_dir = Path(__file__).resolve().parent
-server_dir = script_dir.parents[2]
+server_dir = script_dir.parents[1]
 if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
 api_dir = server_dir / "api"
@@ -33,7 +33,7 @@ DEFAULT_WHITELIST_DB_PATH = Path("engine/server/db/whitelist.db")
 TABLE_NAME = "instances"
 SOURCE_SCHEMA = "source"
 MODES = ("include", "exclude")
-SCHEMA_SQL_PATH = (script_dir.parents[4] / "engine" / "crawler" / "schema.sql").resolve()
+SCHEMA_SQL_PATH = (script_dir.parents[3] / "engine" / "crawler" / "schema.sql").resolve()
 
 EXCLUDED_CHANNEL_COLUMNS: set[str] = set()
 EXCLUDED_VIDEO_COLUMNS: set[str] = set()

@@ -5,8 +5,17 @@ from __future__ import annotations
 import argparse
 import logging
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
+
+script_dir = Path(__file__).resolve().parent
+server_dir = script_dir.parents[1]
+engine_dir = script_dir.parents[2]
+if str(server_dir) not in sys.path:
+    sys.path.insert(0, str(server_dir))
+if str(engine_dir) not in sys.path:
+    sys.path.insert(0, str(engine_dir))
 
 from scripts.cli_format import CompactHelpFormatter
 from server.db.jobs.whitelist_migrations import migrate_whitelist_schema

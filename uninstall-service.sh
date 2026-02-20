@@ -4,9 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
 
-MODE="prod" # prod | dev | all
+MODE="" # prod | dev | all
+MODE_SET=0
 DRY_RUN=0
 PURGE_UPDATER_STATE=0
+UPDATER_STATE_SET=0
 
 ENGINE_SERVICE_NAME=""
 CLIENT_SERVICE_NAME=""
@@ -39,12 +41,12 @@ Usage: sudo ./uninstall-service.sh [options]
 Centralized uninstaller for Engine + Client contours.
 
 Modes:
-  --mode prod      Uninstall prod contour (default)
+  --mode prod      Uninstall prod contour
   --mode dev       Uninstall dev contour
   --mode all       Uninstall both prod and dev contours sequentially
 
 Options:
-  --mode <prod|dev|all>       Uninstall contour mode
+  --mode <prod|dev|all>       Required uninstall contour mode
   --contour <prod|dev|all>    Alias for --mode
   --project-dir <path>        Project root path (default: script directory)
 
@@ -54,8 +56,8 @@ Options:
   --updater-timer-name <name>   Updater timer base name override (single-contour mode only)
   --updater-week-state-dir <path> Updater week-state directory override (single-contour mode only)
 
-  --purge-updater-state       Remove contour updater week-state file/empty dir
-  --keep-updater-state        Keep updater week-state artifacts (default)
+  --purge-updater-state       Remove contour updater week-state file/empty dir (required choice)
+  --keep-updater-state        Keep updater week-state artifacts (required choice)
   --dry-run                   Print actions without changing system files
   -h, --help                  Show this help
 EOF_USAGE
@@ -71,10 +73,19 @@ require_cmd() {
 }
 
 validate_mode() {
+  if (( MODE_SET == 0 )); then
+    fail "Missing required --mode <prod|dev|all>."
+  fi
   case "${MODE}" in
     prod|dev|all) ;;
     *) fail "Invalid --mode: ${MODE} (expected prod|dev|all)" ;;
   esac
+}
+
+validate_updater_state_choice() {
+  if (( UPDATER_STATE_SET == 0 )); then
+    fail "Missing updater state choice: pass --purge-updater-state or --keep-updater-state."
+  fi
 }
 
 validate_service_name() {
@@ -246,6 +257,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode|--contour)
       MODE="${2:-}"
+      MODE_SET=1
       shift 2
       ;;
     --project-dir)
@@ -279,10 +291,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --purge-updater-state)
       PURGE_UPDATER_STATE=1
+      UPDATER_STATE_SET=1
       shift
       ;;
     --keep-updater-state)
       PURGE_UPDATER_STATE=0
+      UPDATER_STATE_SET=1
       shift
       ;;
     --dry-run)
@@ -300,6 +314,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 validate_mode
+validate_updater_state_choice
 PROJECT_DIR="$(realpath "${PROJECT_DIR}")"
 [[ -d "${PROJECT_DIR}" ]] || fail "Project directory not found: ${PROJECT_DIR}"
 [[ -f "${PROJECT_DIR}/engine/uninstall-engine-service.sh" ]] || fail "Missing uninstaller: ${PROJECT_DIR}/engine/uninstall-engine-service.sh"
