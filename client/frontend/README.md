@@ -16,6 +16,6 @@ npm run build
 ```
 
 ## Local About Overrides
-- Default production source is `about.template.html`.
+- Default production source is `client/frontend/dev-pages/about.template.html`.
 - Local developer overrides can be placed in:
   - `client/frontend/dev-pages/about.html`

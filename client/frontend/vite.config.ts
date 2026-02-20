@@ -11,10 +11,11 @@ const rootDir = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const devPagesDir = resolve(rootDir, "dev-pages");
 
 const devAboutPath = resolve(devPagesDir, "about.html");
+const aboutTemplatePath = resolve(devPagesDir, "about.template.html");
 
 const aboutSourcePath = existsSync(devAboutPath)
   ? "/dev-pages/about.html"
-  : "/about.template.html";
+  : "/dev-pages/about.template.html";
 
 const rewriteToVideos = new Set(["/videos", "/videos/"]);
 const rewriteToAbout = new Set(["/about", "/about/", "/about.html"]);
@@ -82,7 +83,7 @@ export default defineConfig({
         channels: resolve(rootDir, "channels.html"),
         about: existsSync(devAboutPath)
           ? devAboutPath
-          : resolve(rootDir, "about.template.html"),
+          : aboutTemplatePath,
       },
     },
   },

@@ -23,3 +23,4 @@ __pycache__/
 client/frontend/run-client-sync-build.sh
 client/frontend/run-client-sync-build-client-dev.sh
 client/frontend/dev-pages/*
+!client/frontend/dev-pages/about.template.html
