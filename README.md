@@ -55,21 +55,21 @@ Installer topology:
   - `client/install-client-service.sh` (`--mode prod|dev`)
 - Centralized mode installer (source of truth):
   - `install-service.sh --mode prod|dev|all`
-- Mode wrappers:
-  - `install-service-prod.sh`
-  - `install-service-dev.sh`
 
 Examples:
 ```bash
-# Prod contour (force reinstall by default)
-sudo bash install-service-prod.sh
+# Prod contour defaults to: --force + --with-updater-timer
+sudo bash install-service.sh --mode prod
 
-# Dev contour (ports differ from prod; timer disabled by default)
-sudo bash install-service-dev.sh --without-updater-timer
+# Dev contour defaults to: --force + --without-updater-timer
+sudo bash install-service.sh --mode dev
 
 # Centralized direct mode usage
 sudo bash install-service.sh --mode prod --force --with-updater-timer
 sudo bash install-service.sh --mode dev --force --without-updater-timer
+
+# Reinstall only updater units for selected contour
+sudo bash install-service.sh --mode prod --reinstall-updater-only
 ```
 
 ## Service uninstallers (task 51)
@@ -79,20 +79,16 @@ Uninstall topology:
   - `client/uninstall-client-service.sh` (`--mode prod|dev`)
 - Centralized mode uninstaller (source of truth):
   - `uninstall-service.sh --mode prod|dev|all`
-- Mode wrappers:
-  - `uninstall-service-prod.sh`
-  - `uninstall-service-dev.sh`
 
 Examples:
 ```bash
-# Uninstall prod contour
-sudo bash uninstall-service-prod.sh
+# Keep updater state artifacts while uninstalling prod contour
+sudo bash uninstall-service.sh --mode prod --keep-updater-state
 
-# Uninstall dev contour and purge updater state artifacts
-sudo bash uninstall-service-dev.sh --purge-updater-state
+# Purge updater state artifacts while uninstalling dev contour
+sudo bash uninstall-service.sh --mode dev --purge-updater-state
 
 # Centralized direct mode usage
-sudo bash uninstall-service.sh --mode prod
 sudo bash uninstall-service.sh --mode all --purge-updater-state
 ```
 
