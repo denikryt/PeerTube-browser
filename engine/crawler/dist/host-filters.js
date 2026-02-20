@@ -1,4 +1,10 @@
+/**
+ * Module `engine/crawler/src/host-filters.ts`: provide runtime functionality.
+ */
 import fs from "node:fs";
+/**
+ * Handle load hosts from file.
+ */
 export function loadHostsFromFile(filePath) {
     const hosts = new Set();
     if (!filePath)
@@ -14,11 +20,17 @@ export function loadHostsFromFile(filePath) {
     }
     return hosts;
 }
+/**
+ * Handle filter hosts.
+ */
 export function filterHosts(hosts, excluded) {
     if (excluded.size === 0)
         return hosts;
     return hosts.filter((host) => !excluded.has(host.toLowerCase()));
 }
+/**
+ * Handle normalize host token.
+ */
 export function normalizeHostToken(value) {
     const raw = value.trim().toLowerCase();
     if (!raw)

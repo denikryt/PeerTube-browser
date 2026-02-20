@@ -30,13 +30,13 @@ Centralized installer (source of truth):
 sudo bash install-service.sh --mode prod --force --with-updater-timer
 
 # Dev contour (separate unit names/ports, safe for local parallel run with prod)
-sudo bash install-service.sh --mode dev --force --without-updater-timer
+sudo bash install-service.sh --mode dev --force --uninstall
 ```
 
 Convenience wrappers:
 ```bash
 sudo bash install-service-prod.sh
-sudo bash install-service-dev.sh --without-updater-timer
+sudo bash install-service-dev.sh --uninstall
 ```
 
 Service-specific installers (each supports its own `--mode prod|dev`):

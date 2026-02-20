@@ -1,8 +1,14 @@
+/**
+ * Module `engine/crawler/src/channels-worker.ts`: provide runtime functionality.
+ */
 import { ChannelStore } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile } from "./host-filters.js";
 const PAGE_SIZE = 50;
 const HEALTH_CONCURRENCY = 4;
+/**
+ * Handle crawl channels.
+ */
 export async function crawlChannels(options) {
     const store = new ChannelStore({ dbPath: options.dbPath });
     const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
@@ -24,6 +30,9 @@ export async function crawlChannels(options) {
     console.log("[channels] finished");
     store.close();
 }
+/**
+ * Handle check channel health.
+ */
 export async function checkChannelHealth(options) {
     const store = new ChannelStore({ dbPath: options.dbPath });
     const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
@@ -36,6 +45,9 @@ export async function checkChannelHealth(options) {
     console.log("[channels-health] finished");
     store.close();
 }
+/**
+ * Handle worker loop.
+ */
 async function workerLoop(queue, store, options, limitState) {
     while (true) {
         const item = queue.pop();
@@ -47,6 +59,9 @@ async function workerLoop(queue, store, options, limitState) {
         await processInstance(item, store, options, limitState);
     }
 }
+/**
+ * Handle health worker loop.
+ */
 async function healthWorkerLoop(queue, store, options) {
     while (true) {
         const host = queue.pop();
@@ -55,6 +70,9 @@ async function healthWorkerLoop(queue, store, options) {
         await processHealthInstance(host, store, options);
     }
 }
+/**
+ * Handle process instance.
+ */
 async function processInstance(item, store, options, limitState) {
     const normalizedHost = item.instanceDomain.toLowerCase();
     const startAt = item.status === "in_progress" ? item.lastStart : 0;
@@ -95,6 +113,9 @@ async function processInstance(item, store, options, limitState) {
         console.warn(`[channels] error ${normalizedHost}: ${message}`);
     }
 }
+/**
+ * Handle process health instance.
+ */
 async function processHealthInstance(host, store, options) {
     const normalizedHost = host.toLowerCase();
     const channels = store.listChannelsForInstance(normalizedHost);
@@ -106,6 +127,9 @@ async function processHealthInstance(host, store, options) {
     let hadError = false;
     const totalChannels = channels.length;
     let processedChannels = 0;
+    /**
+     * Handle next processed.
+     */
     const nextProcessed = () => {
         processedChannels += 1;
         return processedChannels;
@@ -132,6 +156,9 @@ async function processHealthInstance(host, store, options) {
     });
     console.log(`[channels-health] done ${normalizedHost} error=${hadError}`);
 }
+/**
+ * Handle crawl instance channels.
+ */
 async function crawlInstanceChannels(host, startAt, store, options, limitState) {
     let start = startAt;
     let protocol = "https:";
@@ -194,6 +221,9 @@ async function crawlInstanceChannels(host, startAt, store, options, limitState) 
     }
     return { localCount, totalCount };
 }
+/**
+ * Handle take rows within limit.
+ */
 function takeRowsWithinLimit(rows, limitState) {
     if (rows.length === 0)
         return rows;
@@ -209,6 +239,9 @@ function takeRowsWithinLimit(rows, limitState) {
     limitState.remaining = 0;
     return accepted;
 }
+/**
+ * Handle fetch page.
+ */
 async function fetchPage(host, start, options, protocol) {
     const primaryUrl = buildUrl(host, start, PAGE_SIZE, protocol);
     try {
@@ -228,12 +261,21 @@ async function fetchPage(host, start, options, protocol) {
         return { page, protocol: fallbackProtocol };
     }
 }
+/**
+ * Handle build url.
+ */
 function buildUrl(host, start, count, protocol) {
     return `${protocol}//${host}/api/v1/video-channels?start=${start}&count=${count}`;
 }
+/**
+ * Handle fetch channel health.
+ */
 async function fetchChannelHealth(host, channelName, options) {
     await fetchWithFallback(host, channelName, options, "https:");
 }
+/**
+ * Handle fetch with fallback.
+ */
 async function fetchWithFallback(host, channelName, options, protocol) {
     const url = buildChannelVideosUrl(host, channelName, 0, 1, protocol);
     try {
@@ -251,6 +293,9 @@ async function fetchWithFallback(host, channelName, options, protocol) {
         });
     }
 }
+/**
+ * Handle build channel videos url.
+ */
 function buildChannelVideosUrl(host, channelName, start, count, protocol) {
     return `${protocol}//${host}/api/v1/video-channels/${encodeURIComponent(channelName)}/videos?start=${start}&count=${count}`;
 }
@@ -270,12 +315,18 @@ async function mapWithConcurrency(items, concurrency, mapper) {
     });
     await Promise.all(workers);
 }
+/**
+ * Handle extract channel host.
+ */
 function extractChannelHost(channel) {
     const host = channel.host ?? channel.account?.host ?? channel.ownerAccount?.host ?? extractHostFromUrl(channel.account?.url);
     if (!host)
         return null;
     return normalizeHost(host);
 }
+/**
+ * Handle extract host from url.
+ */
 function extractHostFromUrl(value) {
     if (!value)
         return null;
@@ -292,12 +343,21 @@ function extractHostFromUrl(value) {
         return null;
     }
 }
+/**
+ * Handle normalize host.
+ */
 function normalizeHost(host) {
     return host.trim().toLowerCase();
 }
+/**
+ * Handle to nullable string.
+ */
 function toNullableString(value) {
     return typeof value === "string" && value.length > 0 ? value : null;
 }
+/**
+ * Handle to nullable number.
+ */
 function toNullableNumber(value) {
     if (typeof value === "number" && Number.isFinite(value))
         return value;
@@ -308,10 +368,16 @@ function toNullableNumber(value) {
     }
     return null;
 }
+/**
+ * Handle get channel avatar url.
+ */
 function getChannelAvatarUrl(channel, host, protocol) {
     const avatar = pickBestAvatar(channel.avatars) ?? channel.avatar;
     return resolveAvatarUrl(avatar, host, protocol);
 }
+/**
+ * Handle pick best avatar.
+ */
 function pickBestAvatar(avatars) {
     if (!avatars || avatars.length === 0)
         return undefined;
@@ -323,6 +389,9 @@ function pickBestAvatar(avatars) {
     }
     return best;
 }
+/**
+ * Handle resolve avatar url.
+ */
 function resolveAvatarUrl(avatar, host, protocol) {
     if (!avatar)
         return null;
@@ -337,6 +406,9 @@ function resolveAvatarUrl(avatar, host, protocol) {
     }
     return `${protocol}//${host}/${candidate}`;
 }
+/**
+ * Handle extract http status.
+ */
 function extractHttpStatus(message) {
     const match = message.match(/HTTP (\d{3})/);
     if (!match)

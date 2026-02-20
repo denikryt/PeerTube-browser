@@ -1,7 +1,13 @@
+/**
+ * Module `engine/crawler/src/channels-videos-count-worker.ts`: provide runtime functionality.
+ */
 import { ChannelStore } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile } from "./host-filters.js";
 const CHANNEL_CONCURRENCY = 2;
+/**
+ * Handle crawl channel videos count.
+ */
 export async function crawlChannelVideosCount(options) {
     const store = new ChannelStore({ dbPath: options.dbPath });
     const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
@@ -23,6 +29,9 @@ export async function crawlChannelVideosCount(options) {
     updateStatus("[channels-videos] finished");
     store.close();
 }
+/**
+ * Handle worker loop.
+ */
 async function workerLoop(queue, store, options, progress) {
     while (true) {
         const host = queue.pop();
@@ -31,6 +40,9 @@ async function workerLoop(queue, store, options, progress) {
         await processInstance(host, store, options, progress);
     }
 }
+/**
+ * Handle process instance.
+ */
 async function processInstance(host, store, options, progress) {
     const normalizedHost = host.toLowerCase();
     updateStatus(`[channels-videos] start ${normalizedHost}`);
@@ -43,6 +55,9 @@ async function processInstance(host, store, options, progress) {
         updateStatus(`[channels-videos] error ${normalizedHost}: ${message}`);
     }
 }
+/**
+ * Handle update videos count for instance.
+ */
 async function updateVideosCountForInstance(host, store, options, progress) {
     const channels = store.listChannelsForInstance(host);
     let updated = 0;
@@ -89,6 +104,9 @@ async function updateVideosCountForInstance(host, store, options, progress) {
     });
     return { total: channels.length, updated };
 }
+/**
+ * Handle fetch channel videos count.
+ */
 async function fetchChannelVideosCount(host, channelName, options, reportStatus) {
     try {
         const page = await fetchWithFallback(host, channelName, options, "https:", reportStatus);
@@ -107,6 +125,9 @@ async function fetchChannelVideosCount(host, channelName, options, reportStatus)
         return { total: null, error: message };
     }
 }
+/**
+ * Handle fetch with fallback.
+ */
 async function fetchWithFallback(host, channelName, options, protocol, reportStatus) {
     const url = buildChannelVideosUrl(host, channelName, 0, 1, protocol);
     try {
@@ -126,6 +147,9 @@ async function fetchWithFallback(host, channelName, options, protocol, reportSta
         });
     }
 }
+/**
+ * Handle build channel videos url.
+ */
 function buildChannelVideosUrl(host, channelName, start, count, protocol) {
     return `${protocol}//${host}/api/v1/video-channels/${encodeURIComponent(channelName)}/videos?start=${start}&count=${count}`;
 }
@@ -145,15 +169,24 @@ async function mapWithConcurrency(items, concurrency, mapper) {
     });
     await Promise.all(workers);
 }
+/**
+ * Handle format progress.
+ */
 function formatProgress(progress) {
     const total = Math.max(0, progress.totalChannels);
     const withVideos = Math.max(0, progress.channelsWithVideosCount);
     return `[channels-videos] progress updated=${progress.updatedThisRun} errors=${progress.channelsWithError} with_videos=${withVideos} total=${total}`;
 }
+/**
+ * Handle update progress.
+ */
 function updateProgress(progress) {
     const line = formatProgress(progress);
     console.log(line);
 }
+/**
+ * Handle update status.
+ */
 function updateStatus(message) {
     console.log(message);
 }

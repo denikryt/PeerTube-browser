@@ -1,3 +1,6 @@
+/**
+ * Module `engine/crawler/src/instances-health-cli.ts`: provide runtime functionality.
+ */
 import { Command } from "commander";
 import { ChannelStore } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
@@ -34,6 +37,9 @@ catch (error) {
     }
     throw error;
 }
+/**
+ * Handle check instances health.
+ */
 async function checkInstancesHealth(options) {
     const store = new ChannelStore({ dbPath: options.dbPath });
     const minAgeMs = computeMinAgeMs(options);
@@ -57,6 +63,9 @@ async function checkInstancesHealth(options) {
     console.log("[instances-health] finished");
     store.close();
 }
+/**
+ * Handle worker loop.
+ */
 async function workerLoop(queue, store, options, total, nextProcessed) {
     while (true) {
         const host = queue.pop();
@@ -65,6 +74,9 @@ async function workerLoop(queue, store, options, total, nextProcessed) {
         await processInstance(host, store, options, total, nextProcessed);
     }
 }
+/**
+ * Handle process instance.
+ */
 async function processInstance(host, store, options, total, nextProcessed) {
     const normalizedHost = host.toLowerCase();
     const current = nextProcessed();
@@ -84,6 +96,9 @@ async function processInstance(host, store, options, total, nextProcessed) {
         console.warn(`[instances-health] error ${normalizedHost}: ${message}`);
     }
 }
+/**
+ * Handle fetch instance health.
+ */
 async function fetchInstanceHealth(host, options, protocol) {
     const url = buildHealthUrl(host, protocol);
     try {
@@ -101,21 +116,33 @@ async function fetchInstanceHealth(host, options, protocol) {
         });
     }
 }
+/**
+ * Handle build health url.
+ */
 function buildHealthUrl(host, protocol) {
     return `${protocol}//${host}/api/v1/video-channels?start=0&count=1`;
 }
+/**
+ * Handle parse optional number.
+ */
 function parseOptionalNumber(value) {
     if (value === undefined || value === null || value === "")
         return null;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
 }
+/**
+ * Handle parse optional host.
+ */
 function parseOptionalHost(value) {
     if (typeof value !== "string")
         return null;
     const trimmed = value.trim().toLowerCase();
     return trimmed.length > 0 ? trimmed : null;
 }
+/**
+ * Handle compute min age ms.
+ */
 function computeMinAgeMs(options) {
     const days = Math.max(0, options.minAgeDays ?? 0);
     const mins = Math.max(0, options.minAgeMin ?? 0);
@@ -124,6 +151,9 @@ function computeMinAgeMs(options) {
         mins * 60 * 1000 +
         secs * 1000);
 }
+/**
+ * Handle format min age label.
+ */
 function formatMinAgeLabel(options) {
     const parts = [];
     if (options.minAgeDays !== null)

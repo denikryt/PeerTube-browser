@@ -61,15 +61,13 @@ Examples:
 # Prod contour defaults to: --force + --with-updater-timer
 sudo bash install-service.sh --mode prod
 
-# Dev contour defaults to: --force + --without-updater-timer
+# Dev contour defaults to: --force + --uninstall
 sudo bash install-service.sh --mode dev
 
 # Centralized direct mode usage
 sudo bash install-service.sh --mode prod --force --with-updater-timer
-sudo bash install-service.sh --mode dev --force --without-updater-timer
+sudo bash install-service.sh --mode dev --force --uninstall
 
-# Reinstall only updater units for selected contour
-sudo bash install-service.sh --mode prod --reinstall-updater-only
 ```
 
 ## Service uninstallers

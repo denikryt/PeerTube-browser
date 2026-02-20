@@ -1,3 +1,6 @@
+/**
+ * Module `engine/crawler/src/videos-worker.ts`: provide runtime functionality.
+ */
 import { setTimeout as sleep } from "node:timers/promises";
 import Database from "better-sqlite3";
 import { VideoStore } from "./db.js";
@@ -6,6 +9,9 @@ import { filterHosts, loadHostsFromFile } from "./host-filters.js";
 const PAGE_SIZE = 50;
 const CHANNEL_CONCURRENCY = 2;
 const TAGS_CONCURRENCY = 4;
+/**
+ * Handle crawl videos.
+ */
 export async function crawlVideos(options) {
     if (options.updateTags) {
         await crawlVideoTags(options, "present");
@@ -62,6 +68,9 @@ export async function crawlVideos(options) {
         store.close();
     }
 }
+/**
+ * Handle crawl video comments.
+ */
 async function crawlVideoComments(options) {
     const store = new VideoStore({ dbPath: options.dbPath });
     const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
@@ -76,6 +85,9 @@ async function crawlVideoComments(options) {
     console.log("[comments] finished");
     store.close();
 }
+/**
+ * Handle crawl video tags.
+ */
 async function crawlVideoTags(options, mode) {
     const store = new VideoStore({ dbPath: options.dbPath });
     const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
@@ -90,6 +102,9 @@ async function crawlVideoTags(options, mode) {
     console.log("[tags] finished");
     store.close();
 }
+/**
+ * Handle worker loop.
+ */
 async function workerLoop(queue, grouped, channelMeta, store, existingDb, options) {
     while (true) {
         const host = queue.pop();
@@ -101,6 +116,9 @@ async function workerLoop(queue, grouped, channelMeta, store, existingDb, option
         await processInstance(host, items, channelMeta, store, existingDb, options);
     }
 }
+/**
+ * Handle process instance.
+ */
 async function processInstance(host, items, channelMeta, store, existingDb, options) {
     const normalizedHost = host.toLowerCase();
     console.log(`[videos] start ${normalizedHost} channels=${items.length}`);
@@ -110,6 +128,9 @@ async function processInstance(host, items, channelMeta, store, existingDb, opti
     });
     console.log(`[videos] done ${normalizedHost}`);
 }
+/**
+ * Handle comments worker loop.
+ */
 async function commentsWorkerLoop(queue, grouped, store, options) {
     while (true) {
         const host = queue.pop();
@@ -121,6 +142,9 @@ async function commentsWorkerLoop(queue, grouped, store, options) {
         await processCommentsInstance(host, items, store, options);
     }
 }
+/**
+ * Handle tag worker loop.
+ */
 async function tagWorkerLoop(queue, grouped, store, options) {
     while (true) {
         const host = queue.pop();
@@ -132,6 +156,9 @@ async function tagWorkerLoop(queue, grouped, store, options) {
         await processTagInstance(host, items, store, options);
     }
 }
+/**
+ * Handle process tag instance.
+ */
 async function processTagInstance(host, items, store, options) {
     const normalizedHost = host.toLowerCase();
     console.log(`[tags] start ${normalizedHost} videos=${items.length}`);
@@ -173,6 +200,9 @@ async function processTagInstance(host, items, store, options) {
     }
     console.log(`[tags] done ${normalizedHost}`);
 }
+/**
+ * Handle process comments instance.
+ */
 async function processCommentsInstance(host, items, store, options) {
     const normalizedHost = host.toLowerCase();
     console.log(`[comments] start ${normalizedHost} videos=${items.length}`);
@@ -214,6 +244,9 @@ async function processCommentsInstance(host, items, store, options) {
     }
     console.log(`[comments] done ${normalizedHost}`);
 }
+/**
+ * Handle process channel.
+ */
 async function processChannel(host, item, meta, store, existingDb, options) {
     const channelSlug = item.channelName ?? meta?.channelSlug ?? null;
     if (!channelSlug) {
@@ -241,6 +274,9 @@ async function processChannel(host, item, meta, store, existingDb, options) {
         console.warn(`[videos] channel error ${host}/${channelSlug}: ${message}`);
     }
 }
+/**
+ * Handle crawl channel videos.
+ */
 async function crawlChannelVideos(host, channel, startAt, store, existingDb, options) {
     let start = startAt;
     let protocol = "https:";
@@ -313,6 +349,9 @@ async function crawlChannelVideos(host, channel, startAt, store, existingDb, opt
     }
     return { localCount, totalCount };
 }
+/**
+ * Handle fetch page.
+ */
 async function fetchPage(host, channelName, start, options, protocol) {
     const primaryUrl = buildChannelVideosUrl(host, channelName, start, PAGE_SIZE, protocol, options.sort);
     try {
@@ -332,10 +371,16 @@ async function fetchPage(host, channelName, start, options, protocol) {
         return { page, protocol: fallbackProtocol };
     }
 }
+/**
+ * Handle build channel videos url.
+ */
 function buildChannelVideosUrl(host, channelName, start, count, protocol, sort) {
     const safeSort = sort && sort.trim().length > 0 ? sort.trim() : "-publishedAt";
     return `${protocol}//${host}/api/v1/video-channels/${encodeURIComponent(channelName)}/videos?start=${start}&count=${count}&sort=${encodeURIComponent(safeSort)}`;
 }
+/**
+ * Handle to video row.
+ */
 function toVideoRow(video, host, protocol, channel, checkedAt) {
     const videoId = toStringId(video.uuid ?? video.id);
     if (!videoId)
@@ -374,6 +419,9 @@ function toVideoRow(video, host, protocol, channel, checkedAt) {
         lastCheckedAt: checkedAt
     };
 }
+/**
+ * Handle group by instance.
+ */
 function groupByInstance(items) {
     const grouped = new Map();
     for (const item of items) {
@@ -383,6 +431,9 @@ function groupByInstance(items) {
     }
     return grouped;
 }
+/**
+ * Handle group by instance tags.
+ */
 function groupByInstanceTags(items) {
     const grouped = new Map();
     for (const item of items) {
@@ -392,6 +443,9 @@ function groupByInstanceTags(items) {
     }
     return grouped;
 }
+/**
+ * Handle group by instance comments.
+ */
 function groupByInstanceComments(items) {
     const grouped = new Map();
     for (const item of items) {
@@ -417,9 +471,15 @@ async function mapWithConcurrency(items, concurrency, mapper) {
     });
     await Promise.all(workers);
 }
+/**
+ * Handle to nullable string.
+ */
 function toNullableString(value) {
     return typeof value === "string" && value.length > 0 ? value : null;
 }
+/**
+ * Handle to nullable number.
+ */
 function toNullableNumber(value) {
     if (typeof value === "number" && Number.isFinite(value))
         return value;
@@ -430,6 +490,9 @@ function toNullableNumber(value) {
     }
     return null;
 }
+/**
+ * Handle to nullable timestamp.
+ */
 function toNullableTimestamp(value) {
     if (typeof value === "number" && Number.isFinite(value))
         return value;
@@ -440,20 +503,32 @@ function toNullableTimestamp(value) {
     }
     return null;
 }
+/**
+ * Handle to nullable boolean.
+ */
 function toNullableBoolean(value) {
     if (typeof value === "boolean")
         return value ? 1 : 0;
     return null;
 }
+/**
+ * Handle to tags json.
+ */
 function toTagsJson(value) {
     if (!Array.isArray(value))
         return null;
     const tags = value.filter((tag) => typeof tag === "string");
     return JSON.stringify(tags);
 }
+/**
+ * Handle to comments count.
+ */
 function toCommentsCount(value) {
     return toNullableNumber(value);
 }
+/**
+ * Handle to string id.
+ */
 function toStringId(value) {
     if (typeof value === "string" && value.length > 0)
         return value;
@@ -461,6 +536,9 @@ function toStringId(value) {
         return String(value);
     return null;
 }
+/**
+ * Handle extract category.
+ */
 function extractCategory(value) {
     if (typeof value === "string" && value.length > 0)
         return value;
@@ -476,6 +554,9 @@ function extractCategory(value) {
     }
     return null;
 }
+/**
+ * Handle resolve asset url.
+ */
 function resolveAssetUrl(value, host, protocol) {
     const candidate = extractAssetValue(value);
     if (!candidate)
@@ -488,6 +569,9 @@ function resolveAssetUrl(value, host, protocol) {
     }
     return `${protocol}//${host}/${candidate}`;
 }
+/**
+ * Handle extract asset value.
+ */
 function extractAssetValue(value) {
     if (typeof value === "string" && value.length > 0)
         return value;
@@ -499,6 +583,9 @@ function extractAssetValue(value) {
     }
     return null;
 }
+/**
+ * Handle fetch video detail.
+ */
 async function fetchVideoDetail(host, videoUuid, options, protocol) {
     const primaryUrl = buildVideoDetailUrl(host, videoUuid, protocol);
     try {
@@ -516,17 +603,29 @@ async function fetchVideoDetail(host, videoUuid, options, protocol) {
         });
     }
 }
+/**
+ * Handle fetch video tags.
+ */
 async function fetchVideoTags(host, videoUuid, options) {
     const detail = await fetchVideoDetail(host, videoUuid, options, "https:");
     return toTagsJson(detail.tags);
 }
+/**
+ * Handle fetch video comments.
+ */
 async function fetchVideoComments(host, videoUuid, options) {
     const detail = await fetchVideoDetail(host, videoUuid, options, "https:");
     return toCommentsCount(detail.comments ?? detail.commentsCount ?? detail.comments_count);
 }
+/**
+ * Handle build video detail url.
+ */
 function buildVideoDetailUrl(host, videoUuid, protocol) {
     return `${protocol}//${host}/api/v1/videos/${encodeURIComponent(videoUuid)}`;
 }
+/**
+ * Handle open existing db.
+ */
 function openExistingDb(options) {
     if (!options.existingDbPath || options.existingDbPath.trim().length === 0) {
         return null;
@@ -536,6 +635,9 @@ function openExistingDb(options) {
         fileMustExist: true
     });
 }
+/**
+ * Handle query external existing video ids.
+ */
 function queryExternalExistingVideoIds(db, instanceDomain, ids) {
     if (!db || ids.length === 0)
         return new Set();
@@ -548,23 +650,35 @@ function queryExternalExistingVideoIds(db, instanceDomain, ids) {
         .all(instanceDomain, ...ids);
     return new Set(rows.map((row) => row.video_id));
 }
+/**
+ * Handle extract http status.
+ */
 function extractHttpStatus(message) {
     const match = message.match(/HTTP (\d{3})/);
     if (!match)
         return null;
     return Number(match[1]);
 }
+/**
+ * Handle extract error code.
+ */
 function extractErrorCode(error) {
     if (!error || typeof error !== "object")
         return null;
     const err = error;
     return err.cause?.code ?? err.code ?? null;
 }
+/**
+ * Check whether is cert expired.
+ */
 function isCertExpired(code, message) {
     if (typeof code === "string" && code.toUpperCase() === "CERT_HAS_EXPIRED")
         return true;
     return message.toLowerCase().includes("certificate has expired");
 }
+/**
+ * Check whether is tls error.
+ */
 function isTlsError(code, message) {
     if (typeof code === "string") {
         const upper = code.toUpperCase();
@@ -575,6 +689,9 @@ function isTlsError(code, message) {
     const lowered = message.toLowerCase();
     return lowered.includes("certificate") || lowered.includes("ssl") || lowered.includes("tls");
 }
+/**
+ * Check whether is timeout error.
+ */
 function isTimeoutError(code, message) {
     if (typeof code === "string") {
         const upper = code.toUpperCase();

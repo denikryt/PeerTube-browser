@@ -1,3 +1,6 @@
+/**
+ * Module `engine/crawler/src/db.ts`: provide runtime functionality.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -16,18 +19,27 @@ const DEPRECATED_CHANNEL_COLUMNS = new Set([
     "videos_count_error",
     "videos_count_error_at"
 ]);
+/**
+ * Handle get columns.
+ */
 function getColumns(db, table) {
     return db
         .prepare(`PRAGMA table_info(${table})`)
         .all()
         .map((row) => row.name);
 }
+/**
+ * Handle table exists.
+ */
 function tableExists(db, table) {
     const row = db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
         .get(table);
     return Boolean(row?.name);
 }
+/**
+ * Handle apply base schema.
+ */
 function applyBaseSchema(db) {
     db.exec(schemaSql);
     migrateInstances(db);
@@ -35,6 +47,9 @@ function applyBaseSchema(db) {
     migrateVideos(db);
     db.exec(schemaSql);
 }
+/**
+ * Handle migrate instances.
+ */
 function migrateInstances(db) {
     if (!tableExists(db, "instances"))
         return;
@@ -126,6 +141,9 @@ function migrateInstances(db) {
     ALTER TABLE instances_new RENAME TO instances;
   `);
 }
+/**
+ * Handle migrate channels.
+ */
 function migrateChannels(db) {
     if (!tableExists(db, "channels"))
         return;
@@ -224,6 +242,9 @@ function migrateChannels(db) {
     ALTER TABLE channels_new RENAME TO channels;
   `);
 }
+/**
+ * Handle migrate videos.
+ */
 function migrateVideos(db) {
     if (!tableExists(db, "videos"))
         return;
@@ -345,9 +366,15 @@ function migrateVideos(db) {
     ALTER TABLE videos_new RENAME TO videos;
   `);
 }
+/**
+ * Represent crawler store behavior.
+ */
 export class CrawlerStore {
     db;
     hasStateTable = false;
+    /**
+     * Initialize the instance.
+     */
     constructor(options) {
         const dir = path.dirname(options.dbPath);
         fs.mkdirSync(dir, { recursive: true });
@@ -358,6 +385,9 @@ export class CrawlerStore {
         this.db.pragma("journal_mode = WAL");
         this.initSchema(options);
     }
+    /**
+     * Handle init schema.
+     */
     initSchema(options) {
         applyBaseSchema(this.db);
         if (options.collectGraph) {
@@ -368,6 +398,9 @@ export class CrawlerStore {
             this.ensureCrawlState();
         }
     }
+    /**
+     * Handle ensure edges.
+     */
     ensureEdges() {
         this.db.exec(`
       CREATE TABLE IF NOT EXISTS edges (
@@ -377,6 +410,9 @@ export class CrawlerStore {
       );
     `);
     }
+    /**
+     * Handle ensure queue.
+     */
     ensureQueue() {
         this.db.exec(`
       CREATE TABLE IF NOT EXISTS queue (
@@ -385,6 +421,9 @@ export class CrawlerStore {
       );
     `);
     }
+    /**
+     * Handle ensure crawl state.
+     */
     ensureCrawlState() {
         this.hasStateTable = true;
         this.db.exec(`
@@ -394,21 +433,33 @@ export class CrawlerStore {
       );
     `);
     }
+    /**
+     * Handle close.
+     */
     close() {
         this.db.close();
     }
+    /**
+     * Handle set state.
+     */
     setState(key, value) {
         if (!this.hasStateTable)
             return;
         const stmt = this.db.prepare("INSERT INTO crawl_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
         stmt.run(key, value);
     }
+    /**
+     * Handle get state.
+     */
     getState(key) {
         if (!this.hasStateTable)
             return undefined;
         const row = this.db.prepare("SELECT value FROM crawl_state WHERE key = ?").get(key);
         return row?.value;
     }
+    /**
+     * Handle increment state.
+     */
     incrementState(key, delta) {
         if (!Number.isFinite(delta) || delta === 0)
             return;
@@ -417,6 +468,9 @@ export class CrawlerStore {
         const nextValue = Number.isFinite(currentValue) ? currentValue + delta : delta;
         this.setState(key, String(nextValue));
     }
+    /**
+     * Handle ensure instance.
+     */
     ensureInstance(host) {
         const transaction = this.db.transaction((value) => {
             this.db.prepare("INSERT OR IGNORE INTO instances (host) VALUES (?)").run(value);
@@ -426,6 +480,9 @@ export class CrawlerStore {
         });
         transaction(host);
     }
+    /**
+     * Handle enqueue host.
+     */
     enqueueHost(host, delayMs = 0) {
         const status = this.getCrawlStatus(host);
         if (status === "done" || status === "processing")
@@ -433,6 +490,9 @@ export class CrawlerStore {
         const stmt = this.db.prepare("INSERT OR REPLACE INTO queue (host, enqueued_at) VALUES (?, ?)");
         stmt.run(host, Date.now() + delayMs);
     }
+    /**
+     * Handle claim next host.
+     */
     claimNextHost() {
         const now = Date.now();
         const transaction = this.db.transaction(() => {
@@ -449,12 +509,18 @@ export class CrawlerStore {
         });
         return transaction();
     }
+    /**
+     * Handle next queue time.
+     */
     nextQueueTime() {
         const row = this.db
             .prepare("SELECT enqueued_at FROM queue ORDER BY enqueued_at ASC LIMIT 1")
             .get();
         return row ? row.enqueued_at : null;
     }
+    /**
+     * Handle mark done.
+     */
     markDone(host) {
         this.db
             .prepare("UPDATE instances SET last_error = NULL, last_error_at = NULL, last_error_source = NULL WHERE host = ?")
@@ -463,6 +529,9 @@ export class CrawlerStore {
             .prepare("UPDATE instance_crawl_progress SET status = 'done', updated_at = ? WHERE host = ?")
             .run(Date.now(), host);
     }
+    /**
+     * Handle mark error.
+     */
     markError(host, error) {
         this.db
             .prepare("UPDATE instances SET last_error = ?, last_error_at = ?, last_error_source = ? WHERE host = ?")
@@ -471,18 +540,27 @@ export class CrawlerStore {
             .prepare("UPDATE instance_crawl_progress SET status = 'error', error_count = error_count + 1, updated_at = ? WHERE host = ?")
             .run(Date.now(), host);
     }
+    /**
+     * Handle get error count.
+     */
     getErrorCount(host) {
         const row = this.db
             .prepare("SELECT error_count FROM instance_crawl_progress WHERE host = ?")
             .get(host);
         return row?.error_count ?? 0;
     }
+    /**
+     * Handle get crawl status.
+     */
     getCrawlStatus(host) {
         const row = this.db
             .prepare("SELECT status FROM instance_crawl_progress WHERE host = ?")
             .get(host);
         return row?.status;
     }
+    /**
+     * Handle insert edge.
+     */
     insertEdge(source, target) {
         if (source === target)
             return;
@@ -490,6 +568,9 @@ export class CrawlerStore {
             .prepare("INSERT OR IGNORE INTO edges (source_host, target_host) VALUES (?, ?)")
             .run(source, target);
     }
+    /**
+     * Handle recover queue.
+     */
     recoverQueue(allowedHosts) {
         this.db
             .prepare("UPDATE instance_crawl_progress SET status = 'pending' WHERE status = 'processing'")
@@ -505,9 +586,15 @@ export class CrawlerStore {
         }
     }
 }
+/**
+ * Represent channel store behavior.
+ */
 export class ChannelStore {
     db;
     upsertStmt;
+    /**
+     * Initialize the instance.
+     */
     constructor(options) {
         const dir = path.dirname(options.dbPath);
         fs.mkdirSync(dir, { recursive: true });
@@ -532,23 +619,38 @@ export class ChannelStore {
         followers_count = excluded.followers_count,
         avatar_url = excluded.avatar_url`);
     }
+    /**
+     * Handle init schema.
+     */
     initSchema() {
         applyBaseSchema(this.db);
     }
+    /**
+     * Handle close.
+     */
     close() {
         this.db.close();
     }
+    /**
+     * Handle ensure instance.
+     */
     ensureInstance(host) {
         this.db
             .prepare("INSERT OR IGNORE INTO instances (host) VALUES (?)")
             .run(host);
     }
+    /**
+     * Handle mark instance done.
+     */
     markInstanceDone(host) {
         this.ensureInstance(host);
         this.db
             .prepare("UPDATE instances SET last_error = NULL, last_error_at = NULL, last_error_source = NULL WHERE host = ?")
             .run(host);
     }
+    /**
+     * Handle mark instance error.
+     */
     markInstanceError(host, error) {
         this.ensureInstance(host);
         const now = Date.now();
@@ -556,6 +658,9 @@ export class ChannelStore {
             .prepare("UPDATE instances SET last_error = ?, last_error_at = ?, last_error_source = ? WHERE host = ?")
             .run(error, now, "channels", host);
     }
+    /**
+     * Handle mark instance health ok.
+     */
     markInstanceHealthOk(host) {
         this.ensureInstance(host);
         const now = Date.now();
@@ -563,6 +668,9 @@ export class ChannelStore {
             .prepare("UPDATE instances SET health_status = ?, health_checked_at = ?, health_error = NULL WHERE host = ?")
             .run("ok", now, host);
     }
+    /**
+     * Handle mark instance health error.
+     */
     markInstanceHealthError(host, error) {
         this.ensureInstance(host);
         const now = Date.now();
@@ -570,12 +678,18 @@ export class ChannelStore {
             .prepare("UPDATE instances SET health_status = ?, health_checked_at = ?, health_error = ? WHERE host = ?")
             .run("error", now, error, host);
     }
+    /**
+     * Handle list instances.
+     */
     listInstances() {
         const rows = this.db
             .prepare("SELECT host FROM instances ORDER BY host ASC")
             .all();
         return rows.map((row) => row.host);
     }
+    /**
+     * Handle list existing channel ids.
+     */
     listExistingChannelIds(instanceDomain, ids) {
         if (ids.length === 0)
             return new Set();
@@ -588,6 +702,9 @@ export class ChannelStore {
             .all(instanceDomain, ...ids);
         return new Set(rows.map((row) => row.channel_id));
     }
+    /**
+     * Handle list instances needing health.
+     */
     listInstancesNeedingHealth(minAgeMs) {
         const cutoff = Date.now() - Math.max(0, minAgeMs);
         const rows = this.db
@@ -598,6 +715,9 @@ export class ChannelStore {
             .all(cutoff);
         return rows.map((row) => row.host);
     }
+    /**
+     * Handle list error instances needing health.
+     */
     listErrorInstancesNeedingHealth(minAgeMs) {
         const cutoff = Date.now() - Math.max(0, minAgeMs);
         const rows = this.db
@@ -609,6 +729,9 @@ export class ChannelStore {
             .all(cutoff);
         return rows.map((row) => row.host);
     }
+    /**
+     * Handle list channel instances.
+     */
     listChannelInstances() {
         const rows = this.db
             .prepare(`SELECT DISTINCT c.instance_domain
@@ -618,6 +741,9 @@ export class ChannelStore {
             .all();
         return rows.map((row) => row.instance_domain);
     }
+    /**
+     * Handle prepare channel progress.
+     */
     prepareChannelProgress(hosts, resume) {
         if (!resume) {
             this.db.prepare("DELETE FROM channel_crawl_progress").run();
@@ -634,6 +760,9 @@ export class ChannelStore {
         });
         transaction(hosts);
     }
+    /**
+     * Handle prune channel progress.
+     */
     pruneChannelProgress(hosts) {
         if (hosts.length === 0) {
             this.db.prepare("DELETE FROM channel_crawl_progress").run();
@@ -644,6 +773,9 @@ export class ChannelStore {
             .prepare(`DELETE FROM channel_crawl_progress WHERE instance_domain NOT IN (${placeholders})`)
             .run(...hosts);
     }
+    /**
+     * Handle list channel work items.
+     */
     listChannelWorkItems() {
         const rows = this.db
             .prepare(`SELECT instance_domain, status, last_start
@@ -657,6 +789,9 @@ export class ChannelStore {
             lastStart: row.last_start
         }));
     }
+    /**
+     * Handle update channel progress.
+     */
     updateChannelProgress(host, status, lastStart) {
         this.db
             .prepare(`UPDATE channel_crawl_progress
@@ -664,6 +799,9 @@ export class ChannelStore {
          WHERE instance_domain = ?`)
             .run(status, lastStart, Date.now(), host);
     }
+    /**
+     * Handle upsert channels.
+     */
     upsertChannels(rows) {
         if (rows.length === 0)
             return;
@@ -674,6 +812,9 @@ export class ChannelStore {
         });
         transaction(rows);
     }
+    /**
+     * Handle list channels for instance.
+     */
     listChannelsForInstance(instanceDomain) {
         const rows = this.db
             .prepare(`SELECT channel_id, channel_name, instance_domain, videos_count,
@@ -684,6 +825,9 @@ export class ChannelStore {
             .all(instanceDomain);
         return rows;
     }
+    /**
+     * Handle get channel counts.
+     */
     getChannelCounts() {
         const row = this.db
             .prepare(`SELECT
@@ -698,6 +842,9 @@ export class ChannelStore {
             withError: row?.with_error ?? 0
         };
     }
+    /**
+     * Handle update channel videos count.
+     */
     updateChannelVideosCount(channelId, instanceDomain, videosCount) {
         this.db
             .prepare(`UPDATE channels
@@ -705,6 +852,9 @@ export class ChannelStore {
          WHERE channel_id = ? AND instance_domain = ? AND videos_count IS NULL`)
             .run(videosCount, channelId, instanceDomain);
     }
+    /**
+     * Handle update channel videos count error.
+     */
     updateChannelVideosCountError(channelId, instanceDomain, message) {
         this.db
             .prepare(`UPDATE channels
@@ -712,6 +862,9 @@ export class ChannelStore {
          WHERE channel_id = ? AND instance_domain = ? AND videos_count IS NULL`)
             .run(message, Date.now(), "videos_count", channelId, instanceDomain);
     }
+    /**
+     * Handle update channel health ok.
+     */
     updateChannelHealthOk(channelId, instanceDomain) {
         this.db
             .prepare(`UPDATE channels
@@ -719,6 +872,9 @@ export class ChannelStore {
          WHERE channel_id = ? AND instance_domain = ?`)
             .run("ok", Date.now(), channelId, instanceDomain);
     }
+    /**
+     * Handle update channel health error.
+     */
     updateChannelHealthError(channelId, instanceDomain, message) {
         this.db
             .prepare(`UPDATE channels
@@ -727,10 +883,16 @@ export class ChannelStore {
             .run("error", Date.now(), message, channelId, instanceDomain);
     }
 }
+/**
+ * Represent video store behavior.
+ */
 export class VideoStore {
     db;
     upsertStmt;
     state = new Map();
+    /**
+     * Initialize the instance.
+     */
     constructor(options) {
         const dir = path.dirname(options.dbPath);
         fs.mkdirSync(dir, { recursive: true });
@@ -795,18 +957,33 @@ export class VideoStore {
         last_error_at = NULL,
         error_count = 0`);
     }
+    /**
+     * Handle init schema.
+     */
     initSchema() {
         applyBaseSchema(this.db);
     }
+    /**
+     * Handle close.
+     */
     close() {
         this.db.close();
     }
+    /**
+     * Handle set state.
+     */
     setState(key, value) {
         this.state.set(key, value);
     }
+    /**
+     * Handle get state.
+     */
     getState(key) {
         return this.state.get(key);
     }
+    /**
+     * Handle increment state.
+     */
     incrementState(key, delta) {
         if (!Number.isFinite(delta) || delta === 0)
             return;
@@ -815,10 +992,16 @@ export class VideoStore {
         const nextValue = Number.isFinite(currentValue) ? currentValue + delta : delta;
         this.setState(key, String(nextValue));
     }
+    /**
+     * Handle list instances.
+     */
     listInstances() {
         const rows = this.db.prepare("SELECT host FROM instances ORDER BY host ASC").all();
         return rows.map((row) => row.host);
     }
+    /**
+     * Handle list existing video ids.
+     */
     listExistingVideoIds(instanceDomain, ids) {
         if (ids.length === 0)
             return new Set();
@@ -828,6 +1011,9 @@ export class VideoStore {
             .all(instanceDomain, ...ids);
         return new Set(rows.map((row) => row.video_id));
     }
+    /**
+     * Handle list channels with videos.
+     */
     listChannelsWithVideos(minVideos, instances) {
         if (instances.length === 0)
             return [];
@@ -841,6 +1027,9 @@ export class VideoStore {
             .all(minVideos, ...instances);
         return rows;
     }
+    /**
+     * Handle list videos for tags.
+     */
     listVideosForTags(mode = "missing") {
         const whereClause = mode === "present"
             ? "AND invalid_reason IS NULL AND tags_json IS NOT NULL AND tags_json != '[]'"
@@ -857,6 +1046,9 @@ export class VideoStore {
             instanceDomain: row.instance_domain
         }));
     }
+    /**
+     * Handle list videos for comments.
+     */
     listVideosForComments(resume) {
         const whereClause = resume
             ? "AND comments_count IS NULL AND invalid_reason IS NULL"
@@ -873,6 +1065,9 @@ export class VideoStore {
             instanceDomain: row.instance_domain
         }));
     }
+    /**
+     * Handle prepare video progress.
+     */
     prepareVideoProgress(channels, resume) {
         if (!resume) {
             this.db.prepare("DELETE FROM video_crawl_progress").run();
@@ -889,6 +1084,9 @@ export class VideoStore {
         });
         transaction(channels);
     }
+    /**
+     * Handle prune video progress.
+     */
     pruneVideoProgress(channels) {
         if (channels.length === 0) {
             this.db.prepare("DELETE FROM video_crawl_progress").run();
@@ -926,6 +1124,9 @@ export class VideoStore {
         });
         transaction();
     }
+    /**
+     * Handle list video work items.
+     */
     listVideoWorkItems(statuses) {
         const placeholders = statuses.map(() => "?").join(", ");
         const rows = this.db
@@ -950,6 +1151,9 @@ export class VideoStore {
          WHERE instance_domain = ? AND channel_id = ?`)
             .run(status, lastStart, error, error ? Date.now() : null, Date.now(), instanceDomain, channelId);
     }
+    /**
+     * Handle upsert videos.
+     */
     upsertVideos(rows) {
         if (rows.length === 0)
             return;
@@ -960,6 +1164,9 @@ export class VideoStore {
         });
         transaction(rows);
     }
+    /**
+     * Handle update video tags.
+     */
     updateVideoTags(videoId, instanceDomain, tagsJson) {
         this.db
             .prepare(`UPDATE videos
@@ -967,6 +1174,9 @@ export class VideoStore {
          WHERE video_id = ? AND instance_domain = ?`)
             .run(tagsJson, videoId, instanceDomain);
     }
+    /**
+     * Handle update video comments.
+     */
     updateVideoComments(videoId, instanceDomain, commentsCount) {
         this.db
             .prepare(`UPDATE videos
@@ -974,6 +1184,9 @@ export class VideoStore {
          WHERE video_id = ? AND instance_domain = ?`)
             .run(commentsCount, videoId, instanceDomain);
     }
+    /**
+     * Handle update video invalid.
+     */
     updateVideoInvalid(videoId, instanceDomain, reason) {
         this.db
             .prepare(`UPDATE videos
@@ -981,6 +1194,9 @@ export class VideoStore {
          WHERE video_id = ? AND instance_domain = ?`)
             .run(reason, Date.now(), reason, Date.now(), videoId, instanceDomain);
     }
+    /**
+     * Handle update video error.
+     */
     updateVideoError(videoId, instanceDomain, message) {
         this.db
             .prepare(`UPDATE videos
@@ -989,6 +1205,9 @@ export class VideoStore {
             .run(message, Date.now(), videoId, instanceDomain);
     }
 }
+/**
+ * Handle delete instances in chunks.
+ */
 function deleteInstancesInChunks(db, instances) {
     if (instances.length === 0)
         return;

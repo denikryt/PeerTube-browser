@@ -12,7 +12,6 @@ FORCE_REINSTALL_SET=0
 FORCE_REINSTALL=0
 WITH_UPDATER_TIMER_SET=0
 WITH_UPDATER_TIMER=0
-REINSTALL_UPDATER_ONLY=0
 
 ENGINE_HOST="127.0.0.1"
 CLIENT_HOST="127.0.0.1"
@@ -36,24 +35,14 @@ CLIENT_PUBLISH_MODE="bridge"
 
 UPDATER_TIMER_ONCALENDAR="${UPDATER_TIMER_ONCALENDAR:-Fri *-*-* 20:00:00}"
 UPDATER_FLAGS="${UPDATER_FLAGS:---gpu --skip-local-dead --concurrency 5 --timeout-ms 15000 --max-retries 3}"
-UPDATER_WEEK_STATE_DIR=""
-UPDATER_WEEK_STATE_DIR_SET=0
 
-DEFAULT_PROD_ENGINE_SERVICE="peertube-engine"
 DEFAULT_PROD_CLIENT_SERVICE="peertube-client"
-DEFAULT_PROD_UPDATER_SERVICE="peertube-updater"
-DEFAULT_PROD_UPDATER_TIMER="peertube-updater"
 DEFAULT_PROD_ENGINE_PORT=7070
 DEFAULT_PROD_CLIENT_PORT=7072
-DEFAULT_PROD_UPDATER_STATE_DIR="/var/lib/peertube-browser"
 
-DEFAULT_DEV_ENGINE_SERVICE="peertube-engine-dev"
 DEFAULT_DEV_CLIENT_SERVICE="peertube-client-dev"
-DEFAULT_DEV_UPDATER_SERVICE="peertube-updater-dev"
-DEFAULT_DEV_UPDATER_TIMER="peertube-updater-dev"
 DEFAULT_DEV_ENGINE_PORT=7171
 DEFAULT_DEV_CLIENT_PORT=7172
-DEFAULT_DEV_UPDATER_STATE_DIR="/var/lib/peertube-browser-dev"
 
 print_usage() {
   cat <<'EOF_USAGE'
@@ -67,9 +56,9 @@ Modes:
   --mode all       Install/update both prod and dev contours sequentially
 
 Default contour behavior per selected --mode
-(when --force/--no-force and --with-updater-timer/--without-updater-timer are omitted):
+(when --force/--no-force and --with-updater-timer/--uninstall are omitted):
   prod: --force + --with-updater-timer
-  dev : --force + --without-updater-timer
+  dev : --force + --uninstall
 
 Options:
   --mode <prod|dev|all>       Required installation contour mode
@@ -91,11 +80,9 @@ Options:
   --client-publish-mode <mode>           Client publish mode (default: bridge)
 
   --with-updater-timer      Enable contour updater timer/service
-  --without-updater-timer   Disable/remove contour updater timer/service
+  --uninstall               Disable/remove contour updater timer/service
   --updater-oncalendar <expr>   Systemd OnCalendar expression for updater timer
   --updater-flags <flags>       Extra flags for updater-worker.py
-  --updater-week-state-dir <path>  Week-state directory path for updater gate
-  --reinstall-updater-only     Reinstall only updater units (skip Engine/Client installers)
 
   --force                  Force reinstall selected contour units
   --no-force               Disable force reinstall
@@ -154,11 +141,12 @@ run_cmd() {
 
 resolve_default_engine_service() {
   local contour="$1"
-  if [[ "${contour}" == "prod" ]]; then
-    printf '%s' "${DEFAULT_PROD_ENGINE_SERVICE}"
-  else
-    printf '%s' "${DEFAULT_DEV_ENGINE_SERVICE}"
-  fi
+  local engine_installer="${PROJECT_DIR}/engine/install-engine-service.sh"
+  [[ -f "${engine_installer}" ]] || fail "Missing installer: ${engine_installer}"
+  local resolved_name
+  resolved_name="$(bash "${engine_installer}" --mode "${contour}" --print-default-service-name)" || fail "Failed to resolve default Engine service name from ${engine_installer} for mode=${contour}"
+  [[ -n "${resolved_name}" ]] || fail "Resolved empty Engine service name for mode=${contour}"
+  printf '%s' "${resolved_name}"
 }
 
 resolve_default_client_service() {
@@ -172,20 +160,22 @@ resolve_default_client_service() {
 
 resolve_default_updater_service() {
   local contour="$1"
-  if [[ "${contour}" == "prod" ]]; then
-    printf '%s' "${DEFAULT_PROD_UPDATER_SERVICE}"
-  else
-    printf '%s' "${DEFAULT_DEV_UPDATER_SERVICE}"
-  fi
+  local updater_installer="${PROJECT_DIR}/engine/install-updater-service.sh"
+  [[ -f "${updater_installer}" ]] || fail "Missing installer: ${updater_installer}"
+  local resolved_name
+  resolved_name="$(bash "${updater_installer}" --mode "${contour}" --print-default-updater-service-name)" || fail "Failed to resolve default updater service name from ${updater_installer} for mode=${contour}"
+  [[ -n "${resolved_name}" ]] || fail "Resolved empty updater service name for mode=${contour}"
+  printf '%s' "${resolved_name}"
 }
 
 resolve_default_updater_timer() {
   local contour="$1"
-  if [[ "${contour}" == "prod" ]]; then
-    printf '%s' "${DEFAULT_PROD_UPDATER_TIMER}"
-  else
-    printf '%s' "${DEFAULT_DEV_UPDATER_TIMER}"
-  fi
+  local updater_installer="${PROJECT_DIR}/engine/install-updater-service.sh"
+  [[ -f "${updater_installer}" ]] || fail "Missing installer: ${updater_installer}"
+  local resolved_name
+  resolved_name="$(bash "${updater_installer}" --mode "${contour}" --print-default-updater-timer-name)" || fail "Failed to resolve default updater timer name from ${updater_installer} for mode=${contour}"
+  [[ -n "${resolved_name}" ]] || fail "Resolved empty updater timer name for mode=${contour}"
+  printf '%s' "${resolved_name}"
 }
 
 resolve_default_engine_port() {
@@ -206,15 +196,6 @@ resolve_default_client_port() {
   fi
 }
 
-resolve_default_updater_state_dir() {
-  local contour="$1"
-  if [[ "${contour}" == "prod" ]]; then
-    printf '%s' "${DEFAULT_PROD_UPDATER_STATE_DIR}"
-  else
-    printf '%s' "${DEFAULT_DEV_UPDATER_STATE_DIR}"
-  fi
-}
-
 ensure_single_contour_overrides_only() {
   if [[ "${MODE}" != "all" ]]; then
     return
@@ -231,136 +212,30 @@ install_updater_for_contour() {
   local updater_timer_name="$4"
   local with_timer="$5"
   local force_reinstall="$6"
-  local week_state_dir="$7"
-
-  local updater_py="${PROJECT_DIR}/engine/server/db/jobs/updater-worker.py"
-  local venv_py="${PROJECT_DIR}/venv/bin/python3"
-  local systemctl_bin
-  systemctl_bin="$(command -v systemctl)"
-
-  local updater_unit_path="/etc/systemd/system/${updater_service_name}.service"
-  local updater_timer_path="/etc/systemd/system/${updater_timer_name}.timer"
-  local updater_sudoers_path="/etc/sudoers.d/${updater_service_name}-systemctl"
-  local week_state_file="${week_state_dir}/updater-last-success-week.txt"
-
-  validate_service_name "${updater_service_name}"
-  validate_service_name "${updater_timer_name}"
-
-  if (( with_timer == 0 )); then
-    echo "[install-service] ${contour}: updater timer disabled, removing updater units if present"
-    run_cmd systemctl stop "${updater_timer_name}.timer" >/dev/null 2>&1 || true
-    run_cmd systemctl stop "${updater_service_name}.service" >/dev/null 2>&1 || true
-    run_cmd systemctl disable "${updater_timer_name}.timer" >/dev/null 2>&1 || true
-    run_cmd rm -f "${updater_timer_path}"
-    run_cmd rm -f "${updater_unit_path}"
-    run_cmd rm -f "${updater_sudoers_path}"
-    if (( DRY_RUN == 0 )); then
-      systemctl daemon-reload
-      systemctl reset-failed "${updater_service_name}.service" >/dev/null 2>&1 || true
-      systemctl reset-failed "${updater_timer_name}.timer" >/dev/null 2>&1 || true
-    fi
-    return
-  fi
-
-  [[ -f "${updater_py}" ]] || fail "Missing updater worker entrypoint: ${updater_py}"
-  [[ -x "${venv_py}" ]] || fail "Missing python interpreter in venv: ${venv_py}"
-  if (( DRY_RUN == 0 )); then
-    require_cmd visudo
-  fi
-
-  if (( force_reinstall == 1 )); then
-    echo "[install-service] ${contour}: force reinstall updater units"
-    run_cmd systemctl stop "${updater_timer_name}.timer" >/dev/null 2>&1 || true
-    run_cmd systemctl stop "${updater_service_name}.service" >/dev/null 2>&1 || true
-    run_cmd systemctl disable "${updater_timer_name}.timer" >/dev/null 2>&1 || true
-    run_cmd rm -f "${updater_timer_path}"
-    run_cmd rm -f "${updater_unit_path}"
-    run_cmd rm -f "${updater_sudoers_path}"
-  fi
-
-  if (( DRY_RUN == 1 )); then
-    echo "[dry-run] updater service=${updater_service_name} timer=${updater_timer_name} engine_service=${engine_service_name}"
-    echo "[dry-run] updater state dir=${week_state_dir} file=${week_state_file}"
+  local updater_cmd=(
+    bash
+    "${PROJECT_DIR}/engine/install-updater-service.sh"
+    --mode "${contour}"
+    --project-dir "${PROJECT_DIR}"
+    --service-user "${SERVICE_USER}"
+    --engine-service-name "${engine_service_name}"
+    --updater-service-name "${updater_service_name}"
+    --updater-timer-name "${updater_timer_name}"
+    --updater-oncalendar "${UPDATER_TIMER_ONCALENDAR}"
+    --updater-flags "${UPDATER_FLAGS}"
+  )
+  if (( with_timer == 1 )); then
+    updater_cmd+=(--with-updater-timer)
   else
-    mkdir -p "${week_state_dir}"
-    chown "${SERVICE_USER}:${SERVICE_USER}" "${week_state_dir}" || true
-    chmod 755 "${week_state_dir}" || true
+    updater_cmd+=(--uninstall)
   fi
-
-  local updater_exec
-  updater_exec="${venv_py} ${updater_py} --service-name ${engine_service_name} --systemctl-bin ${systemctl_bin} --systemctl-use-sudo ${UPDATER_FLAGS}"
-
-  local updater_unit_content
-  updater_unit_content="$(cat <<EOF_UPDATER_UNIT
-[Unit]
-Description=PeerTube Updater Worker (${contour})
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-User=${SERVICE_USER}
-WorkingDirectory=${PROJECT_DIR}
-Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/bash -lc 'set -euo pipefail; week_id="\\\$(date +%G-%V)"; state_file="${week_state_file}"; if [[ -f "\\\$state_file" ]] && [[ "\\\$(cat "\\\$state_file" 2>/dev/null || true)" == "\\\$week_id" ]]; then echo "[updater] weekly gate: already successful in week \\\$week_id, skip"; exit 0; fi; ${updater_exec}; printf "%s\\n" "\\\$week_id" > "\\\$state_file"'
-TimeoutStartSec=24h
-EOF_UPDATER_UNIT
-)"
-
-  local updater_timer_content
-  updater_timer_content="$(cat <<EOF_UPDATER_TIMER
-[Unit]
-Description=PeerTube Updater Timer (${contour})
-
-[Timer]
-OnCalendar=${UPDATER_TIMER_ONCALENDAR}
-Persistent=false
-RandomizedDelaySec=0
-AccuracySec=1m
-Unit=${updater_service_name}.service
-
-[Install]
-WantedBy=timers.target
-EOF_UPDATER_TIMER
-)"
-
+  if (( force_reinstall == 1 )); then
+    updater_cmd+=(--force)
+  fi
   if (( DRY_RUN == 1 )); then
-    echo "----- updater service preview (${updater_service_name}.service) -----"
-    printf '%s\n' "${updater_unit_content}"
-    echo "----- updater timer preview (${updater_timer_name}.timer) -----"
-    printf '%s\n' "${updater_timer_content}"
-    echo "----- updater sudoers preview (${updater_sudoers_path}) -----"
-    echo "${SERVICE_USER} ALL=(root) NOPASSWD: ${systemctl_bin} stop ${engine_service_name}, ${systemctl_bin} start ${engine_service_name}"
-    return
+    updater_cmd+=(--dry-run)
   fi
-
-  echo "[install-service] ${contour}: writing updater unit ${updater_unit_path}"
-  printf '%s\n' "${updater_unit_content}" > "${updater_unit_path}"
-
-  echo "[install-service] ${contour}: writing updater timer ${updater_timer_path}"
-  printf '%s\n' "${updater_timer_content}" > "${updater_timer_path}"
-
-  echo "[install-service] ${contour}: writing updater sudoers ${updater_sudoers_path}"
-  local tmp_sudoers
-  tmp_sudoers="$(mktemp)"
-  printf '%s\n' "${SERVICE_USER} ALL=(root) NOPASSWD: ${systemctl_bin} stop ${engine_service_name}, ${systemctl_bin} start ${engine_service_name}" > "${tmp_sudoers}"
-  visudo -cf "${tmp_sudoers}" >/dev/null
-  install -m 0440 "${tmp_sudoers}" "${updater_sudoers_path}"
-  rm -f "${tmp_sudoers}"
-
-  systemctl daemon-reload
-  systemctl enable "${updater_timer_name}.timer" >/dev/null
-  systemctl restart "${updater_timer_name}.timer"
-
-  local timer_enabled
-  local timer_active
-  timer_enabled="$(systemctl is-enabled "${updater_timer_name}.timer" 2>/dev/null || true)"
-  timer_active="$(systemctl is-active "${updater_timer_name}.timer" 2>/dev/null || true)"
-  if [[ "${timer_enabled}" != "enabled" || "${timer_active}" != "active" ]]; then
-    echo "Updater timer failed to start for contour=${contour}." >&2
-    journalctl -u "${updater_timer_name}.timer" -n 80 --no-pager >&2 || true
-    exit 1
-  fi
+  run_cmd "${updater_cmd[@]}"
 }
 
 install_contour() {
@@ -377,8 +252,6 @@ install_contour() {
   local engine_ingest_base
   local with_timer
   local force_reinstall
-  local updater_force_reinstall
-  local week_state_dir
 
   engine_service_name="$(resolve_default_engine_service "${contour}")"
   client_service_name="$(resolve_default_client_service "${contour}")"
@@ -388,7 +261,6 @@ install_contour() {
   client_port="$(resolve_default_client_port "${contour}")"
   engine_host="${ENGINE_HOST}"
   client_host="${CLIENT_HOST}"
-  week_state_dir="$(resolve_default_updater_state_dir "${contour}")"
 
   if [[ "${contour}" == "prod" ]]; then
     with_timer=1
@@ -404,17 +276,8 @@ install_contour() {
   if (( UPDATER_TIMER_NAME_SET == 1 )); then updater_timer_name="${UPDATER_TIMER_NAME}"; fi
   if (( ENGINE_PORT_SET == 1 )); then engine_port="${ENGINE_PORT}"; fi
   if (( CLIENT_PORT_SET == 1 )); then client_port="${CLIENT_PORT}"; fi
-  if (( UPDATER_WEEK_STATE_DIR_SET == 1 )); then week_state_dir="${UPDATER_WEEK_STATE_DIR}"; fi
-
   if (( FORCE_REINSTALL_SET == 1 )); then force_reinstall="${FORCE_REINSTALL}"; fi
   if (( WITH_UPDATER_TIMER_SET == 1 )); then with_timer="${WITH_UPDATER_TIMER}"; fi
-  if (( REINSTALL_UPDATER_ONLY == 1 && WITH_UPDATER_TIMER_SET == 0 )); then
-    with_timer=1
-  fi
-  updater_force_reinstall="${force_reinstall}"
-  if (( REINSTALL_UPDATER_ONLY == 1 )); then
-    updater_force_reinstall=1
-  fi
 
   validate_service_name "${engine_service_name}"
   validate_service_name "${client_service_name}"
@@ -433,7 +296,7 @@ install_contour() {
     engine_ingest_base="http://${engine_host}:${engine_port}"
   fi
 
-  echo "[install-service] contour=${contour} force=${force_reinstall} updater_timer=${with_timer} updater_only=${REINSTALL_UPDATER_ONLY}"
+  echo "[install-service] contour=${contour} force=${force_reinstall} updater_timer=${with_timer}"
   echo "[install-service] contour=${contour} engine=${engine_service_name} ${engine_host}:${engine_port}"
   echo "[install-service] contour=${contour} client=${client_service_name} ${client_host}:${client_port} ingest=${engine_ingest_base}"
 
@@ -473,10 +336,8 @@ install_contour() {
     client_cmd+=(--dry-run)
   fi
 
-  if (( REINSTALL_UPDATER_ONLY == 0 )); then
-    run_cmd "${engine_cmd[@]}"
-    run_cmd "${client_cmd[@]}"
-  fi
+  run_cmd "${engine_cmd[@]}"
+  run_cmd "${client_cmd[@]}"
 
   install_updater_for_contour \
     "${contour}" \
@@ -484,8 +345,7 @@ install_contour() {
     "${updater_service_name}" \
     "${updater_timer_name}" \
     "${with_timer}" \
-    "${updater_force_reinstall}" \
-    "${week_state_dir}"
+    "${force_reinstall}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -557,7 +417,7 @@ while [[ $# -gt 0 ]]; do
       WITH_UPDATER_TIMER=1
       shift
       ;;
-    --without-updater-timer)
+    --uninstall)
       WITH_UPDATER_TIMER_SET=1
       WITH_UPDATER_TIMER=0
       shift
@@ -569,15 +429,6 @@ while [[ $# -gt 0 ]]; do
     --updater-flags)
       UPDATER_FLAGS="${2:-}"
       shift 2
-      ;;
-    --updater-week-state-dir)
-      UPDATER_WEEK_STATE_DIR="${2:-}"
-      UPDATER_WEEK_STATE_DIR_SET=1
-      shift 2
-      ;;
-    --reinstall-updater-only)
-      REINSTALL_UPDATER_ONLY=1
-      shift
       ;;
     --force)
       FORCE_REINSTALL_SET=1
@@ -612,13 +463,13 @@ validate_mode
 PROJECT_DIR="$(realpath "${PROJECT_DIR}")"
 [[ -d "${PROJECT_DIR}" ]] || fail "Project directory not found: ${PROJECT_DIR}"
 [[ -f "${PROJECT_DIR}/engine/install-engine-service.sh" ]] || fail "Missing installer: ${PROJECT_DIR}/engine/install-engine-service.sh"
+[[ -f "${PROJECT_DIR}/engine/install-updater-service.sh" ]] || fail "Missing installer: ${PROJECT_DIR}/engine/install-updater-service.sh"
 [[ -f "${PROJECT_DIR}/client/install-client-service.sh" ]] || fail "Missing installer: ${PROJECT_DIR}/client/install-client-service.sh"
 
 if (( DRY_RUN == 0 )); then
   [[ "${EUID}" -eq 0 ]] || fail "Run as root (use sudo)."
   require_cmd systemctl
   require_cmd journalctl
-  require_cmd visudo
 fi
 id "${SERVICE_USER}" >/dev/null 2>&1 || fail "User does not exist: ${SERVICE_USER}"
 

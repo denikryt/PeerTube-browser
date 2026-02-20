@@ -32,6 +32,50 @@ from data.moderation import (
 )
 
 
+def resolve_default_engine_service_name(mode: str) -> str:
+    """Resolve default Engine service name via updater installer source-of-truth."""
+    repo_root = script_dir.parents[3]
+    installer = (repo_root / "engine" / "install-updater-service.sh").resolve()
+    if not installer.exists():
+        installer = (repo_root / "engine" / "install-engine-service.sh").resolve()
+    if not installer.exists():
+        return "peertube-engine-dev" if mode == "dev" else "peertube-engine"
+    try:
+        output = subprocess.check_output(
+            [
+                "bash",
+                installer.as_posix(),
+                "--mode",
+                mode,
+                "--print-default-engine-service-name",
+            ],
+            text=True,
+        )
+    except Exception:
+        if installer.name == "install-engine-service.sh":
+            try:
+                output = subprocess.check_output(
+                    [
+                        "bash",
+                        installer.as_posix(),
+                        "--mode",
+                        mode,
+                        "--print-default-service-name",
+                    ],
+                    text=True,
+                )
+            except Exception:
+                return "peertube-engine-dev" if mode == "dev" else "peertube-engine"
+        else:
+            return "peertube-engine-dev" if mode == "dev" else "peertube-engine"
+    service_name = output.strip()
+    if service_name:
+        return service_name
+    if mode == "dev":
+        return "peertube-engine-dev"
+    return "peertube-engine"
+
+
 def parse_args() -> argparse.Namespace:
     """Handle parse args."""
     repo_root = script_dir.parents[3]
@@ -91,8 +135,14 @@ def parse_args() -> argparse.Namespace:
         help="Path to merge_rules.json.",
     )
     parser.add_argument(
+        "--mode",
+        default="prod",
+        choices=("prod", "dev"),
+        help="Contour mode used to resolve default Engine service name.",
+    )
+    parser.add_argument(
         "--service-name",
-        default="peertube-browser",
+        default=None,
         help="Systemd service name to stop/start during merge.",
     )
     parser.add_argument(
@@ -228,7 +278,10 @@ def parse_args() -> argparse.Namespace:
         help="Run embeddings + FAISS build in CPU mode only.",
     )
     parser.set_defaults(use_gpu=True)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.service_name:
+        args.service_name = resolve_default_engine_service_name(args.mode)
+    return args
 
 
 def setup_logging(log_path: Path) -> None:

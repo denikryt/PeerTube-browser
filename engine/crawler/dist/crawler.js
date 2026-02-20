@@ -1,8 +1,14 @@
+/**
+ * Module `engine/crawler/src/crawler.ts`: provide runtime functionality.
+ */
 import { setTimeout as sleep } from "node:timers/promises";
 import { CrawlerStore } from "./db.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile, normalizeHostToken } from "./host-filters.js";
 const PAGE_SIZE = 50;
+/**
+ * Handle crawl.
+ */
 export async function crawl(options) {
     const store = new CrawlerStore({
         dbPath: options.dbPath,
@@ -49,6 +55,9 @@ export async function crawl(options) {
     console.log("[crawl] finished");
     store.close();
 }
+/**
+ * Handle worker loop.
+ */
 async function workerLoop(store, options, whitelistHosts, excludedHosts, preferredProtocol) {
     while (true) {
         const host = store.claimNextHost();
@@ -85,6 +94,9 @@ async function workerLoop(store, options, whitelistHosts, excludedHosts, preferr
         }
     }
 }
+/**
+ * Handle process host.
+ */
 async function processHost(host, store, options, whitelistHosts, excludedHosts, preferredProtocol) {
     // Nothing to do unless we are collecting edges or expanding discovery.
     if (!options.collectGraph && !options.expandBeyondWhitelist)
@@ -122,6 +134,9 @@ async function processHost(host, store, options, whitelistHosts, excludedHosts, 
         }
     }
 }
+/**
+ * Handle fetch all.
+ */
 async function fetchAll(host, kind, options, preferredProtocol) {
     const results = [];
     let start = 0;
@@ -140,6 +155,9 @@ async function fetchAll(host, kind, options, preferredProtocol) {
     }
     return results;
 }
+/**
+ * Handle fetch page.
+ */
 async function fetchPage(host, kind, start, options, preferredProtocol) {
     const primaryUrl = buildUrl(host, kind, start, PAGE_SIZE, preferredProtocol);
     try {
@@ -157,16 +175,25 @@ async function fetchPage(host, kind, start, options, preferredProtocol) {
         });
     }
 }
+/**
+ * Handle build url.
+ */
 function buildUrl(host, kind, start, count, protocol) {
     const base = `${protocol}//${host}`;
     return `${base}/api/v1/server/${kind}?start=${start}&count=${count}`;
 }
+/**
+ * Handle ensure url.
+ */
 function ensureUrl(input) {
     if (input.startsWith("http://") || input.startsWith("https://")) {
         return input;
     }
     return `https://${input}`;
 }
+/**
+ * Handle fetch whitelist hosts.
+ */
 async function fetchWhitelistHosts(url, options) {
     const payload = await fetchJsonWithRetry(url, {
         timeoutMs: options.timeoutMs,
@@ -188,6 +215,9 @@ async function fetchWhitelistHosts(url, options) {
     }
     return Array.from(hosts);
 }
+/**
+ * Handle extract whitelist entries.
+ */
 function extractWhitelistEntries(payload) {
     if (Array.isArray(payload)) {
         return payload;
@@ -200,6 +230,9 @@ function extractWhitelistEntries(payload) {
     }
     throw new Error("Unexpected whitelist JSON shape.");
 }
+/**
+ * Handle extract whitelist host.
+ */
 function extractWhitelistHost(entry) {
     if (!entry)
         return null;
@@ -216,12 +249,21 @@ function extractWhitelistHost(entry) {
     }
     return null;
 }
+/**
+ * Handle extract following host.
+ */
 function extractFollowingHost(item, currentHost) {
     return extractHostFromRef(item.following, currentHost);
 }
+/**
+ * Handle extract follower host.
+ */
 function extractFollowerHost(item, currentHost) {
     return extractHostFromRef(item.follower, currentHost);
 }
+/**
+ * Handle extract host from ref.
+ */
 function extractHostFromRef(ref, currentHost) {
     if (!ref)
         return null;
@@ -232,6 +274,9 @@ function extractHostFromRef(ref, currentHost) {
         return null;
     return host;
 }
+/**
+ * Handle parse host.
+ */
 function parseHost(ref) {
     if (!ref)
         return null;
@@ -252,6 +297,9 @@ function parseHost(ref) {
     }
     return null;
 }
+/**
+ * Handle parse host string.
+ */
 function parseHostString(value) {
     return normalizeHostToken(value);
 }

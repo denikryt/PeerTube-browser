@@ -1,3 +1,6 @@
+/**
+ * Module `engine/crawler/src/http.ts`: provide runtime functionality.
+ */
 import { setTimeout as sleep } from "node:timers/promises";
 import { setDefaultResultOrder } from "node:dns";
 import { execFile } from "node:child_process";
@@ -5,13 +8,22 @@ import { promisify } from "node:util";
 // Prefer IPv4 first to avoid IPv6 timeouts on some instances.
 setDefaultResultOrder("ipv4first");
 const execFileAsync = promisify(execFile);
+/**
+ * Represent no network error behavior.
+ */
 export class NoNetworkError extends Error {
     code = "NO_NETWORK";
+    /**
+     * Initialize the instance.
+     */
     constructor(message) {
         super(message);
         this.name = "NoNetworkError";
     }
 }
+/**
+ * Check whether is no network error.
+ */
 export function isNoNetworkError(error) {
     if (!error || typeof error !== "object")
         return false;
@@ -110,6 +122,9 @@ export async function fetchJsonWithRetry(url, options) {
         }
     }
 }
+/**
+ * Handle fetch via curl.
+ */
 async function fetchViaCurl(url, timeoutMs) {
     const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
     try {
@@ -135,6 +150,9 @@ async function fetchViaCurl(url, timeoutMs) {
         throw new Error(`curl: ${message}`);
     }
 }
+/**
+ * Handle extract error reason.
+ */
 function extractErrorReason(error) {
     if (error instanceof Error) {
         const reasons = collectErrorDetails(error);
@@ -151,6 +169,9 @@ function extractErrorReason(error) {
         return pickReasonToken(String(error));
     }
 }
+/**
+ * Handle extract error debug.
+ */
 function extractErrorDebug(error) {
     if (!error || typeof error !== "object")
         return "";
@@ -171,6 +192,9 @@ function extractErrorDebug(error) {
     }
     return parts.join("\n");
 }
+/**
+ * Handle collect error details.
+ */
 function collectErrorDetails(error) {
     const details = [];
     const seen = new Set();
@@ -196,12 +220,18 @@ function collectErrorDetails(error) {
     }
     return details;
 }
+/**
+ * Handle pick reason token.
+ */
 function pickReasonToken(message) {
     const trimmed = message.trim();
     const split = trimmed.split("|", 1)[0];
     const firstLine = split.split("\n", 1)[0];
     return firstLine.trim();
 }
+/**
+ * Handle parse retry after.
+ */
 function parseRetryAfter(value) {
     if (!value)
         return undefined;
