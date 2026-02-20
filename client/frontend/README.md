@@ -14,3 +14,9 @@ no ranking logic.
 npm install
 npm run build
 ```
+
+## Local About Overrides
+- Default production source is `about.template.html`.
+- Local developer overrides can be placed in:
+  - `client/frontend/dev-pages/about.html`
+- Files inside `client/frontend/dev-pages/` are ignored by Git (except `client/frontend/dev-pages/.gitignore`).
