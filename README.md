@@ -48,7 +48,7 @@ This is not a heavy ML system; it is a transparent, controllable pipeline.
 - Boundary rule: Client backend must not import `engine.server.*` modules and must not read `engine/server/db/*` directly.
 - Boundary rule: frontend reads must use Client API base only (no direct Engine API base usage in UI code).
 
-## Service installers (task 46)
+## Service installers
 Installer topology:
 - Service-specific installers:
   - `engine/install-engine-service.sh` (`--mode prod|dev`)
@@ -72,7 +72,7 @@ sudo bash install-service.sh --mode dev --force --without-updater-timer
 sudo bash install-service.sh --mode prod --reinstall-updater-only
 ```
 
-## Service uninstallers (task 51)
+## Service uninstallers
 Uninstall topology:
 - Service-specific uninstallers:
   - `engine/uninstall-engine-service.sh` (`--mode prod|dev`)
