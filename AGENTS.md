@@ -45,6 +45,9 @@ Project-level hard constraints for task work in this repository.
 ## Pipeline constraints
 
 1. `dev/TASK_EXECUTION_PIPELINE.md` must contain only pending (not completed) tasks/blocks; do not keep completed entries there with markers like `(completed)`.
+2. In `dev/TASK_EXECUTION_PIPELINE.md` Functional blocks, always include an explicit `Outcome` line for each block.
+3. Each block `Outcome` must be concrete and feature-level: describe what exact behaviors/features/API modes/operational flows will exist after the block is done.
+4. Avoid generic wording in block outcomes (for example "better", "improved", "more stable") unless tied to specific mechanisms or user-visible changes.
 
 ## Code docstring constraints
 

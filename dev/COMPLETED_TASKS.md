@@ -520,3 +520,11 @@ Mixing layers for home remains a separate module.
 - Added loading, empty, and error UI states.
 - Added navigation links to `changelog.html` across main static pages.
 - Updated Vite build inputs and route rewrite support for `/changelog`.
+
+### 42) CHANGELOG as public task board: roadmap-style tasks + status + client filters (done)
+**Done:** repurposed `CHANGELOG.json` into a public task board with explicit task status and aligned client/task-tracking workflow.
+
+#### **What was implemented:**
+- `CHANGELOG.json` now serves as a public roadmap board with stable task IDs and explicit status values (`Planned`/`Done`).
+- Client changelog flow supports status-aware rendering and split view for completed vs not completed tasks.
+- Task-tracking workflow aligns completion updates with status flips on existing changelog entries instead of done-history-only append behavior.

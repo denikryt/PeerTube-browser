@@ -381,19 +381,31 @@ def main() -> None:
             else:
                 logging.info("recreated output db: no existing file at %s", out_db_path)
 
+        if args.reset_only:
+            if out_db_path == src_db_path:
+                raise RuntimeError("--reset-only is not allowed when --out matches --db.")
+            if out_db_path.exists():
+                if out_db_path.is_dir():
+                    raise RuntimeError(
+                        f"--reset-only expected a file path, got directory: {out_db_path}"
+                    )
+                out_db_path.unlink()
+                logging.info("reset-only: removed %s", out_db_path)
+            else:
+                logging.info("reset-only: no existing file at %s", out_db_path)
+
+            out_db = connect_db(out_db_path)
+            ensure_schema(out_db)
+            out_db.commit()
+            out_db.close()
+            logging.info("reset-only completed: output cache recreated")
+            return
+
         out_db = connect_db(out_db_path)
         ensure_schema(out_db)
         if args.reset:
             out_db.executescript("DELETE FROM similarity_items; DELETE FROM similarity_sources;")
             out_db.commit()
-        if args.reset_only:
-            if not args.reset:
-                out_db.executescript(
-                    "DELETE FROM similarity_items; DELETE FROM similarity_sources;"
-                )
-                out_db.commit()
-            logging.info("reset-only completed: output cache cleared")
-            return
 
         dim_row = src_db.execute("SELECT embedding_dim FROM video_embeddings LIMIT 1").fetchone()
         if not dim_row:

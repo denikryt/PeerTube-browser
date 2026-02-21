@@ -121,14 +121,6 @@
       "time": "10:21:13"
     },
     {
-      "id": "30",
-      "date": "2026-02-14",
-      "status": "Planned",
-      "title": "Better Incremental Similarity Updates",
-      "summary": "Improve similarity refresh logic so existing videos also benefit when new content arrives.",
-      "time": "10:35:24"
-    },
-    {
       "id": "33",
       "date": "2026-02-14",
       "status": "Planned",
@@ -227,7 +219,7 @@
     {
       "id": "42",
       "date": "2026-02-14",
-      "status": "Planned",
+      "status": "Done",
       "title": "Changelog as Public Task Board",
       "summary": "Show roadmap-style tasks with status fields and split views for completed and not completed tasks in the client.",
       "time": "13:17:02"
@@ -287,6 +279,14 @@
       "title": "Strict Error on Excess Likes in Recommendations Request",
       "summary": "Return an explicit 400 error when recommendations payload contains more likes than allowed instead of silently truncating the list.",
       "time": "19:13:37"
+    },
+    {
+      "id": "56",
+      "date": "2026-02-22",
+      "status": "Planned",
+      "title": "Similarity Precompute: Rewrite Existing Cache Sources Only",
+      "summary": "Add a precompute mode that recalculates similars only for sources already present in similarity cache and rewrites only those entries instead of full-cache rebuild.",
+      "time": "00:37:33"
     }
   ]
 }

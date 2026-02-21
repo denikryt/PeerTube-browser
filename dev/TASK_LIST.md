@@ -216,41 +216,6 @@
 - Logs/metrics: build time, size, number of valid candidates, short-fill reasons.
 - Consider SQLite: use WAL/readonly connection for reading, update only under a lock for replacement.
 
-### 30) Incremental similar cache: config-driven top-k/nprobe + impacted-depth recompute
-**Problem:** current updater runs `precompute-similar-ann.py --incremental`, which computes similars only for new source videos. Existing videos that become better matches because of newly added videos are not recomputed. Also, `top-k`/`nprobe` defaults are not centralized in `server_config`.
-
-**Solution option:** add impacted incremental recompute with configurable depth and use `server_config` defaults for ANN/cache parameters.
-
-#### **Solution details:**
-- **Config as source of truth**:
-  - Add/read defaults in `server/api/server_config.py` for:
-    - `SIMILARITY_PRECOMPUTE_TOP_K`
-    - `SIMILARITY_PRECOMPUTE_NPROBE`
-    - `SIMILARITY_PRECOMPUTE_IMPACT_DEPTH` (default `1`)
-  - `precompute-similar-ann.py` should use these defaults unless CLI flags override.
-  - `updater-worker.py` should pass explicit values only when needed; otherwise rely on config defaults.
-- **Impacted recompute depth (optional)**:
-  - Depth `1`: recompute videos directly similar to new videos.
-  - Depth `2`: recompute videos directly similar to new videos, plus videos similar to that first layer.
-  - Depth `3`: add one more hop (similar to layer 2), and so on for depth `N`.
-  - Add CLI flag: `--impact-depth <N>` (`0` = old behavior: only new sources).
-- **No duplicate recompute**:
-  - Keep a `seen` set of `(video_id, instance_domain)` during impacted expansion.
-  - Ensure each source video is recomputed at most once per run.
-  - Maintain deterministic ordering for writes (stable order for reproducibility).
-- **Incremental algorithm update**:
-  - Step 1: detect `new_sources` (missing in `similarity_sources`).
-  - Step 2: if `impact-depth > 0`, expand impacted set from ANN neighbors (using current `top-k`, `nprobe`).
-  - Step 3: union/dedup sets and recompute similarity rows for final source set.
-  - Step 4: replace rows in `similarity_items` only for affected sources.
-- **Updater integration**:
-  - In updater similarity stage, use new mode/flag with configured depth.
-  - Keep runtime bounded with caps if needed (e.g., max impacted sources per run).
-- **Validation / tests**:
-  - Unit test: depth expansion (`0/1/2`) and dedup behavior.
-  - Smoke test on test DB: verify affected old sources are recomputed when new videos are added.
-  - Verify `--help` shows config-backed defaults for `top-k`, `nprobe`, `impact-depth`.
-
 ### 33) Video page similars: diversity on refresh + larger candidate coverage
 **Problem:** on video page (`/api/similar` for upnext), refresh often returns the same small set; for some videos only 1-5 similars are found. We need stable diversity (with likes and without likes) and larger similar pools.
 
@@ -427,38 +392,6 @@
   - sample log lines include full date/time and timezone marker;
   - ordering checks across request-start/work/request-end use application timestamp fields.
 
-### 42) CHANGELOG as public task board: roadmap-style tasks + status + client filters
-**Problem:** current `CHANGELOG.json` is a done-only history log, so users cannot see planned tasks and completed tasks in one unified public board.
-
-**Solution option:** repurpose `CHANGELOG.json` into a human-readable public task board (roadmap-style entries) with explicit status, and update client rendering accordingly.
-
-#### **Solution details:**
-- **Data contract migration (`CHANGELOG.json`)**:
-  - Replace done-only entries with task entries in readable format (title + short summary).
-  - Add required status field per task (allowed enum):
-    - `Planned`,
-    - `Done`.
-  - Keep stable task identity (`id`/`slug`) so status can be updated without rewriting history order.
-  - Keep optional metadata for UI (`updated_at`, `category`, `source_ref`).
-- **Source-of-truth alignment**:
-  - Task wording should stay human-readable and product-facing.
-  - Keep mapping from public changelog task to internal task id when possible (`TASK_LIST` / completed id).
-- **Client adaptation**:
-  - Update changelog page parser to new schema and status field.
-  - Render status-dependent UI:
-    - `Done`: completed visual state (e.g., green + checkmark),
-    - `Planned`: non-complete visual state.
-  - Add two filters/tabs (same tab style as About page):
-    - `Completed`,
-    - `Not completed` (`Planned`).
-- **Workflow update**:
-  - On task completion, update status of existing changelog task instead of appending only a new done-history row.
-  - Keep changelog order deterministic (roadmap/group order or explicit sort key).
-- **Validation / tests**:
-  - Client: schema parse test + filter/tabs test.
-  - Client: status style rendering test for all statuses.
-  - Data: migration/backward-compat test (if legacy entries exist).
-
 ### 43) Static page visit logs for About and Changelog
 **Problem:** visits to `about` and `changelog` are currently served as static files by nginx, so these page visits are not visible in app/service request logs.
 
@@ -504,3 +437,25 @@
   - integration test: API stays available during similarity precompute window,
   - concurrency test: no read errors during swap/reopen,
   - rollback test: forced swap failure restores previous cache and keeps `/api/health` green.
+
+### 56) Similarity precompute: rewrite only existing cache sources
+**Problem:** updater currently runs similarity precompute over all embeddings with full cache recreation, which is heavy and can keep service downtime longer than needed.
+
+**Solution option:** add a mode that recomputes similarity only for source videos already present in `similarity_sources`, and rewrites only those cache entries.
+
+#### **Solution details:**
+- Add dedicated CLI mode in `precompute-similar-ann.py`:
+  - source set = intersection of current embeddings and existing `similarity_sources` in output cache DB;
+  - process only this set instead of all embeddings.
+- For each processed source, keep current rewrite semantics:
+  - upsert `similarity_sources.computed_at`,
+  - delete old `similarity_items` for this source,
+  - insert fresh top-k rows.
+- Keep non-processed source entries untouched (no global cache wipe).
+- Updater integration:
+  - use the new mode for updater precompute stage,
+  - stop passing full-reset behavior intended for complete rebuilds.
+- Validation / tests:
+  - source-count check: processed set equals “already cached + still present in embeddings”;
+  - data check: processed sources are rewritten, untouched sources remain unchanged;
+  - runtime check: updater stage time drops compared to full-cache rebuild baseline.
