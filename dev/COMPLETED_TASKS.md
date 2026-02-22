@@ -1,5 +1,27 @@
 # Completed tasks
 
+### 57) Split Engine/Client into subtree remotes + fast sync push script (done)
+**Done:** implemented subtree sync tooling and workflow docs for maintaining separate `engine/client` remotes from one monorepo workspace.
+
+#### **What was implemented:**
+- Added subtree sync script at repository root:
+  - `sync-subtrees.sh`
+- Implemented sync contract in script:
+  - split/push from current checked-out branch for `engine` and `client` prefixes,
+  - optional partial sync (`--engine-only`, `--client-only`),
+  - dry-run mode (`--dry-run`),
+  - optional clean-worktree enforcement (`--require-clean`).
+- Added bootstrap and operational guidance:
+  - `dev/SUBTREE_WORKFLOW.md`
+- Added fail-fast checks with explicit bootstrap hints:
+  - missing remote detection,
+  - missing remote branch detection,
+  - detached HEAD protection.
+- Validated workflow behavior:
+  - bootstrap + real push against temporary bare remotes,
+  - repeated sync with unchanged source commits keeps remote heads unchanged,
+  - subtree-only remote tree checks for `engine`/`client` split outputs.
+
 ### 55) Strict error on too many likes in recommendations request (done)
 **Done:** recommendations request validation now returns explicit client errors for invalid `likes` payload size/shape instead of silently accepting malformed input.
 

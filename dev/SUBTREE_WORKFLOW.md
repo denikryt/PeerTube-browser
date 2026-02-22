@@ -27,8 +27,8 @@ gh repo create <github_user>/PeerTube-browser-client --public --confirm
 2. Add remotes for split repositories:
 
 ```bash
-git remote add engine-remote git@github.com:<github_user>/PeerTube-browser-engine.git
-git remote add client-remote git@github.com:<github_user>/PeerTube-browser-client.git
+git remote add engine-remote git@github.com:<github_user>/PeerTube-Browser-Engine.git
+git remote add client-remote git@github.com:<github_user>/PeerTube-Browser-Client.git
 ```
 
 3. Create initial `engine` branch manually:
@@ -110,3 +110,28 @@ git subtree pull --prefix=client client-remote main --squash
 ```
 
 Resolve conflicts if any, then continue normal monorepo-first flow.
+
+## 7) Pull split branches
+
+Recommended (apply remote split changes directly into monorepo folders):
+
+```bash
+git subtree pull --prefix=engine engine-remote main --squash
+git subtree pull --prefix=client client-remote main --squash
+```
+
+If you need local technical split branches for inspection:
+
+```bash
+git fetch engine-remote main:split-engine
+git fetch client-remote main:split-client
+
+git log -1 --oneline split-engine
+git log -1 --oneline split-client
+```
+
+Remove local technical branches when finished:
+
+```bash
+git branch -D split-engine split-client
+```

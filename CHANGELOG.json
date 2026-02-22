@@ -291,7 +291,7 @@
     {
       "id": "57",
       "date": "2026-02-22",
-      "status": "Planned",
+      "status": "Done",
       "title": "Split Engine/Client into Subtree Remotes with Fast Sync Script",
       "summary": "Keep one local monorepo workspace, automate `git subtree split` + push for `engine/` and `client/`, and include explicit manual bootstrap instructions for initial remote/branch setup.",
       "time": "01:23:12"
