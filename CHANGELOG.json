@@ -287,6 +287,14 @@
       "title": "Similarity Precompute: Rewrite Existing Cache Sources Only",
       "summary": "Add a precompute mode that recalculates similars only for sources already present in similarity cache and rewrites only those entries instead of full-cache rebuild.",
       "time": "00:37:33"
+    },
+    {
+      "id": "57",
+      "date": "2026-02-22",
+      "status": "Planned",
+      "title": "Split Engine/Client into Subtree Remotes with Fast Sync Script",
+      "summary": "Keep one local monorepo workspace, automate `git subtree split` + push for `engine/` and `client/`, and include explicit manual bootstrap instructions for initial remote/branch setup.",
+      "time": "01:23:12"
     }
   ]
 }

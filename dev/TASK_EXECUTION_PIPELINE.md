@@ -24,7 +24,9 @@ Use it before implementing any task bundle.
    Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
 9. **16l** then **39** then **44** then **56** then **40** (cache runtime safety + similarity precompute scope + shadow swap + zero-downtime deploy)  
    Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache precompute scoping, then shadow cutover, then blue/green nginx switch automation.
-10. **16**, **11** (docs + docstrings)  
+10. **57** (subtree split workflow + sync automation)  
+    Formalize split push flow only after current service/runtime topology is stable.
+11. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
 
 ### Functional blocks (aligned with the same order)
@@ -53,9 +55,9 @@ Use it before implementing any task bundle.
   - Scope: explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/Changelog.
   - Outcome: every API request gets `request-start -> work logs -> request-end` with one shared `request_id` and explicit timestamp format, and nginx adds dedicated visit logs for static `about/changelog` routes with request-correlation-compatible fields.
 - **Block G: Runtime reliability and operations**
-  - Tasks: **16l -> 39 -> 44 -> 56 -> 40**
+  - Tasks: **16l -> 39 -> 44 -> 56 -> 40 -> 57**
   - Scope: safe cache refresh/swap runtime behavior (random + similarity), scoped similarity precompute updates, and automated blue/green nginx cutover.
-  - Outcome: random/similarity caches refresh via shadow files + atomic swap, updater similarity stage can rewrite scoped cache sources instead of full rebuilds, and deploy script performs blue/green switch on `7070/7071` with health-check gate and automatic rollback on failure.
+  - Outcome: random/similarity caches refresh via shadow files + atomic swap, updater similarity stage can rewrite scoped cache sources instead of full rebuilds, deploy script performs blue/green switch on `7070/7071` with health-check gate and rollback, and one sync command can split/push `engine` and `client` into separate subtree remotes.
 
 ### Cross-task overlaps and dependencies
 - **1 <-> 2 <-> 33**: all touch video-page similar retrieval/rendering behavior.  
@@ -80,6 +82,10 @@ Use it before implementing any task bundle.
   Land in-process similarity cache cutover first, then finalize full blue/green deploy automation.
 - **39 <-> 40**: deploy safety depends on fast readiness and warm startup behavior.  
   Zero-downtime cutover (**40**) should be implemented after random-cache startup hardening (**39**).
+- **40 <-> 57**: both are operational automation tasks touching release workflow reliability.  
+  Finalize runtime/deploy behavior first (**40**), then lock split/push automation contract (**57**) so remote repos mirror stable boundaries.
+- **57 <-> 16/11**: subtree workflow adds commands and maintenance conventions that must be reflected in docs/docstrings.  
+  Keep docs polish after subtree sync tooling lands to avoid repeated documentation rewrites.
 - **16 / 11** depend on nearly all feature tasks.  
   Doing them earlier causes repeated rewrites.
 
