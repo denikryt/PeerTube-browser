@@ -132,6 +132,13 @@ function renderMilestone(milestone) {
   details.appendChild(summary);
   registerId(milestone.id, summary);
 
+  if (typeof milestone.goal === "string" && milestone.goal.trim().length > 0) {
+    const meta = document.createElement("div");
+    meta.className = "milestone-meta";
+    meta.textContent = `Goal: ${milestone.goal.trim()}`;
+    details.appendChild(meta);
+  }
+
   const features = Array.isArray(milestone.features) ? milestone.features : [];
   const visibleFeatures = features.filter((feature) => statusVisible(feature.status));
 
@@ -140,14 +147,18 @@ function renderMilestone(milestone) {
     empty.className = "empty";
     empty.textContent = "No features";
     details.appendChild(empty);
-    return details;
+  } else {
+    for (const feature of visibleFeatures) {
+      const featureNode = renderFeature(feature);
+      if (featureNode) {
+        details.appendChild(featureNode);
+      }
+    }
   }
 
-  for (const feature of visibleFeatures) {
-    const featureNode = renderFeature(feature);
-    if (featureNode) {
-      details.appendChild(featureNode);
-    }
+  const nonFeatures = Array.isArray(milestone.non_feature_items) ? milestone.non_feature_items : [];
+  if (nonFeatures.length > 0) {
+    details.appendChild(renderNonFeatureGroup(nonFeatures));
   }
 
   return details;
@@ -175,8 +186,19 @@ function renderFeature(feature) {
 
   const ref = document.createElement("div");
   ref.className = "muted";
-  ref.textContent = feature.gh_issue_number ? `GH #${feature.gh_issue_number}` : "GH issue: not materialized";
+  const track = typeof feature.track === "string" ? feature.track : null;
+  const optional = feature.optional === true ? "Optional" : null;
+  const ghText = feature.gh_issue_number ? `GH #${feature.gh_issue_number}` : "GH issue: not materialized";
+  const refParts = [track, optional, ghText].filter(Boolean);
+  ref.textContent = refParts.join(" | ");
   details.appendChild(ref);
+
+  if (typeof feature.note === "string" && feature.note.trim().length > 0) {
+    const note = document.createElement("div");
+    note.className = "muted";
+    note.textContent = `Note: ${feature.note.trim()}`;
+    details.appendChild(note);
+  }
 
   const issues = Array.isArray(feature.issues) ? feature.issues : [];
   const visibleIssues = issues.filter((issue) => statusVisible(issue.status));
@@ -197,6 +219,56 @@ function renderFeature(feature) {
   }
 
   return details;
+}
+
+/**
+ * Render collapsible non-feature item group for one milestone.
+ * @param {Array<any>} items
+ * @returns {HTMLElement}
+ */
+function renderNonFeatureGroup(items) {
+  const wrap = document.createElement("details");
+  wrap.className = "node";
+  wrap.open = false;
+
+  const summary = document.createElement("summary");
+  summary.textContent = "Non-feature items";
+  wrap.appendChild(summary);
+
+  for (const item of items) {
+    wrap.appendChild(renderNonFeatureItem(item));
+  }
+
+  return wrap;
+}
+
+/**
+ * Render non-feature milestone item (checkpoint or needs-split marker).
+ * @param {any} item
+ * @returns {HTMLElement}
+ */
+function renderNonFeatureItem(item) {
+  const wrap = document.createElement("div");
+  wrap.className = "non-feature-item";
+
+  const label = document.createElement("span");
+  const needsSplit = item && item.classification === "needs_split";
+  label.className = needsSplit ? "label label-needs-split" : "label";
+  label.textContent = needsSplit ? "needs_split" : "not_feature";
+  wrap.appendChild(label);
+
+  const idText = typeof item.id === "string" ? `${item.id}: ` : "";
+  const titleText = typeof item.title === "string" ? item.title : "Untitled";
+  wrap.appendChild(document.createTextNode(`${idText}${titleText}`));
+
+  if (typeof item.reason === "string" && item.reason.trim().length > 0) {
+    const reason = document.createElement("div");
+    reason.className = "muted";
+    reason.textContent = `Reason: ${item.reason.trim()}`;
+    wrap.appendChild(reason);
+  }
+
+  return wrap;
 }
 
 /**

@@ -1,50 +1,702 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "statuses": [
     "Planned",
     "Done"
   ],
-  "updated_at": "2026-02-23T23:45:00+02:00",
+  "updated_at": "2026-02-23T23:59:00+02:00",
   "milestones": [
     {
       "id": "M1",
       "title": "Baseline contour and validation",
-      "features": []
+      "goal": "Lock and verify the already implemented baseline elements of Engine/Client separation.",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Close remaining Engine/Client separation points and formally fix module boundaries.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F2-M1",
+          "title": "Formalize the Client <-> Engine API contract in a separate specification and make it the source of truth.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F3-M1",
+          "title": "Lock and document the baseline Client <-> Engine integration contract (validation, error handling, proxy behavior).",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        }
+      ],
+      "non_feature_items": [
+        {
+          "id": "NF1-M1",
+          "title": "The baseline contour is formally validated: dev/prod flows are reproducible and match the current architecture.",
+          "reason": "Validation criterion, not a standalone deliverable feature."
+        }
+      ]
     },
     {
       "id": "M2",
       "title": "Video-ID indexing and UI rewrite foundations",
-      "features": []
+      "goal": "Isolate the indexing contour into a separate milestone and complete migration to a stable ID scheme.",
+      "features": [
+        {
+          "id": "F1-M2",
+          "title": "Migrate to video-ID-based indexing (top priority).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F2-M2",
+          "title": "Adapt the existing full index rebuild mechanism to video ID.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F3-M2",
+          "title": "Implement/adapt incremental vector and index recomputation for the new scheme.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F4-M2",
+          "title": "Ensure correct content deletion without full index rebuild.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F5-M2",
+          "title": "Perform a major frontend refactor (replace static HTML/CSS).",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F6-M2",
+          "title": "Introduce a scalable frontend framework and component architecture.",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F7-M2",
+          "title": "Design and implement a unified design system.",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F8-M2",
+          "title": "Implement a responsive and mobile-friendly interface.",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F9-M2",
+          "title": "Implement the Home page (feed modes, video cards, dynamic loading).",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F10-M2",
+          "title": "Implement the video search page.",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F11-M2",
+          "title": "Implement the video page (player, comments, similar/up-next block).",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F12-M2",
+          "title": "Implement like/dislike functionality (add/remove).",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        }
+      ],
+      "non_feature_items": [
+        {
+          "id": "NF1-M2",
+          "title": "Migration to video ID does not break delivery or API contract; full/incremental/rebuild scenarios are aligned.",
+          "reason": "Validation criterion, not a standalone deliverable feature."
+        }
+      ]
     },
     {
       "id": "M3",
       "title": "API v1 and discovery behavior",
-      "features": []
+      "goal": "Rewrite the current UI on the new architecture without losing existing capabilities.",
+      "features": [
+        {
+          "id": "F1-M3",
+          "title": "Design and implement a public REST API.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F2-M3",
+          "title": "Implement API versioning.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F3-M3",
+          "title": "Implement feed modes: random, hot, popular, fresh, recommendations.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F4-M3",
+          "title": "Implement endpoint similar(video_id).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F5-M3",
+          "title": "Implement endpoint recommendations(list_of_video_ids).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F6-M3",
+          "title": "Implement a separate search API.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F7-M3",
+          "title": "Verify client read compatibility during indexing scheme changes.",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        }
+      ],
+      "non_feature_items": [
+        {
+          "id": "NF1-M3",
+          "title": "Home/Search/Video run on the new UI architecture with API v1 and feed modes.",
+          "reason": "Validation criterion, not a standalone deliverable feature."
+        }
+      ]
     },
     {
       "id": "M4",
       "title": "Discovery and controlled content scope",
-      "features": []
+      "goal": "Improve source controllability and discovery behavior without mandatory deep personalization.",
+      "features": [
+        {
+          "id": "F1-M4",
+          "title": "Implement content selection endpoint within a specified instance/source.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F2-M4",
+          "title": "Add crawler mode with federated scope limitation (via a new flag).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F3-M4",
+          "title": "Implement storage of local user actions (likes/comments) in a local data model.",
+          "status": "Planned",
+          "track": "Client",
+          "optional": true,
+          "note": "If required by product.",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F4-M4",
+          "title": "Implement a feed parameter panel.",
+          "status": "Planned",
+          "track": "Client",
+          "optional": true,
+          "note": "If required by product.",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        }
+      ],
+      "non_feature_items": [
+        {
+          "id": "NF1-M4",
+          "title": "Content sources and crawler scope are controlled explicitly and predictably.",
+          "reason": "Validation criterion, not a standalone deliverable feature."
+        }
+      ]
     },
     {
       "id": "M5",
       "title": "Federation and social delivery",
-      "features": []
+      "goal": "Build a working federated contour and validate it in practical hosting modes.",
+      "features": [
+        {
+          "id": "F1-M5",
+          "title": "Implement ActivityPub actor for Engine.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F2-M5",
+          "title": "Implement follow logic and processing of incoming ActivityPub updates.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F3-M5",
+          "title": "Implement deduplication of incoming ActivityPub activities.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F4-M5",
+          "title": "Implement sending likes and comments via ActivityPub to the source instance.",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F5-M5",
+          "title": "Implement user profile (avatar, nickname, settings).",
+          "status": "Planned",
+          "track": "Client",
+          "optional": true,
+          "note": "If required by product.",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F6-M5",
+          "title": "Implement user data export mechanism.",
+          "status": "Planned",
+          "track": "Client",
+          "optional": true,
+          "note": "If required by product.",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F7-M5",
+          "title": "Add integration and contract tests for the federated flow.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        }
+      ],
+      "non_feature_items": [
+        {
+          "id": "NS1-M5",
+          "title": "Fix the interaction architecture for the scenario where Engine and Client are hosted on one machine.",
+          "reason": "Too broad as a single feature; should be decomposed into explicit deliverables/issues."
+        },
+        {
+          "id": "NF1-M5",
+          "title": "Social actions from Client and federated ingest in Engine pass end-to-end and are covered by tests.",
+          "reason": "Validation criterion, not a standalone deliverable feature."
+        }
+      ]
     },
     {
       "id": "M6",
       "title": "Moderation and governance",
-      "features": []
+      "goal": "Ship a practical moderation MVP with transparent rules and entities.",
+      "features": [
+        {
+          "id": "F1-M6",
+          "title": "Implement Engine moderation system (ban instances, channels).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F2-M6",
+          "title": "Implement public Engine dashboard (key statistics).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F3-M6",
+          "title": "Implement collection and publication of statistical data.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F4-M6",
+          "title": "Implement display of blocked / active / new instances.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F5-M6",
+          "title": "Implement moderation and data management UI for Engine.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F6-M6",
+          "title": "Implement UI for Engine analytics.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F7-M6",
+          "title": "Implement user reporting mechanism (report + reason).",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F8-M6",
+          "title": "Implement moderation dashboard.",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F9-M6",
+          "title": "Implement client-side moderation system (users/content/comments).",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        }
+      ],
+      "non_feature_items": [
+        {
+          "id": "NF1-M6",
+          "title": "Reports and moderation outcomes are consistent between Client UI and Engine moderation state.",
+          "reason": "Validation criterion, not a standalone deliverable feature."
+        }
+      ]
     },
     {
       "id": "M7",
       "title": "Production operations and reliability",
-      "features": []
+      "goal": "Close production contour and security layer on top of a stable architecture.",
+      "features": [
+        {
+          "id": "F1-M7",
+          "title": "Implement independent production deployment for Engine.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F2-M7",
+          "title": "Simplify build and data build into a single command workflow (production-ready).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F3-M7",
+          "title": "Implement database migration system.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F4-M7",
+          "title": "Implement data backup mechanism (database and indexes).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F5-M7",
+          "title": "Implement task queue system for heavy operations.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F6-M7",
+          "title": "Enable third-party instances to use Engine via API (plugin-like scenario).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F7-M7",
+          "title": "Implement API-level rate limiting (IP, instance, service keys).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F8-M7",
+          "title": "Implement IP and instance-level blocking and restriction mechanisms.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F9-M7",
+          "title": "Implement input size limits and request validation.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F10-M7",
+          "title": "Implement service/API keys for internal and admin scenarios (not end-user auth).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F11-M7",
+          "title": "Implement service key management (create, revoke, limits).",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F12-M7",
+          "title": "Implement baseline roles/permissions for admin operations.",
+          "status": "Planned",
+          "track": "Engine",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F13-M7",
+          "title": "Implement independent production deployment for Client.",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F14-M7",
+          "title": "Implement client-side security hardening (XSS, CSRF, session protection, secure headers).",
+          "status": "Planned",
+          "track": "Client",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        }
+      ],
+      "non_feature_items": [
+        {
+          "id": "NF1-M7",
+          "title": "Production deployment and security perimeter operate together without degrading public client availability.",
+          "reason": "Validation criterion, not a standalone deliverable feature."
+        }
+      ]
     },
     {
       "id": "M8",
       "title": "Documentation and external readiness",
-      "features": []
+      "goal": "Make the platform understandable and integrable for external users.",
+      "features": [
+        {
+          "id": "F1-M8",
+          "title": "Create a separate project presentation website.",
+          "status": "Planned",
+          "track": "Presentation/Docs",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F2-M8",
+          "title": "Describe architecture (Engine + Client + interaction model).",
+          "status": "Planned",
+          "track": "Presentation/Docs",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F3-M8",
+          "title": "Describe platform capabilities and usage scenarios.",
+          "status": "Planned",
+          "track": "Presentation/Docs",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F4-M8",
+          "title": "Add a section about the public API and integration possibilities.",
+          "status": "Planned",
+          "track": "Presentation/Docs",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F5-M8",
+          "title": "Add links to live demo / UI.",
+          "status": "Planned",
+          "track": "Presentation/Docs",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F6-M8",
+          "title": "Prepare full technical documentation (installation, startup, deployment, data build, API usage).",
+          "status": "Planned",
+          "track": "Presentation/Docs",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        },
+        {
+          "id": "F7-M8",
+          "title": "Provide clear documentation for third-party developers who want to use Engine.",
+          "status": "Planned",
+          "track": "Presentation/Docs",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
+        }
+      ],
+      "non_feature_items": [
+        {
+          "id": "NF1-M8",
+          "title": "Documentation reflects real Engine+Client behavior and is understandable for external developers without implicit knowledge.",
+          "reason": "Validation criterion, not a standalone deliverable feature."
+        }
+      ]
     }
   ]
 }
