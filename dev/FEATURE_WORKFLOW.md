@@ -62,10 +62,12 @@ Purpose:
 Required updates:
 - GitHub milestone/issue state,
 - `dev/map/DEV_MAP.json`: write `gh_issue_number` and `gh_issue_url` for feature/work nodes.
+ - each materialized GitHub issue must have the corresponding GitHub milestone assigned.
 
 Validation before next step:
 - links exist and point to correct repo/milestone,
 - no orphan issue node without parent feature.
+ - milestone assignment is present on all created/updated issues (not label-only).
 
 ## 5) `sync issues to task list`
 

@@ -46,10 +46,13 @@ Project-level hard constraints for task work in this repository.
    - `dev/TASK_LIST.md` (with `[M*][F*]` or `[M*][SI*]` markers),
    - `dev/TASK_EXECUTION_PIPELINE.md` (overlaps/dependencies).
 6. Before creating any new task/issue mapping, always analyze existing features in `dev/map/DEV_MAP.json` and propose candidate bindings to the user (one or more matching feature IDs, or standalone if no suitable feature exists).
-7. Binding confirmation is mandatory: do not create/update task, issue, feature, or standalone mapping nodes until the user explicitly chooses the target binding.
-8. After user binding choice, continue only through the normal sync path (`DEV_MAP` + `TASK_LIST` + pipeline overlaps in the same change set).
-9. For standalone (non-product) work, use `Milestone -> StandaloneIssue -> Task` path.
-10. Orphan issues are not allowed: every issue must belong either to a feature (`Issue`) or to a milestone standalone container (`StandaloneIssue`).
+7. Immediately after candidate bindings are prepared, request user binding choice first; do not run extra preparatory checks unrelated to candidate binding before that question.
+8. Binding confirmation is mandatory: do not create/update task, issue, feature, or standalone mapping nodes until the user explicitly chooses the target binding.
+9. After user binding choice, continue only through the normal sync path (`DEV_MAP` + `TASK_LIST` + pipeline overlaps in the same change set).
+10. For standalone (non-product) work, use `Milestone -> StandaloneIssue -> Task` path.
+11. Orphan issues are not allowed: every issue must belong either to a feature (`Issue`) or to a milestone standalone container (`StandaloneIssue`).
+12. During `materialize feature` and `materialize standalone-issue`, every created/updated GitHub issue must be assigned to the corresponding GitHub milestone (not label-only assignment).
+13. If the target GitHub milestone does not exist or cannot be resolved, stop materialization and ask the user to create/select the milestone first.
 
 ## Pipeline constraints
 

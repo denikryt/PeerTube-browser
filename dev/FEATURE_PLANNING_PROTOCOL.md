@@ -46,6 +46,8 @@ Checklist:
 
 - `approve feature plan` is required.
 - No GitHub issue creation/update before approval.
+- Materialized GitHub issues must be assigned to the target GitHub milestone.
+- If target milestone is missing on GitHub, materialization is blocked until milestone is created/selected.
 
 ### Gate C: Pre-execute
 

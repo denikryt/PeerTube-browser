@@ -59,7 +59,8 @@ Use this procedure before executing tasks for a new feature.
 1. `create feature <id>`: create feature node in `dev/map/DEV_MAP.json` using ID format from `dev/map/DEV_MAP_SCHEMA.md`.
 2. `plan feature <id>`: produce scope, out-of-scope, acceptance criteria, risks, dependencies, decomposition.
 3. `approve feature plan`: freeze boundaries and allow materialization.
-4. `materialize feature`: create/update GitHub feature/work issues and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
+4. `materialize feature`: create/update GitHub feature/work issues, assign each issue to the corresponding GitHub milestone, and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
+   - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
 5. `sync issues to task list`: synchronize tasks into `dev/TASK_LIST.md` (`[M*][F*]` markers) and overlaps in `dev/TASK_EXECUTION_PIPELINE.md`.
 6. Only then run `execute task X`.
 
@@ -70,7 +71,8 @@ Use this when work should not be attached to a product feature (ops/process/tool
 1. `create standalone-issue <id>`: create standalone issue node in `dev/map/DEV_MAP.json` using `SI<local>-M<milestone>` ID format.
 2. `plan standalone-issue <id>`: define scope, acceptance checks, and expected tasks.
 3. `approve standalone-issue plan`: freeze boundaries and allow materialization/sync.
-4. `materialize standalone-issue`: create/update GitHub issue and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
+4. `materialize standalone-issue`: create/update GitHub issue, assign it to the corresponding GitHub milestone, and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
+   - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
 5. `sync standalone-issue to task list`: synchronize tasks into `dev/TASK_LIST.md` (`[M*][SI*]` markers) and overlaps in `dev/TASK_EXECUTION_PIPELINE.md`.
 6. Only then run `execute task X`.
 
@@ -91,15 +93,15 @@ Use this when multiple tasks are requested in one execution run.
 When creating or rewriting a task definition:
 
 1. Inspect real implementation context first (relevant code paths/modules/scripts/tests).
-2. Allocate task ID from `dev/map/DEV_MAP.json`:
+2. Analyze existing bindings in `dev/map/DEV_MAP.json` and prepare candidate targets for this task:
+   - one or more matching feature chains (`Milestone -> Feature -> Issue`), or
+   - standalone chain (`Milestone -> StandaloneIssue`) if no suitable feature exists.
+3. Ask user to choose binding target; do not write mapping before explicit user choice.
+4. Allocate task ID from `dev/map/DEV_MAP.json`:
    - read `task_count`,
    - assign `new_id = task_count + 1` as the new numeric task ID,
    - set `task_count = new_id` in the same change set.
    Never allocate by scanning or by "last visible task" in `dev/TASK_LIST.md`.
-3. Analyze existing bindings in `dev/map/DEV_MAP.json` and prepare candidate targets for this task:
-   - one or more matching feature chains (`Milestone -> Feature -> Issue`), or
-   - standalone chain (`Milestone -> StandaloneIssue`) if no suitable feature exists.
-4. Ask user to choose binding target; do not write mapping before explicit user choice.
 5. Update `dev/TASK_LIST.md` as one linear list (append new tasks to the end).
 6. Attach/update the task in `dev/map/DEV_MAP.json` under the user-selected target chain (or create missing parent nodes first):
    - `Milestone -> Feature -> Issue -> Task`, or
