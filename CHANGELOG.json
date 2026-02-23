@@ -295,6 +295,14 @@
       "title": "Split Engine/Client into Subtree Remotes with Fast Sync Script",
       "summary": "Keep one local monorepo workspace, automate `git subtree split` + push for `engine/` and `client/`, and include explicit manual bootstrap instructions for initial remote/branch setup.",
       "time": "01:23:12"
+    },
+    {
+      "id": "58",
+      "date": "2026-02-23",
+      "status": "Planned",
+      "title": "DEV_MAP as Single Planning Source + Interactive Development Map",
+      "summary": "Execute concrete migration actions: create canonical `dev/DEV_MAP.json`, add interactive `dev/dev-map.html` viewer, add planning/workflow protocol files, enforce full cycle `plan feature -> approve feature plan -> materialize feature -> sync issues to task list -> execute task X`, require strict creation paths (new task: direct + same-change mapping into `DEV_MAP` hierarchy + pipeline sync; new feature: command-gated create/plan/approve/materialize flow), update AGENTS/protocol rules for approval-gated GitHub materialization and `[M*][F*]` markers, and remove mandatory `COMPLETED_TASKS` workflow dependency.",
+      "time": "20:37:07"
     }
   ]
 }

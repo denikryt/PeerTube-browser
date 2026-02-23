@@ -24,7 +24,9 @@ Use it before implementing any task bundle.
    Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
 9. **16l** then **39** then **44** then **56** then **40** (cache runtime safety + similarity precompute scope + shadow swap + zero-downtime deploy)  
    Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache precompute scoping, then shadow cutover, then blue/green nginx switch automation.
-10. **16**, **11** (docs + docstrings)  
+10. **58** (milestone/feature/task synchronization model)  
+    Establish planning/tracking source-of-truth rules before further backlog growth.
+11. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
 
 ### Functional blocks (aligned with the same order)
@@ -56,6 +58,10 @@ Use it before implementing any task bundle.
   - Tasks: **16l -> 39 -> 44 -> 56 -> 40**
   - Scope: safe cache refresh/swap runtime behavior (random + similarity), scoped similarity precompute updates, and automated blue/green nginx cutover.
   - Outcome: random/similarity caches refresh via shadow files + atomic swap, updater similarity stage can rewrite scoped cache sources instead of full rebuilds, and deploy script performs blue/green switch on `7070/7071` with health-check gate and rollback.
+- **Block H: Planning and tracking governance**
+  - Tasks: **58**
+  - Scope: `DEV_MAP`-first planning model, changelog-board role replacement, interactive hierarchy navigation, and cross-file synchronization contract.
+  - Outcome: `dev/DEV_MAP.json` becomes canonical Milestone->Feature->Issue->Task status map (with `Planned/Done`), GitHub milestones/features/work-issues are materialized only after explicit plan approval, viewer-based navigation is available, and the planning cycle enforces feature->issues->tasks decomposition with mandatory sync to both `TASK_LIST.md` and `TASK_EXECUTION_PIPELINE.md` overlaps before any `execute task X`.
 
 ### Cross-task overlaps and dependencies
 - **1 <-> 2 <-> 33**: all touch video-page similar retrieval/rendering behavior.  
@@ -80,6 +86,8 @@ Use it before implementing any task bundle.
   Land in-process similarity cache cutover first, then finalize full blue/green deploy automation.
 - **39 <-> 40**: deploy safety depends on fast readiness and warm startup behavior.  
   Zero-downtime cutover (**40**) should be implemented after random-cache startup hardening (**39**).
+- **58 <-> all pending tasks**: planning metadata consistency affects how new tasks/features are added and tracked.  
+  Establish synchronization contract once (**58**) before adding many new planning entities.
 - **16 / 11** depend on nearly all feature tasks.  
   Doing them earlier causes repeated rewrites.
 

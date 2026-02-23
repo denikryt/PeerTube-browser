@@ -15,6 +15,10 @@ Project-level hard constraints for task work in this repository.
 9. Direct edit command override (repository-wide): when the user explicitly instructs to make concrete code/config/script/file edits, apply those edits immediately without requiring `execute task X`.
 10. Treat such direct edit commands as side edits (outside task execution flow) unless the user explicitly frames them as task execution.
 11. For direct edit commands, do not block on task-command format; execute the requested edits and report changes.
+12. Never make any file/code/config/script changes unless the user has explicitly asked for those concrete edits in the current message.
+13. Hard no-edit default: if the user message is discussion, question, planning, or clarification, do not run any edit command and do not change any file.
+14. Before any edit, require an explicit edit intent in the current user message (examples: "edit", "change", "update", "create file", "delete", "apply patch", "внеси изменения", "измени", "создай", "удали").
+15. If explicit edit intent is missing, respond with analysis/instructions only and keep repository files untouched.
 
 ## Task and tracking state constraints
 

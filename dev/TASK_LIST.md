@@ -459,3 +459,151 @@
   - source-count check: processed set equals “already cached + still present in embeddings”;
   - data check: processed sources are rewritten, untouched sources remain unchanged;
   - runtime check: updater stage time drops compared to full-cache rebuild baseline.
+
+### 58) Development map model: `DEV_MAP` as single planning source + interactive navigation
+**Problem:** planning/status data is duplicated across multiple markdown/json files, hard to navigate as a hierarchy, and difficult to keep synchronized while backlog grows.
+
+**Solution context (kept for clarity):**
+- Canonical planning model:
+  - `DEV_MAP.json` is the planning hierarchy source of truth:
+    - `Milestone -> Feature -> Issue -> Task`;
+  - statuses are intentionally minimal:
+    - `Planned`, `Done`.
+- GitHub execution layer:
+  - GitHub milestones mirror local milestone IDs (`M1..Mn`);
+  - one feature = one GitHub issue (`type:feature`);
+  - optional linked work issues (`type:work`) under a feature;
+  - low-level implementation tasks remain in `TASK_LIST.md` (no forced 1-task-1-issue mapping).
+- Tracking ownership split:
+  - `MILESTONES.md` keeps narrative + mirrored milestone/feature statuses;
+  - `TASK_LIST.md` keeps concrete implementation tasks with canonical IDs;
+  - `CHANGELOG.json` is migrated away from planning-status authority after DEV_MAP rollout.
+- Task identity and markers:
+  - canonical task ID must remain stable and milestone-independent (example: `58`, not `58:M1`);
+  - each task entry in `TASK_LIST.md` must carry ownership markers:
+    - `[M<id>]`, `[F<id>]`.
+- Approval-gated materialization:
+  - planning must be approved before creating/updating GitHub issues;
+  - required flow:
+    - `plan feature` -> `approve feature plan` -> `materialize feature`.
+- Completion semantics:
+  - `confirm feature done` only when mapped work issues are closed (or checklist completed) and mapped tasks are `Done`;
+  - `confirm milestone done` only when all milestone features are `Done`.
+- Process cleanup target:
+  - remove mandatory `dev/COMPLETED_TASKS.md` tracking dependency from process rules.
+
+**What will be done in this task:**
+1. Create canonical planning data file:
+   - add `dev/DEV_MAP.json` with strict hierarchy:
+     - `Milestone -> Feature -> Issue -> Task`;
+   - statuses only: `Planned`, `Done`;
+   - include GitHub refs for feature/work nodes:
+     - `gh_issue_number`, `gh_issue_url`.
+2. Add interactive map view:
+   - add `dev/dev-map.html` + JS renderer for `DEV_MAP.json`;
+   - implement expand/collapse by hierarchy and status filter (`Planned`/`Done`);
+   - support direct navigation by milestone/feature/issue/task IDs.
+3. Update planning workflow docs:
+   - add `dev/FEATURE_PLANNING_PROTOCOL.md` with explicit sections:
+     - planning input contract:
+       - feature ID/title, target milestone, scope, out-of-scope;
+       - constraints/dependencies/overlaps with existing tasks/features;
+     - decomposition rules:
+       - feature -> work issues -> implementation tasks;
+       - when to keep task as checklist item vs when to split into a separate work issue;
+     - required plan artifacts:
+       - acceptance criteria (measurable), risk list, validation strategy, rollback notes;
+     - quality gates:
+       - pre-approve gate (plan completeness),
+       - pre-materialize gate (`approve feature plan` required),
+       - pre-execute gate (task links/markers synced),
+       - pre-done gate (all acceptance checks green);
+     - completion criteria:
+       - `feature done` and `milestone done` semantics with exact blocking conditions.
+   - add `dev/FEATURE_WORKFLOW.md` as operational playbook with step-by-step sequence:
+     - `plan feature` (expected input/output),
+     - `approve feature plan` (approval checkpoint),
+     - `materialize feature` (GitHub issues/milestone linking),
+     - `sync issues to task list` (mandatory file sync order),
+     - `execute task X` (implementation phase),
+     - `confirm feature done` / `confirm milestone done` (closure phase);
+   - include for each command:
+     - what files must change,
+     - what status transitions are allowed,
+     - what validation checks are mandatory before moving to next step.
+4. Update process rules (`AGENTS.md`, `dev/TASK_EXECUTION_PROTOCOL.md`):
+   - set `DEV_MAP.json` as planning source of truth;
+   - require approval gate before GitHub materialization:
+     - `plan feature` -> `approve feature plan` -> `materialize feature`;
+   - require `[M*][F*]` markers in each `dev/TASK_LIST.md` entry;
+   - remove mandatory usage of `dev/COMPLETED_TASKS.md` from process rules.
+5. Migrate tracking ownership:
+   - `MILESTONES.md` keeps milestone narrative + milestone/feature status mirror;
+   - `TASK_LIST.md` keeps implementation tasks with canonical IDs + `[M*][F*]` markers;
+   - `CHANGELOG.json` is no longer planning-status authority after migration
+     (remove or keep only as compatibility output generated from `DEV_MAP.json`).
+6. Define completion semantics in docs:
+   - `confirm feature done`: only when all mapped work issues are closed (or checklist done) and mapped tasks are `Done`;
+   - `confirm milestone done`: only when all milestone features are `Done`.
+7. Implement full planning-to-execution cycle contract:
+   - `plan feature <id>` must produce:
+     - feature scope draft,
+     - proposed work issues decomposition,
+     - proposed implementation tasks list;
+   - mandatory command sequence must be explicitly documented and enforced:
+     1) `plan feature <id>`
+        - produces draft plan: scope/out-of-scope, acceptance criteria, risks, dependencies/overlaps;
+        - proposes decomposition: feature -> work issues -> implementation tasks.
+     2) `approve feature plan`
+        - freezes approved decomposition and scope boundaries;
+        - blocks any materialization until approval exists.
+     3) `materialize feature`
+        - creates/updates GitHub feature/work issues with milestone + labels;
+        - writes linked `gh_issue_number`/`gh_issue_url` to corresponding nodes in `dev/DEV_MAP.json`.
+     4) `sync issues to task list`
+        - syncs approved decomposition into local execution artifacts:
+          - `dev/TASK_LIST.md`: add/update concrete tasks with `[M*][F*]` markers;
+          - `dev/TASK_EXECUTION_PIPELINE.md`: add/update overlaps/dependencies for those tasks.
+     5) `execute task X`
+        - allowed only after steps 1-4 are complete and synchronized.
+   - decomposition output must be synchronized in one cycle:
+     - map feature/work issues in `DEV_MAP.json`,
+     - add/update implementation tasks in `dev/TASK_LIST.md`,
+     - add/update overlaps/dependencies in `dev/TASK_EXECUTION_PIPELINE.md`;
+   - creation of new planning entities must follow strict entry paths:
+     - new task:
+       - can be created directly (without feature materialization step),
+       - but must be mapped into `dev/DEV_MAP.json` under existing hierarchy node
+         (`Milestone -> Feature -> Issue -> Task`) in the same change set;
+       - and must be added to `dev/TASK_LIST.md` and to overlaps/dependencies in
+         `dev/TASK_EXECUTION_PIPELINE.md` in the same change set (no deferred sync);
+     - new feature:
+       - must be created and planned via command flow:
+         - `create feature <id>` -> `plan feature <id>` -> `approve feature plan` -> `materialize feature`;
+       - task execution for that feature is blocked until `sync issues to task list` is complete.
+   - `sync issues to task list` must be defined as mandatory step before `execute task X`;
+   - no execution starts until planning artifacts and pipeline overlaps are updated.
+
+#### **Concrete deliverables:**
+- `dev/DEV_MAP.json` exists and contains initial migrated hierarchy.
+- `dev/dev-map.html` renders `DEV_MAP.json` interactively.
+- `dev/FEATURE_PLANNING_PROTOCOL.md` exists.
+- `dev/FEATURE_WORKFLOW.md` exists.
+- `AGENTS.md` and `dev/TASK_EXECUTION_PROTOCOL.md` updated to the new model.
+- planning cycle rules explicitly cover:
+  - feature -> issues -> tasks decomposition,
+  - separate creation paths for new task vs new feature,
+  - mandatory task placement in `DEV_MAP.json` hierarchy,
+  - mandatory `TASK_LIST` sync,
+  - mandatory `TASK_EXECUTION_PIPELINE` overlap sync before execution.
+
+#### **Validation:**
+- schema check passes for `dev/DEV_MAP.json` (required fields + allowed statuses).
+- each feature/work node in `DEV_MAP.json` has valid `gh_issue_number` + `gh_issue_url` after materialization.
+- every task referenced in `DEV_MAP.json` exists in `dev/TASK_LIST.md` with matching canonical ID.
+- each newly created task is attached in `DEV_MAP.json` to a concrete parent chain
+  (`Milestone -> Feature -> Issue`) and is not allowed as an orphan node.
+- every `dev/TASK_LIST.md` task has `[M*][F*]` markers consistent with `DEV_MAP.json`.
+- milestone/feature statuses shown in `dev/MILESTONES.md` match `DEV_MAP.json`.
+- process docs contain no mandatory rule to write to `dev/COMPLETED_TASKS.md`.
+- for each planned feature, pipeline contains explicit overlap/dependency entries for newly added tasks before `execute task X`.
