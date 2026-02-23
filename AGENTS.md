@@ -23,15 +23,15 @@ Project-level hard constraints for task work in this repository.
 ## Task and tracking state constraints
 
 1. Do not mark any task or task block as completed until the user explicitly confirms completion after review.
-2. Do not move entries from `dev/TASK_LIST.md` to `dev/COMPLETED_TASKS.md` until explicit user confirmation is received.
-3. Keep implemented tasks in their current state (not completed) while awaiting user verification.
-4. Keep wording/style consistent with existing entries in `dev/COMPLETED_TASKS.md`.
-5. Keep `dev/TASK_LIST.md`, `dev/TASK_EXECUTION_PIPELINE.md`, and `dev/TASK_EXECUTION_PROTOCOL.md` consistent when adding/updating tasks.
+2. Keep implemented tasks in their current state (not completed) while awaiting user verification.
+3. `dev/map/DEV_MAP.json` is the planning source of truth for hierarchy (`Milestone -> Feature -> Issue -> Task`) and for non-milestone status fields.
+4. `dev/TASK_LIST.md`, `dev/TASK_EXECUTION_PIPELINE.md`, and `dev/map/DEV_MAP.json` must stay synchronized when adding/updating tasks/features.
+5. Each task entry in `dev/TASK_LIST.md` must include ownership markers `[M*][F*]`. If the task node exists in `dev/map/DEV_MAP.json`, markers must match that parent chain.
 6. Before reporting a task as implemented, perform a mandatory final check that all requirements from the exact task text are covered; explicitly list any unmet requirement.
 
 ## Changelog constraints
 
-1. `CHANGELOG.json` is a public task board (human-readable roadmap-style tasks), not only a done-history log.
+1. `CHANGELOG.json` is a public compatibility board, not the planning source of truth.
 2. Every public changelog task must have an explicit status (allowed: `Planned`, `Done`).
 3. Update an item in `CHANGELOG.json` to `Done` only after explicit user confirmation of completion.
 4. Keep public changelog task wording human-readable and maintain stable task identity so status updates are deterministic.
@@ -45,6 +45,17 @@ Project-level hard constraints for task work in this repository.
 12. Every `CHANGELOG.json` entry must include both `date` (`YYYY-MM-DD`) and `time` (`HH:MM:SS`).
 13. For newly created changelog entries, set `time` from the current local time at write moment (`time.now` semantics).
 14. When bulk-updating existing entries with missing `time`, keep the current entry order unchanged and assign times in that same order (monotonic by entry sequence).
+
+## Feature planning and materialization constraints
+
+1. Feature work must follow approval-gated flow: `plan feature` -> `approve feature plan` -> `materialize feature`.
+2. Do not materialize GitHub feature/work issues before explicit plan approval.
+3. `sync issues to task list` is mandatory before any related `execute task X`.
+4. ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md` and must be used as-is (`F<local>-M<milestone>`, `I<local>-F<feature_local>-M<milestone>`, global task IDs from `dev/TASK_LIST.md`).
+5. New task direct path is allowed only with same-change synchronization in all three files:
+   - `dev/map/DEV_MAP.json` (attach under `Milestone -> Feature -> Issue` when those nodes exist; otherwise create parent nodes first),
+   - `dev/TASK_LIST.md` (with `[M*][F*]` markers),
+   - `dev/TASK_EXECUTION_PIPELINE.md` (overlaps/dependencies).
 
 ## Pipeline constraints
 

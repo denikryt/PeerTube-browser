@@ -1,6 +1,6 @@
 # Task List (future)
 
-### 1) Fast response with similars
+### 1) [M2][F1] Fast response with similars
 **Problem:** until the server receives a response from the instance, the client shows an empty page; some instances respond slowly.
 
 **Solution option:** first show similar videos (fast response from local DB), then load the current video metadata when it arrives.
@@ -10,7 +10,7 @@
 - The server responds to the similars request immediately from local cache/DB, without waiting for live instance responses, so the UI is not empty.
 - Metadata updates are done via a separate request to the instance (server-side or client-side), then saved to the DB and the UI updates.
 
-### 2) Similars on scroll
+### 2) [M2][F1] Similars on scroll
 **Problem:** only 8 videos are shown in similar videos; there is a need to see more.
 
 **Solution option:** remove the separate "similar videos" page and load similars directly on the video page, like on the home page: the server returns N similars and the client renders them progressively as you scroll.
@@ -19,7 +19,7 @@
 - The server for video-page returns a full batch of similars at once (for example, `BATCH_SIZE = 48`) in a single response so the client does not make frequent requests.
 - The client keeps the batch in memory and shows it in chunks while scrolling, adding new cards as the user nears the bottom.
 
-### 3) Video page metadata completeness: show tags/category + refresh mutable fields
+### 3) [M2][F1] Video page metadata completeness: show tags/category + refresh mutable fields
 **Problem:** video page does not show all useful metadata (especially tags and category), and metadata refresh on video request currently focuses mostly on dynamic stats (views/likes) while other fields may also change.
 
 **Solution option:** render tags and category on the video page, and extend per-request metadata refresh to update mutable video fields from the source instance.
@@ -60,7 +60,7 @@
     - assert no overwrite happens on failed instance fetch path.
   - Regression test: stats refresh still works and does not wipe existing tags/category on partial responses.
 
-### 4) Comments under the video
+### 4) [M2][F1] Comments under the video
 **Problem:** comments are not displayed under the video.
 
 **Solution option:** the server or client requests the instance to get comments and render them under the video on the page.
@@ -71,7 +71,7 @@
 - Remove the comment input field (view-only).
 - First verify on a specific video which request is needed to fetch comments; use the response structure for client rendering.
 
-### 8) Tailwind CSS (optional)
+### 8) [M2][F1] Tailwind CSS (optional)
 **Problem:** styles are fragmented and hard to maintain.
 
 **Solution option:** evaluate Tailwind and adopt if needed.
@@ -79,7 +79,7 @@
 #### **Solution details:**
 - Start with new blocks, gradually replace repeating styles.
 
-### 8b) Switchable feed modes: recommendations / hot / recent / random / popular
+### 8b) [M3][F2] Switchable feed modes: recommendations / hot / recent / random / popular
 **Problem:** right now there are only recommendations and random; there are no quick modes like “only recent / only hot / only popular.”
 
 **Solution option:** add feed modes on the home page and a mode switch.
@@ -92,7 +92,7 @@
 - Popular: top by likes/views.
 - Random: random feed.
 
-### 8c) About page outbound links: proper click tracking
+### 8c) [M3][F6] About page outbound links: proper click tracking
 **Problem:** clicks on external links from `about.html` are currently visible only indirectly in nginx logs and are noisy/inaccurate because bots and malformed requests are mixed in.
 
 **Solution option:** add explicit client event tracking for outbound link clicks on the About page and store events in API DB.
@@ -128,7 +128,7 @@
   - API test: valid event is stored, invalid event is rejected.
   - E2E smoke test: clicking About links increases counter in DB.
 
-### 9b) Remove a single like (UI + API)
+### 9b) [M2][F1] Remove a single like (UI + API)
 **Problem:** currently you can only reset all likes, but cannot remove a single one.
 
 **Solution option:** let the user remove a like from the list (in the My likes modal) and/or via dislike on the video page.
@@ -139,7 +139,7 @@
 - Client: remove entry from localStorage (uuid/host).
 - Server: a dedicated endpoint (or extend `/user-profile/reset`) to delete a single like from the users DB, if a DB is used.
 
-### 9) Collapsible video description
+### 9) [M2][F1] Collapsible video description
 **Problem:** long video descriptions take up too much space.
 
 **Solution option:** implement collapse/expand for the description.
@@ -148,7 +148,7 @@
 - Limit description height and show a “Show more/Collapse” button.
 - On click, toggle expanded/collapsed state and keep it in the UI.
 
-### 10) Video search page
+### 10) [M3][F2] Video search page
 **Problem:** there is no search page and no server-side logic for video search.
 
 **Solution option:** API search (FTS/LIKE) and a simple UI for results.
@@ -157,7 +157,7 @@
 - Define request/response format: `GET /api/search/videos?q=...&page=...&limit=...&sort=...`.
 - Server: add a video search endpoint (SQLite FTS5, fallback to LIKE).
 
-### 11) Docstrings for all modules and functions
+### 11) [M8][F5] Docstrings for all modules and functions
 **Problem:** descriptions are missing in some places, making it harder to quickly understand module and function purpose.
 
 **Solution option:** add short docstring descriptions to all modules and functions where they are missing.
@@ -167,7 +167,7 @@
 - Functions/classes: 1–2 lines, “what it does / what it returns.”
 - Avoid noise — only where it is non-obvious.
 
-### 12a) Popular: weighted random by similarity
+### 12a) [M3][F2] Popular: weighted random by similarity
 **Problem:** when likes exist, popular is sorted by similarity but then a random sample is taken from the whole pool, so the sorting almost does not affect the result.
 
 **Solution option:** replace random.sample with weighted random using similarity as the weight.
@@ -178,7 +178,7 @@
 - Add config parameter `popular.weighted_random_alpha` (0 = disabled).
 - For empty/zero weights fallback to normal random.
 
-### 15) Crawler mode: start from one instance and its subscriptions
+### 15) [M4][F3] Crawler mode: start from one instance and its subscriptions
 **Problem:** there is no crawler mode that starts from one instance and walks its federated subscriptions.
 
 **Solution option:** add a mode where a seed instance domain is provided, then the crawler:
@@ -193,7 +193,7 @@
 - Step 3: iterate through videos of channels and save them to the DB.
 - Note: this mode belongs to the instance crawler; its behavior should be aligned with existing crawler flags.
 
-### 16) Update recommendation description (RECOMMENDATIONS_OVERVIEW)
+### 16) [M8][F5] Update recommendation description (RECOMMENDATIONS_OVERVIEW)
 **Problem:** `RECOMMENDATIONS_OVERVIEW.md` does not match the current recommendation logic.
 
 **Solution option:** rewrite the document and describe the whole generation pipeline.
@@ -204,7 +204,7 @@
 - Describe filters, deduplication, and mixing rules.
 - Describe what the client receives and how the frontend uses it.
 
-### 16l) Background refresh of random cache
+### 16l) [M7][F4] Background refresh of random cache
 **Problem:** random cache is rebuilt only on server start and/or on a refresh flag. We need a background mechanism with safe updates without read conflicts.
 
 **Solution option:** periodic job that rebuilds the cache into a separate file and atomically swaps the active cache.
@@ -216,7 +216,7 @@
 - Logs/metrics: build time, size, number of valid candidates, short-fill reasons.
 - Consider SQLite: use WAL/readonly connection for reading, update only under a lock for replacement.
 
-### 33) Video page similars: diversity on refresh + larger candidate coverage
+### 33) [M3][F2] Video page similars: diversity on refresh + larger candidate coverage
 **Problem:** on video page (`/api/similar` for upnext), refresh often returns the same small set; for some videos only 1-5 similars are found. We need stable diversity (with likes and without likes) and larger similar pools.
 
 **Solution option:** expand ANN candidate recall (`search_limit`, `top-k`, `nprobe`), add deterministic shuffle/window sampling for final output, and add fallback broadening when candidate count is low.
@@ -261,7 +261,7 @@
 - Low-similarity video test: verify fallback expands pool above minimum.
 - Compare behavior for `likes=yes` and `likes=no`.
 
-### 37) Stable ANN IDs: replace `video_embeddings.rowid` with deterministic `video_id+host -> int64`
+### 37) [M2][F7] Stable ANN IDs: replace `video_embeddings.rowid` with deterministic `video_id+host -> int64`
 **Problem:** ANN currently uses SQLite `video_embeddings.rowid` as FAISS id source. This is tightly coupled to physical row layout and becomes operationally fragile after purge/merge/rebuild cycles. We need stable ANN ids derived from logical video identity.
 
 **Solution option:** introduce deterministic ANN id (`ann_id`) from canonical key `(video_id, instance_domain)` and migrate ANN/search/precompute pipelines to use it end-to-end.
@@ -304,7 +304,7 @@
 - DB schema/migration/ingest: `server/db/jobs/migrate-whitelist.py`, `server/db/jobs/build-video-embeddings.py`, `server/db/jobs/sync-whitelist.py`, merge/updater flow.
 - Ops/docs/tests: `server/db/jobs/updater-worker.py`, updater docs, ANN/smoke tests.
 
-### 38) Request lifecycle logs: request-start first + shared request_id across server logs
+### 38) [M7][F4] Request lifecycle logs: request-start first + shared request_id across server logs
 **Problem:** current logs are hard to correlate because access logs are emitted on response write, while business logs (`[similar-server]`, `[recommendations]`) are produced during processing and can interleave across threads.
 
 **Solution option:** introduce a per-request lifecycle log (`start` -> work logs -> `end`) and one shared `request_id` propagated through handler and recommendation logs.
@@ -328,7 +328,7 @@
   - regression test to ensure no request is logged without `request_id`;
   - manual verification runbook that compares one request in both logs by `request_id`.
 
-### 39) Random cache refresh worker without startup downtime (extends 16l runtime behavior)
+### 39) [M7][F4] Random cache refresh worker without startup downtime (extends 16l runtime behavior)
 **Problem:** rebuilding random cache during startup can delay readiness and create a visible unavailable window after restart.
 
 **Solution option:** keep serving from existing cache immediately, and rebuild cache in a background worker with atomic swap.
@@ -349,7 +349,7 @@
   - startup readiness test confirms `/api/health` responds before cache rebuild completes;
   - concurrent read test during swap shows no request failures.
 
-### 40) Zero-downtime server deploy: parallel port startup + automatic nginx switch
+### 40) [M7][F4] Zero-downtime server deploy: parallel port startup + automatic nginx switch
 **Problem:** in-place restart on one port causes temporary downtime during server initialization/warm-up.
 
 **Solution option:** implement blue/green style deploy for the API: start a new instance on a second port, health-check it, switch nginx upstream, then drain/stop old instance.
@@ -378,7 +378,7 @@
   - forced-failure test verifies rollback path;
   - verify one-command run requires no manual `systemctl`/nginx edits.
 
-### 41) Timestamped request logs (explicit date/time)
+### 41) [M7][F4] Timestamped request logs (explicit date/time)
 **Problem:** request timing analysis is harder when logs rely only on journal envelope time or inconsistent message formatting.
 
 **Solution option:** include explicit timestamp in application log format and in request lifecycle logs.
@@ -392,7 +392,7 @@
   - sample log lines include full date/time and timezone marker;
   - ordering checks across request-start/work/request-end use application timestamp fields.
 
-### 43) Static page visit logs for About and Changelog
+### 43) [M7][F4] Static page visit logs for About and Changelog
 **Problem:** visits to `about` and `changelog` are currently served as static files by nginx, so these page visits are not visible in app/service request logs.
 
 **Solution option:** add a dedicated logging path for static page visits and keep correlation with request tracing where possible.
@@ -410,7 +410,7 @@
   - visiting `about` and `changelog` produces entries with expected fields in nginx logs;
   - sample correlation by request id/time window works against app-side traces.
 
-### 44) Similarity cache shadow build + atomic swap without long API downtime
+### 44) [M7][F4] Similarity cache shadow build + atomic swap without long API downtime
 **Problem:** updater currently keeps API service stopped until `precompute-similar-ann.py` finishes. Similarity precompute can be very long, causing unnecessary API downtime.
 
 **Solution option:** build similarity cache in a shadow DB while API is already running, then perform a fast atomic cutover.
@@ -438,7 +438,7 @@
   - concurrency test: no read errors during swap/reopen,
   - rollback test: forced swap failure restores previous cache and keeps `/api/health` green.
 
-### 56) Similarity precompute: rewrite only existing cache sources
+### 56) [M7][F4] Similarity precompute: rewrite only existing cache sources
 **Problem:** updater currently runs similarity precompute over all embeddings with full cache recreation, which is heavy and can keep service downtime longer than needed.
 
 **Solution option:** add a mode that recomputes similarity only for source videos already present in `similarity_sources`, and rewrites only those cache entries.
@@ -460,150 +460,3 @@
   - data check: processed sources are rewritten, untouched sources remain unchanged;
   - runtime check: updater stage time drops compared to full-cache rebuild baseline.
 
-### 58) Development map model: `DEV_MAP` as single planning source + interactive navigation
-**Problem:** planning/status data is duplicated across multiple markdown/json files, hard to navigate as a hierarchy, and difficult to keep synchronized while backlog grows.
-
-**Solution context (kept for clarity):**
-- Canonical planning model:
-  - `DEV_MAP.json` is the planning hierarchy source of truth:
-    - `Milestone -> Feature -> Issue -> Task`;
-  - statuses are intentionally minimal:
-    - `Planned`, `Done`.
-- GitHub execution layer:
-  - GitHub milestones mirror local milestone IDs (`M1..Mn`);
-  - one feature = one GitHub issue (`type:feature`);
-  - optional linked work issues (`type:work`) under a feature;
-  - low-level implementation tasks remain in `TASK_LIST.md` (no forced 1-task-1-issue mapping).
-- Tracking ownership split:
-  - `MILESTONES.md` keeps narrative + mirrored milestone/feature statuses;
-  - `TASK_LIST.md` keeps concrete implementation tasks with canonical IDs;
-  - `CHANGELOG.json` is migrated away from planning-status authority after DEV_MAP rollout.
-- Task identity and markers:
-  - canonical task ID must remain stable and milestone-independent (example: `58`, not `58:M1`);
-  - each task entry in `TASK_LIST.md` must carry ownership markers:
-    - `[M<id>]`, `[F<id>]`.
-- Approval-gated materialization:
-  - planning must be approved before creating/updating GitHub issues;
-  - required flow:
-    - `plan feature` -> `approve feature plan` -> `materialize feature`.
-- Completion semantics:
-  - `confirm feature done` only when mapped work issues are closed (or checklist completed) and mapped tasks are `Done`;
-  - `confirm milestone done` only when all milestone features are `Done`.
-- Process cleanup target:
-  - remove mandatory `dev/COMPLETED_TASKS.md` tracking dependency from process rules.
-
-**What will be done in this task:**
-1. Create canonical planning data file:
-   - add `dev/DEV_MAP.json` with strict hierarchy:
-     - `Milestone -> Feature -> Issue -> Task`;
-   - statuses only: `Planned`, `Done`;
-   - include GitHub refs for feature/work nodes:
-     - `gh_issue_number`, `gh_issue_url`.
-2. Add interactive map view:
-   - add `dev/dev-map.html` + JS renderer for `DEV_MAP.json`;
-   - implement expand/collapse by hierarchy and status filter (`Planned`/`Done`);
-   - support direct navigation by milestone/feature/issue/task IDs.
-3. Update planning workflow docs:
-   - add `dev/FEATURE_PLANNING_PROTOCOL.md` with explicit sections:
-     - planning input contract:
-       - feature ID/title, target milestone, scope, out-of-scope;
-       - constraints/dependencies/overlaps with existing tasks/features;
-     - decomposition rules:
-       - feature -> work issues -> implementation tasks;
-       - when to keep task as checklist item vs when to split into a separate work issue;
-     - required plan artifacts:
-       - acceptance criteria (measurable), risk list, validation strategy, rollback notes;
-     - quality gates:
-       - pre-approve gate (plan completeness),
-       - pre-materialize gate (`approve feature plan` required),
-       - pre-execute gate (task links/markers synced),
-       - pre-done gate (all acceptance checks green);
-     - completion criteria:
-       - `feature done` and `milestone done` semantics with exact blocking conditions.
-   - add `dev/FEATURE_WORKFLOW.md` as operational playbook with step-by-step sequence:
-     - `plan feature` (expected input/output),
-     - `approve feature plan` (approval checkpoint),
-     - `materialize feature` (GitHub issues/milestone linking),
-     - `sync issues to task list` (mandatory file sync order),
-     - `execute task X` (implementation phase),
-     - `confirm feature done` / `confirm milestone done` (closure phase);
-   - include for each command:
-     - what files must change,
-     - what status transitions are allowed,
-     - what validation checks are mandatory before moving to next step.
-4. Update process rules (`AGENTS.md`, `dev/TASK_EXECUTION_PROTOCOL.md`):
-   - set `DEV_MAP.json` as planning source of truth;
-   - require approval gate before GitHub materialization:
-     - `plan feature` -> `approve feature plan` -> `materialize feature`;
-   - require `[M*][F*]` markers in each `dev/TASK_LIST.md` entry;
-   - remove mandatory usage of `dev/COMPLETED_TASKS.md` from process rules.
-5. Migrate tracking ownership:
-   - `MILESTONES.md` keeps milestone narrative + milestone/feature status mirror;
-   - `TASK_LIST.md` keeps implementation tasks with canonical IDs + `[M*][F*]` markers;
-   - `CHANGELOG.json` is no longer planning-status authority after migration
-     (remove or keep only as compatibility output generated from `DEV_MAP.json`).
-6. Define completion semantics in docs:
-   - `confirm feature done`: only when all mapped work issues are closed (or checklist done) and mapped tasks are `Done`;
-   - `confirm milestone done`: only when all milestone features are `Done`.
-7. Implement full planning-to-execution cycle contract:
-   - `plan feature <id>` must produce:
-     - feature scope draft,
-     - proposed work issues decomposition,
-     - proposed implementation tasks list;
-   - mandatory command sequence must be explicitly documented and enforced:
-     1) `plan feature <id>`
-        - produces draft plan: scope/out-of-scope, acceptance criteria, risks, dependencies/overlaps;
-        - proposes decomposition: feature -> work issues -> implementation tasks.
-     2) `approve feature plan`
-        - freezes approved decomposition and scope boundaries;
-        - blocks any materialization until approval exists.
-     3) `materialize feature`
-        - creates/updates GitHub feature/work issues with milestone + labels;
-        - writes linked `gh_issue_number`/`gh_issue_url` to corresponding nodes in `dev/DEV_MAP.json`.
-     4) `sync issues to task list`
-        - syncs approved decomposition into local execution artifacts:
-          - `dev/TASK_LIST.md`: add/update concrete tasks with `[M*][F*]` markers;
-          - `dev/TASK_EXECUTION_PIPELINE.md`: add/update overlaps/dependencies for those tasks.
-     5) `execute task X`
-        - allowed only after steps 1-4 are complete and synchronized.
-   - decomposition output must be synchronized in one cycle:
-     - map feature/work issues in `DEV_MAP.json`,
-     - add/update implementation tasks in `dev/TASK_LIST.md`,
-     - add/update overlaps/dependencies in `dev/TASK_EXECUTION_PIPELINE.md`;
-   - creation of new planning entities must follow strict entry paths:
-     - new task:
-       - can be created directly (without feature materialization step),
-       - but must be mapped into `dev/DEV_MAP.json` under existing hierarchy node
-         (`Milestone -> Feature -> Issue -> Task`) in the same change set;
-       - and must be added to `dev/TASK_LIST.md` and to overlaps/dependencies in
-         `dev/TASK_EXECUTION_PIPELINE.md` in the same change set (no deferred sync);
-     - new feature:
-       - must be created and planned via command flow:
-         - `create feature <id>` -> `plan feature <id>` -> `approve feature plan` -> `materialize feature`;
-       - task execution for that feature is blocked until `sync issues to task list` is complete.
-   - `sync issues to task list` must be defined as mandatory step before `execute task X`;
-   - no execution starts until planning artifacts and pipeline overlaps are updated.
-
-#### **Concrete deliverables:**
-- `dev/DEV_MAP.json` exists and contains initial migrated hierarchy.
-- `dev/dev-map.html` renders `DEV_MAP.json` interactively.
-- `dev/FEATURE_PLANNING_PROTOCOL.md` exists.
-- `dev/FEATURE_WORKFLOW.md` exists.
-- `AGENTS.md` and `dev/TASK_EXECUTION_PROTOCOL.md` updated to the new model.
-- planning cycle rules explicitly cover:
-  - feature -> issues -> tasks decomposition,
-  - separate creation paths for new task vs new feature,
-  - mandatory task placement in `DEV_MAP.json` hierarchy,
-  - mandatory `TASK_LIST` sync,
-  - mandatory `TASK_EXECUTION_PIPELINE` overlap sync before execution.
-
-#### **Validation:**
-- schema check passes for `dev/DEV_MAP.json` (required fields + allowed statuses).
-- each feature/work node in `DEV_MAP.json` has valid `gh_issue_number` + `gh_issue_url` after materialization.
-- every task referenced in `DEV_MAP.json` exists in `dev/TASK_LIST.md` with matching canonical ID.
-- each newly created task is attached in `DEV_MAP.json` to a concrete parent chain
-  (`Milestone -> Feature -> Issue`) and is not allowed as an orphan node.
-- every `dev/TASK_LIST.md` task has `[M*][F*]` markers consistent with `DEV_MAP.json`.
-- milestone/feature statuses shown in `dev/MILESTONES.md` match `DEV_MAP.json`.
-- process docs contain no mandatory rule to write to `dev/COMPLETED_TASKS.md`.
-- for each planned feature, pipeline contains explicit overlap/dependency entries for newly added tasks before `execute task X`.

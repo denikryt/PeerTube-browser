@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "statuses": [
+    "Planned",
+    "Done"
+  ],
+  "updated_at": "2026-02-23T23:45:00+02:00",
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Baseline contour and validation",
+      "features": []
+    },
+    {
+      "id": "M2",
+      "title": "Video-ID indexing and UI rewrite foundations",
+      "features": []
+    },
+    {
+      "id": "M3",
+      "title": "API v1 and discovery behavior",
+      "features": []
+    },
+    {
+      "id": "M4",
+      "title": "Discovery and controlled content scope",
+      "features": []
+    },
+    {
+      "id": "M5",
+      "title": "Federation and social delivery",
+      "features": []
+    },
+    {
+      "id": "M6",
+      "title": "Moderation and governance",
+      "features": []
+    },
+    {
+      "id": "M7",
+      "title": "Production operations and reliability",
+      "features": []
+    },
+    {
+      "id": "M8",
+      "title": "Documentation and external readiness",
+      "features": []
+    }
+  ]
+}

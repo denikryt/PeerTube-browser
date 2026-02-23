@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DEV_MAP Viewer</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --border: #d7deea;
+      --text: #172033;
+      --muted: #5f6e8c;
+      --accent: #1d4ed8;
+      --planned: #b45309;
+      --done: #166534;
+      --highlight: #fff3bf;
+    }
+
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #edf2ff 0%, var(--bg) 220px);
+      color: var(--text);
+      font: 14px/1.45 "Iosevka", "JetBrains Mono", monospace;
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+
+    .toolbar {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input[type="text"] {
+      min-width: 260px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font: inherit;
+    }
+
+    button {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #f8fafc;
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+    }
+
+    button:hover {
+      background: #eef2ff;
+      border-color: #b4c2e4;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .status {
+      font-weight: 700;
+      margin-left: 8px;
+    }
+
+    .status-planned {
+      color: var(--planned);
+    }
+
+    .status-done {
+      color: var(--done);
+    }
+
+    .node {
+      border-left: 2px solid #d8e1f3;
+      margin: 6px 0 6px 6px;
+      padding-left: 8px;
+    }
+
+    details > summary {
+      cursor: pointer;
+      padding: 3px 0;
+    }
+
+    .node-id {
+      color: var(--accent);
+      font-weight: 700;
+      margin-right: 8px;
+    }
+
+    .hit {
+      background: var(--highlight);
+      border-radius: 4px;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      margin: 6px 0 0 8px;
+    }
+
+    code {
+      background: #f3f4f6;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <h1>Development Map</h1>
+      <div class="muted">Source: <code>DEV_MAP.json</code></div>
+      <div class="toolbar">
+        <div class="row">
+          <label><input id="filter-planned" type="checkbox" checked> Planned</label>
+          <label><input id="filter-done" type="checkbox" checked> Done</label>
+          <button id="expand-all" type="button">Expand all</button>
+          <button id="collapse-all" type="button">Collapse all</button>
+        </div>
+        <div class="row">
+          <input id="goto-input" type="text" placeholder="Go to ID (M1, F1-M1, I1-F1-M1, 58)">
+          <button id="goto-btn" type="button">Go</button>
+          <span id="goto-msg" class="muted"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="map-root">
+      <div class="muted">Loading... If this stays, JavaScript is blocked by CSP or browser extensions.</div>
+    </div>
+  </div>
+
+  <noscript>
+    <div class="wrap">
+      <div class="panel">
+        <div class="empty">
+          JavaScript is disabled or blocked, so DEV_MAP cannot be rendered.
+          Enable JavaScript execution for this page and reload.
+        </div>
+      </div>
+    </div>
+  </noscript>
+
+  <script src="./dev-map.js"></script>
+</body>
+</html>

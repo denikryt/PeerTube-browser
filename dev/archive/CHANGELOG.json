@@ -3,7 +3,7 @@
     {
       "id": "1",
       "date": "2026-02-14",
-      "status": "Planned",
+      "status": "Done",
       "title": "Faster Video Page Loading",
       "summary": "Show useful recommendations immediately when a video page opens, so users do not see an empty screen while details load.",
       "time": "08:02:44"
@@ -299,9 +299,9 @@
     {
       "id": "58",
       "date": "2026-02-23",
-      "status": "Planned",
+      "status": "Done",
       "title": "DEV_MAP as Single Planning Source + Interactive Development Map",
-      "summary": "Execute concrete migration actions: create canonical `dev/DEV_MAP.json`, add interactive `dev/dev-map.html` viewer, add planning/workflow protocol files, enforce full cycle `plan feature -> approve feature plan -> materialize feature -> sync issues to task list -> execute task X`, require strict creation paths (new task: direct + same-change mapping into `DEV_MAP` hierarchy + pipeline sync; new feature: command-gated create/plan/approve/materialize flow), update AGENTS/protocol rules for approval-gated GitHub materialization and `[M*][F*]` markers, and remove mandatory `COMPLETED_TASKS` workflow dependency.",
+      "summary": "Execute concrete migration actions: create canonical `dev/map/DEV_MAP.json`, add interactive `dev/map/dev-map.html` viewer, add planning/workflow protocol files, enforce full cycle `plan feature -> approve feature plan -> materialize feature -> sync issues to task list -> execute task X`, require strict creation paths (new task: direct + same-change mapping into `DEV_MAP` hierarchy + pipeline sync; new feature: command-gated create/plan/approve/materialize flow), update AGENTS/protocol rules for approval-gated GitHub materialization and `[M*][F*]` markers, and remove mandatory `COMPLETED_TASKS` workflow dependency.",
       "time": "20:37:07"
     }
   ]
