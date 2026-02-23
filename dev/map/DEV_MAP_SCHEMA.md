@@ -11,6 +11,17 @@ Allowed status values for nodes with status fields (`Feature`, `Issue`, `Task`):
 
 Milestone nodes do not have a `status` field.
 
+## Root Metadata
+
+Root object must include:
+- `schema_version`: schema contract version.
+- `statuses`: allowed status values.
+- `updated_at`: last map update timestamp.
+- `task_count`: global count of already allocated numeric task IDs.
+  - This is the only source for allocating a new numeric task ID.
+  - Allocation rule: `new_id = task_count + 1`, then set `task_count = new_id` in the same change set.
+  - Never derive next ID by scanning/removing entries in `dev/TASK_LIST.md`.
+
 ## Milestone Metadata
 
 Milestone nodes include metadata fields used for planning context:
@@ -30,7 +41,9 @@ Milestone nodes include metadata fields used for planning context:
 - Standalone Issue ID (local to milestone): `SI<local_number>-M<milestone_number>`
   - examples: `SI1-M1`, `SI2-M4`
 - Task ID: global task id from `dev/TASK_LIST.md`
-  - examples: `58`, `8b`, `16l`
+  - numeric IDs are allocated from `task_count` (`new_id = task_count + 1`)
+  - existing alphanumeric legacy IDs stay valid (`8b`, `16l`)
+  - examples: `58`, `59`, `8b`, `16l`
 - Non-feature item ID (local to milestone): `NF<local>-M<milestone_number>` or `NS<local>-M<milestone_number>`
   - examples: `NF1-M1`, `NS1-M5`
 
@@ -48,9 +61,10 @@ Task node in `DEV_MAP` must carry these fields:
 
 ```json
 {
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "statuses": ["Planned", "Done"],
   "updated_at": "2026-02-23T23:45:00+02:00",
+  "task_count": 58,
   "milestones": [
     {
       "id": "M1",
@@ -68,9 +82,10 @@ Task node in `DEV_MAP` must carry these fields:
 
 ```json
 {
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "statuses": ["Planned", "Done"],
   "updated_at": "YYYY-MM-DDTHH:MM:SS+TZ:TZ",
+  "task_count": 59,
   "milestones": [
     {
       "id": "M1",

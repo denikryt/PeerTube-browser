@@ -91,19 +91,24 @@ Use this when multiple tasks are requested in one execution run.
 When creating or rewriting a task definition:
 
 1. Inspect real implementation context first (relevant code paths/modules/scripts/tests).
-2. Analyze existing bindings in `dev/map/DEV_MAP.json` and prepare candidate targets for this task:
+2. Allocate task ID from `dev/map/DEV_MAP.json`:
+   - read `task_count`,
+   - assign `new_id = task_count + 1` as the new numeric task ID,
+   - set `task_count = new_id` in the same change set.
+   Never allocate by scanning or by "last visible task" in `dev/TASK_LIST.md`.
+3. Analyze existing bindings in `dev/map/DEV_MAP.json` and prepare candidate targets for this task:
    - one or more matching feature chains (`Milestone -> Feature -> Issue`), or
    - standalone chain (`Milestone -> StandaloneIssue`) if no suitable feature exists.
-3. Ask user to choose binding target; do not write mapping before explicit user choice.
-4. Update `dev/TASK_LIST.md` as one linear list (append new tasks to the end).
-5. Attach/update the task in `dev/map/DEV_MAP.json` under the user-selected target chain (or create missing parent nodes first):
+4. Ask user to choose binding target; do not write mapping before explicit user choice.
+5. Update `dev/TASK_LIST.md` as one linear list (append new tasks to the end).
+6. Attach/update the task in `dev/map/DEV_MAP.json` under the user-selected target chain (or create missing parent nodes first):
    - `Milestone -> Feature -> Issue -> Task`, or
    - `Milestone -> StandaloneIssue -> Task`.
-6. Add/maintain markers for the task in `dev/TASK_LIST.md` according to selected binding:
+7. Add/maintain markers for the task in `dev/TASK_LIST.md` according to selected binding:
    - `[M*][F*]` for feature path,
    - `[M*][SI*]` for standalone path.
-7. Update `dev/TASK_EXECUTION_PIPELINE.md` order/overlaps for pending tasks.
-8. Keep this protocol and `AGENTS.md` consistent if process/policy changed.
+8. Update `dev/TASK_EXECUTION_PIPELINE.md` order/overlaps for pending tasks.
+9. Keep this protocol and `AGENTS.md` consistent if process/policy changed.
 
 ## Bundle command format
 

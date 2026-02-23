@@ -32,6 +32,8 @@ Project-level hard constraints for task work in this repository.
    If the task node exists in `dev/map/DEV_MAP.json`, markers must match that parent chain.
 6. Before reporting a task as implemented, perform a mandatory final check that all requirements from the exact task text are covered; explicitly list any unmet requirement.
 7. New tasks in `dev/TASK_LIST.md` must be added only at the end of the file as a single linear list entry; do not place new tasks into category sections and do not regroup existing tasks by categories.
+8. New numeric task IDs must be allocated only from `task_count` in `dev/map/DEV_MAP.json` using `new_id = task_count + 1`; then set `task_count = new_id` in the same change set.
+9. Do not derive new task IDs by scanning `dev/TASK_LIST.md` or by relying on visible "last task" entries.
 
 ## Feature planning and materialization constraints
 
