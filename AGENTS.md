@@ -24,38 +24,30 @@ Project-level hard constraints for task work in this repository.
 
 1. Do not mark any task or task block as completed until the user explicitly confirms completion after review.
 2. Keep implemented tasks in their current state (not completed) while awaiting user verification.
-3. `dev/map/DEV_MAP.json` is the planning source of truth for hierarchy (`Milestone -> Feature -> Issue -> Task`) and for non-milestone status fields.
-4. `dev/TASK_LIST.md`, `dev/TASK_EXECUTION_PIPELINE.md`, and `dev/map/DEV_MAP.json` must stay synchronized when adding/updating tasks/features.
-5. Each task entry in `dev/TASK_LIST.md` must include ownership markers `[M*][F*]`. If the task node exists in `dev/map/DEV_MAP.json`, markers must match that parent chain.
+3. `dev/map/DEV_MAP.json` is the planning source of truth for hierarchy (`Milestone -> Feature -> Issue -> Task` and `Milestone -> StandaloneIssue -> Task`) and for non-milestone status fields.
+4. `dev/TASK_LIST.md`, `dev/TASK_EXECUTION_PIPELINE.md`, and `dev/map/DEV_MAP.json` must stay synchronized when adding/updating tasks/features/standalone issues.
+5. Each task entry in `dev/TASK_LIST.md` must include ownership markers:
+   - product path: `[M*][F*]`
+   - standalone path: `[M*][SI*]`
+   If the task node exists in `dev/map/DEV_MAP.json`, markers must match that parent chain.
 6. Before reporting a task as implemented, perform a mandatory final check that all requirements from the exact task text are covered; explicitly list any unmet requirement.
-
-## Changelog constraints
-
-1. `CHANGELOG.json` is a public compatibility board, not the planning source of truth.
-2. Every public changelog task must have an explicit status (allowed: `Planned`, `Done`).
-3. Update an item in `CHANGELOG.json` to `Done` only after explicit user confirmation of completion.
-4. Keep public changelog task wording human-readable and maintain stable task identity so status updates are deterministic.
-5. When creating any new task in `dev/TASK_LIST.md`, add the corresponding task entry to `CHANGELOG.json` in the same edit run with status `Planned`.
-6. When changing task text/scope/title/ID in `dev/TASK_LIST.md`, explicitly check whether the matching item in `CHANGELOG.json` must be updated; apply that changelog update in the same edit run when needed.
-7. Never skip changelog synchronization for task create/update/complete actions; treat it as a mandatory blocking rule.
-8. `CHANGELOG.json` task `id` must be exactly the task number from `dev/TASK_LIST.md` (for example: `1`, `30`, `45`, `8b`, `12a`, `16l`) and must not use text slugs.
-9. Task-number identity is canonical: one task number in `dev/TASK_LIST.md` -> one entry with the same `id` in `CHANGELOG.json` (no duplicates, no aliases).
-10. New tasks in `CHANGELOG.json` must be added only at the end of the `entries` array (append-only); do not insert/reorder by category or any other grouping.
-11. New tasks in `dev/TASK_LIST.md` must be added only at the end of the file as a single linear list entry; do not place new tasks into category sections and do not regroup existing tasks by categories.
-12. Every `CHANGELOG.json` entry must include both `date` (`YYYY-MM-DD`) and `time` (`HH:MM:SS`).
-13. For newly created changelog entries, set `time` from the current local time at write moment (`time.now` semantics).
-14. When bulk-updating existing entries with missing `time`, keep the current entry order unchanged and assign times in that same order (monotonic by entry sequence).
+7. New tasks in `dev/TASK_LIST.md` must be added only at the end of the file as a single linear list entry; do not place new tasks into category sections and do not regroup existing tasks by categories.
 
 ## Feature planning and materialization constraints
 
 1. Feature work must follow approval-gated flow: `plan feature` -> `approve feature plan` -> `materialize feature`.
 2. Do not materialize GitHub feature/work issues before explicit plan approval.
 3. `sync issues to task list` is mandatory before any related `execute task X`.
-4. ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md` and must be used as-is (`F<local>-M<milestone>`, `I<local>-F<feature_local>-M<milestone>`, global task IDs from `dev/TASK_LIST.md`).
+4. ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md` and must be used as-is (`F<local>-M<milestone>`, `I<local>-F<feature_local>-M<milestone>`, `SI<local>-M<milestone>`, global task IDs from `dev/TASK_LIST.md`).
 5. New task direct path is allowed only with same-change synchronization in all three files:
-   - `dev/map/DEV_MAP.json` (attach under `Milestone -> Feature -> Issue` when those nodes exist; otherwise create parent nodes first),
-   - `dev/TASK_LIST.md` (with `[M*][F*]` markers),
+   - `dev/map/DEV_MAP.json` (attach under selected parent chain: `Milestone -> Feature -> Issue` or `Milestone -> StandaloneIssue`),
+   - `dev/TASK_LIST.md` (with `[M*][F*]` or `[M*][SI*]` markers),
    - `dev/TASK_EXECUTION_PIPELINE.md` (overlaps/dependencies).
+6. Before creating any new task/issue mapping, always analyze existing features in `dev/map/DEV_MAP.json` and propose candidate bindings to the user (one or more matching feature IDs, or standalone if no suitable feature exists).
+7. Binding confirmation is mandatory: do not create/update task, issue, feature, or standalone mapping nodes until the user explicitly chooses the target binding.
+8. After user binding choice, continue only through the normal sync path (`DEV_MAP` + `TASK_LIST` + pipeline overlaps in the same change set).
+9. For standalone (non-product) work, use `Milestone -> StandaloneIssue -> Task` path.
+10. Orphan issues are not allowed: every issue must belong either to a feature (`Issue`) or to a milestone standalone container (`StandaloneIssue`).
 
 ## Pipeline constraints
 

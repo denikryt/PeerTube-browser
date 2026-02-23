@@ -156,6 +156,12 @@ function renderMilestone(milestone) {
     }
   }
 
+  const standaloneIssues = Array.isArray(milestone.standalone_issues) ? milestone.standalone_issues : [];
+  const visibleStandaloneIssues = standaloneIssues.filter((item) => statusVisible(item.status));
+  if (visibleStandaloneIssues.length > 0) {
+    details.appendChild(renderStandaloneIssueGroup(visibleStandaloneIssues));
+  }
+
   const nonFeatures = Array.isArray(milestone.non_feature_items) ? milestone.non_feature_items : [];
   if (nonFeatures.length > 0) {
     details.appendChild(renderNonFeatureGroup(nonFeatures));
@@ -240,6 +246,70 @@ function renderNonFeatureGroup(items) {
   }
 
   return wrap;
+}
+
+/**
+ * Render collapsible standalone issue group for one milestone.
+ * @param {Array<any>} items
+ * @returns {HTMLElement}
+ */
+function renderStandaloneIssueGroup(items) {
+  const wrap = document.createElement("details");
+  wrap.className = "node";
+  wrap.open = false;
+
+  const summary = document.createElement("summary");
+  summary.textContent = "Standalone issues";
+  wrap.appendChild(summary);
+
+  for (const issue of items) {
+    wrap.appendChild(renderStandaloneIssue(issue));
+  }
+
+  return wrap;
+}
+
+/**
+ * Render standalone issue node.
+ * @param {any} issue
+ * @returns {HTMLElement}
+ */
+function renderStandaloneIssue(issue) {
+  const details = document.createElement("details");
+  details.className = "node";
+  details.dataset.nodeId = issue.id;
+
+  const summary = document.createElement("summary");
+  const id = document.createElement("span");
+  id.className = "node-id";
+  id.textContent = issue.id;
+  summary.appendChild(id);
+  summary.appendChild(document.createTextNode(issue.title || "Standalone issue"));
+  summary.appendChild(createStatusBadge(issue.status || "Planned"));
+  details.appendChild(summary);
+  registerId(issue.id, summary);
+
+  const ref = document.createElement("div");
+  ref.className = "muted";
+  ref.textContent = issue.gh_issue_number ? `GH #${issue.gh_issue_number}` : "GH issue: not materialized";
+  details.appendChild(ref);
+
+  const tasks = Array.isArray(issue.tasks) ? issue.tasks : [];
+  const visibleTasks = tasks.filter((task) => statusVisible(task.status));
+
+  if (visibleTasks.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No tasks";
+    details.appendChild(empty);
+    return details;
+  }
+
+  for (const task of visibleTasks) {
+    details.appendChild(renderTask(task));
+  }
+
+  return details;
 }
 
 /**
@@ -334,6 +404,22 @@ function renderTask(task) {
   title.appendChild(createStatusBadge(task.status));
   wrap.appendChild(title);
   registerId(task.id, title);
+
+  const hasDate = typeof task.date === "string" && task.date.trim().length > 0;
+  const hasTime = typeof task.time === "string" && task.time.trim().length > 0;
+  if (hasDate || hasTime) {
+    const dt = document.createElement("div");
+    dt.className = "muted";
+    dt.textContent = `Timestamp: ${[task.date, task.time].filter(Boolean).join(" ")}`;
+    wrap.appendChild(dt);
+  }
+
+  if (typeof task.summary === "string" && task.summary.trim().length > 0) {
+    const summary = document.createElement("div");
+    summary.className = "muted";
+    summary.textContent = task.summary.trim();
+    wrap.appendChild(summary);
+  }
 
   return wrap;
 }

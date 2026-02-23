@@ -1,8 +1,9 @@
 # DEV_MAP Schema
 
-Canonical hierarchy:
+Canonical hierarchies:
 
-`Milestone -> Feature -> Issue -> Task`
+- Product path: `Milestone -> Feature -> Issue -> Task`
+- Standalone path (non-product work): `Milestone -> StandaloneIssue -> Task`
 
 Allowed status values for nodes with status fields (`Feature`, `Issue`, `Task`):
 - `Planned`
@@ -12,13 +13,11 @@ Milestone nodes do not have a `status` field.
 
 ## Milestone Metadata
 
-Milestone nodes include metadata fields used for planning context and classification:
+Milestone nodes include metadata fields used for planning context:
 - `goal`: milestone goal text.
 - `features`: list of feature nodes.
+- `standalone_issues`: list of standalone issue nodes (`SI*`) for non-product work.
 - `non_feature_items`: list of milestone items that are not feature nodes.
-  - `classification`:
-    - `not_feature` (checkpoint/validation criterion),
-    - `needs_split` (too broad and must be decomposed before becoming feature/issue).
 
 ## ID Rules
 
@@ -28,16 +27,28 @@ Milestone nodes include metadata fields used for planning context and classifica
   - example: `F1-M1`, `F2-M1`
 - Issue ID (local to feature, with dash format): `I<local_number>-F<feature_local_number>-M<milestone_number>`
   - example: `I1-F1-M1`, `I2-F1-M1`
+- Standalone Issue ID (local to milestone): `SI<local_number>-M<milestone_number>`
+  - examples: `SI1-M1`, `SI2-M4`
 - Task ID: global task id from `dev/TASK_LIST.md`
   - examples: `58`, `8b`, `16l`
 - Non-feature item ID (local to milestone): `NF<local>-M<milestone_number>` or `NS<local>-M<milestone_number>`
   - examples: `NF1-M1`, `NS1-M5`
 
+## Task Node Contract
+
+Task node in `DEV_MAP` must carry these fields:
+- `id`: canonical task id from `dev/TASK_LIST.md` (`58`, `8b`, `16l`, ...)
+- `date`: `YYYY-MM-DD`
+- `time`: `HH:MM:SS`
+- `status`: `Planned` or `Done`
+- `title`: short task title
+- `summary`: detailed task description
+
 ## Example A: Current minimal state (milestones only)
 
 ```json
 {
-  "schema_version": "1.1",
+  "schema_version": "1.3",
   "statuses": ["Planned", "Done"],
   "updated_at": "2026-02-23T23:45:00+02:00",
   "milestones": [
@@ -45,6 +56,7 @@ Milestone nodes include metadata fields used for planning context and classifica
       "id": "M1",
       "title": "Baseline contour and validation",
       "goal": "Milestone goal",
+      "standalone_issues": [],
       "non_feature_items": [],
       "features": []
     }
@@ -56,7 +68,7 @@ Milestone nodes include metadata fields used for planning context and classifica
 
 ```json
 {
-  "schema_version": "1.1",
+  "schema_version": "1.3",
   "statuses": ["Planned", "Done"],
   "updated_at": "YYYY-MM-DDTHH:MM:SS+TZ:TZ",
   "milestones": [
@@ -64,6 +76,25 @@ Milestone nodes include metadata fields used for planning context and classifica
       "id": "M1",
       "title": "Milestone title",
       "goal": "Milestone goal",
+      "standalone_issues": [
+        {
+          "id": "SI1-M1",
+          "title": "Standalone issue title",
+          "status": "Planned",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "tasks": [
+            {
+              "id": "58",
+              "date": "2026-02-23",
+              "time": "20:37:07",
+              "title": "Task title",
+              "status": "Planned",
+              "summary": "Task description/details in roadmap-style wording."
+            }
+          ]
+        }
+      ],
       "features": [
         {
           "id": "F1-M1",
@@ -84,8 +115,11 @@ Milestone nodes include metadata fields used for planning context and classifica
               "tasks": [
                 {
                   "id": "58",
+                  "date": "2026-02-23",
+                  "time": "20:37:07",
                   "title": "Task title",
-                  "status": "Planned"
+                  "status": "Planned",
+                  "summary": "Task description/details in roadmap-style wording."
                 }
               ]
             }
@@ -96,15 +130,11 @@ Milestone nodes include metadata fields used for planning context and classifica
         {
           "id": "NF1-M1",
           "title": "Checkpoint title",
-          "classification": "not_feature",
-          "kind": "integration_checkpoint",
           "reason": "Validation criterion, not a standalone feature."
         },
         {
           "id": "NS1-M1",
           "title": "Broad architecture statement",
-          "classification": "needs_split",
-          "kind": "architecture_scope",
           "reason": "Must be decomposed before feature/issue/task planning."
         }
       ]

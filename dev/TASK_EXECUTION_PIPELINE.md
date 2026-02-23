@@ -50,8 +50,8 @@ Use it before implementing any task bundle.
   - Outcome: `RECOMMENDATIONS_OVERVIEW` is aligned with actual runtime pipeline (candidate generation/mixing/filters), and touched modules/functions/classes have explicit docstrings so behavior is readable without code archaeology.
 - **Block F: Logging and observability**
   - Tasks: **41 -> 38 -> 43**
-  - Scope: explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/Changelog.
-  - Outcome: every API request gets `request-start -> work logs -> request-end` with one shared `request_id` and explicit timestamp format, and nginx adds dedicated visit logs for static `about/changelog` routes with request-correlation-compatible fields.
+  - Scope: explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/static informational pages.
+  - Outcome: every API request gets `request-start -> work logs -> request-end` with one shared `request_id` and explicit timestamp format, and nginx adds dedicated visit logs for static informational routes with request-correlation-compatible fields.
 - **Block G: Runtime reliability and operations**
   - Tasks: **16l -> 39 -> 44 -> 56 -> 40**
   - Scope: safe cache refresh/swap runtime behavior (random + similarity), scoped similarity precompute updates, and automated blue/green nginx cutover.

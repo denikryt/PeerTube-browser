@@ -392,22 +392,20 @@
   - sample log lines include full date/time and timezone marker;
   - ordering checks across request-start/work/request-end use application timestamp fields.
 
-### 43) [M7][F4] Static page visit logs for About and Changelog
-**Problem:** visits to `about` and `changelog` are currently served as static files by nginx, so these page visits are not visible in app/service request logs.
+### 43) [M7][F4] Static page visit logs for About and informational pages
+**Problem:** visits to static informational pages (including `about`) are currently served as static files by nginx, so these page visits are not visible in app/service request logs.
 
 **Solution option:** add a dedicated logging path for static page visits and keep correlation with request tracing where possible.
 
 #### **Solution details:**
-- Add dedicated nginx logging for `about` and `changelog` page routes:
+- Add dedicated nginx logging for informational static page routes:
   - include client IP, method, URL, status, response time, user-agent;
   - keep this in a separate log stream or with explicit marker field.
 - Preserve/propagate `X-Request-ID` in nginx logs for those routes when available.
-- Add a simple runbook to compare:
-  - static page visits (`about`/`changelog`) from nginx logs,
-  - API request traces from app logs.
+- Add a simple runbook to compare static page visits from nginx logs and API request traces from app logs.
 - Optional (if needed): add client-side pageview beacon endpoint for cleaner human-intent tracking and bot/noise filtering.
 - Validation:
-  - visiting `about` and `changelog` produces entries with expected fields in nginx logs;
+  - visiting informational static pages produces entries with expected fields in nginx logs;
   - sample correlation by request id/time window works against app-side traces.
 
 ### 44) [M7][F4] Similarity cache shadow build + atomic swap without long API downtime
@@ -459,4 +457,3 @@
   - source-count check: processed set equals “already cached + still present in embeddings”;
   - data check: processed sources are rewritten, untouched sources remain unchanged;
   - runtime check: updater stage time drops compared to full-cache rebuild baseline.
-

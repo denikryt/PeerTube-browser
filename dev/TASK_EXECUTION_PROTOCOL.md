@@ -10,13 +10,16 @@ Use this procedure after an explicit execution command is given.
 1. **Read in strict order before coding**
    - Read exact task text for task `X` in `dev/TASK_LIST.md`.
    - Read `dev/TASK_EXECUTION_PIPELINE.md`.
-   - Read `dev/map/DEV_MAP.json` context for task `X` and related milestone/feature ownership markers.
+   - Read `dev/map/DEV_MAP.json` context for task `X` and related ownership markers (`M/F` or `M/SI` path).
    - Read this file (`dev/TASK_EXECUTION_PROTOCOL.md`).
 
 2. **Check overlaps/dependencies**
    - For task `X`, inspect overlaps and ordering constraints in `dev/TASK_EXECUTION_PIPELINE.md`.
    - Identify shared primitives to avoid one-off local implementations.
-   - Verify `[M*][F*]` markers in `dev/TASK_LIST.md` are consistent with planned ownership; if task exists in `dev/map/DEV_MAP.json`, markers must match parent chain.
+   - Verify markers in `dev/TASK_LIST.md` are consistent with planned ownership:
+     - product path: `[M*][F*]`
+     - standalone path: `[M*][SI*]`
+     If task exists in `dev/map/DEV_MAP.json`, markers must match parent chain.
 
 3. **Prepare a short implementation plan**
    - List concrete files/modules to update.
@@ -46,9 +49,8 @@ When user explicitly confirms task/block completion, update all trackers in the 
 
 1. Update task state in `dev/TASK_LIST.md` (remove/move confirmed task from future tasks).
 2. Update task status in `dev/map/DEV_MAP.json` under its existing parent chain.
-3. Update matching entry in `CHANGELOG.json` to status `Done`.
-4. Remove the confirmed completed task/block from `dev/TASK_EXECUTION_PIPELINE.md` (keep only pending items).
-5. If process rules changed, update this file in the same edit run.
+3. Remove the confirmed completed task/block from `dev/TASK_EXECUTION_PIPELINE.md` (keep only pending items).
+4. If process rules changed, update this file in the same edit run.
 
 ## Feature planning/materialization flow
 
@@ -59,6 +61,17 @@ Use this procedure before executing tasks for a new feature.
 3. `approve feature plan`: freeze boundaries and allow materialization.
 4. `materialize feature`: create/update GitHub feature/work issues and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
 5. `sync issues to task list`: synchronize tasks into `dev/TASK_LIST.md` (`[M*][F*]` markers) and overlaps in `dev/TASK_EXECUTION_PIPELINE.md`.
+6. Only then run `execute task X`.
+
+## Standalone issue flow (non-product work)
+
+Use this when work should not be attached to a product feature (ops/process/tooling/governance).
+
+1. `create standalone-issue <id>`: create standalone issue node in `dev/map/DEV_MAP.json` using `SI<local>-M<milestone>` ID format.
+2. `plan standalone-issue <id>`: define scope, acceptance checks, and expected tasks.
+3. `approve standalone-issue plan`: freeze boundaries and allow materialization/sync.
+4. `materialize standalone-issue`: create/update GitHub issue and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
+5. `sync standalone-issue to task list`: synchronize tasks into `dev/TASK_LIST.md` (`[M*][SI*]` markers) and overlaps in `dev/TASK_EXECUTION_PIPELINE.md`.
 6. Only then run `execute task X`.
 
 ## Multi-task execution flow
@@ -78,12 +91,19 @@ Use this when multiple tasks are requested in one execution run.
 When creating or rewriting a task definition:
 
 1. Inspect real implementation context first (relevant code paths/modules/scripts/tests).
-2. Update `dev/TASK_LIST.md` as one linear list (append new tasks to the end).
-3. Attach/update the task in `dev/map/DEV_MAP.json` under existing `Milestone -> Feature -> Issue` chain (or create missing parent nodes first).
-4. Add/maintain `[M*][F*]` markers for the task in `dev/TASK_LIST.md`.
-5. Update `CHANGELOG.json` in the same edit run (append new entries to the end, keep ID equal to task number).
-6. Update `dev/TASK_EXECUTION_PIPELINE.md` order/overlaps for pending tasks.
-7. Keep this protocol and `AGENTS.md` consistent if process/policy changed.
+2. Analyze existing bindings in `dev/map/DEV_MAP.json` and prepare candidate targets for this task:
+   - one or more matching feature chains (`Milestone -> Feature -> Issue`), or
+   - standalone chain (`Milestone -> StandaloneIssue`) if no suitable feature exists.
+3. Ask user to choose binding target; do not write mapping before explicit user choice.
+4. Update `dev/TASK_LIST.md` as one linear list (append new tasks to the end).
+5. Attach/update the task in `dev/map/DEV_MAP.json` under the user-selected target chain (or create missing parent nodes first):
+   - `Milestone -> Feature -> Issue -> Task`, or
+   - `Milestone -> StandaloneIssue -> Task`.
+6. Add/maintain markers for the task in `dev/TASK_LIST.md` according to selected binding:
+   - `[M*][F*]` for feature path,
+   - `[M*][SI*]` for standalone path.
+7. Update `dev/TASK_EXECUTION_PIPELINE.md` order/overlaps for pending tasks.
+8. Keep this protocol and `AGENTS.md` consistent if process/policy changed.
 
 ## Bundle command format
 
