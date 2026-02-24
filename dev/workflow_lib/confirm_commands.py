@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
 from argparse import Namespace
 from datetime import datetime
@@ -14,6 +13,7 @@ from typing import Any
 
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
+from .github_adapter import close_github_issue
 from .output import emit_json
 
 
@@ -190,7 +190,7 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
 
     github_closed = False
     if bool(args.write) and bool(args.close_github):
-        _close_github_issue(int(github_issue_number))
+        close_github_issue(int(github_issue_number))
         github_closed = True
 
     emit_json(
@@ -273,10 +273,10 @@ def _handle_confirm_feature_done(args: Namespace, context: WorkflowContext) -> i
     if bool(args.write) and bool(args.close_github):
         for issue_node in issue_nodes:
             issue_number = int(issue_node.get("gh_issue_number"))
-            _close_github_issue(issue_number)
+            close_github_issue(issue_number)
             github_closed.append(issue_number)
         feature_issue_number = int(feature_node.get("gh_issue_number"))
-        _close_github_issue(feature_issue_number)
+        close_github_issue(feature_issue_number)
         github_closed.append(feature_issue_number)
 
     emit_json(
@@ -350,7 +350,7 @@ def _handle_confirm_standalone_issue_done(args: Namespace, context: WorkflowCont
 
     github_closed = False
     if bool(args.write) and bool(args.close_github):
-        _close_github_issue(int(standalone_issue_node.get("gh_issue_number")))
+        close_github_issue(int(standalone_issue_node.get("gh_issue_number")))
         github_closed = True
 
     emit_json(
@@ -620,20 +620,6 @@ def _ask_pending_tasks_confirmation(issue_id: str, pending_child_ids: list[str])
     prompt = f"Issue {issue_id} has pending child tasks ({ids_csv}). Mark them Done and continue? [y/N]: "
     answer = input(prompt).strip().lower()
     return answer in {"y", "yes"}
-
-
-def _close_github_issue(issue_number: int) -> None:
-    """Close mapped GitHub issue through gh CLI."""
-    command = ["gh", "issue", "close", str(issue_number)]
-    result = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        message = (result.stderr or result.stdout).strip() or "unknown gh error"
-        raise WorkflowCommandError(f"Failed to close GitHub issue #{issue_number}: {message}", exit_code=5)
 
 
 def _normalize_identifier(raw_identifier: str) -> str:

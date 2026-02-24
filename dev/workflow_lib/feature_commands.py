@@ -13,16 +13,22 @@ from typing import Any
 
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
+from .git_adapter import checkout_canonical_feature_branch, plan_canonical_feature_branch
+from .github_adapter import (
+    ensure_github_milestone_exists,
+    gh_issue_create,
+    gh_issue_edit,
+    resolve_github_repository,
+)
 from .output import emit_json
+from .sync_delta import load_sync_delta, resolve_sync_delta_references
+from .tracking_writers import apply_pipeline_delta, apply_task_list_delta
 
 
 FEATURE_ID_PATTERN = re.compile(r"^F(?P<feature_num>\d+)-M(?P<milestone_num>\d+)$")
 ISSUE_ID_PATTERN = re.compile(r"^I(?P<issue_num>\d+)-F(?P<feature_num>\d+)-M(?P<milestone_num>\d+)$")
 MILESTONE_ID_PATTERN = re.compile(r"^M(?P<milestone_num>\d+)$")
 TASK_ID_PATTERN = re.compile(r"^[0-9]+[a-z]?$")
-TASK_TOKEN_PATTERN = re.compile(r"^\$[A-Za-z][A-Za-z0-9_-]*$")
-TASK_REFERENCE_PATTERN = re.compile(r"^(?:[0-9]+[a-z]?|\$[A-Za-z][A-Za-z0-9_-]*)$")
-TASK_LIST_HEADING_PATTERN = re.compile(r"^###\s+(?P<task_id>[0-9]+[a-z]?)\)\s+")
 SECTION_H2_PATTERN = re.compile(r"^##\s+([^#].*?)\s*$")
 SECTION_H3_PATTERN = re.compile(r"^###\s+([^#].*?)\s*$")
 REQUIRED_PLAN_HEADINGS = (
@@ -184,8 +190,8 @@ def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
     github_issue: dict[str, Any] | None = None
     if bool(args.github):
         if bool(args.write):
-            github_repo = _resolve_github_repository(context.root_dir)
-            _ensure_github_milestone_exists(
+            github_repo = resolve_github_repository(context.root_dir)
+            ensure_github_milestone_exists(
                 repo_name_with_owner=github_repo["name_with_owner"],
                 milestone_title=milestone_title,
                 milestone_id=milestone_id,
@@ -333,9 +339,9 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
             exit_code=4,
         )
 
-    delta = _load_sync_delta(Path(args.delta_file))
+    delta = load_sync_delta(Path(args.delta_file))
     existing_task_locations = _collect_task_locations(dev_map)
-    resolved_delta, allocation = _resolve_sync_delta_references(
+    resolved_delta, allocation = resolve_sync_delta_references(
         delta=delta,
         dev_map=dev_map,
         existing_task_locations=existing_task_locations,
@@ -352,14 +358,14 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
     )
 
     original_task_list_text = context.task_list_path.read_text(encoding="utf-8")
-    updated_task_list_text, task_list_count = _apply_task_list_delta(
+    updated_task_list_text, task_list_count = apply_task_list_delta(
         task_list_text=original_task_list_text,
         entries=resolved_delta.get("task_list_entries", []),
         expected_marker=f"[M{feature_milestone_num}][F{feature_local_num}]",
     )
 
     original_pipeline_text = context.pipeline_path.read_text(encoding="utf-8")
-    updated_pipeline_text, pipeline_counts = _apply_pipeline_delta(
+    updated_pipeline_text, pipeline_counts = apply_pipeline_delta(
         pipeline_text=original_pipeline_text,
         pipeline_payload=resolved_delta.get("pipeline", {}),
         update_pipeline=bool(args.update_pipeline),
@@ -429,14 +435,14 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
     repo_url = _resolve_repository_url(context.root_dir, feature_node)
     branch_url = _build_branch_url(repo_url, branch_name)
     if bool(args.write):
-        branch_action = _checkout_canonical_feature_branch(context.root_dir, branch_name)
+        branch_action = checkout_canonical_feature_branch(context.root_dir, branch_name)
     else:
-        branch_action = _plan_canonical_feature_branch(context.root_dir, branch_name)
+        branch_action = plan_canonical_feature_branch(context.root_dir, branch_name)
 
     materialized_issues: list[dict[str, Any]] = []
     if bool(args.write) and bool(args.github):
-        github_repo = _resolve_github_repository(context.root_dir)
-        _ensure_github_milestone_exists(
+        github_repo = resolve_github_repository(context.root_dir)
+        ensure_github_milestone_exists(
             repo_name_with_owner=github_repo["name_with_owner"],
             milestone_title=milestone_title,
             milestone_id=milestone_id,
@@ -523,27 +529,6 @@ def _handle_feature_execution_plan(args: Namespace, context: WorkflowContext) ->
     return 0
 
 
-def _load_sync_delta(delta_path: Path) -> dict[str, Any]:
-    """Load and validate the top-level shape of a feature sync delta file."""
-    try:
-        payload = json.loads(delta_path.read_text(encoding="utf-8"))
-    except FileNotFoundError as error:
-        raise WorkflowCommandError(f"Sync delta file not found: {delta_path}", exit_code=4) from error
-    except json.JSONDecodeError as error:
-        raise WorkflowCommandError(f"Invalid JSON in sync delta {delta_path}: {error}", exit_code=4) from error
-    if not isinstance(payload, dict):
-        raise WorkflowCommandError("Sync delta root must be a JSON object.", exit_code=4)
-    allowed = {"issues", "task_list_entries", "pipeline"}
-    unknown = sorted(key for key in payload if key not in allowed)
-    if unknown:
-        joined = ", ".join(unknown)
-        raise WorkflowCommandError(
-            f"Sync delta contains unsupported top-level key(s): {joined}. Allowed: issues, task_list_entries, pipeline.",
-            exit_code=4,
-        )
-    return payload
-
-
 def _parse_feature_local_num(feature_id: str) -> int:
     """Extract the local feature number from an already validated feature ID."""
     match = FEATURE_ID_PATTERN.fullmatch(feature_id)
@@ -572,174 +557,6 @@ def _collect_task_locations(dev_map: dict[str, Any]) -> dict[str, str]:
                     continue
                 locations[task_id] = standalone_id
     return locations
-
-
-def _resolve_sync_delta_references(
-    delta: dict[str, Any],
-    dev_map: dict[str, Any],
-    existing_task_locations: dict[str, str],
-    allocate_task_ids: bool,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Resolve task references in delta payload and allocate IDs from task_count tokens."""
-    resolved = json.loads(json.dumps(delta))
-    tokens_in_order: list[str] = []
-    explicit_ids: list[str] = []
-
-    def collect_reference(raw_value: Any, location: str) -> str:
-        """Normalize and register one task reference from delta payload."""
-        normalized = _normalize_task_reference(raw_value, location)
-        if TASK_TOKEN_PATTERN.fullmatch(normalized):
-            if normalized not in tokens_in_order:
-                tokens_in_order.append(normalized)
-        else:
-            explicit_ids.append(normalized)
-        return normalized
-
-    for issue_index, issue in enumerate(resolved.get("issues", [])):
-        if not isinstance(issue, dict):
-            raise WorkflowCommandError(f"issues[{issue_index}] must be an object.", exit_code=4)
-        tasks = issue.get("tasks", [])
-        if not isinstance(tasks, list):
-            raise WorkflowCommandError(f"issues[{issue_index}].tasks must be a list.", exit_code=4)
-        for task_index, task in enumerate(tasks):
-            if not isinstance(task, dict):
-                raise WorkflowCommandError(f"issues[{issue_index}].tasks[{task_index}] must be an object.", exit_code=4)
-            task["id"] = collect_reference(
-                task.get("id"),
-                f"issues[{issue_index}].tasks[{task_index}].id",
-            )
-
-    for entry_index, entry in enumerate(resolved.get("task_list_entries", [])):
-        if not isinstance(entry, dict):
-            raise WorkflowCommandError(f"task_list_entries[{entry_index}] must be an object.", exit_code=4)
-        entry["id"] = collect_reference(
-            entry.get("id"),
-            f"task_list_entries[{entry_index}].id",
-        )
-
-    pipeline_payload = resolved.get("pipeline", {})
-    if pipeline_payload and not isinstance(pipeline_payload, dict):
-        raise WorkflowCommandError("pipeline payload must be an object.", exit_code=4)
-    for item_index, item in enumerate(pipeline_payload.get("execution_sequence_append", [])):
-        if not isinstance(item, dict):
-            raise WorkflowCommandError(
-                f"pipeline.execution_sequence_append[{item_index}] must be an object.",
-                exit_code=4,
-            )
-        tasks = item.get("tasks")
-        if not isinstance(tasks, list) or not tasks:
-            raise WorkflowCommandError(
-                f"pipeline.execution_sequence_append[{item_index}].tasks must be a non-empty list.",
-                exit_code=4,
-            )
-        item["tasks"] = [
-            collect_reference(
-                task_ref,
-                f"pipeline.execution_sequence_append[{item_index}].tasks[{task_index}]",
-            )
-            for task_index, task_ref in enumerate(tasks)
-        ]
-    for block_index, block in enumerate(pipeline_payload.get("functional_blocks_append", [])):
-        if not isinstance(block, dict):
-            raise WorkflowCommandError(
-                f"pipeline.functional_blocks_append[{block_index}] must be an object.",
-                exit_code=4,
-            )
-        tasks = block.get("tasks")
-        if not isinstance(tasks, list) or not tasks:
-            raise WorkflowCommandError(
-                f"pipeline.functional_blocks_append[{block_index}].tasks must be a non-empty list.",
-                exit_code=4,
-            )
-        block["tasks"] = [
-            collect_reference(
-                task_ref,
-                f"pipeline.functional_blocks_append[{block_index}].tasks[{task_index}]",
-            )
-            for task_index, task_ref in enumerate(tasks)
-        ]
-    for overlap_index, overlap in enumerate(pipeline_payload.get("overlaps_append", [])):
-        if not isinstance(overlap, dict):
-            raise WorkflowCommandError(f"pipeline.overlaps_append[{overlap_index}] must be an object.", exit_code=4)
-        overlap["left"] = collect_reference(
-            overlap.get("left"),
-            f"pipeline.overlaps_append[{overlap_index}].left",
-        )
-        overlap["right"] = collect_reference(
-            overlap.get("right"),
-            f"pipeline.overlaps_append[{overlap_index}].right",
-        )
-
-    if tokens_in_order and not allocate_task_ids:
-        joined = ", ".join(tokens_in_order)
-        raise WorkflowCommandError(
-            f"Found token task IDs without --allocate-task-ids: {joined}.",
-            exit_code=4,
-        )
-
-    try:
-        task_count_before = int(dev_map.get("task_count", 0))
-    except (TypeError, ValueError) as error:
-        raise WorkflowCommandError("DEV_MAP task_count must be an integer.", exit_code=4) from error
-
-    token_to_id: dict[str, str] = {}
-    next_numeric_id = task_count_before
-    for token in tokens_in_order:
-        next_numeric_id += 1
-        token_to_id[token] = str(next_numeric_id)
-
-    seen_explicit_ids: set[str] = set()
-    for explicit_id in explicit_ids:
-        if explicit_id in seen_explicit_ids:
-            continue
-        seen_explicit_ids.add(explicit_id)
-        if explicit_id not in existing_task_locations:
-            raise WorkflowCommandError(
-                f"New task ID {explicit_id!r} must be allocated from task_count via token + --allocate-task-ids.",
-                exit_code=4,
-            )
-
-    _replace_task_reference_tokens(resolved, token_to_id)
-    return (
-        resolved,
-        {
-            "allocated_ids": token_to_id,
-            "task_count_after": next_numeric_id,
-            "task_count_before": task_count_before,
-        },
-    )
-
-
-def _normalize_task_reference(raw_value: Any, location: str) -> str:
-    """Normalize one task reference and validate supported token/ID format."""
-    value = str(raw_value or "").strip()
-    if TASK_REFERENCE_PATTERN.fullmatch(value) is None:
-        raise WorkflowCommandError(
-            f"Invalid task reference at {location}: {raw_value!r}. Use task ID or $token.",
-            exit_code=4,
-        )
-    return value
-
-
-def _replace_task_reference_tokens(payload: dict[str, Any], token_to_id: dict[str, str]) -> None:
-    """Replace all token task references in-place using allocation map."""
-    for issue in payload.get("issues", []):
-        for task in issue.get("tasks", []):
-            task_id = str(task.get("id", ""))
-            if task_id in token_to_id:
-                task["id"] = token_to_id[task_id]
-    for entry in payload.get("task_list_entries", []):
-        task_id = str(entry.get("id", ""))
-        if task_id in token_to_id:
-            entry["id"] = token_to_id[task_id]
-    pipeline_payload = payload.get("pipeline", {})
-    for item in pipeline_payload.get("execution_sequence_append", []):
-        item["tasks"] = [token_to_id.get(task_id, task_id) for task_id in item.get("tasks", [])]
-    for block in pipeline_payload.get("functional_blocks_append", []):
-        block["tasks"] = [token_to_id.get(task_id, task_id) for task_id in block.get("tasks", [])]
-    for overlap in pipeline_payload.get("overlaps_append", []):
-        overlap["left"] = token_to_id.get(str(overlap.get("left", "")), str(overlap.get("left", "")))
-        overlap["right"] = token_to_id.get(str(overlap.get("right", "")), str(overlap.get("right", "")))
 
 
 def _apply_issue_delta(
@@ -870,50 +687,6 @@ def _now_date_and_time() -> tuple[str, str]:
     return now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S")
 
 
-def _apply_task_list_delta(task_list_text: str, entries: list[dict[str, Any]], expected_marker: str) -> tuple[str, int]:
-    """Append new task list entries from sync payload."""
-    existing_ids = {
-        match.group("task_id")
-        for match in TASK_LIST_HEADING_PATTERN.finditer(task_list_text)
-    }
-    rendered_entries: list[str] = []
-    for entry_index, entry in enumerate(entries):
-        if not isinstance(entry, dict):
-            raise WorkflowCommandError(f"task_list_entries[{entry_index}] must be an object.", exit_code=4)
-        task_id = _required_string_field(entry, "id", f"task_list_entries[{entry_index}]")
-        if task_id in existing_ids:
-            raise WorkflowCommandError(
-                f"Task {task_id} already exists in TASK_LIST; sync currently supports append-only task entries.",
-                exit_code=4,
-            )
-        marker = str(entry.get("marker", expected_marker)).strip()
-        if marker != expected_marker:
-            raise WorkflowCommandError(
-                f"task_list_entries[{entry_index}].marker must be {expected_marker}; got {marker}.",
-                exit_code=4,
-            )
-        rendered_entries.append(_format_task_list_entry(task_id=task_id, marker=marker, entry=entry, entry_index=entry_index))
-        existing_ids.add(task_id)
-
-    if not rendered_entries:
-        return task_list_text, 0
-    suffix = "" if task_list_text.endswith("\n") else "\n"
-    updated = f"{task_list_text}{suffix}\n{'\n\n'.join(rendered_entries)}\n"
-    return updated, len(rendered_entries)
-
-
-def _format_task_list_entry(task_id: str, marker: str, entry: dict[str, Any], entry_index: int) -> str:
-    """Render one TASK_LIST markdown entry from structured sync payload."""
-    title = _required_string_field(entry, "title", f"task_list_entries[{entry_index}]")
-    problem = _required_string_field(entry, "problem", f"task_list_entries[{entry_index}]")
-    solution_option = _required_string_field(entry, "solution_option", f"task_list_entries[{entry_index}]")
-    concrete_steps = _required_list_field(entry, "concrete_steps", f"task_list_entries[{entry_index}]")
-    lines = [f"### {task_id}) {marker} {title}", f"**Problem:** {problem}", "", f"**Solution option:** {solution_option}", "", "#### **Concrete steps:**"]
-    for step_index, step in enumerate(concrete_steps, start=1):
-        lines.append(f"{step_index}. {step}")
-    return "\n".join(lines)
-
-
 def _required_string_field(payload: dict[str, Any], key: str, location: str) -> str:
     """Read and validate a required non-empty string field."""
     value = str(payload.get(key, "")).strip()
@@ -936,170 +709,6 @@ def _required_list_field(payload: dict[str, Any], key: str, location: str) -> li
     return normalized
 
 
-def _apply_pipeline_delta(
-    pipeline_text: str,
-    pipeline_payload: dict[str, Any],
-    update_pipeline: bool,
-) -> tuple[str, dict[str, int]]:
-    """Append execution-order, functional block, and overlap entries to pipeline."""
-    if not pipeline_payload:
-        return pipeline_text, {"blocks_added": 0, "overlaps_added": 0, "sequence_rows_added": 0}
-    if not update_pipeline:
-        raise WorkflowCommandError(
-            "Delta contains pipeline payload but --update-pipeline was not provided.",
-            exit_code=4,
-        )
-
-    execution_items = pipeline_payload.get("execution_sequence_append", [])
-    block_items = pipeline_payload.get("functional_blocks_append", [])
-    overlap_items = pipeline_payload.get("overlaps_append", [])
-    if not isinstance(execution_items, list):
-        raise WorkflowCommandError("pipeline.execution_sequence_append must be a list.", exit_code=4)
-    if not isinstance(block_items, list):
-        raise WorkflowCommandError("pipeline.functional_blocks_append must be a list.", exit_code=4)
-    if not isinstance(overlap_items, list):
-        raise WorkflowCommandError("pipeline.overlaps_append must be a list.", exit_code=4)
-
-    lines = pipeline_text.splitlines()
-    sequence_bounds = _find_section_bounds(lines, "### Execution sequence")
-    blocks_bounds = _find_section_bounds(lines, "### Functional blocks")
-    overlaps_bounds = _find_section_bounds(lines, "### Cross-task overlaps and dependencies")
-    if sequence_bounds is None or blocks_bounds is None or overlaps_bounds is None:
-        raise WorkflowCommandError("Pipeline file is missing required sections for sync append.", exit_code=4)
-
-    sequence_start, sequence_end = sequence_bounds
-    existing_numbers = []
-    for line in lines[sequence_start:sequence_end]:
-        match = re.match(r"^\s*(\d+)\.\s", line)
-        if match is not None:
-            existing_numbers.append(int(match.group(1)))
-    next_number = max(existing_numbers, default=0) + 1
-    sequence_lines: list[str] = []
-    for item_index, item in enumerate(execution_items):
-        if not isinstance(item, dict):
-            raise WorkflowCommandError(
-                f"pipeline.execution_sequence_append[{item_index}] must be an object.",
-                exit_code=4,
-            )
-        tasks = _required_list_field(
-            item,
-            "tasks",
-            f"pipeline.execution_sequence_append[{item_index}]",
-        )
-        description = str(item.get("description", "")).strip()
-        sequence_lines.append(_render_sequence_line(next_number, tasks, description))
-        next_number += 1
-    lines = lines[:sequence_end] + sequence_lines + lines[sequence_end:]
-
-    blocks_bounds = _find_section_bounds(lines, "### Functional blocks")
-    if blocks_bounds is None:
-        raise WorkflowCommandError("Pipeline functional blocks section is missing after sequence update.", exit_code=4)
-    _, blocks_end = blocks_bounds
-    block_lines: list[str] = []
-    for block_index, block in enumerate(block_items):
-        if not isinstance(block, dict):
-            raise WorkflowCommandError(
-                f"pipeline.functional_blocks_append[{block_index}] must be an object.",
-                exit_code=4,
-            )
-        title = _required_string_field(
-            block,
-            "title",
-            f"pipeline.functional_blocks_append[{block_index}]",
-        )
-        tasks = _required_list_field(
-            block,
-            "tasks",
-            f"pipeline.functional_blocks_append[{block_index}]",
-        )
-        scope = _required_string_field(
-            block,
-            "scope",
-            f"pipeline.functional_blocks_append[{block_index}]",
-        )
-        outcome = _required_string_field(
-            block,
-            "outcome",
-            f"pipeline.functional_blocks_append[{block_index}]",
-        )
-        task_chain = " -> ".join(tasks)
-        block_lines.extend(
-            [
-                f"- **{title}**",
-                f"  - Tasks: **{task_chain}**",
-                f"  - Scope: {scope}",
-                f"  - Outcome: {outcome}",
-            ]
-        )
-    lines = lines[:blocks_end] + block_lines + lines[blocks_end:]
-
-    overlaps_bounds = _find_section_bounds(lines, "### Cross-task overlaps and dependencies")
-    if overlaps_bounds is None:
-        raise WorkflowCommandError("Pipeline overlaps section is missing after block update.", exit_code=4)
-    _, overlaps_end = overlaps_bounds
-    overlap_lines: list[str] = []
-    for overlap_index, overlap in enumerate(overlap_items):
-        if not isinstance(overlap, dict):
-            raise WorkflowCommandError(
-                f"pipeline.overlaps_append[{overlap_index}] must be an object.",
-                exit_code=4,
-            )
-        left = _required_string_field(
-            overlap,
-            "left",
-            f"pipeline.overlaps_append[{overlap_index}]",
-        )
-        right = _required_string_field(
-            overlap,
-            "right",
-            f"pipeline.overlaps_append[{overlap_index}]",
-        )
-        description = _required_string_field(
-            overlap,
-            "description",
-            f"pipeline.overlaps_append[{overlap_index}]",
-        )
-        overlap_lines.append(f"- **{left} <-> {right}**: {description}")
-    lines = lines[:overlaps_end] + overlap_lines + lines[overlaps_end:]
-
-    updated = "\n".join(lines)
-    if not updated.endswith("\n"):
-        updated = f"{updated}\n"
-    return (
-        updated,
-        {
-            "blocks_added": len(block_lines) // 4,
-            "overlaps_added": len(overlap_lines),
-            "sequence_rows_added": len(sequence_lines),
-        },
-    )
-
-
-def _find_section_bounds(lines: list[str], section_heading_prefix: str) -> tuple[int, int] | None:
-    """Return [start,end) line bounds for one level-3 markdown section."""
-    start_index: int | None = None
-    for index, line in enumerate(lines):
-        if line.strip().startswith(section_heading_prefix):
-            start_index = index
-            break
-    if start_index is None:
-        return None
-    end_index = len(lines)
-    for index in range(start_index + 1, len(lines)):
-        if re.match(r"^#{1,6}\s+", lines[index].strip()):
-            end_index = index
-            break
-    return start_index, end_index
-
-
-def _render_sequence_line(number: int, tasks: list[str], description: str) -> str:
-    """Render one execution sequence line from ordered task IDs."""
-    task_text = " then ".join(f"**{task_id}**" for task_id in tasks)
-    if description:
-        return f"{number}. {task_text} ({description})"
-    return f"{number}. {task_text}"
-
-
 def _materialize_feature_issue_node(
     issue_node: dict[str, Any],
     milestone_title: str,
@@ -1116,7 +725,7 @@ def _materialize_feature_issue_node(
     action = "updated" if issue_number is not None else "created"
 
     if issue_number is None:
-        created_url = _gh_issue_create(
+        created_url = gh_issue_create(
             repo_name_with_owner=repo_name_with_owner,
             title=title,
             body=body,
@@ -1131,7 +740,7 @@ def _materialize_feature_issue_node(
         issue_number = parsed_number
         issue_url = created_url
     else:
-        _gh_issue_edit(
+        gh_issue_edit(
             repo_name_with_owner=repo_name_with_owner,
             issue_number=issue_number,
             title=title,
@@ -1193,7 +802,7 @@ def _materialize_feature_registration_issue(
     action = "updated" if issue_number is not None else "created"
 
     if issue_number is None:
-        created_url = _gh_issue_create(
+        created_url = gh_issue_create(
             repo_name_with_owner=repo_name_with_owner,
             title=title,
             body=body,
@@ -1208,7 +817,7 @@ def _materialize_feature_registration_issue(
         issue_number = parsed_number
         issue_url = created_url
     else:
-        _gh_issue_edit(
+        gh_issue_edit(
             repo_name_with_owner=repo_name_with_owner,
             issue_number=issue_number,
             title=title,
@@ -1250,177 +859,6 @@ def _build_feature_registration_issue_body(feature_node: dict[str, Any]) -> str:
     else:
         lines.append("- [ ] Local feature has no mapped issues yet.")
     return "\n".join(lines).strip() + "\n"
-
-
-def _resolve_github_repository(root_dir: Path) -> dict[str, str]:
-    """Resolve GitHub repository metadata from gh CLI context."""
-    command = ["gh", "repo", "view", "--json", "nameWithOwner,url"]
-    output = _run_checked_command(command, cwd=root_dir, error_prefix="Failed to resolve GitHub repository")
-    try:
-        payload = json.loads(output)
-    except json.JSONDecodeError as error:
-        raise WorkflowCommandError(f"Invalid JSON from gh repo view: {error}", exit_code=5) from error
-    name_with_owner = str(payload.get("nameWithOwner", "")).strip()
-    url = str(payload.get("url", "")).strip()
-    if not name_with_owner:
-        raise WorkflowCommandError("gh repo view did not return nameWithOwner.", exit_code=5)
-    return {"name_with_owner": name_with_owner, "url": url}
-
-
-def _ensure_github_milestone_exists(
-    repo_name_with_owner: str,
-    milestone_title: str,
-    milestone_id: str,
-) -> None:
-    """Require that the mapped GitHub milestone title exists before materialization."""
-    command = ["gh", "api", f"repos/{repo_name_with_owner}/milestones?state=all&per_page=100"]
-    output = _run_checked_command(
-        command,
-        cwd=None,
-        error_prefix=f"Failed to resolve GitHub milestones for {repo_name_with_owner}",
-    )
-    try:
-        milestones = json.loads(output)
-    except json.JSONDecodeError as error:
-        raise WorkflowCommandError(f"Invalid milestones payload from gh api: {error}", exit_code=5) from error
-    if not isinstance(milestones, list):
-        raise WorkflowCommandError("Unexpected milestones payload format from gh api.", exit_code=5)
-    for milestone in milestones:
-        if str(milestone.get("title", "")).strip() == milestone_title:
-            return
-    raise WorkflowCommandError(
-        f"GitHub milestone title {milestone_title!r} (from {milestone_id}) was not found for {repo_name_with_owner}; "
-        "create/select it before materialize.",
-        exit_code=4,
-    )
-
-
-def _gh_issue_create(
-    repo_name_with_owner: str,
-    title: str,
-    body: str,
-    milestone_title: str,
-) -> str:
-    """Create a GitHub issue and return the created issue URL."""
-    command = [
-        "gh",
-        "issue",
-        "create",
-        "--repo",
-        repo_name_with_owner,
-        "--title",
-        title,
-        "--body",
-        body,
-        "--milestone",
-        milestone_title,
-    ]
-    output = _run_checked_command(command, cwd=None, error_prefix="Failed to create GitHub issue")
-    created_url = output.strip().splitlines()[-1].strip() if output.strip() else ""
-    if not created_url:
-        raise WorkflowCommandError("gh issue create returned empty output.", exit_code=5)
-    return created_url
-
-
-def _gh_issue_edit(
-    repo_name_with_owner: str,
-    issue_number: int,
-    title: str,
-    body: str,
-    milestone_title: str,
-) -> None:
-    """Update an existing GitHub issue title/body/milestone."""
-    command = [
-        "gh",
-        "issue",
-        "edit",
-        str(issue_number),
-        "--repo",
-        repo_name_with_owner,
-        "--title",
-        title,
-        "--body",
-        body,
-        "--milestone",
-        milestone_title,
-    ]
-    _run_checked_command(command, cwd=None, error_prefix=f"Failed to update GitHub issue #{issue_number}")
-
-
-def _run_checked_command(command: list[str], cwd: Path | None, error_prefix: str) -> str:
-    """Run one subprocess command and return stdout or raise workflow error."""
-    result = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        cwd=str(cwd) if cwd is not None else None,
-    )
-    if result.returncode != 0:
-        details = (result.stderr or result.stdout).strip() or "unknown command error"
-        raise WorkflowCommandError(f"{error_prefix}: {details}", exit_code=5)
-    return result.stdout.strip()
-
-
-def _checkout_canonical_feature_branch(root_dir: Path, branch_name: str) -> str:
-    """Resolve and checkout the canonical feature branch using protocol branch order."""
-    if _git_ref_exists(root_dir, f"refs/heads/{branch_name}"):
-        _run_checked_command(
-            ["git", "checkout", branch_name],
-            cwd=root_dir,
-            error_prefix=f"Failed to checkout existing branch {branch_name}",
-        )
-        return "checked-out-local"
-
-    remote_ref = f"refs/remotes/origin/{branch_name}"
-    if _git_ref_exists(root_dir, remote_ref):
-        _run_checked_command(
-            ["git", "checkout", "-b", branch_name, "--track", f"origin/{branch_name}"],
-            cwd=root_dir,
-            error_prefix=f"Failed to create tracking branch from origin/{branch_name}",
-        )
-        return "created-tracking-from-local-remote-ref"
-
-    remote_heads = _run_checked_command(
-        ["git", "ls-remote", "--heads", "origin", branch_name],
-        cwd=root_dir,
-        error_prefix="Failed to query remote branch heads",
-    )
-    if remote_heads:
-        _run_checked_command(
-            ["git", "checkout", "-b", branch_name, "--track", f"origin/{branch_name}"],
-            cwd=root_dir,
-            error_prefix=f"Failed to create tracking branch from origin/{branch_name}",
-        )
-        return "created-tracking-from-remote"
-
-    _run_checked_command(
-        ["git", "checkout", "-b", branch_name],
-        cwd=root_dir,
-        error_prefix=f"Failed to create branch {branch_name}",
-    )
-    return "created-local"
-
-
-def _plan_canonical_feature_branch(root_dir: Path, branch_name: str) -> str:
-    """Plan canonical branch action without mutating repository state."""
-    if _git_ref_exists(root_dir, f"refs/heads/{branch_name}"):
-        return "would-checkout-local"
-    if _git_ref_exists(root_dir, f"refs/remotes/origin/{branch_name}"):
-        return "would-create-tracking-from-local-remote-ref"
-    return "would-create-local"
-
-
-def _git_ref_exists(root_dir: Path, ref_name: str) -> bool:
-    """Check whether a Git ref exists locally."""
-    result = subprocess.run(
-        ["git", "show-ref", "--verify", "--quiet", ref_name],
-        check=False,
-        cwd=str(root_dir),
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
 
 
 def _resolve_repository_url(root_dir: Path, feature_node: dict[str, Any]) -> str | None:
