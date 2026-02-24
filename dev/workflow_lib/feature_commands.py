@@ -372,6 +372,10 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
     feature_id, feature_milestone_num = _parse_feature_id(args.id)
     milestone_id = f"M{feature_milestone_num}"
     dev_map = _load_json(context.dev_map_path)
+    milestone_node = _find_milestone(dev_map, milestone_id)
+    if milestone_node is None:
+        raise WorkflowCommandError(f"Milestone {milestone_id} not found in DEV_MAP.", exit_code=4)
+    milestone_title = _resolve_github_milestone_title(milestone_node, milestone_id)
     feature_ref = _find_feature(dev_map, feature_id)
     if feature_ref is None:
         raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
@@ -402,11 +406,15 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
     materialized_issues: list[dict[str, Any]] = []
     if bool(args.write) and bool(args.github):
         github_repo = _resolve_github_repository(context.root_dir)
-        _ensure_github_milestone_exists(github_repo["name_with_owner"], milestone_id)
+        _ensure_github_milestone_exists(
+            repo_name_with_owner=github_repo["name_with_owner"],
+            milestone_title=milestone_title,
+            milestone_id=milestone_id,
+        )
         for issue_node in issue_nodes:
             materialized = _materialize_feature_issue_node(
                 issue_node=issue_node,
-                milestone_id=milestone_id,
+                milestone_title=milestone_title,
                 repo_name_with_owner=github_repo["name_with_owner"],
                 repo_url=_normalize_repository_url(str(github_repo.get("url", ""))),
             )
@@ -443,6 +451,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             "feature_status": feature_status,
             "github_enabled": bool(args.github),
             "issues_materialized": materialized_issues,
+            "github_milestone_title": milestone_title,
             "milestone_id": milestone_id,
             "write": bool(args.write),
         }
@@ -1063,7 +1072,7 @@ def _render_sequence_line(number: int, tasks: list[str], description: str) -> st
 
 def _materialize_feature_issue_node(
     issue_node: dict[str, Any],
-    milestone_id: str,
+    milestone_title: str,
     repo_name_with_owner: str,
     repo_url: str | None,
 ) -> dict[str, Any]:
@@ -1081,7 +1090,7 @@ def _materialize_feature_issue_node(
             repo_name_with_owner=repo_name_with_owner,
             title=title,
             body=body,
-            milestone_id=milestone_id,
+            milestone_title=milestone_title,
         )
         parsed_number = _parse_issue_number_from_url(created_url)
         if parsed_number is None:
@@ -1097,7 +1106,7 @@ def _materialize_feature_issue_node(
             issue_number=issue_number,
             title=title,
             body=body,
-            milestone_id=milestone_id,
+            milestone_title=milestone_title,
         )
         issue_url = _build_issue_url(repo_url, issue_number) or str(issue_node.get("gh_issue_url", "")).strip() or None
 
@@ -1153,8 +1162,12 @@ def _resolve_github_repository(root_dir: Path) -> dict[str, str]:
     return {"name_with_owner": name_with_owner, "url": url}
 
 
-def _ensure_github_milestone_exists(repo_name_with_owner: str, milestone_id: str) -> None:
-    """Require that the target GitHub milestone already exists before materialization."""
+def _ensure_github_milestone_exists(
+    repo_name_with_owner: str,
+    milestone_title: str,
+    milestone_id: str,
+) -> None:
+    """Require that the mapped GitHub milestone title exists before materialization."""
     command = ["gh", "api", f"repos/{repo_name_with_owner}/milestones?state=all&per_page=100"]
     output = _run_checked_command(
         command,
@@ -1168,10 +1181,11 @@ def _ensure_github_milestone_exists(repo_name_with_owner: str, milestone_id: str
     if not isinstance(milestones, list):
         raise WorkflowCommandError("Unexpected milestones payload format from gh api.", exit_code=5)
     for milestone in milestones:
-        if str(milestone.get("title", "")).strip() == milestone_id:
+        if str(milestone.get("title", "")).strip() == milestone_title:
             return
     raise WorkflowCommandError(
-        f"GitHub milestone {milestone_id} was not found for {repo_name_with_owner}; create/select it before materialize.",
+        f"GitHub milestone title {milestone_title!r} (from {milestone_id}) was not found for {repo_name_with_owner}; "
+        "create/select it before materialize.",
         exit_code=4,
     )
 
@@ -1180,7 +1194,7 @@ def _gh_issue_create(
     repo_name_with_owner: str,
     title: str,
     body: str,
-    milestone_id: str,
+    milestone_title: str,
 ) -> str:
     """Create a GitHub issue and return the created issue URL."""
     command = [
@@ -1194,7 +1208,7 @@ def _gh_issue_create(
         "--body",
         body,
         "--milestone",
-        milestone_id,
+        milestone_title,
     ]
     output = _run_checked_command(command, cwd=None, error_prefix="Failed to create GitHub issue")
     created_url = output.strip().splitlines()[-1].strip() if output.strip() else ""
@@ -1208,7 +1222,7 @@ def _gh_issue_edit(
     issue_number: int,
     title: str,
     body: str,
-    milestone_id: str,
+    milestone_title: str,
 ) -> None:
     """Update an existing GitHub issue title/body/milestone."""
     command = [
@@ -1223,7 +1237,7 @@ def _gh_issue_edit(
         "--body",
         body,
         "--milestone",
-        milestone_id,
+        milestone_title,
     ]
     _run_checked_command(command, cwd=None, error_prefix=f"Failed to update GitHub issue #{issue_number}")
 
@@ -1442,6 +1456,17 @@ def _find_milestone(dev_map: dict[str, Any], milestone_id: str) -> dict[str, Any
         if milestone.get("id") == milestone_id:
             return milestone
     return None
+
+
+def _resolve_github_milestone_title(milestone_node: dict[str, Any], milestone_id: str) -> str:
+    """Resolve mapped GitHub milestone title from DEV_MAP milestone node."""
+    title = str(milestone_node.get("title", "")).strip()
+    if not title:
+        raise WorkflowCommandError(
+            f"Milestone {milestone_id} has empty title in DEV_MAP; cannot map to GitHub milestone title.",
+            exit_code=4,
+        )
+    return title
 
 
 def _find_feature(dev_map: dict[str, Any], feature_id: str) -> dict[str, Any] | None:

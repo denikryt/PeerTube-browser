@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T20:44:12+02:00",
+  "updated_at": "2026-02-24T21:13:17+02:00",
   "task_count": 75,
   "milestones": [
     {
@@ -188,6 +188,14 @@
                   "summary": "Eliminate concrete process conflicts and duplication across AGENTS.md, TASK_EXECUTION_PROTOCOL.md, FEATURE_PLANNING_PROTOCOL.md, and FEATURE_WORKFLOW.md by fixing one canonical command order (sync before materialize), assigning one owner per concern, and replacing repeated normative blocks with explicit cross-references."
                 }
               ]
+            },
+            {
+              "id": "I4-F4-M1",
+              "title": "Workflow CLI hardening and missing contracts completion",
+              "status": "Planned",
+              "gh_issue_number": 84,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/84",
+              "tasks": []
             }
           ],
           "branch_name": "feature/F4-M1",
