@@ -294,6 +294,14 @@
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []
+            },
+            {
+              "id": "I8-F4-M1",
+              "title": "Materialize should skip edit for already mapped GitHub issues",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F4-M1",
