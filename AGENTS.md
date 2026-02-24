@@ -34,6 +34,7 @@ Project-level hard constraints for task work in this repository.
 7. New tasks in `dev/TASK_LIST.md` must be added only at the end of the file as a single linear list entry; do not place new tasks into category sections and do not regroup existing tasks by categories.
 8. New numeric task IDs must be allocated only from `task_count` in `dev/map/DEV_MAP.json` using `new_id = task_count + 1`; then set `task_count = new_id` in the same change set.
 9. Do not derive new task IDs by scanning `dev/TASK_LIST.md` or by relying on visible "last task" entries.
+10. Every new or rewritten task entry in `dev/TASK_LIST.md` must include a `#### **Concrete steps:**` section with explicit numbered implementation steps (actionable commands/edits/checks), not only conceptual wording.
 
 ## Feature planning and materialization constraints
 

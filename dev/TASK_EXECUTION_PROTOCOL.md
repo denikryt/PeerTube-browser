@@ -125,14 +125,15 @@ When creating or rewriting a task definition:
    - set `task_count = new_id` in the same change set.
    Never allocate by scanning or by "last visible task" in `dev/TASK_LIST.md`.
 5. Update `dev/TASK_LIST.md` as one linear list (append new tasks to the end).
-6. Attach/update the task in `dev/map/DEV_MAP.json` under the user-selected target chain (or create missing parent nodes first):
+6. For each new/rewritten task entry in `dev/TASK_LIST.md`, add a mandatory `#### **Concrete steps:**` section with explicit numbered actions (what to edit/run/validate), not only conceptual statements.
+7. Attach/update the task in `dev/map/DEV_MAP.json` under the user-selected target chain (or create missing parent nodes first):
    - `Milestone -> Feature -> Issue -> Task`, or
    - `Milestone -> StandaloneIssue -> Task`.
-7. Add/maintain markers for the task in `dev/TASK_LIST.md` according to selected binding:
+8. Add/maintain markers for the task in `dev/TASK_LIST.md` according to selected binding:
    - `[M*][F*]` for feature path,
    - `[M*][SI*]` for standalone path.
-8. Update `dev/TASK_EXECUTION_PIPELINE.md` order/overlaps for pending tasks.
-9. Keep this protocol and `AGENTS.md` consistent if process/policy changed.
+9. Update `dev/TASK_EXECUTION_PIPELINE.md` order/overlaps for pending tasks.
+10. Keep this protocol and `AGENTS.md` consistent if process/policy changed.
 
 ## Bundle command format
 

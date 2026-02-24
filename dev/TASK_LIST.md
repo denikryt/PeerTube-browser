@@ -469,6 +469,14 @@
 - Ensure boundary policy statements are directly traceable to validation scripts.
 - Keep this task focused on contract alignment (no runtime behavior changes yet).
 
+#### **Concrete steps:**
+1. Inventory current boundary statements in `README.md`, `client/README.md`, `engine/server/README.md`, `AGENTS.md`, `tests/check-client-engine-boundary.sh`, `tests/check-frontend-client-gateway.sh`.
+2. Create one canonical boundary section in the chosen source file and write exact allow/forbid rules line-by-line.
+3. Replace conflicting/duplicate wording in other docs with direct references to the canonical section.
+4. Add a compact rule matrix (`component -> allowed actions -> forbidden actions`) in the canonical section.
+5. Verify every static check pattern maps to at least one explicit rule from the matrix.
+6. Produce a short change note listing removed contradictions and final canonical references.
+
 ### 61) [M1][F1] Harden static boundary checks for Client backend and frontend
 **Problem:** current static checks cover core violations but need stronger guardrails and clearer diagnostics for regressions.
 
@@ -479,6 +487,14 @@
 - Extend `tests/check-frontend-client-gateway.sh` coverage for forbidden direct Engine API usage patterns.
 - Keep clear failure output so CI/local runs show exact offending paths and patterns.
 - Validate scripts against known-positive and known-negative examples in repository paths.
+
+#### **Concrete steps:**
+1. Add explicit pattern groups to `tests/check-client-engine-boundary.sh` for forbidden imports, forbidden DB path usage, and forbidden CLI flags.
+2. Add explicit pattern groups to `tests/check-frontend-client-gateway.sh` for forbidden env vars, forbidden helper usage, and forbidden hardcoded Engine hosts/ports.
+3. Standardize script output format: one header per violation type + offending file:line rows.
+4. Add `--glob` filters for relevant file types and exclude generated/vendor paths.
+5. Run both scripts against current repo and capture baseline output.
+6. Add regression examples (safe and unsafe snippets) into test docs or comments so future edits keep pattern intent.
 
 ### 62) [M1][F1] Enforce runtime surface allowlists between Client and Engine
 **Problem:** runtime route/method boundaries can drift even when static checks pass, reintroducing unwanted coupling.
@@ -491,6 +507,14 @@
 - Keep allowlist definitions explicit and centralized in handler/proxy config.
 - Add/update runtime error responses for forbidden paths to be predictable and testable.
 
+#### **Concrete steps:**
+1. Enumerate current Client proxy GET/POST route sets and allowed query/body keys in `client/backend/server.py`.
+2. Enumerate Engine public/internal route handling in `engine/server/api/handlers/similar.py`.
+3. Move/normalize allowlists into clearly named constants grouped by route and method.
+4. For each non-allowlisted route/method, return deterministic error payload (`error`, `code`) and status.
+5. Add table-driven checks for route/method/param acceptance and rejection paths.
+6. Validate that Client write/profile endpoints are never proxied to Engine read routes.
+
 ### 63) [M1][F1] Add runtime split regression checks in architecture smoke flow
 **Problem:** without a stable integration check, separation regressions can slip in through route/config updates.
 
@@ -501,6 +525,14 @@
 - Keep verification that Engine process does not open `engine/server/db/users.db`.
 - Ensure smoke output clearly identifies failed boundary condition and reproduction context.
 - Keep script deterministic enough for repeated local and CI usage.
+
+#### **Concrete steps:**
+1. Extend `tests/run-arch-split-smoke.sh` with explicit named checks for each required reject/allow scenario.
+2. Add status assertions for Engine reject paths (`/api/user-profile`, `/api/user-action`) and Client proxy allow paths.
+3. Keep and harden FD check asserting Engine does not hold `engine/server/db/users.db`.
+4. Ensure each failure path logs method, URL, expected status, actual status, and last response snippet.
+5. Run script in clean local mode and record expected pass output structure.
+6. Document minimal rerun command with fixed ports/timeouts for deterministic troubleshooting.
 
 ### 64) [M1][F1] Define baseline validation gate for M1 separation contract
 **Problem:** there is no single agreed validation gate that must pass before confirming M1 separation readiness.
@@ -513,6 +545,14 @@
 - Ensure the gate can be executed consistently in local workflow.
 - Document expected interpretation of failures (policy vs runtime split regressions).
 
+#### **Concrete steps:**
+1. Define one gate command sequence (ordered commands) for static checks and split smoke.
+2. Define mandatory pass criteria per command (exit code, required lines in output, forbidden errors).
+3. Define required artifacts (log files/paths) and retention policy for review.
+4. Add a short failure taxonomy (`policy mismatch`, `proxy surface drift`, `runtime split break`).
+5. Publish the gate spec in one referenced doc and link it from `FEATURE_PLANS.md` / task notes.
+6. Dry-run the full gate once and capture an example successful run summary.
+
 ### 65) [M1][F1] Prepare M1 F1 sign-off checklist for separation reproducibility
 **Problem:** feature completion can be interpreted inconsistently without a concrete sign-off checklist.
 
@@ -523,3 +563,11 @@
 - Checklist must define what evidence is required before `confirm issue ... done` / `confirm feature ... done`.
 - Keep checklist scoped to `F1-M1` and reusable for completion review.
 - Ensure sign-off wording matches AGENTS/TASK protocol completion flow.
+
+#### **Concrete steps:**
+1. Create a checklist template with required evidence fields (`command`, `result`, `artifact link/path`, `review note`).
+2. Add separate checklist blocks for `I1-F1-M1`, `I2-F1-M1`, `I3-F1-M1`, and final `F1-M1`.
+3. Add explicit completion gates: what must be true before `confirm issue ... done`.
+4. Add final feature gate: all issue gates satisfied + validation gate pass artifact present.
+5. Link checklist to completion commands defined in `dev/TASK_EXECUTION_PROTOCOL.md`.
+6. Add a reviewer sign-off section (`reviewed_by`, `date`, `decision`, `open points`).

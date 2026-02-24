@@ -33,7 +33,7 @@
                   "time": "03:01:50",
                   "title": "Boundary policy source of truth for Engine/Client separation",
                   "status": "Planned",
-                  "summary": "Consolidate and align boundary rules for Client backend, frontend gateway, and Engine read/write surfaces into one canonical contract used by checks/docs, so forbidden couplings are explicit and non-ambiguous."
+                  "summary": "Build one canonical Engine/Client boundary contract by inventorying all current rule locations, writing one source-of-truth rule matrix, replacing conflicting wording with references to it, and mapping every static-check pattern to explicit contract rules."
                 },
                 {
                   "id": "61",
@@ -41,7 +41,7 @@
                   "time": "03:01:51",
                   "title": "Harden static boundary checks for Client backend and frontend",
                   "status": "Planned",
-                  "summary": "Extend and tighten static validation scripts (`tests/check-client-engine-boundary.sh`, `tests/check-frontend-client-gateway.sh`) with actionable failure output and coverage for forbidden direct imports, DB couplings, and direct Engine base usage patterns."
+                  "summary": "Harden static checks by extending boundary scripts with explicit forbidden pattern groups, standardized violation output, path globs/exclusions, and repeatable baseline runs that validate direct import/DB/API-base coupling regressions."
                 }
               ]
             },
@@ -58,7 +58,7 @@
                   "time": "03:01:52",
                   "title": "Enforce runtime surface allowlists between Client and Engine",
                   "status": "Planned",
-                  "summary": "Lock runtime method/route allowlists so Client proxies only approved read paths and Engine keeps write/profile endpoints isolated from public client gateway behavior."
+                  "summary": "Enforce runtime route/method/param allowlists by normalizing Client and Engine surface constants, returning deterministic reject payloads for non-allowlisted paths, and validating that Client write/profile behavior is never proxied into Engine read surface."
                 },
                 {
                   "id": "63",
@@ -66,7 +66,7 @@
                   "time": "03:01:53",
                   "title": "Add runtime split regression checks in architecture smoke flow",
                   "status": "Planned",
-                  "summary": "Expand and lock `tests/run-arch-split-smoke.sh` checks to continuously verify Engine/Client isolation contract (reject paths, allowed proxy paths, and no Engine users DB coupling) in one repeatable run."
+                  "summary": "Extend split-smoke regression flow with explicit named allow/reject checks, deterministic status assertions, users.db FD isolation verification, and reproducible failure diagnostics (method/url/expected/actual/response snippet)."
                 }
               ]
             },
@@ -83,7 +83,7 @@
                   "time": "03:01:54",
                   "title": "Define baseline validation gate for M1 separation contract",
                   "status": "Planned",
-                  "summary": "Codify one reproducible validation gate command and pass criteria for Engine/Client separation baseline, including required boundary static/runtime checks and expected outputs."
+                  "summary": "Define one reproducible M1 validation gate with ordered commands, pass/fail criteria, required artifacts, and failure taxonomy so separation readiness can be evaluated consistently from concrete outputs."
                 },
                 {
                   "id": "65",
@@ -91,7 +91,7 @@
                   "time": "03:01:55",
                   "title": "Prepare M1 F1 sign-off checklist for separation reproducibility",
                   "status": "Planned",
-                  "summary": "Create a final sign-off checklist tying together boundary policy, static checks, runtime isolation, and validation artifacts so feature completion can be confirmed consistently before local/GitHub status updates."
+                  "summary": "Prepare a concrete sign-off checklist template with evidence fields and issue/feature completion gates, linking required artifacts and protocol completion commands before `confirm issue`/`confirm feature` updates."
                 }
               ]
             }
