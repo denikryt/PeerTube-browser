@@ -13,10 +13,10 @@ from typing import Any
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
 from .output import emit_json
+from .tracker_store import load_task_list_payload
 
 
 TASK_ID_PATTERN = re.compile(r"^[0-9]+[a-z]?$")
-TASK_LIST_HEADING_PATTERN = re.compile(r"^###\s+(?P<task_id>[0-9]+[a-z]?)\)\s+")
 
 
 def register_task_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -69,7 +69,7 @@ def _handle_task_preflight(args: Namespace, context: WorkflowContext) -> int:
             exit_code=4,
         )
 
-    task_list_present = _task_exists_in_task_list(context.task_list_path, task_id)
+    task_list_present = _task_exists_in_task_list(context, task_id)
     if not task_list_present:
         raise WorkflowCommandError(
             f"Task {task_id} is missing in TASK_LIST headings; sync issues to task list before execute.",
@@ -108,7 +108,7 @@ def _handle_task_validate(args: Namespace, context: WorkflowContext) -> int:
         }
     )
 
-    task_list_present = _task_exists_in_task_list(context.task_list_path, task_id)
+    task_list_present = _task_exists_in_task_list(context, task_id)
     if not task_list_present:
         raise WorkflowCommandError(
             f"Task {task_id} is missing in TASK_LIST headings; sync consistency check failed.",
@@ -203,13 +203,12 @@ def _find_task(dev_map: dict[str, Any], task_id: str) -> dict[str, Any] | None:
     return None
 
 
-def _task_exists_in_task_list(task_list_path: Path, task_id: str) -> bool:
-    """Check whether TASK_LIST contains a heading for the given task ID."""
-    task_list_text = task_list_path.read_text(encoding="utf-8")
-    for line in task_list_text.splitlines():
-        match = TASK_LIST_HEADING_PATTERN.match(line.strip())
-        if match is None:
+def _task_exists_in_task_list(context: WorkflowContext, task_id: str) -> bool:
+    """Check whether task-list JSON payload contains the given task ID."""
+    task_list_payload = load_task_list_payload(context)
+    for task in task_list_payload.get("tasks", []):
+        if not isinstance(task, dict):
             continue
-        if match.group("task_id") == task_id:
+        if str(task.get("id", "")).strip() == task_id:
             return True
     return False

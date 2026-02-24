@@ -14,6 +14,8 @@ class WorkflowContext:
     dev_map_path: Path
     task_list_path: Path
     pipeline_path: Path
+    legacy_task_list_path: Path
+    legacy_pipeline_path: Path
     feature_plans_path: Path
 
 
@@ -23,8 +25,9 @@ def build_default_context() -> WorkflowContext:
     return WorkflowContext(
         root_dir=root_dir,
         dev_map_path=root_dir / "dev" / "map" / "DEV_MAP.json",
-        task_list_path=root_dir / "dev" / "TASK_LIST.md",
-        pipeline_path=root_dir / "dev" / "TASK_EXECUTION_PIPELINE.md",
+        task_list_path=root_dir / "dev" / "TASK_LIST.json",
+        pipeline_path=root_dir / "dev" / "TASK_EXECUTION_PIPELINE.json",
+        legacy_task_list_path=root_dir / "dev" / "TASK_LIST.md",
+        legacy_pipeline_path=root_dir / "dev" / "TASK_EXECUTION_PIPELINE.md",
         feature_plans_path=root_dir / "dev" / "FEATURE_PLANS.md",
     )
-

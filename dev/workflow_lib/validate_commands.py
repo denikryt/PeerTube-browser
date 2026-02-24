@@ -14,15 +14,12 @@ from typing import Any
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
 from .output import emit_json
+from .tracker_store import load_pipeline_payload, load_task_list_payload
 
 
 FEATURE_ID_PATTERN = re.compile(r"^F(?P<feature_num>\d+)-M(?P<milestone_num>\d+)$")
 TASK_ID_PATTERN = re.compile(r"^[0-9]+[a-z]?$")
-TASK_LIST_HEADER_PATTERN = re.compile(
-    r"^###\s+(?P<task_id>[0-9]+[a-z]?)\)\s+\[(?P<milestone>M\d+)\]\[(?P<owner>F\d+|SI\d+)\]\s+"
-)
-PIPELINE_TASK_TOKEN_PATTERN = re.compile(r"\*\*([^*]+)\*\*")
-PIPELINE_BLOCK_TITLE_PATTERN = re.compile(r"^- \*\*(?P<title>.+)\*\*$")
+TASK_LIST_MARKER_PATTERN = re.compile(r"^\[(?P<milestone>M\d+)\]\[(?P<owner>F\d+|SI\d+)\]$")
 
 
 @dataclass(frozen=True)
@@ -121,8 +118,8 @@ def _run_tracking_validation(context: WorkflowContext, feature_id: str | None) -
             errors.append(f"Feature {feature_id} status is {feature_status}; expected Approved or Done.")
         scoped_tasks, _ = _collect_dev_map_task_ownership(dev_map, feature_id=feature_id)
 
-    task_list_text = context.task_list_path.read_text(encoding="utf-8")
-    task_list_entries, duplicate_task_list_ids = _parse_task_list_ownership(task_list_text)
+    task_list_payload = load_task_list_payload(context)
+    task_list_entries, duplicate_task_list_ids = _parse_task_list_ownership(task_list_payload)
     for duplicate_task_list_id in duplicate_task_list_ids:
         errors.append(f"Duplicate task heading in TASK_LIST: {duplicate_task_list_id}")
 
@@ -151,8 +148,8 @@ def _run_tracking_validation(context: WorkflowContext, feature_id: str | None) -
     task_count_errors = _validate_task_count(dev_map, all_tasks)
     errors.extend(task_count_errors)
 
-    pipeline_text = context.pipeline_path.read_text(encoding="utf-8")
-    pipeline_task_ids = _parse_pipeline_execution_task_ids(pipeline_text)
+    pipeline_payload = load_pipeline_payload(context)
+    pipeline_task_ids = _parse_pipeline_execution_task_ids(pipeline_payload)
     unknown_pipeline_task_ids = sorted(task_id for task_id in pipeline_task_ids if task_id not in all_tasks)
     for unknown_id in unknown_pipeline_task_ids:
         warnings.append(f"Pipeline execution sequence references task id {unknown_id} that is outside current DEV_MAP.")
@@ -175,7 +172,7 @@ def _run_tracking_validation(context: WorkflowContext, feature_id: str | None) -
     for done_task_id in done_in_pipeline:
         errors.append(f"Pipeline execution sequence contains completed task {done_task_id}.")
 
-    missing_outcome_blocks = _find_functional_blocks_without_outcome(pipeline_text)
+    missing_outcome_blocks = _find_functional_blocks_without_outcome(pipeline_payload)
     for block_title in missing_outcome_blocks:
         errors.append(f"Pipeline functional block '{block_title}' is missing an Outcome line.")
 
@@ -295,23 +292,31 @@ def _standalone_owner_marker(standalone_id: str) -> str:
     return f"SI{int(match.group('si_num'))}"
 
 
-def _parse_task_list_ownership(task_list_text: str) -> tuple[dict[str, TaskListOwnership], list[str]]:
-    """Parse TASK_LIST heading markers into ownership mappings."""
+def _parse_task_list_ownership(task_list_payload: dict[str, Any]) -> tuple[dict[str, TaskListOwnership], list[str]]:
+    """Parse task-list JSON marker ownership mappings."""
     entries: dict[str, TaskListOwnership] = {}
     duplicates: list[str] = []
-    for line_number, line in enumerate(task_list_text.splitlines(), start=1):
-        match = TASK_LIST_HEADER_PATTERN.match(line.strip())
-        if match is None:
+    tasks = task_list_payload.get("tasks", [])
+    if not isinstance(tasks, list):
+        raise WorkflowCommandError("TASK_LIST payload tasks must be a list.", exit_code=4)
+    for index, task in enumerate(tasks, start=1):
+        if not isinstance(task, dict):
             continue
-        task_id = match.group("task_id")
+        task_id = str(task.get("id", "")).strip()
+        marker = str(task.get("marker", "")).strip()
+        if not task_id:
+            continue
+        marker_match = TASK_LIST_MARKER_PATTERN.fullmatch(marker)
+        if marker_match is None:
+            continue
         if task_id in entries:
             duplicates.append(task_id)
             continue
         entries[task_id] = TaskListOwnership(
             task_id=task_id,
-            line_number=line_number,
-            milestone_id=match.group("milestone"),
-            owner_marker=match.group("owner"),
+            line_number=index,
+            milestone_id=marker_match.group("milestone"),
+            owner_marker=marker_match.group("owner"),
         )
     return entries, duplicates
 
@@ -335,65 +340,38 @@ def _validate_task_count(dev_map: dict[str, Any], ownership: dict[str, DevMapTas
     return errors
 
 
-def _parse_pipeline_execution_task_ids(pipeline_text: str) -> list[str]:
-    """Parse task IDs from pipeline execution sequence markdown section."""
-    lines = pipeline_text.splitlines()
-    bounds = _find_section_bounds(lines, "### Execution sequence")
-    if bounds is None:
+def _parse_pipeline_execution_task_ids(pipeline_payload: dict[str, Any]) -> list[str]:
+    """Parse task IDs from pipeline execution sequence payload."""
+    execution_items = pipeline_payload.get("execution_sequence", [])
+    if not isinstance(execution_items, list):
         return []
-    start, end = bounds
     ordered: list[str] = []
     seen: set[str] = set()
-    for line in lines[start:end]:
-        for token in PIPELINE_TASK_TOKEN_PATTERN.findall(line):
-            for part in token.split("/"):
-                task_id = part.strip()
-                if TASK_ID_PATTERN.fullmatch(task_id) is None:
-                    continue
-                if task_id in seen:
-                    continue
-                seen.add(task_id)
-                ordered.append(task_id)
+    for item in execution_items:
+        if not isinstance(item, dict):
+            continue
+        for raw_task_id in item.get("tasks", []):
+            task_id = str(raw_task_id).strip()
+            if TASK_ID_PATTERN.fullmatch(task_id) is None:
+                continue
+            if task_id in seen:
+                continue
+            seen.add(task_id)
+            ordered.append(task_id)
     return ordered
 
 
-def _find_functional_blocks_without_outcome(pipeline_text: str) -> list[str]:
-    """Return functional block titles that do not define an Outcome line."""
-    lines = pipeline_text.splitlines()
-    bounds = _find_section_bounds(lines, "### Functional blocks")
-    if bounds is None:
+def _find_functional_blocks_without_outcome(pipeline_payload: dict[str, Any]) -> list[str]:
+    """Return functional block titles that do not define a non-empty outcome."""
+    blocks = pipeline_payload.get("functional_blocks", [])
+    if not isinstance(blocks, list):
         return []
-    start, end = bounds
     missing: list[str] = []
-    current_title: str | None = None
-    has_outcome = False
-    for line in lines[start:end]:
-        title_match = PIPELINE_BLOCK_TITLE_PATTERN.match(line.strip())
-        if title_match is not None:
-            if current_title is not None and not has_outcome:
-                missing.append(current_title)
-            current_title = title_match.group("title").strip()
-            has_outcome = False
+    for block in blocks:
+        if not isinstance(block, dict):
             continue
-        if current_title is not None and "Outcome:" in line:
-            has_outcome = True
-    if current_title is not None and not has_outcome:
-        missing.append(current_title)
+        title = str(block.get("title", "")).strip() or "(untitled block)"
+        outcome = str(block.get("outcome", "")).strip()
+        if not outcome:
+            missing.append(title)
     return missing
-
-
-def _find_section_bounds(lines: list[str], heading_prefix: str) -> tuple[int, int] | None:
-    """Find [start,end) bounds for one level-3 markdown section."""
-    start_index: int | None = None
-    for index, line in enumerate(lines):
-        if line.strip().startswith(heading_prefix):
-            start_index = index
-            break
-    if start_index is None:
-        return None
-    end_index = len(lines)
-    for index in range(start_index + 1, len(lines)):
-        if lines[index].startswith("### "):
-            end_index = index
-            break
-    return start_index, end_index

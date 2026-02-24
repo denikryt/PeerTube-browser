@@ -15,16 +15,18 @@ from .context import WorkflowContext
 from .errors import WorkflowCommandError
 from .github_adapter import close_github_issue
 from .output import emit_json
+from .tracker_store import (
+    load_pipeline_payload,
+    load_task_list_payload,
+    write_pipeline_payload,
+    write_task_list_payload,
+)
 
 
 TASK_ID_PATTERN = re.compile(r"^[0-9]+[a-z]?$")
 ISSUE_ID_PATTERN = re.compile(r"^I[0-9]+-F[0-9]+-M[0-9]+$")
 FEATURE_ID_PATTERN = re.compile(r"^F[0-9]+-M[0-9]+$")
 STANDALONE_ISSUE_ID_PATTERN = re.compile(r"^SI[0-9]+-M[0-9]+$")
-TASK_LIST_HEADING_PATTERN = re.compile(r"^###\s+(?P<task_id>[0-9]+[a-z]?)\)\s+")
-PIPELINE_TASK_BOLD_PATTERN = re.compile(r"\*\*(?P<task_id>[0-9]+[a-z]?)\*\*")
-PIPELINE_BLOCK_TITLE_PATTERN = re.compile(r"^- \*\*.+\*\*$")
-PIPELINE_BLOCK_TASKS_PATTERN = re.compile(r"^\s*-\s+Tasks:\s+\*\*(?P<chain>.+?)\*\*\s*$")
 
 
 def register_confirm_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -369,11 +371,11 @@ def _handle_confirm_standalone_issue_done(args: Namespace, context: WorkflowCont
 
 
 def _compute_tracker_cleanup_preview(context: WorkflowContext, task_ids_to_remove: set[str]) -> dict[str, Any]:
-    """Compute cleanup counts for TASK_LIST and PIPELINE without writing changes."""
-    task_list_text = context.task_list_path.read_text(encoding="utf-8")
-    _, removed_task_entries = _remove_task_entries_from_task_list(task_list_text, task_ids_to_remove)
-    pipeline_text = context.pipeline_path.read_text(encoding="utf-8")
-    _, pipeline_cleanup = _cleanup_pipeline_for_completed_tasks(pipeline_text, task_ids_to_remove)
+    """Compute cleanup counts for task-list and pipeline payloads without writes."""
+    task_list_payload = load_task_list_payload(context)
+    _, removed_task_entries = _remove_task_entries_from_task_list(task_list_payload, task_ids_to_remove)
+    pipeline_payload = load_pipeline_payload(context)
+    _, pipeline_cleanup = _cleanup_pipeline_for_completed_tasks(pipeline_payload, task_ids_to_remove)
     return {
         "pipeline": pipeline_cleanup,
         "task_list_entries_removed": len(removed_task_entries),
@@ -385,58 +387,54 @@ def _apply_tracker_cleanup(
     dev_map: dict[str, Any],
     task_ids_to_remove: set[str],
 ) -> dict[str, Any]:
-    """Apply DEV_MAP/TASK_LIST/PIPELINE completion cleanup in one write run."""
-    task_list_text = context.task_list_path.read_text(encoding="utf-8")
-    updated_task_list, removed_task_entries = _remove_task_entries_from_task_list(task_list_text, task_ids_to_remove)
-    pipeline_text = context.pipeline_path.read_text(encoding="utf-8")
-    updated_pipeline, pipeline_cleanup = _cleanup_pipeline_for_completed_tasks(pipeline_text, task_ids_to_remove)
+    """Apply DEV_MAP/task-list/pipeline completion cleanup in one write run."""
+    task_list_payload = load_task_list_payload(context)
+    updated_task_list, removed_task_entries = _remove_task_entries_from_task_list(task_list_payload, task_ids_to_remove)
+    pipeline_payload = load_pipeline_payload(context)
+    updated_pipeline, pipeline_cleanup = _cleanup_pipeline_for_completed_tasks(pipeline_payload, task_ids_to_remove)
     _touch_updated_at(dev_map)
     _write_json(context.dev_map_path, dev_map)
-    context.task_list_path.write_text(updated_task_list, encoding="utf-8")
-    context.pipeline_path.write_text(updated_pipeline, encoding="utf-8")
+    write_task_list_payload(context, updated_task_list)
+    write_pipeline_payload(context, updated_pipeline)
     return {
         "pipeline": pipeline_cleanup,
         "task_list_entries_removed": len(removed_task_entries),
     }
 
 
-def _remove_task_entries_from_task_list(task_list_text: str, task_ids_to_remove: set[str]) -> tuple[str, list[str]]:
-    """Remove completed task sections from TASK_LIST by heading task IDs."""
+def _remove_task_entries_from_task_list(
+    task_list_payload: dict[str, Any],
+    task_ids_to_remove: set[str],
+) -> tuple[dict[str, Any], list[str]]:
+    """Remove completed task entries from task-list payload by task IDs."""
     if not task_ids_to_remove:
-        return task_list_text, []
-    lines = task_list_text.splitlines()
-    headings: list[tuple[int, str]] = []
-    for index, line in enumerate(lines):
-        match = TASK_LIST_HEADING_PATTERN.match(line)
-        if match is not None:
-            headings.append((index, match.group("task_id")))
-    if not headings:
-        return task_list_text, []
-
+        return task_list_payload, []
+    tasks = task_list_payload.get("tasks", [])
+    if not isinstance(tasks, list):
+        raise WorkflowCommandError("TASK_LIST payload tasks must be a list for cleanup.", exit_code=4)
     removed_ids: list[str] = []
-    kept_lines: list[str] = lines[: headings[0][0]]
-    for heading_index, (start_line, task_id) in enumerate(headings):
-        end_line = headings[heading_index + 1][0] if heading_index + 1 < len(headings) else len(lines)
-        section_lines = lines[start_line:end_line]
+    kept_tasks: list[dict[str, Any]] = []
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        task_id = str(task.get("id", "")).strip()
         if task_id in task_ids_to_remove:
             removed_ids.append(task_id)
             continue
-        kept_lines.extend(section_lines)
-
-    updated = "\n".join(kept_lines)
-    if task_list_text.endswith("\n"):
-        updated = f"{updated}\n"
-    return updated, removed_ids
+        kept_tasks.append(task)
+    task_list_payload["tasks"] = kept_tasks
+    task_list_payload["schema_version"] = str(task_list_payload.get("schema_version", "")).strip() or "1.0"
+    return task_list_payload, removed_ids
 
 
 def _cleanup_pipeline_for_completed_tasks(
-    pipeline_text: str,
+    pipeline_payload: dict[str, Any],
     task_ids_to_remove: set[str],
-) -> tuple[str, dict[str, int]]:
+) -> tuple[dict[str, Any], dict[str, int]]:
     """Remove completed task references from pipeline sequence, blocks, and overlaps."""
     if not task_ids_to_remove:
         return (
-            pipeline_text,
+            pipeline_payload,
             {
                 "blocks_removed": 0,
                 "execution_rows_removed": 0,
@@ -444,38 +442,26 @@ def _cleanup_pipeline_for_completed_tasks(
             },
         )
 
-    lines = pipeline_text.splitlines()
-    sequence_bounds = _find_section_bounds(lines, "### Execution sequence")
-    blocks_bounds = _find_section_bounds(lines, "### Functional blocks")
-    overlaps_bounds = _find_section_bounds(lines, "### Cross-task overlaps and dependencies")
-    if sequence_bounds is None or blocks_bounds is None or overlaps_bounds is None:
-        raise WorkflowCommandError("Pipeline file is missing required sections for completion cleanup.", exit_code=4)
+    execution_sequence = pipeline_payload.get("execution_sequence", [])
+    functional_blocks = pipeline_payload.get("functional_blocks", [])
+    overlaps = pipeline_payload.get("overlaps", [])
+    if not isinstance(execution_sequence, list):
+        raise WorkflowCommandError("Pipeline payload execution_sequence must be a list for cleanup.", exit_code=4)
+    if not isinstance(functional_blocks, list):
+        raise WorkflowCommandError("Pipeline payload functional_blocks must be a list for cleanup.", exit_code=4)
+    if not isinstance(overlaps, list):
+        raise WorkflowCommandError("Pipeline payload overlaps must be a list for cleanup.", exit_code=4)
 
-    sequence_start, sequence_end = sequence_bounds
-    blocks_start, blocks_end = blocks_bounds
-    overlaps_start, overlaps_end = overlaps_bounds
-    sequence_section = lines[sequence_start + 1 : sequence_end]
-    blocks_section = lines[blocks_start + 1 : blocks_end]
-    overlaps_section = lines[overlaps_start + 1 : overlaps_end]
+    cleaned_sequence, execution_rows_removed = _cleanup_sequence_items(execution_sequence, task_ids_to_remove)
+    cleaned_blocks, blocks_removed = _cleanup_functional_blocks(functional_blocks, task_ids_to_remove)
+    cleaned_overlaps, overlap_rows_removed = _cleanup_overlap_items(overlaps, task_ids_to_remove)
 
-    cleaned_sequence, execution_rows_removed = _cleanup_sequence_section(sequence_section, task_ids_to_remove)
-    cleaned_blocks, blocks_removed = _cleanup_functional_blocks_section(blocks_section, task_ids_to_remove)
-    cleaned_overlaps, overlap_rows_removed = _cleanup_overlaps_section(overlaps_section, task_ids_to_remove)
-
-    rebuilt_lines: list[str] = []
-    rebuilt_lines.extend(lines[: sequence_start + 1])
-    rebuilt_lines.extend(cleaned_sequence)
-    rebuilt_lines.append(lines[blocks_start])
-    rebuilt_lines.extend(cleaned_blocks)
-    rebuilt_lines.append(lines[overlaps_start])
-    rebuilt_lines.extend(cleaned_overlaps)
-    rebuilt_lines.extend(lines[overlaps_end:])
-
-    updated = "\n".join(rebuilt_lines)
-    if pipeline_text.endswith("\n"):
-        updated = f"{updated}\n"
+    pipeline_payload["execution_sequence"] = cleaned_sequence
+    pipeline_payload["functional_blocks"] = cleaned_blocks
+    pipeline_payload["overlaps"] = cleaned_overlaps
+    pipeline_payload["schema_version"] = str(pipeline_payload.get("schema_version", "")).strip() or "1.0"
     return (
-        updated,
+        pipeline_payload,
         {
             "blocks_removed": blocks_removed,
             "execution_rows_removed": execution_rows_removed,
@@ -484,118 +470,78 @@ def _cleanup_pipeline_for_completed_tasks(
     )
 
 
-def _cleanup_sequence_section(lines: list[str], task_ids_to_remove: set[str]) -> tuple[list[str], int]:
-    """Remove completed task IDs from execution-sequence lines and renumber remaining rows."""
-    cleaned: list[str] = []
+def _cleanup_sequence_items(items: list[Any], task_ids_to_remove: set[str]) -> tuple[list[dict[str, Any]], int]:
+    """Remove completed task IDs from execution-sequence items."""
+    cleaned: list[dict[str, Any]] = []
     removed_rows = 0
-    next_number = 1
-    for line in lines:
-        numbered_match = re.match(r"^\s*(?P<number>\d+)\.\s+(?P<body>.+)$", line)
-        if numbered_match is None:
-            cleaned.append(line)
+    for item in items:
+        if not isinstance(item, dict):
             continue
-        body = numbered_match.group("body")
-        task_ids = PIPELINE_TASK_BOLD_PATTERN.findall(body)
-        if not task_ids:
-            cleaned.append(line)
+        raw_tasks = item.get("tasks", [])
+        if not isinstance(raw_tasks, list):
             continue
-        remaining_task_ids = [task_id for task_id in task_ids if task_id not in task_ids_to_remove]
+        normalized_tasks = [str(task_id).strip() for task_id in raw_tasks if str(task_id).strip()]
+        remaining_task_ids = [task_id for task_id in normalized_tasks if task_id not in task_ids_to_remove]
         if not remaining_task_ids:
             removed_rows += 1
             continue
-        suffix = ""
-        for match in PIPELINE_TASK_BOLD_PATTERN.finditer(body):
-            suffix = body[match.end() :]
-        rebuilt = f"{next_number}. " + " then ".join(f"**{task_id}**" for task_id in remaining_task_ids)
-        suffix = suffix.rstrip()
-        if suffix:
-            rebuilt = f"{rebuilt} {suffix}"
-        cleaned.append(rebuilt)
-        next_number += 1
+        cleaned_item: dict[str, Any] = {"tasks": remaining_task_ids}
+        description = str(item.get("description", "")).strip()
+        if description:
+            cleaned_item["description"] = description
+        cleaned.append(cleaned_item)
     return cleaned, removed_rows
 
 
-def _cleanup_functional_blocks_section(lines: list[str], task_ids_to_remove: set[str]) -> tuple[list[str], int]:
+def _cleanup_functional_blocks(blocks: list[Any], task_ids_to_remove: set[str]) -> tuple[list[dict[str, Any]], int]:
     """Remove completed task IDs from functional blocks and drop empty blocks."""
-    cleaned: list[str] = []
+    cleaned: list[dict[str, Any]] = []
     removed_blocks = 0
-    index = 0
-    while index < len(lines):
-        if not PIPELINE_BLOCK_TITLE_PATTERN.match(lines[index]):
-            cleaned.append(lines[index])
-            index += 1
+    for block in blocks:
+        if not isinstance(block, dict):
             continue
-        next_index = index + 1
-        while next_index < len(lines) and not PIPELINE_BLOCK_TITLE_PATTERN.match(lines[next_index]):
-            next_index += 1
-        block_lines = list(lines[index:next_index])
-        tasks_line_index = _find_block_tasks_line_index(block_lines)
-        if tasks_line_index is not None:
-            task_chain_match = PIPELINE_BLOCK_TASKS_PATTERN.match(block_lines[tasks_line_index])
-            if task_chain_match is not None:
-                task_tokens = [
-                    token.strip()
-                    for token in task_chain_match.group("chain").split("->")
-                    if token.strip()
-                ]
-                filtered_tokens = [
-                    token
-                    for token in task_tokens
-                    if TASK_ID_PATTERN.fullmatch(token) is not None and token not in task_ids_to_remove
-                ]
-                if task_tokens and not filtered_tokens:
-                    removed_blocks += 1
-                    index = next_index
-                    continue
-                if filtered_tokens and len(filtered_tokens) != len(task_tokens):
-                    block_lines[tasks_line_index] = f"  - Tasks: **{' -> '.join(filtered_tokens)}**"
-        cleaned.extend(block_lines)
-        index = next_index
+        raw_tasks = block.get("tasks", [])
+        if not isinstance(raw_tasks, list):
+            continue
+        filtered_tokens = [
+            str(token).strip()
+            for token in raw_tasks
+            if str(token).strip() and str(token).strip() not in task_ids_to_remove
+        ]
+        if not filtered_tokens:
+            removed_blocks += 1
+            continue
+        cleaned.append(
+            {
+                "title": str(block.get("title", "")).strip(),
+                "tasks": filtered_tokens,
+                "scope": str(block.get("scope", "")).strip(),
+                "outcome": str(block.get("outcome", "")).strip(),
+            }
+        )
     return cleaned, removed_blocks
 
 
-def _cleanup_overlaps_section(lines: list[str], task_ids_to_remove: set[str]) -> tuple[list[str], int]:
+def _cleanup_overlap_items(items: list[Any], task_ids_to_remove: set[str]) -> tuple[list[dict[str, str]], int]:
     """Remove overlap rows that reference completed task IDs."""
-    cleaned: list[str] = []
+    cleaned: list[dict[str, str]] = []
     removed_rows = 0
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("- **"):
-            line_task_ids = {
-                token
-                for token in re.findall(r"\b[0-9]+[a-z]?\b", stripped)
-                if TASK_ID_PATTERN.fullmatch(token) is not None
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        left = str(item.get("left", "")).strip()
+        right = str(item.get("right", "")).strip()
+        if left in task_ids_to_remove or right in task_ids_to_remove:
+            removed_rows += 1
+            continue
+        cleaned.append(
+            {
+                "left": left,
+                "right": right,
+                "description": str(item.get("description", "")).strip(),
             }
-            if line_task_ids.intersection(task_ids_to_remove):
-                removed_rows += 1
-                continue
-        cleaned.append(line)
+        )
     return cleaned, removed_rows
-
-
-def _find_block_tasks_line_index(block_lines: list[str]) -> int | None:
-    """Return index of the tasks line inside one functional block, if present."""
-    for index, line in enumerate(block_lines):
-        if PIPELINE_BLOCK_TASKS_PATTERN.match(line) is not None:
-            return index
-    return None
-
-
-def _find_section_bounds(lines: list[str], heading_prefix: str) -> tuple[int, int] | None:
-    """Locate one markdown level-3 section as [start, end) line bounds."""
-    start_index: int | None = None
-    for index, line in enumerate(lines):
-        if line.startswith(heading_prefix):
-            start_index = index
-            break
-    if start_index is None:
-        return None
-    end_index = len(lines)
-    for index in range(start_index + 1, len(lines)):
-        if lines[index].startswith("### "):
-            end_index = index
-            break
-    return start_index, end_index
 
 
 def _require_issue_github_mapping(issue_number: Any, issue_url: Any, label: str) -> None:

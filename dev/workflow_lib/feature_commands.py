@@ -22,6 +22,7 @@ from .github_adapter import (
 )
 from .output import emit_json
 from .sync_delta import load_sync_delta, resolve_sync_delta_references
+from .tracker_store import load_pipeline_payload, load_task_list_payload, write_pipeline_payload, write_task_list_payload
 from .tracker_json_contracts import (
     build_pipeline_contract_payload,
     build_task_list_contract_payload,
@@ -378,17 +379,17 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         location="feature.sync.pipeline_contract",
     )
 
-    original_task_list_text = context.task_list_path.read_text(encoding="utf-8")
-    updated_task_list_text, task_list_count = apply_task_list_delta(
-        task_list_text=original_task_list_text,
+    task_list_payload = load_task_list_payload(context)
+    updated_task_list_payload, task_list_count = apply_task_list_delta(
+        task_list_payload=task_list_payload,
         entries=resolved_delta.get("task_list_entries", []),
         expected_marker=expected_marker,
     )
 
-    original_pipeline_text = context.pipeline_path.read_text(encoding="utf-8")
-    updated_pipeline_text, pipeline_counts = apply_pipeline_delta(
-        pipeline_text=original_pipeline_text,
-        pipeline_payload=resolved_delta.get("pipeline", {}),
+    pipeline_payload = load_pipeline_payload(context)
+    updated_pipeline_payload, pipeline_counts = apply_pipeline_delta(
+        pipeline_payload=pipeline_payload,
+        delta_payload=resolved_delta.get("pipeline", {}),
         update_pipeline=bool(args.update_pipeline),
     )
 
@@ -398,8 +399,8 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
             dev_map["task_count"] = allocation["task_count_after"]
         _touch_updated_at(dev_map)
         _write_json(context.dev_map_path, dev_map)
-        context.task_list_path.write_text(updated_task_list_text, encoding="utf-8")
-        context.pipeline_path.write_text(updated_pipeline_text, encoding="utf-8")
+        write_task_list_payload(context, updated_task_list_payload)
+        write_pipeline_payload(context, updated_pipeline_payload)
 
     emit_json(
         {
@@ -533,7 +534,7 @@ def _handle_feature_execution_plan(args: Namespace, context: WorkflowContext) ->
 
     ordered_tasks = _collect_feature_tasks(feature_node, only_pending=bool(args.only_pending))
     if bool(args.from_pipeline):
-        pipeline_order = _parse_pipeline_execution_order(context.pipeline_path)
+        pipeline_order = _parse_pipeline_execution_order(load_pipeline_payload(context))
         ordered_tasks = _apply_pipeline_order(ordered_tasks, pipeline_order)
 
     emit_json(
@@ -1175,35 +1176,24 @@ def _collect_feature_tasks(feature_node: dict[str, Any], only_pending: bool) -> 
     return collected
 
 
-def _parse_pipeline_execution_order(pipeline_path: Path) -> list[str]:
-    """Parse task IDs from pipeline execution sequence section."""
-    lines = pipeline_path.read_text(encoding="utf-8").splitlines()
-    start_index: int | None = None
-    for index, line in enumerate(lines):
-        if line.strip().startswith("### Execution sequence"):
-            start_index = index
-            break
-    if start_index is None:
+def _parse_pipeline_execution_order(pipeline_payload: dict[str, Any]) -> list[str]:
+    """Parse task IDs from pipeline execution sequence payload."""
+    execution_sequence = pipeline_payload.get("execution_sequence", [])
+    if not isinstance(execution_sequence, list):
         return []
-
-    end_index = len(lines)
-    for index in range(start_index + 1, len(lines)):
-        if lines[index].startswith("### "):
-            end_index = index
-            break
-
     ordered_ids: list[str] = []
     seen: set[str] = set()
-    for line in lines[start_index:end_index]:
-        for token in re.findall(r"\*\*([^*]+)\*\*", line):
-            for part in token.split("/"):
-                candidate = part.strip()
-                if TASK_ID_PATTERN.fullmatch(candidate) is None:
-                    continue
-                if candidate in seen:
-                    continue
-                ordered_ids.append(candidate)
-                seen.add(candidate)
+    for item in execution_sequence:
+        if not isinstance(item, dict):
+            continue
+        for token in item.get("tasks", []):
+            candidate = str(token).strip()
+            if TASK_ID_PATTERN.fullmatch(candidate) is None:
+                continue
+            if candidate in seen:
+                continue
+            ordered_ids.append(candidate)
+            seen.add(candidate)
     return ordered_ids
 
 
