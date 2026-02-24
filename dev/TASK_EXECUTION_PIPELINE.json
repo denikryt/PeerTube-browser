@@ -44,10 +44,6 @@
     {
       "tasks": ["70", "71", "72", "73"],
       "description": "workflow CLI + sync/materialize/confirm automation"
-    },
-    {
-      "tasks": ["81", "82", "83", "84"],
-      "description": "JSON tracker migration for workflow runtime"
     }
   ],
   "functional_blocks": [
@@ -98,12 +94,6 @@
       "tasks": ["70", "71", "72", "73"],
       "scope": "unified workflow CLI, feature lifecycle base commands, tracker sync+validation automation, and completion/materialization command contracts.",
       "outcome": "the process flow (`create/plan/approve/sync/materialize/execute/confirm`) runs through `dev/workflow` with deterministic tracker updates, `task_count`-based ID allocation, canonical feature branch handling, and confirmation cascade with GitHub close."
-    },
-    {
-      "title": "Block I: Workflow tracker JSON migration",
-      "tasks": ["81", "82", "83", "84"],
-      "scope": "Replace Markdown-based tracker runtime paths with canonical JSON storage without changing workflow command semantics.",
-      "outcome": "Workflow commands operate on JSON-only task list/pipeline trackers with validated schema, migrated data, and updated smoke/protocol coverage."
     }
   ],
   "overlaps": [
@@ -154,18 +144,6 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
-    },
-    {
-      "tasks": ["81", "82"],
-      "description": "Reader/writer refactor depends on finalized JSON schema and field names."
-    },
-    {
-      "tasks": ["82", "83"],
-      "description": "Migration tooling must target the same runtime JSON structures used by command handlers."
-    },
-    {
-      "tasks": ["83", "84"],
-      "description": "Protocol and smoke updates must document/validate final migrated JSON workflow behavior."
     }
   ]
 }

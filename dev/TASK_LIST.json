@@ -543,54 +543,6 @@
         "Implement ownership validation for [M*][F*]/[M*][SI*] markers against DEV_MAP parent chains.",
         "Implement validate --scope tracking|repo checks for sync consistency and gate failures."
       ]
-    },
-    {
-      "id": "81",
-      "marker": "[M1][F4]",
-      "title": "Canonical JSON tracker schemas for task list and pipeline",
-      "problem": "Workflow runtime currently depends on Markdown parsing for tracker data, which is brittle for machine updates.",
-      "solution_option": "Define canonical JSON structures for TASK_LIST and TASK_EXECUTION_PIPELINE and enforce them as runtime sources.",
-      "concrete_steps": [
-        "Define JSON object schema for task list entries with ownership markers and concrete steps.",
-        "Define JSON object schema for pipeline execution order, functional blocks, and overlaps.",
-        "Wire schema validation into workflow command entrypoints before write operations."
-      ]
-    },
-    {
-      "id": "82",
-      "marker": "[M1][F4]",
-      "title": "Migrate workflow command IO from Markdown trackers to JSON",
-      "problem": "feature/task/confirm/validate commands currently read or write Markdown trackers directly.",
-      "solution_option": "Refactor tracker IO paths to use JSON files and keep external CLI behavior stable.",
-      "concrete_steps": [
-        "Update workflow context paths to canonical TASK_LIST.json and TASK_EXECUTION_PIPELINE.json.",
-        "Replace markdown-specific parsing/writer logic in sync/confirm/task/validate command modules.",
-        "Preserve gate-failure behavior and command outputs while switching storage backend."
-      ]
-    },
-    {
-      "id": "83",
-      "marker": "[M1][F4]",
-      "title": "Deterministic migration of existing Markdown tracker data to JSON",
-      "problem": "Repository already contains tracker data in Markdown that must be preserved during format transition.",
-      "solution_option": "Add one migration path that converts existing tracker state to JSON with deterministic output.",
-      "concrete_steps": [
-        "Create conversion script from current TASK_LIST.md and TASK_EXECUTION_PIPELINE.md to JSON schema.",
-        "Run conversion and validate resulting JSON against schema and DEV_MAP links.",
-        "Commit migrated JSON trackers as canonical runtime data files."
-      ]
-    },
-    {
-      "id": "84",
-      "marker": "[M1][F4]",
-      "title": "JSON-only workflow smoke and protocol alignment",
-      "problem": "Tests and protocol docs still reference Markdown trackers as operational sources.",
-      "solution_option": "Update smoke scenarios and protocol docs so they validate and document JSON-only tracker operations.",
-      "concrete_steps": [
-        "Extend workflow smoke checks to assert JSON tracker read/write paths and gate-fail behavior.",
-        "Update TASK_EXECUTION_PROTOCOL and FEATURE_WORKFLOW references from Markdown trackers to JSON trackers.",
-        "Re-run workflow validation checks after docs and smoke alignment changes."
-      ]
     }
   ]
 }

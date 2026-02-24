@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T22:51:16+02:00",
+  "updated_at": "2026-02-25T00:22:36+02:00",
   "task_count": 84,
   "milestones": [
     {
@@ -241,7 +241,7 @@
             {
               "id": "I5-F4-M1",
               "title": "JSON-only tracker storage for task list and execution pipeline",
-              "status": "Planned",
+              "status": "Done",
               "gh_issue_number": 85,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/85",
               "tasks": [
@@ -249,7 +249,7 @@
                   "id": "81",
                   "title": "Define canonical JSON contracts for task list and pipeline",
                   "summary": "Introduce strict JSON structures for TASK_LIST and TASK_EXECUTION_PIPELINE and lock Markdown out of runtime source role.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-24",
                   "time": "22:38:06"
                 },
@@ -257,7 +257,7 @@
                   "id": "82",
                   "title": "Switch workflow readers/writers from Markdown trackers to JSON",
                   "summary": "Migrate feature/task/confirm/validate command data paths to JSON tracker files while preserving command semantics.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-24",
                   "time": "22:38:06"
                 },
@@ -265,7 +265,7 @@
                   "id": "83",
                   "title": "Migrate existing tracker data to JSON with deterministic conversion",
                   "summary": "Add and run one-time conversion for current TASK_LIST and pipeline data into canonical JSON files.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-24",
                   "time": "22:38:06"
                 },
@@ -273,7 +273,7 @@
                   "id": "84",
                   "title": "Align smoke checks and protocols with JSON-only tracker mode",
                   "summary": "Update workflow smoke and protocol docs so tracker operations use JSON-only sources consistently.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-24",
                   "time": "22:38:06"
                 }
@@ -298,6 +298,14 @@
             {
               "id": "I8-F4-M1",
               "title": "Materialize should skip edit for already mapped GitHub issues",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I9-F4-M1",
+              "title": "Add workflow CLI show/status commands for feature/issue/task",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
