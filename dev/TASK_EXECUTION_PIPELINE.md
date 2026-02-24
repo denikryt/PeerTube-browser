@@ -26,6 +26,8 @@ Use it before implementing any task bundle.
    Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache precompute scoping, then shadow cutover, then blue/green nginx switch automation.
 10. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
+11. **70** then **71** then **72** then **73** then **74** then **75** (workflow CLI + sync/materialize/confirm automation)  
+   Build workflow command routing first, then feature base commands, then tracker sync/validation, and only after that materialize and confirm cascade.
 
 ### Functional blocks (aligned with the same order)
 - **Block A: Similarity and recommendation core**
@@ -56,6 +58,10 @@ Use it before implementing any task bundle.
   - Tasks: **16l -> 39 -> 44 -> 56 -> 40**
   - Scope: safe cache refresh/swap runtime behavior (random + similarity), scoped similarity precompute updates, and automated blue/green nginx cutover.
   - Outcome: random/similarity caches refresh via shadow files + atomic swap, updater similarity stage can rewrite scoped cache sources instead of full rebuilds, and deploy script performs blue/green switch on `7070/7071` with health-check gate and rollback.
+- **Block H: Workflow automation for planning/materialization execution**
+  - Tasks: **70 -> 71 -> 72 -> 73 -> 74 -> 75**
+  - Scope: unified workflow CLI, feature lifecycle base commands, tracker sync+validation automation, and completion/materialization command contracts.
+  - Outcome: the process flow (`create/plan/approve/sync/materialize/execute/confirm`) runs through `dev/workflow` with deterministic tracker updates, `task_count`-based ID allocation, canonical feature branch handling, and confirmation cascade with GitHub close.
 ### Cross-task overlaps and dependencies
 - **1 <-> 2 <-> 33**: all touch video-page similar retrieval/rendering behavior.  
   Backend candidate quality/diversity (**33**) should be stable before final UX behavior (**1**, **2**).
@@ -79,6 +85,12 @@ Use it before implementing any task bundle.
   Land in-process similarity cache cutover first, then finalize full blue/green deploy automation.
 - **39 <-> 40**: deploy safety depends on fast readiness and warm startup behavior.  
   Zero-downtime cutover (**40**) should be implemented after random-cache startup hardening (**39**).
+- **70 <-> 71**: command parser contract and feature command handlers share one CLI argument model.  
+  Freeze subcommand parsing and error format in **70** before implementing feature handlers in **71**.
+- **72 <-> 73**: sync write path and validation/ID-allocation rules must use one tracker model.  
+  Implement sync write core in **72**, then enforce allocation/validation gates in **73** without duplicate state logic.
+- **74 <-> 75**: both touch status transitions and GitHub state transitions.  
+  Finalize materialize branch/milestone semantics in **74** before implementing confirmation cascade and close behavior in **75**.
 - **16 / 11** depend on nearly all feature tasks.  
   Doing them earlier causes repeated rewrites.
 

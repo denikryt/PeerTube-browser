@@ -457,3 +457,63 @@
   - source-count check: processed set equals “already cached + still present in embeddings”;
   - data check: processed sources are rewritten, untouched sources remain unchanged;
   - runtime check: updater stage time drops compared to full-cache rebuild baseline.
+
+### 70) [M1][F4] Workflow CLI entrypoint and command routing
+**Problem:** workflow operations are still tied to manual file edits and ad-hoc command handling.
+
+**Solution option:** add one `dev/workflow` entrypoint with stable routing for feature/task/confirm/validate command groups.
+
+#### **Concrete steps:**
+1. Create `dev/workflow` CLI entrypoint with argument parsing and subcommand dispatch.
+2. Implement command router modules for `feature`, `task`, `confirm`, and `validate`.
+3. Add smoke checks that verify command resolution and non-zero exit code on invalid arguments.
+
+### 71) [M1][F4] Feature base commands: create/plan/approve/execution-plan
+**Problem:** feature lifecycle commands are not unified under one executable contract.
+
+**Solution option:** implement base feature workflow commands required before sync/materialize.
+
+#### **Concrete steps:**
+1. Implement `feature create` with feature ID/milestone validation and tracker update wiring.
+2. Implement `feature plan-init`, `feature plan-lint`, and `feature approve` with plan/gate checks.
+3. Implement `feature execution-plan` that returns ordered pending tasks for one feature subtree.
+
+### 72) [M1][F4] Tracking sync command for DEV_MAP/TASK_LIST/PIPELINE
+**Problem:** local decomposition sync across trackers is manual and error-prone.
+
+**Solution option:** implement `feature sync --write` for one-change-set updates of all tracking files.
+
+#### **Concrete steps:**
+1. Implement sync input model for manual decomposition delta (`Issue -> Task`, markers, pipeline order/overlaps/outcome).
+2. Implement write path that updates `dev/map/DEV_MAP.json`, `dev/TASK_LIST.md`, and `dev/TASK_EXECUTION_PIPELINE.md` together.
+3. Add guard that blocks write when feature status is not `Approved`.
+
+### 73) [M1][F4] Task ID allocation and validation scopes
+**Problem:** ID allocation and cross-tracker consistency checks are not enforced by automation.
+
+**Solution option:** add deterministic `task_count` allocation and repository/tracking validators.
+
+#### **Concrete steps:**
+1. Implement task ID allocation strictly via `task_count` (`new_id = task_count + 1`) and persist in the same write run.
+2. Implement ownership validation for `[M*][F*]`/`[M*][SI*]` markers against `DEV_MAP` parent chains.
+3. Implement `validate --scope tracking|repo` checks for sync consistency and gate failures.
+
+### 74) [M1][F4] Materialize command with canonical feature branch policy
+**Problem:** GitHub materialization and branch handling are not automated by one command contract.
+
+**Solution option:** implement `feature materialize` that works only from local issue nodes and enforces canonical branch policy.
+
+#### **Concrete steps:**
+1. Implement materialization from local feature issues to GitHub with required milestone assignment.
+2. Implement canonical branch resolution/creation (`feature/<feature_id>`) and persist `branch_name`/`branch_url` in `DEV_MAP`.
+3. Add result contract that reports `Active feature branch: feature/<feature_id>` after successful run.
+
+### 75) [M1][F4] Confirm cascade commands with GitHub close
+**Problem:** confirmation flow is manual and can leave local/GitHub states inconsistent.
+
+**Solution option:** implement `confirm task|issue|feature|standalone-issue` cascade with same-run local+GitHub updates.
+
+#### **Concrete steps:**
+1. Implement `confirm task/issue/feature/standalone-issue` commands with explicit target resolution.
+2. Apply required cascade updates to `DEV_MAP`, `TASK_LIST`, and pending-only cleanup in `TASK_EXECUTION_PIPELINE`.
+3. Close mapped GitHub issues in the same confirmation run and fail if completion gates are not satisfied.

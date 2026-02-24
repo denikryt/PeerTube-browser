@@ -5,8 +5,8 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T19:16:05+02:00",
-  "task_count": 69,
+  "updated_at": "2026-02-24T19:17:52+02:00",
+  "task_count": 75,
   "milestones": [
     {
       "id": "M1",
@@ -108,11 +108,77 @@
           "issues": [
             {
               "id": "I1-F4-M1",
-              "title": "Process documentation responsibility split",
+              "title": "CLI and base workflow commands",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": [
+                {
+                  "id": "70",
+                  "date": "2026-02-24",
+                  "time": "19:17:53",
+                  "title": "Add `dev/workflow` CLI entrypoint and command router",
+                  "status": "Planned",
+                  "summary": "Create the workflow CLI entrypoint with routing for feature/task/confirm/validate command groups used by the process flow."
+                },
+                {
+                  "id": "71",
+                  "date": "2026-02-24",
+                  "time": "19:17:54",
+                  "title": "Implement feature base commands for create/plan/approve/execution-plan",
+                  "status": "Planned",
+                  "summary": "Implement base feature commands (`create`, `plan-init`, `plan-lint`, `approve`, `execution-plan`) with approved-state gates and deterministic output contracts."
+                }
+              ]
+            },
+            {
+              "id": "I2-F4-M1",
+              "title": "Tracking sync and validations",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": [
+                {
+                  "id": "72",
+                  "date": "2026-02-24",
+                  "time": "19:17:55",
+                  "title": "Implement `feature sync --write` for DEV_MAP/TASK_LIST/PIPELINE",
+                  "status": "Planned",
+                  "summary": "Implement sync command that applies approved manual decomposition delta to the three local trackers in one change set."
+                },
+                {
+                  "id": "73",
+                  "date": "2026-02-24",
+                  "time": "19:17:56",
+                  "title": "Add task_count-based allocation, ownership checks, and tracking/repo validation",
+                  "status": "Planned",
+                  "summary": "Enforce task ID allocation only via `task_count`, verify ownership markers and parent chains, and provide `validate --scope tracking|repo` checks."
+                }
+              ]
+            },
+            {
+              "id": "I3-F4-M1",
+              "title": "Materialize/Confirm integration and protocol contract",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": [
+                {
+                  "id": "74",
+                  "date": "2026-02-24",
+                  "time": "19:17:57",
+                  "title": "Implement `feature materialize` with canonical branch policy and milestone assignment",
+                  "status": "Planned",
+                  "summary": "Implement feature materialization from local issue nodes to GitHub with milestone resolution and canonical branch linkage persistence."
+                },
+                {
+                  "id": "75",
+                  "date": "2026-02-24",
+                  "time": "19:17:58",
+                  "title": "Implement `confirm task|issue|feature|standalone-issue` cascade with GitHub close",
+                  "status": "Planned",
+                  "summary": "Implement confirmation commands that cascade local status updates, cleanup pending-only pipeline entries, and close mapped GitHub issues in the same run."
+                },
                 {
                   "id": "69",
                   "date": "2026-02-24",
