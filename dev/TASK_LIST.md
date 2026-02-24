@@ -457,3 +457,64 @@
   - source-count check: processed set equals “already cached + still present in embeddings”;
   - data check: processed sources are rewritten, untouched sources remain unchanged;
   - runtime check: updater stage time drops compared to full-cache rebuild baseline.
+
+### 69) [M1][F4] Refactor process docs to split responsibilities and remove duplicated rules
+**Problem:** process governance is spread across `AGENTS.md`, `TASK_EXECUTION_PROTOCOL.md`, `FEATURE_PLANNING_PROTOCOL.md`, and `FEATURE_WORKFLOW.md` with duplicated rules, so any policy change requires multi-file synchronized rewrites.
+
+**Solution option:** define one canonical source per concern and turn other files into thin references/checklists to reduce cross-file coupling.
+
+#### **Current state (as-is, concrete):**
+- Command order conflict for feature flow:
+  - `AGENTS.md` and `dev/TASK_EXECUTION_PROTOCOL.md` define `sync issues to task list` before `materialize feature`.
+  - `dev/FEATURE_WORKFLOW.md` and `dev/FEATURE_PLANNING_PROTOCOL.md` define `materialize feature` before `sync issues to task list`.
+  - Result: two conflicting execution orders exist simultaneously.
+- Single-source conflict:
+  - `AGENTS.md` states that `dev/TASK_EXECUTION_PROTOCOL.md` is the process source of truth.
+  - At the same time, `AGENTS.md`, `dev/FEATURE_WORKFLOW.md`, and `dev/FEATURE_PLANNING_PROTOCOL.md` restate overlapping command semantics and validations.
+- Completion semantics duplication:
+  - `confirm feature/issue/task` logic is described in both `AGENTS.md` and `dev/TASK_EXECUTION_PROTOCOL.md`.
+  - `dev/FEATURE_PLANNING_PROTOCOL.md` also contains completion semantics (`confirm feature done`, `confirm milestone done`), creating a third location.
+- New task/update semantics duplication:
+  - task allocation/sync/binding rules are defined in `AGENTS.md` and repeated in `dev/TASK_EXECUTION_PROTOCOL.md`.
+
+#### **Target state (to-be, concrete):**
+- Exactly one canonical owner per concern:
+  - `AGENTS.md`: policy constraints only (what is allowed/forbidden and approval gates).
+  - `dev/TASK_EXECUTION_PROTOCOL.md`: canonical command semantics and command order (how to execute).
+  - `dev/FEATURE_PLANNING_PROTOCOL.md`: planning inputs, decomposition rules, planning gates only.
+  - `dev/FEATURE_WORKFLOW.md`: compact command index with links to canonical sections, without normative duplication.
+- One normalized feature command order across all docs:
+  - `create -> plan -> approve -> sync -> review -> materialize -> execute`.
+- One normalized standalone command order across all docs:
+  - `create standalone-issue -> plan -> approve -> sync -> review -> materialize -> execute task`.
+- Any repeated normative block in non-owner files is replaced by explicit reference to owner section.
+
+#### **What exactly will be changed (file-by-file):**
+- `AGENTS.md`:
+  - Keep hard constraints and policy gates.
+  - Replace duplicated procedural flow text with references to canonical sections in `dev/TASK_EXECUTION_PROTOCOL.md`.
+  - Keep binding, milestone assignment, completion confirmation, and branch policy constraints as policy rules (without restating full step contracts).
+- `dev/TASK_EXECUTION_PROTOCOL.md`:
+  - Keep and finalize canonical flow definitions for `execute task`, `execute feature`, completion commands, feature planning/materialization flow, standalone flow, and task update flow.
+  - This file becomes the only place with full step-by-step command semantics and ordered command chains.
+- `dev/FEATURE_PLANNING_PROTOCOL.md`:
+  - Keep sections for planning input contract, decomposition rules, and planning quality gates.
+  - Remove/replace command-order and completion-procedure blocks with references to `dev/TASK_EXECUTION_PROTOCOL.md`.
+  - Fix the `New feature` path so it no longer conflicts with canonical order.
+- `dev/FEATURE_WORKFLOW.md`:
+  - Replace detailed command contracts with a short map: command -> purpose -> canonical section link.
+  - Remove duplicated validation/update prose already owned by other docs.
+  - Align displayed command sequence with canonical order (`sync` before `materialize`).
+- `dev/FEATURE_PLANS.md`:
+  - Keep existing feature plan content unchanged.
+  - Update only format/reference notes if needed so they point to canonical protocol owners.
+
+#### **Concrete steps:**
+1. Build a duplication/conflict matrix with exact mappings: `rule -> current files -> canonical owner file`.
+2. Resolve command order conflict by enforcing one order (`create -> plan -> approve -> sync -> review -> materialize -> execute`) and applying it to all process docs.
+3. Refactor `AGENTS.md` to policy-only wording for overlapping flow sections; keep constraints, remove duplicated step contracts.
+4. Refactor `dev/FEATURE_PLANNING_PROTOCOL.md` to planning-only semantics; remove duplicated completion/command-procedure text and leave references.
+5. Refactor `dev/FEATURE_WORKFLOW.md` into a lightweight command index; remove duplicated contracts/validations and link to canonical owners.
+6. Validate that all completion rules (`confirm task/issue/feature/standalone-issue`) are defined once canonically and referenced elsewhere.
+7. Validate that all task creation/update rules (`task_count`, binding choice, 3-file sync) are defined once canonically and referenced elsewhere.
+8. Run final consistency check across all touched process files: no conflicting command order, no duplicated normative blocks, and all references resolve to existing sections.

@@ -26,6 +26,8 @@ Use it before implementing any task bundle.
    Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache precompute scoping, then shadow cutover, then blue/green nginx switch automation.
 10. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
+11. **69** (process docs responsibility split)  
+   Normalize governance docs into single-owner sections to avoid repeated cross-file rewrites on future policy updates.
 
 ### Functional blocks (aligned with the same order)
 - **Block A: Similarity and recommendation core**
@@ -56,6 +58,10 @@ Use it before implementing any task bundle.
   - Tasks: **16l -> 39 -> 44 -> 56 -> 40**
   - Scope: safe cache refresh/swap runtime behavior (random + similarity), scoped similarity precompute updates, and automated blue/green nginx cutover.
   - Outcome: random/similarity caches refresh via shadow files + atomic swap, updater similarity stage can rewrite scoped cache sources instead of full rebuilds, and deploy script performs blue/green switch on `7070/7071` with health-check gate and rollback.
+- **Block H: Process governance documentation**
+  - Tasks: **69**
+  - Scope: responsibility split across `AGENTS.md`, execution protocol, planning protocol, and workflow command index.
+  - Outcome: process rules are maintained in one canonical location per concern, while the remaining docs use references instead of duplicated normative blocks.
 ### Cross-task overlaps and dependencies
 - **1 <-> 2 <-> 33**: all touch video-page similar retrieval/rendering behavior.  
   Backend candidate quality/diversity (**33**) should be stable before final UX behavior (**1**, **2**).
@@ -81,6 +87,8 @@ Use it before implementing any task bundle.
   Zero-downtime cutover (**40**) should be implemented after random-cache startup hardening (**39**).
 - **16 / 11** depend on nearly all feature tasks.  
   Doing them earlier causes repeated rewrites.
+- **69 <-> 16 / 11**: all change process/documentation sources and can overwrite structure decisions.  
+  Land governance ownership split first when process docs are touched in the same batch; then align generic docs/docstring polish to the refactored structure.
 
 ## Multi-task execution protocol
 
