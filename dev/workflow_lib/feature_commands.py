@@ -1056,7 +1056,7 @@ def _find_section_bounds(lines: list[str], section_heading_prefix: str) -> tuple
         return None
     end_index = len(lines)
     for index in range(start_index + 1, len(lines)):
-        if lines[index].startswith("### "):
+        if re.match(r"^#{1,6}\s+", lines[index].strip()):
             end_index = index
             break
     return start_index, end_index

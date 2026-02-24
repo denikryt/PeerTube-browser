@@ -94,6 +94,9 @@ Use it before implementing any task bundle.
   Freeze subcommand parsing and error format in **70** before implementing feature handlers in **71**.
 - **72 <-> 73**: sync write path and validation/ID-allocation rules must use one tracker model.  
   Implement sync write core in **72**, then enforce allocation/validation gates in **73** without duplicate state logic.
+- **77 <-> 71**: Task-level preflight/validate contracts extend and depend on the base feature command argument/output model introduced in task 71.
+- **78 <-> 74**: Feature-create GitHub wiring must stay compatible with existing milestone mapping and materialization metadata behavior from task 74.
+- **79 <-> 75**: Module decomposition must preserve confirm cascade semantics and tracker cleanup/close-github behavior introduced in task 75.
 - **16 / 11** depend on nearly all feature tasks.  
   Doing them earlier causes repeated rewrites.
 
@@ -111,6 +114,3 @@ Update policy is maintained in `TASK_EXECUTION_PROTOCOL.md`.
 Use this command style when requesting multiple tasks:
 
 `Execute bundle: <taskA> -> <taskB> -> <taskC>, mode=strict, no-duplicate-logic`
-- **77 <-> 71**: Task-level preflight/validate contracts extend and depend on the base feature command argument/output model introduced in task 71.
-- **78 <-> 74**: Feature-create GitHub wiring must stay compatible with existing milestone mapping and materialization metadata behavior from task 74.
-- **79 <-> 75**: Module decomposition must preserve confirm cascade semantics and tracker cleanup/close-github behavior introduced in task 75.
