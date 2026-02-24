@@ -457,3 +457,69 @@
   - source-count check: processed set equals “already cached + still present in embeddings”;
   - data check: processed sources are rewritten, untouched sources remain unchanged;
   - runtime check: updater stage time drops compared to full-cache rebuild baseline.
+
+### 60) [M1][F1] Boundary policy source of truth for Engine/Client separation
+**Problem:** boundary rules are spread across multiple docs/scripts, so constraints can drift and ownership becomes unclear.
+
+**Solution option:** consolidate one canonical boundary contract for Engine/Client separation and align all references to it.
+
+#### **Solution details:**
+- Define one explicit boundary policy source (what is forbidden/allowed for Client backend, frontend gateway, and Engine API surfaces).
+- Align existing docs and comments to the same wording and constraints.
+- Ensure boundary policy statements are directly traceable to validation scripts.
+- Keep this task focused on contract alignment (no runtime behavior changes yet).
+
+### 61) [M1][F1] Harden static boundary checks for Client backend and frontend
+**Problem:** current static checks cover core violations but need stronger guardrails and clearer diagnostics for regressions.
+
+**Solution option:** tighten static boundary scripts and make violations actionable.
+
+#### **Solution details:**
+- Extend `tests/check-client-engine-boundary.sh` coverage for forbidden direct imports/couplings.
+- Extend `tests/check-frontend-client-gateway.sh` coverage for forbidden direct Engine API usage patterns.
+- Keep clear failure output so CI/local runs show exact offending paths and patterns.
+- Validate scripts against known-positive and known-negative examples in repository paths.
+
+### 62) [M1][F1] Enforce runtime surface allowlists between Client and Engine
+**Problem:** runtime route/method boundaries can drift even when static checks pass, reintroducing unwanted coupling.
+
+**Solution option:** lock explicit runtime allowlists and rejection behavior for Client<->Engine surfaces.
+
+#### **Solution details:**
+- Ensure Client backend proxies only approved Engine read routes and parameters.
+- Ensure Engine does not expose Client write/profile behavior through read surface paths.
+- Keep allowlist definitions explicit and centralized in handler/proxy config.
+- Add/update runtime error responses for forbidden paths to be predictable and testable.
+
+### 63) [M1][F1] Add runtime split regression checks in architecture smoke flow
+**Problem:** without a stable integration check, separation regressions can slip in through route/config updates.
+
+**Solution option:** strengthen `run-arch-split-smoke.sh` as a regression harness for Engine/Client separation.
+
+#### **Solution details:**
+- Add/lock checks for rejected paths, accepted proxy paths, and expected status codes.
+- Keep verification that Engine process does not open `engine/server/db/users.db`.
+- Ensure smoke output clearly identifies failed boundary condition and reproduction context.
+- Keep script deterministic enough for repeated local and CI usage.
+
+### 64) [M1][F1] Define baseline validation gate for M1 separation contract
+**Problem:** there is no single agreed validation gate that must pass before confirming M1 separation readiness.
+
+**Solution option:** define one reproducible gate command and pass criteria for this feature.
+
+#### **Solution details:**
+- Specify required checks (static boundary checks + split smoke checks) as gate prerequisites.
+- Define pass/fail criteria and required artifacts/log outputs.
+- Ensure the gate can be executed consistently in local workflow.
+- Document expected interpretation of failures (policy vs runtime split regressions).
+
+### 65) [M1][F1] Prepare M1 F1 sign-off checklist for separation reproducibility
+**Problem:** feature completion can be interpreted inconsistently without a concrete sign-off checklist.
+
+**Solution option:** add a final sign-off checklist tied to tasks 60-64 outputs.
+
+#### **Solution details:**
+- Checklist must include: policy alignment, static checks, runtime smoke checks, and validation gate results.
+- Checklist must define what evidence is required before `confirm issue ... done` / `confirm feature ... done`.
+- Keep checklist scoped to `F1-M1` and reusable for completion review.
+- Ensure sign-off wording matches AGENTS/TASK protocol completion flow.

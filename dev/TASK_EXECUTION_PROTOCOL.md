@@ -45,24 +45,45 @@ Use this procedure after an explicit execution command is given.
 
 ## Completion flow (after explicit user confirmation)
 
-When user explicitly confirms task/block completion, update all trackers in the same edit run:
+Use explicit completion commands:
+- `confirm task <task_id> done`
+- `confirm issue <issue_id> done`
+- `confirm feature <feature_id> done`
+- `confirm standalone-issue <si_id> done`
 
-1. Update task state in `dev/TASK_LIST.md` (remove/move confirmed task from future tasks).
-2. Update task status in `dev/map/DEV_MAP.json` under its existing parent chain.
-3. Remove the confirmed completed task/block from `dev/TASK_EXECUTION_PIPELINE.md` (keep only pending items).
-4. If process rules changed, update this file in the same edit run.
+Apply the corresponding completion update in one edit run:
+
+1. `confirm task <task_id> done`
+   - Update task state in `dev/TASK_LIST.md` (remove/move confirmed task from future tasks).
+   - Update task status in `dev/map/DEV_MAP.json` under its existing parent chain.
+   - Remove confirmed completed task/block from `dev/TASK_EXECUTION_PIPELINE.md` (keep only pending items).
+2. `confirm issue <issue_id> done`
+   - Verify all mapped child tasks are already confirmed done.
+   - Update local issue status to `Done` in `dev/map/DEV_MAP.json`.
+   - Close mapped GitHub issue in the same completion update run.
+3. `confirm feature <feature_id> done`
+   - Verify all mapped child issues are already confirmed done.
+   - Update local feature status to `Done` in `dev/map/DEV_MAP.json`.
+   - Close mapped feature GitHub issue in the same completion update run.
+4. `confirm standalone-issue <si_id> done`
+   - Verify all mapped child tasks are already confirmed done.
+   - Update local standalone issue status to `Done` in `dev/map/DEV_MAP.json`.
+   - Close mapped GitHub standalone issue in the same completion update run.
+5. If process rules changed, update this file in the same edit run.
 
 ## Feature planning/materialization flow
 
 Use this procedure before executing tasks for a new feature.
 
 1. `create feature <id>`: create feature node in `dev/map/DEV_MAP.json` using ID format from `dev/map/DEV_MAP_SCHEMA.md`.
-2. `plan feature <id>`: produce scope, out-of-scope, acceptance criteria, risks, dependencies, decomposition.
-3. `approve feature plan`: freeze boundaries and allow materialization.
-4. `materialize feature`: create/update GitHub feature/work issues, assign each issue to the corresponding GitHub milestone, and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
+2. `plan feature <id>`: produce scope, out-of-scope, acceptance criteria, risks, dependencies, decomposition, and write/update the corresponding section in `dev/FEATURE_PLANS.md`.
+3. `approve feature plan`: freeze boundaries from the corresponding section in `dev/FEATURE_PLANS.md`, and treat that section as the source of truth for subsequent decomposition/materialization/execution.
+   - If that approved section is edited later, require a new explicit `approve feature plan` before continuing.
+4. `sync issues to task list for <id>`: create/update local `Issue -> Task` decomposition and sync it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.md`, and `dev/TASK_EXECUTION_PIPELINE.md`.
+5. Review/refine local issues/tasks with the user until decomposition is final.
+6. `materialize feature <id>`: create/update GitHub feature/work issues strictly from the already-synced local issue structure, assign each issue to the corresponding GitHub milestone, and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
-5. `sync issues to task list`: synchronize tasks into `dev/TASK_LIST.md` (`[M*][F*]` markers) and overlaps in `dev/TASK_EXECUTION_PIPELINE.md`.
-6. Only then run `execute task X`.
+7. Only then run `execute task X`.
 
 ## Standalone issue flow (non-product work)
 
@@ -70,11 +91,12 @@ Use this when work should not be attached to a product feature (ops/process/tool
 
 1. `create standalone-issue <id>`: create standalone issue node in `dev/map/DEV_MAP.json` using `SI<local>-M<milestone>` ID format.
 2. `plan standalone-issue <id>`: define scope, acceptance checks, and expected tasks.
-3. `approve standalone-issue plan`: freeze boundaries and allow materialization/sync.
-4. `materialize standalone-issue`: create/update GitHub issue, assign it to the corresponding GitHub milestone, and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
+3. `approve standalone-issue plan`: freeze boundaries and allow local decomposition sync.
+4. `sync standalone-issue to task list`: create/update local `StandaloneIssue -> Task` decomposition and sync it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.md`, and `dev/TASK_EXECUTION_PIPELINE.md`.
+5. Review/refine local tasks with the user until decomposition is final.
+6. `materialize standalone-issue`: create/update GitHub issue from the already-synced local standalone issue structure, assign it to the corresponding GitHub milestone, and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
-5. `sync standalone-issue to task list`: synchronize tasks into `dev/TASK_LIST.md` (`[M*][SI*]` markers) and overlaps in `dev/TASK_EXECUTION_PIPELINE.md`.
-6. Only then run `execute task X`.
+7. Only then run `execute task X`.
 
 ## Multi-task execution flow
 

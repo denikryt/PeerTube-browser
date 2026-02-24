@@ -6,28 +6,34 @@ Use it before implementing any task bundle.
 ## Recommended implementation order
 
 ### Execution sequence (recommended)
-1. **37** (stable ANN IDs: `video_id+host -> int64`)  
+1. **60 -> 61 -> 62 -> 63 -> 64 -> 65** (`F1-M1` Engine/Client separation baseline)  
+   First lock policy, static checks, runtime allowlists, and reproducible validation/sign-off before materializing/closing baseline separation work.
+2. **37** (stable ANN IDs: `video_id+host -> int64`)  
    First establish stable ANN id contract before further similarity tuning.
-2. **33** (video-page similars diversity + larger pools)  
+3. **33** (video-page similars diversity + larger pools)  
    Build on finalized ANN/cache config and incremental recompute behavior.
-3. **3** (video metadata completeness + refresh mutable fields)  
+4. **3** (video metadata completeness + refresh mutable fields)  
    Improves data quality on video page and creates better API/DB test baseline.
-4. **1** then **2** (video-page UX flow for similars)  
+5. **1** then **2** (video-page UX flow for similars)  
    First fast initial response, then progressive loading/scroll behavior.
-5. **4** (comments) and **9/9b** (description + single-like removal)  
+6. **4** (comments) and **9/9b** (description + single-like removal)  
    Video/profile UX improvements with low backend risk.
-6. **12a** then **8b** (popular weighted-random + feed modes)  
+7. **12a** then **8b** (popular weighted-random + feed modes)  
    Finalize popular-layer behavior before exposing it as user-facing feed mode.
-7. **10** (search page) and **8c** (about outbound analytics)  
+8. **10** (search page) and **8c** (about outbound analytics)  
    Mostly orthogonal product features.
-8. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
+9. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
    Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
-9. **16l** then **39** then **44** then **56** then **40** (cache runtime safety + similarity precompute scope + shadow swap + zero-downtime deploy)  
+10. **16l** then **39** then **44** then **56** then **40** (cache runtime safety + similarity precompute scope + shadow swap + zero-downtime deploy)  
    Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache precompute scoping, then shadow cutover, then blue/green nginx switch automation.
-10. **16**, **11** (docs + docstrings)  
+11. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
 
 ### Functional blocks (aligned with the same order)
+- **Block M1: Engine/Client separation baseline**
+  - Tasks: **60 -> 61 -> 62 -> 63 -> 64 -> 65**
+  - Scope: boundary policy source-of-truth, static boundary checks, runtime allowlists, split-smoke regression checks, baseline validation gate, and sign-off checklist.
+  - Outcome: Engine/Client separation rules are explicit, enforced by static/runtime checks, and reviewed through one reproducible validation gate before completion confirmation.
 - **Block A: Similarity and recommendation core**
   - Tasks: **37 -> 33 -> 12a**
   - Scope: ANN/similarity defaults, impacted recompute, upnext diversity, popular-layer sampling quality.
@@ -57,6 +63,12 @@ Use it before implementing any task bundle.
   - Scope: safe cache refresh/swap runtime behavior (random + similarity), scoped similarity precompute updates, and automated blue/green nginx cutover.
   - Outcome: random/similarity caches refresh via shadow files + atomic swap, updater similarity stage can rewrite scoped cache sources instead of full rebuilds, and deploy script performs blue/green switch on `7070/7071` with health-check gate and rollback.
 ### Cross-task overlaps and dependencies
+- **60 <-> 61**: both define and enforce static boundary policy.  
+  Keep one canonical rule set and ensure scripts validate exactly that contract.
+- **62 <-> 63**: runtime surface hardening and smoke checks are coupled.  
+  Lock allowlists/rejections first (**62**), then validate in split-smoke regression coverage (**63**).
+- **64 <-> 65**: validation gate criteria and completion sign-off checklist must match.  
+  Final sign-off checklist (**65**) should be based on outputs and pass criteria from the validation gate (**64**).
 - **1 <-> 2 <-> 33**: all touch video-page similar retrieval/rendering behavior.  
   Backend candidate quality/diversity (**33**) should be stable before final UX behavior (**1**, **2**).
 - **8b <-> 12a**: both touch popular layer output behavior.  
