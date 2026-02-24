@@ -144,7 +144,7 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
 
 
 def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
-    """Create or validate a feature node in DEV_MAP."""
+    """Create feature node and optionally sync feature-level GitHub issue metadata."""
     feature_id, feature_milestone_num = _parse_feature_id(args.id)
     milestone_id = _normalize_id(args.milestone or f"M{feature_milestone_num}")
     milestone_num = _parse_milestone_id(milestone_id)
@@ -158,43 +158,73 @@ def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
     milestone_node = _find_milestone(dev_map, milestone_id)
     if milestone_node is None:
         raise WorkflowCommandError(f"Milestone {milestone_id} not found in DEV_MAP.", exit_code=4)
+    milestone_title = _resolve_github_milestone_title(milestone_node, milestone_id)
 
-    existing_feature = _find_feature(dev_map, feature_id)
-    if existing_feature is not None:
-        existing_milestone = existing_feature["milestone"]["id"]
+    feature_ref = _find_feature(dev_map, feature_id)
+    feature_exists = feature_ref is not None
+    wrote_changes = False
+    if feature_ref is not None:
+        existing_milestone = feature_ref["milestone"]["id"]
         if existing_milestone != milestone_id:
             raise WorkflowCommandError(
                 f"Feature {feature_id} already exists under {existing_milestone}, not {milestone_id}.",
                 exit_code=4,
             )
-        emit_json(
-            {
-                "action": "already-exists",
-                "command": "feature.create",
-                "feature_id": feature_id,
-                "github_enabled": bool(args.github),
-                "milestone_id": milestone_id,
-                "write": bool(args.write),
-            }
+        feature_node = feature_ref["feature"]
+    else:
+        feature_node = _build_feature_node(
+            feature_id=feature_id,
+            title=(args.title or f"Feature {feature_id}"),
+            track=args.track,
         )
-        return 0
+        if bool(args.write):
+            milestone_node.setdefault("features", []).append(feature_node)
+            wrote_changes = True
 
-    new_feature = _build_feature_node(
-        feature_id=feature_id,
-        title=(args.title or f"Feature {feature_id}"),
-        track=args.track,
-    )
-    if args.write:
-        milestone_node.setdefault("features", []).append(new_feature)
+    github_issue: dict[str, Any] | None = None
+    if bool(args.github):
+        if bool(args.write):
+            github_repo = _resolve_github_repository(context.root_dir)
+            _ensure_github_milestone_exists(
+                repo_name_with_owner=github_repo["name_with_owner"],
+                milestone_title=milestone_title,
+                milestone_id=milestone_id,
+            )
+            github_issue = _materialize_feature_registration_issue(
+                feature_node=feature_node,
+                milestone_title=milestone_title,
+                repo_name_with_owner=github_repo["name_with_owner"],
+                repo_url=_normalize_repository_url(str(github_repo.get("url", ""))),
+            )
+            wrote_changes = True
+        else:
+            existing_issue_number = _coerce_issue_number(
+                feature_node.get("gh_issue_number"),
+                feature_node.get("gh_issue_url"),
+            )
+            github_issue = {
+                "action": "would-update" if existing_issue_number is not None else "would-create",
+                "gh_issue_number": existing_issue_number,
+                "gh_issue_url": str(feature_node.get("gh_issue_url", "")).strip() or None,
+                "milestone_title": milestone_title,
+            }
+
+    if bool(args.write) and wrote_changes:
         _touch_updated_at(dev_map)
         _write_json(context.dev_map_path, dev_map)
+
     emit_json(
         {
-            "action": "created" if args.write else "would-create",
+            "action": "already-exists" if feature_exists else ("created" if bool(args.write) else "would-create"),
             "command": "feature.create",
             "feature_id": feature_id,
+            "gh_issue_number": feature_node.get("gh_issue_number"),
+            "gh_issue_url": feature_node.get("gh_issue_url"),
             "github_enabled": bool(args.github),
+            "github_issue": github_issue,
+            "milestone_title": milestone_title,
             "milestone_id": milestone_id,
+            "write_applied": bool(args.write) and wrote_changes,
             "write": bool(args.write),
         }
     )
@@ -1144,6 +1174,81 @@ def _build_materialized_issue_body(issue_node: dict[str, Any]) -> str:
             lines.append(f"- [{checkbox}] {task_label or 'Task details pending local sync.'}")
     else:
         lines.append("- [ ] Local issue has no mapped tasks yet.")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _materialize_feature_registration_issue(
+    feature_node: dict[str, Any],
+    milestone_title: str,
+    repo_name_with_owner: str,
+    repo_url: str | None,
+) -> dict[str, Any]:
+    """Create or update feature-level GitHub issue and persist metadata on feature node."""
+    feature_id = str(feature_node.get("id", "")).strip()
+    if not feature_id:
+        raise WorkflowCommandError("Feature node is missing required id during feature.create GitHub sync.", exit_code=4)
+    title = str(feature_node.get("title", "")).strip() or feature_id
+    body = _build_feature_registration_issue_body(feature_node)
+    issue_number = _coerce_issue_number(feature_node.get("gh_issue_number"), feature_node.get("gh_issue_url"))
+    action = "updated" if issue_number is not None else "created"
+
+    if issue_number is None:
+        created_url = _gh_issue_create(
+            repo_name_with_owner=repo_name_with_owner,
+            title=title,
+            body=body,
+            milestone_title=milestone_title,
+        )
+        parsed_number = _parse_issue_number_from_url(created_url)
+        if parsed_number is None:
+            raise WorkflowCommandError(
+                f"Failed to parse created feature issue number from URL: {created_url}",
+                exit_code=5,
+            )
+        issue_number = parsed_number
+        issue_url = created_url
+    else:
+        _gh_issue_edit(
+            repo_name_with_owner=repo_name_with_owner,
+            issue_number=issue_number,
+            title=title,
+            body=body,
+            milestone_title=milestone_title,
+        )
+        issue_url = _build_issue_url(repo_url, issue_number) or str(feature_node.get("gh_issue_url", "")).strip() or None
+
+    feature_node["gh_issue_number"] = issue_number
+    feature_node["gh_issue_url"] = issue_url
+    return {
+        "action": action,
+        "gh_issue_number": issue_number,
+        "gh_issue_url": issue_url,
+        "feature_id": feature_id,
+        "milestone_title": milestone_title,
+    }
+
+
+def _build_feature_registration_issue_body(feature_node: dict[str, Any]) -> str:
+    """Build issue-focused body for feature-level GitHub issue registration/update."""
+    feature_title = str(feature_node.get("title", "")).strip() or str(feature_node.get("id", "")).strip()
+    lines = [
+        "## Scope",
+        feature_title,
+        "",
+        "## Planned work/issues",
+    ]
+    issues = feature_node.get("issues", [])
+    if isinstance(issues, list) and issues:
+        for issue in issues:
+            if not isinstance(issue, dict):
+                continue
+            issue_id = str(issue.get("id", "")).strip()
+            issue_title = str(issue.get("title", "")).strip()
+            issue_label = f"{issue_id}: {issue_title}" if issue_id else issue_title
+            checkbox = "x" if str(issue.get("status", "")) == "Done" else " "
+            lines.append(f"- [{checkbox}] {issue_label or 'Issue details pending local sync.'}")
+    else:
+        lines.append("- [ ] Local feature has no mapped issues yet.")
     return "\n".join(lines).strip() + "\n"
 
 
