@@ -432,6 +432,7 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
 def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> int:
     """Materialize local feature issue nodes to GitHub with canonical branch policy."""
     feature_id, feature_milestone_num = _parse_feature_id(args.id)
+    feature_local_num = _parse_feature_local_num(feature_id)
     milestone_id = f"M{feature_milestone_num}"
     dev_map = _load_json(context.dev_map_path)
     milestone_node = _find_milestone(dev_map, milestone_id)
@@ -458,6 +459,12 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
         )
     issue_id_filter = _resolve_materialize_issue_filter(args.issue_id)
     if issue_id_filter is not None:
+        _assert_issue_belongs_to_feature(
+            issue_id=issue_id_filter,
+            feature_id=feature_id,
+            feature_milestone_num=feature_milestone_num,
+            feature_local_num=feature_local_num,
+        )
         issue_nodes = [
             issue_node
             for issue_node in issue_nodes
