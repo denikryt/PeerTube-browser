@@ -6,57 +6,65 @@ Use it before implementing any task bundle.
 ## Recommended implementation order
 
 ### Execution sequence (recommended)
-1. **37** (stable ANN IDs: `video_id+host -> int64`)  
+1. **66** then **67** then **68** (M1 boundary contract freeze + guards + contour validation)  
+   First lock the split ownership baseline before broader feature work to avoid boundary drift.
+2. **37** (stable ANN IDs: `video_id+host -> int64`)  
    First establish stable ANN id contract before further similarity tuning.
-2. **33** (video-page similars diversity + larger pools)  
+3. **33** (video-page similars diversity + larger pools)  
    Build on finalized ANN/cache config and incremental recompute behavior.
-3. **3** (video metadata completeness + refresh mutable fields)  
+4. **3** (video metadata completeness + refresh mutable fields)  
    Improves data quality on video page and creates better API/DB test baseline.
-4. **1** then **2** (video-page UX flow for similars)  
+5. **1** then **2** (video-page UX flow for similars)  
    First fast initial response, then progressive loading/scroll behavior.
-5. **4** (comments) and **9/9b** (description + single-like removal)  
+6. **4** (comments) and **9/9b** (description + single-like removal)  
    Video/profile UX improvements with low backend risk.
-6. **12a** then **8b** (popular weighted-random + feed modes)  
+7. **12a** then **8b** (popular weighted-random + feed modes)  
    Finalize popular-layer behavior before exposing it as user-facing feed mode.
-7. **10** (search page) and **8c** (about outbound analytics)  
+8. **10** (search page) and **8c** (about outbound analytics)  
    Mostly orthogonal product features.
-8. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
+9. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
    Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
-9. **16l** then **39** then **44** then **56** then **40** (cache runtime safety + similarity precompute scope + shadow swap + zero-downtime deploy)  
+10. **16l** then **39** then **44** then **56** then **40** (cache runtime safety + similarity precompute scope + shadow swap + zero-downtime deploy)  
    Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache precompute scoping, then shadow cutover, then blue/green nginx switch automation.
-10. **16**, **11** (docs + docstrings)  
+11. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
 
 ### Functional blocks (aligned with the same order)
-- **Block A: Similarity and recommendation core**
+- **Block A: M1 boundary baseline lock**
+  - Tasks: **66 -> 67 -> 68**
+  - Scope: canonical boundary ownership freeze, boundary regression guards, and reproducible split contour validation.
+  - Outcome: Engine/Client ownership contract is fixed in docs, automated checks fail on forbidden coupling/direct frontend Engine reads, and split health/bridge/boundary validation has explicit pass/fail semantics.
+- **Block B: Similarity and recommendation core**
   - Tasks: **37 -> 33 -> 12a**
   - Scope: ANN/similarity defaults, impacted recompute, upnext diversity, popular-layer sampling quality.
   - Outcome: ANN switches to stable `ann_id` mapping, upnext refresh stops repeating the same 8 cards, and popular feed uses weighted-random by similarity instead of flat random sampling.
-- **Block B: Video page data + UX behavior**
+- **Block C: Video page data + UX behavior**
   - Tasks: **3 -> 1 -> 2 -> 4 -> 9 -> 9b**
   - Scope: metadata completeness, fast similar rendering, comments, profile/likes interactions.
   - Outcome: video page loads similars immediately (without waiting for remote metadata), renders progressive similars from one larger batch on scroll, shows tags/category with mutable-field refresh, supports read-only comments with pagination, has collapsible description, and allows removing one like instead of only full reset.
-- **Block C: Feed and discovery product features**
+- **Block D: Feed and discovery product features**
   - Tasks: **8b -> 10 -> 15**
   - Scope: feed modes, search UX/API, crawler seed mode from one instance/subscriptions.
   - Outcome: home page gets explicit feed mode switch (`recommendations/hot/recent/random/popular`), backend exposes video search API (`/api/search/videos` with paging/sort), and crawler can start from one `--seed-instance` and expand through federated subscriptions.
-- **Block D: Analytics and style infrastructure**
+- **Block E: Analytics and style infrastructure**
   - Tasks: **8c -> 8**
   - Scope: outbound click analytics and optional styling-system consolidation.
   - Outcome: About-page outbound links send tracked events to a dedicated API endpoint and SQLite analytics table (with validation/rate-limit path), while repeated styling patterns can be migrated to a shared Tailwind-based system for new blocks.
-- **Block E: Documentation and maintenance**
+- **Block F: Documentation and maintenance**
   - Tasks: **16 -> 11**
   - Scope: recommendations docs alignment and missing docstrings.
   - Outcome: `RECOMMENDATIONS_OVERVIEW` is aligned with actual runtime pipeline (candidate generation/mixing/filters), and touched modules/functions/classes have explicit docstrings so behavior is readable without code archaeology.
-- **Block F: Logging and observability**
+- **Block G: Logging and observability**
   - Tasks: **41 -> 38 -> 43**
   - Scope: explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/static informational pages.
   - Outcome: every API request gets `request-start -> work logs -> request-end` with one shared `request_id` and explicit timestamp format, and nginx adds dedicated visit logs for static informational routes with request-correlation-compatible fields.
-- **Block G: Runtime reliability and operations**
+- **Block H: Runtime reliability and operations**
   - Tasks: **16l -> 39 -> 44 -> 56 -> 40**
   - Scope: safe cache refresh/swap runtime behavior (random + similarity), scoped similarity precompute updates, and automated blue/green nginx cutover.
   - Outcome: random/similarity caches refresh via shadow files + atomic swap, updater similarity stage can rewrite scoped cache sources instead of full rebuilds, and deploy script performs blue/green switch on `7070/7071` with health-check gate and rollback.
 ### Cross-task overlaps and dependencies
+- **66 <-> 67 <-> 68**: all touch the same Engine/Client split baseline (contract text, guard checks, and split smoke validation semantics).  
+  Keep ownership wording, boundary guard rules, and smoke-stage expectations synchronized to avoid contradictory baseline definitions.
 - **1 <-> 2 <-> 33**: all touch video-page similar retrieval/rendering behavior.  
   Backend candidate quality/diversity (**33**) should be stable before final UX behavior (**1**, **2**).
 - **8b <-> 12a**: both touch popular layer output behavior.  
