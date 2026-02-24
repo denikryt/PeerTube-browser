@@ -115,6 +115,10 @@ run_expect_success "help-validate" "${WORKFLOW[@]}" validate --help
 
 run_expect_failure "invalid-group" "${WORKFLOW[@]}" invalid
 run_expect_failure "missing-required-arg" "${WORKFLOW[@]}" feature create --milestone M1
+run_expect_failure_contains \
+  "materialize-missing-mode" \
+  "the following arguments are required: --mode" \
+  "${WORKFLOW[@]}" feature materialize --id F1-M1
 
 # Success-chain smoke (create -> plan-init/lint -> approve -> sync -> execution-plan).
 CHAIN_REPO="${TMP_DIR}/chain-fixture"

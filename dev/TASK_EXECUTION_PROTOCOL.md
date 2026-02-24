@@ -32,7 +32,7 @@ Use this procedure after an explicit execution command is given.
    - Enforce execution materialization gate from local tracker state:
      - resolve parent `Issue`/`StandaloneIssue` for task `X` in `dev/map/DEV_MAP.json`,
      - require non-null `gh_issue_number` and `gh_issue_url` on that parent node,
-     - if any of those fields is missing, stop execution and request `materialize feature <id>` or `materialize standalone-issue`.
+     - if any of those fields is missing, stop execution and request `materialize feature <id> --mode issues-create` or `materialize standalone-issue`.
 
 3. **Prepare a short implementation plan**
    - List concrete files/modules to update.
@@ -64,7 +64,7 @@ Use this procedure when user requests execution of all tasks under one feature.
 2. Keep only pending tasks (`status != Done`).
 3. Enforce materialization gate for feature child issues:
    - for each issue that contains pending tasks, require non-null `gh_issue_number` and `gh_issue_url`,
-   - if any issue fails this check, stop execution and request `materialize feature <feature_id>`.
+   - if any issue fails this check, stop execution and request `materialize feature <feature_id> --mode issues-create`.
 4. Build execution order:
    - first: task IDs that are present in `dev/TASK_EXECUTION_PIPELINE.md` execution order,
    - then: remaining pending tasks in `DEV_MAP` issue/task order.
@@ -82,7 +82,7 @@ Use this procedure when user requests execution of all tasks under one feature i
 3. If no pending tasks remain, stop and report that this issue has nothing to execute.
 4. Enforce materialization gate for the target issue:
    - require non-null `gh_issue_number` and `gh_issue_url` on this issue node,
-   - if either field is missing, stop execution and request `materialize feature <feature_id>`.
+   - if either field is missing, stop execution and request `materialize feature <feature_id> --mode issues-create`.
 5. Build execution order:
    - first: task IDs that are present in `dev/TASK_EXECUTION_PIPELINE.md` execution order,
    - then: remaining pending tasks in issue task order from `DEV_MAP`.
@@ -147,7 +147,11 @@ Use this procedure before executing tasks for a new feature.
    - If that approved section is edited later, require a new explicit `approve feature plan` and re-set status to `Approved` before continuing.
 4. `sync issues to task list for <id>`: run only if the target feature status in `dev/map/DEV_MAP.json` is `Approved`; then create/update local `Issue -> Task` decomposition and sync it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.md`, and `dev/TASK_EXECUTION_PIPELINE.md`.
 5. Review/refine local issues/tasks with the user until decomposition is final.
-6. `materialize feature <id>`: create/update GitHub work issues (feature child `Issue` nodes) strictly from the already-synced local issue structure, assign each issue to the corresponding GitHub milestone, and persist issue `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
+6. `materialize feature <id> --mode <bootstrap|issues-create|issues-sync>`: run explicit materialization mode for an already-synced feature.
+   - `--mode bootstrap`: resolve/create canonical feature branch context and persist branch linkage metadata; do not materialize child issues.
+   - `--mode issues-create`: materialize feature child `Issue` nodes to GitHub in create-oriented flow from local issue structure.
+   - `--mode issues-sync`: materialize feature child `Issue` nodes to GitHub in sync/update flow from local issue structure.
+   - `--issue-id <issue_id>` is allowed only with `issues-create`/`issues-sync` and targets one issue node.
    - Feature-level GitHub issue is managed at `create feature <id>` step; during materialization, update it only if metadata/body sync is explicitly required, without creating duplicates.
    - Branch policy (mandatory): use canonical feature branch `feature/<feature_id>`:
      - if local branch exists: checkout it;

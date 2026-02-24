@@ -16,10 +16,11 @@ Compact command index for milestone/feature operations.
 3. `approve feature plan`
 4. `sync issues to task list for <id>`
 5. review/refine local decomposition with user
-6. `materialize feature <id>`
-7. `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`
-8. `confirm task <task_id> done` / `confirm issue <issue_id> done` / `confirm feature <feature_id> done`
-9. `confirm milestone done`
+6. `materialize feature <id> --mode bootstrap`
+7. `materialize feature <id> --mode issues-create` or `materialize feature <id> --mode issues-sync`
+8. `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`
+9. `confirm task <task_id> done` / `confirm issue <issue_id> done` / `confirm feature <feature_id> done`
+10. `confirm milestone done`
 
 ## Canonical command sequence (standalone path)
 
@@ -46,8 +47,8 @@ Compact command index for milestone/feature operations.
 - `sync issues to task list for <id>`
   - Purpose: sync local `Issue -> Task` decomposition across `DEV_MAP`/`TASK_LIST`/`PIPELINE`.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
-- `materialize feature <id>`
-  - Purpose: materialize already-synced local issue nodes to GitHub with milestone assignment and branch policy.
+- `materialize feature <id> --mode <bootstrap|issues-create|issues-sync>`
+  - Purpose: run explicit materialization mode (bootstrap branch context, create flow, or sync flow) for already-synced local issue nodes.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
 - `execute task X` / `execute issue <issue_id>` / `execute feature <feature_id>`
   - Purpose: run implementation flow for one task, one issue chain, or full feature chain.
