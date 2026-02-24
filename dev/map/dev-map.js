@@ -50,6 +50,9 @@ function statusVisible(status) {
   if (status === "Planned") {
     return planned;
   }
+  if (status === "Approved") {
+    return planned;
+  }
   if (status === "Done") {
     return done;
   }
@@ -63,7 +66,8 @@ function statusVisible(status) {
  */
 function createStatusBadge(status) {
   const badge = document.createElement("span");
-  badge.className = `status ${status === "Done" ? "status-done" : "status-planned"}`;
+  const statusClass = status === "Done" ? "status-done" : "status-planned";
+  badge.className = `status ${statusClass}`;
   badge.textContent = status;
   return badge;
 }

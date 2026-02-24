@@ -2,9 +2,10 @@
   "schema_version": "1.4",
   "statuses": [
     "Planned",
+    "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T04:10:29+02:00",
+  "updated_at": "2026-02-24T04:33:57+02:00",
   "task_count": 65,
   "milestones": [
     {
@@ -15,7 +16,7 @@
         {
           "id": "F1-M1",
           "title": "Close remaining Engine/Client separation points and formally fix module boundaries.",
-          "status": "Planned",
+          "status": "Approved",
           "track": "Engine",
           "gh_issue_number": null,
           "gh_issue_url": null,
