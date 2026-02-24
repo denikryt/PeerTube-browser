@@ -543,6 +543,138 @@
         "Implement ownership validation for [M*][F*]/[M*][SI*] markers against DEV_MAP parent chains.",
         "Implement validate --scope tracking|repo checks for sync consistency and gate failures."
       ]
+    },
+    {
+      "id": "85",
+      "marker": "[M1][F4]",
+      "title": "Require --mode for feature materialize",
+      "problem": "feature materialize currently has implicit behavior and runs without explicit mode selection.",
+      "solution_option": "make mode mandatory and validate enum values in CLI parser.",
+      "concrete_steps": [
+        "Add required --mode argument with bootstrap issues-create issues-sync choices.",
+        "Return deterministic gate error when mode is missing or invalid.",
+        "Keep JSON output contract stable for mode validation failures."
+      ]
+    },
+    {
+      "id": "86",
+      "marker": "[M1][F4]",
+      "title": "Split materialize into explicit mode handlers",
+      "problem": "one mixed materialize flow makes it hard to reason about side effects for branch and issue updates.",
+      "solution_option": "separate bootstrap issues-create and issues-sync code paths.",
+      "concrete_steps": [
+        "Extract mode-specific handler functions.",
+        "Ensure each mode reports explicit action fields in output JSON.",
+        "Preserve canonical branch metadata write only in intended modes."
+      ]
+    },
+    {
+      "id": "87",
+      "marker": "[M1][F4]",
+      "title": "Align docs with required mode materialize contract",
+      "problem": "protocol and workflow docs do not describe a mandatory mode split for materialize behavior.",
+      "solution_option": "update protocol workflow docs and smoke references to new mode contract.",
+      "concrete_steps": [
+        "Update TASK_EXECUTION_PROTOCOL materialize command semantics.",
+        "Update FEATURE_WORKFLOW command index examples.",
+        "Adjust smoke assertions for mode-required path."
+      ]
+    },
+    {
+      "id": "88",
+      "marker": "[M1][F4]",
+      "title": "Implement create-only child issue materialization",
+      "problem": "materialize currently edits mapped child issues even when only new issues should be pushed.",
+      "solution_option": "in issues-create mode create only unmapped child issues and skip mapped ones.",
+      "concrete_steps": [
+        "Detect mapped child issues by gh_issue_number and gh_issue_url.",
+        "Call gh issue create only for unmapped issue nodes.",
+        "Return skip actions for mapped issues without edit requests."
+      ]
+    },
+    {
+      "id": "89",
+      "marker": "[M1][F4]",
+      "title": "Cover create-only no-edit behavior with smoke tests",
+      "problem": "without regression coverage create-only mode may regress into editing existing mapped issues.",
+      "solution_option": "add smoke scenarios that assert no gh issue edit in create-only mode.",
+      "concrete_steps": [
+        "Add create-only scenario with mixed mapped and unmapped issues.",
+        "Assert mapped issue metadata remains unchanged.",
+        "Assert only new issues are materialized."
+      ]
+    },
+    {
+      "id": "90",
+      "marker": "[M1][F4]",
+      "title": "Add --issue-id selector for materialize issue modes",
+      "problem": "materialize issue modes currently operate on all issue nodes and cannot target one issue.",
+      "solution_option": "support explicit --issue-id for issues-create and issues-sync modes.",
+      "concrete_steps": [
+        "Add --issue-id argument parsing for feature materialize.",
+        "Apply selector only for issue materialization modes.",
+        "Report targeted issue in command output payload."
+      ]
+    },
+    {
+      "id": "91",
+      "marker": "[M1][F4]",
+      "title": "Validate issue ownership for scoped materialize",
+      "problem": "without ownership checks scoped materialize can touch issue IDs outside selected feature.",
+      "solution_option": "validate issue belongs to target feature before materialize operations.",
+      "concrete_steps": [
+        "Resolve issue node in selected feature subtree only.",
+        "Return gate-fail when issue is missing or belongs to another feature.",
+        "Materialize only selected issue when validation passes."
+      ]
+    },
+    {
+      "id": "92",
+      "marker": "[M1][F4]",
+      "title": "Add missing child issue checkboxes in feature issue on materialize",
+      "problem": "feature-level issue checklist may miss new child issues after local decomposition updates.",
+      "solution_option": "append missing checklist rows when child issues are materialized.",
+      "concrete_steps": [
+        "Build checklist map from feature issue body.",
+        "Append rows for child issues that do not exist in checklist.",
+        "Update feature issue body only when checklist changes."
+      ]
+    },
+    {
+      "id": "93",
+      "marker": "[M1][F4]",
+      "title": "Update feature issue checklist on confirm issue done",
+      "problem": "confirm issue done updates local status but does not mark corresponding feature issue checkbox as done.",
+      "solution_option": "on issue confirmation update corresponding checklist line to checked state.",
+      "concrete_steps": [
+        "Locate feature issue checkbox row by issue ID.",
+        "Switch row state to checked when issue status becomes Done.",
+        "Preserve all other checklist rows unchanged."
+      ]
+    },
+    {
+      "id": "94",
+      "marker": "[M1][F4]",
+      "title": "Add issue-level Approved transition",
+      "problem": "issue lifecycle lacks approved gate and jumps from planned directly to done.",
+      "solution_option": "extend confirm contract with explicit approved transition for issue nodes.",
+      "concrete_steps": [
+        "Allow confirm issue approved state in CLI parser and handlers.",
+        "Persist issue status Planned to Approved in DEV_MAP.",
+        "Return deterministic output fields for approved transitions."
+      ]
+    },
+    {
+      "id": "95",
+      "marker": "[M1][F4]",
+      "title": "Gate execute and materialize by issue Approved status",
+      "problem": "execute issue and materialize issue modes currently run without issue-level approval gate.",
+      "solution_option": "require issue status Approved before execute issue and issues-create or issues-sync materialize paths.",
+      "concrete_steps": [
+        "Add status gate checks in task execution and materialize issue mode handlers.",
+        "Return clear gate error messages with required status.",
+        "Add regression checks for blocked non-approved issue paths."
+      ]
     }
   ]
 }

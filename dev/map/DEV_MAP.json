@@ -5,8 +5,8 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-25T00:22:36+02:00",
-  "task_count": 84,
+  "updated_at": "2026-02-25T01:17:05+02:00",
+  "task_count": 95,
   "milestones": [
     {
       "id": "M1",
@@ -281,11 +281,28 @@
             },
             {
               "id": "I6-F4-M1",
-              "title": "Scoped issue materialization without touching sibling issues",
+              "title": "Scoped materialization for one child issue (`--issue-id`)",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "90",
+                  "title": "Add --issue-id selector for materialize issue modes",
+                  "summary": "Extend feature materialize arguments to accept a specific child issue ID in issues-create and issues-sync modes.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "01:17:05"
+                },
+                {
+                  "id": "91",
+                  "title": "Enforce issue ownership and scoped execution",
+                  "summary": "Validate that issue-id belongs to target feature and materialize only that issue node.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "01:17:05"
+                }
+              ]
             },
             {
               "id": "I7-F4-M1",
@@ -297,11 +314,28 @@
             },
             {
               "id": "I8-F4-M1",
-              "title": "Materialize should skip edit for already mapped GitHub issues",
+              "title": "Create-only child issue materialization without edits for mapped issues",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "88",
+                  "title": "Implement create-only materialize behavior for child issues",
+                  "summary": "In issues-create mode create only unmapped child issues and skip mapped issues without gh issue edit calls.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "01:17:05"
+                },
+                {
+                  "id": "89",
+                  "title": "Add smoke coverage for create-only no-edit path",
+                  "summary": "Add regression checks that mapped child issues are not edited in issues-create mode.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "01:17:05"
+                }
+              ]
             },
             {
               "id": "I9-F4-M1",
@@ -313,11 +347,86 @@
             },
             {
               "id": "I10-F4-M1",
-              "title": "Sync feature-issue checklist on child issue materialize/confirm",
+              "title": "Sync feature-issue checklist on child issue materialize and confirm",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "92",
+                  "title": "Append missing child-issue checkboxes in feature issue during materialize",
+                  "summary": "When child issues are materialized ensure feature-level issue body contains checklist lines for missing child issues.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "01:17:05"
+                },
+                {
+                  "id": "93",
+                  "title": "Update feature-issue checklist state on confirm issue done",
+                  "summary": "When confirming issue done update corresponding checkbox to checked state in feature-level GitHub issue.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "01:17:05"
+                }
+              ]
+            },
+            {
+              "id": "I11-F4-M1",
+              "title": "Require explicit materialize mode (`bootstrap|issues-create|issues-sync`)",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": [
+                {
+                  "id": "85",
+                  "title": "Require --mode for feature materialize and validate enum",
+                  "summary": "Update CLI parser so feature materialize fails without mode and accepts only bootstrap, issues-create, issues-sync.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "01:17:05"
+                },
+                {
+                  "id": "86",
+                  "title": "Split materialize flow into explicit mode handlers",
+                  "summary": "Implement separate code paths for bootstrap, issues-create, and issues-sync with deterministic output action labels.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "01:17:05"
+                },
+                {
+                  "id": "87",
+                  "title": "Align protocol and workflow docs with required mode contract",
+                  "summary": "Update protocol/workflow docs and smoke expectations to reflect required mode and mode-specific behavior.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "01:17:05"
+                }
+              ]
+            },
+            {
+              "id": "I12-F4-M1",
+              "title": "Add issue-level Approved gate before execution/materialization",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": [
+                {
+                  "id": "94",
+                  "title": "Add issue-level Approved transition in confirm contract",
+                  "summary": "Support explicit confirm issue approved and persist issue status lifecycle Planned -> Approved -> Done.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "01:17:05"
+                },
+                {
+                  "id": "95",
+                  "title": "Gate execute/materialize issue paths by issue Approved status",
+                  "summary": "Block execute issue and materialize issues modes when issue status is not Approved and add clear gate error messages.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "01:17:05"
+                }
+              ]
             }
           ],
           "branch_name": "feature/F4-M1",

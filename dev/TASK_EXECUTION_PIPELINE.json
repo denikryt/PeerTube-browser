@@ -44,6 +44,18 @@
     {
       "tasks": ["70", "71", "72", "73"],
       "description": "workflow CLI + sync/materialize/confirm automation"
+    },
+    {
+      "tasks": ["85", "86", "87"],
+      "description": "materialize mode contract and docs"
+    },
+    {
+      "tasks": ["88", "89", "90", "91"],
+      "description": "create-only and scoped issue materialization"
+    },
+    {
+      "tasks": ["92", "93", "94", "95"],
+      "description": "feature checklist sync and issue approved gate"
     }
   ],
   "functional_blocks": [
@@ -94,6 +106,12 @@
       "tasks": ["70", "71", "72", "73"],
       "scope": "unified workflow CLI, feature lifecycle base commands, tracker sync+validation automation, and completion/materialization command contracts.",
       "outcome": "the process flow (`create/plan/approve/sync/materialize/execute/confirm`) runs through `dev/workflow` with deterministic tracker updates, `task_count`-based ID allocation, canonical feature branch handling, and confirmation cascade with GitHub close."
+    },
+    {
+      "title": "Block J: Materialize mode split and issue-level gates",
+      "tasks": ["85", "86", "87", "88", "89", "90", "91", "92", "93", "94", "95"],
+      "scope": "explicit materialize modes, scoped issue materialization, create-only behavior, feature checklist sync, and issue-level approval gate enforcement.",
+      "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
     }
   ],
   "overlaps": [
@@ -144,6 +162,22 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
+    },
+    {
+      "tasks": ["85", "88"],
+      "description": "mode parser contract directly controls create-only branch behavior."
+    },
+    {
+      "tasks": ["86", "91"],
+      "description": "mode handlers and scoped ownership checks share the same issue filtering path."
+    },
+    {
+      "tasks": ["93", "94"],
+      "description": "confirm issue transition logic drives both checklist updates and issue lifecycle status changes."
+    },
+    {
+      "tasks": ["95", "88"],
+      "description": "issue approved gate must be applied consistently to create-only materialization path."
     }
   ]
 }
