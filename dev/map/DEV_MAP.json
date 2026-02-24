@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T19:17:52+02:00",
+  "updated_at": "2026-02-24T19:27:51+02:00",
   "task_count": 75,
   "milestones": [
     {
@@ -110,8 +110,8 @@
               "id": "I1-F4-M1",
               "title": "CLI and base workflow commands",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 81,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/81",
               "tasks": [
                 {
                   "id": "70",
@@ -135,8 +135,8 @@
               "id": "I2-F4-M1",
               "title": "Tracking sync and validations",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 83,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/83",
               "tasks": [
                 {
                   "id": "72",
@@ -160,8 +160,8 @@
               "id": "I3-F4-M1",
               "title": "Materialize/Confirm integration and protocol contract",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 82,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/82",
               "tasks": [
                 {
                   "id": "74",
@@ -190,8 +190,8 @@
               ]
             }
           ],
-          "branch_name": null,
-          "branch_url": null
+          "branch_name": "feature/F4-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F4-M1"
         }
       ],
       "non_feature_items": [
