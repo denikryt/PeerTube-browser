@@ -499,3 +499,43 @@
 3. Implement `validate --scope tracking|repo` checks for sync consistency and gate failures.
 
 
+
+### 81) [M1][F4] Canonical JSON tracker schemas for task list and pipeline
+**Problem:** Workflow runtime currently depends on Markdown parsing for tracker data, which is brittle for machine updates.
+
+**Solution option:** Define canonical JSON structures for TASK_LIST and TASK_EXECUTION_PIPELINE and enforce them as runtime sources.
+
+#### **Concrete steps:**
+1. Define JSON object schema for task list entries with ownership markers and concrete steps.
+2. Define JSON object schema for pipeline execution order, functional blocks, and overlaps.
+3. Wire schema validation into workflow command entrypoints before write operations.
+
+### 82) [M1][F4] Migrate workflow command IO from Markdown trackers to JSON
+**Problem:** feature/task/confirm/validate commands currently read or write Markdown trackers directly.
+
+**Solution option:** Refactor tracker IO paths to use JSON files and keep external CLI behavior stable.
+
+#### **Concrete steps:**
+1. Update workflow context paths to canonical TASK_LIST.json and TASK_EXECUTION_PIPELINE.json.
+2. Replace markdown-specific parsing/writer logic in sync/confirm/task/validate command modules.
+3. Preserve gate-failure behavior and command outputs while switching storage backend.
+
+### 83) [M1][F4] Deterministic migration of existing Markdown tracker data to JSON
+**Problem:** Repository already contains tracker data in Markdown that must be preserved during format transition.
+
+**Solution option:** Add one migration path that converts existing tracker state to JSON with deterministic output.
+
+#### **Concrete steps:**
+1. Create conversion script from current TASK_LIST.md and TASK_EXECUTION_PIPELINE.md to JSON schema.
+2. Run conversion and validate resulting JSON against schema and DEV_MAP links.
+3. Commit migrated JSON trackers as canonical runtime data files.
+
+### 84) [M1][F4] JSON-only workflow smoke and protocol alignment
+**Problem:** Tests and protocol docs still reference Markdown trackers as operational sources.
+
+**Solution option:** Update smoke scenarios and protocol docs so they validate and document JSON-only tracker operations.
+
+#### **Concrete steps:**
+1. Extend workflow smoke checks to assert JSON tracker read/write paths and gate-fail behavior.
+2. Update TASK_EXECUTION_PROTOCOL and FEATURE_WORKFLOW references from Markdown trackers to JSON trackers.
+3. Re-run workflow validation checks after docs and smoke alignment changes.

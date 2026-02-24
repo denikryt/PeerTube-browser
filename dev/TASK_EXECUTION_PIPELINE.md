@@ -29,6 +29,7 @@ Use it before implementing any task bundle.
 11. **70** then **71** then **72** then **73**  (workflow CLI + sync/materialize/confirm automation)
    Build workflow command routing first, then feature base commands, then tracker sync/validation, and only after that materialize and confirm cascade.
 
+12. **81** then **82** then **83** then **84** (JSON tracker migration for workflow runtime)
 ### Functional blocks (aligned with the same order)
 - **Block A: Similarity and recommendation core**
   - Tasks: **37 -> 33 -> 12a**
@@ -62,6 +63,10 @@ Use it before implementing any task bundle.
   - Tasks: **70 -> 71 -> 72 -> 73**
   - Scope: unified workflow CLI, feature lifecycle base commands, tracker sync+validation automation, and completion/materialization command contracts.
   - Outcome: the process flow (`create/plan/approve/sync/materialize/execute/confirm`) runs through `dev/workflow` with deterministic tracker updates, `task_count`-based ID allocation, canonical feature branch handling, and confirmation cascade with GitHub close.
+- **Block I: Workflow tracker JSON migration**
+  - Tasks: **81 -> 82 -> 83 -> 84**
+  - Scope: Replace Markdown-based tracker runtime paths with canonical JSON storage without changing workflow command semantics.
+  - Outcome: Workflow commands operate on JSON-only task list/pipeline trackers with validated schema, migrated data, and updated smoke/protocol coverage.
 ### Cross-task overlaps and dependencies
 - **1 <-> 2 <-> 33**: all touch video-page similar retrieval/rendering behavior.  
   Backend candidate quality/diversity (**33**) should be stable before final UX behavior (**1**, **2**).
@@ -92,6 +97,9 @@ Use it before implementing any task bundle.
 - **16 / 11** depend on nearly all feature tasks.  
   Doing them earlier causes repeated rewrites.
 
+- **81 <-> 82**: Reader/writer refactor depends on finalized JSON schema and field names.
+- **82 <-> 83**: Migration tooling must target the same runtime JSON structures used by command handlers.
+- **83 <-> 84**: Protocol and smoke updates must document/validate final migrated JSON workflow behavior.
 ## Multi-task execution protocol
 
 Protocol is maintained in `TASK_EXECUTION_PROTOCOL.md`.
