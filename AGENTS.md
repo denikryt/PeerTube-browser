@@ -48,34 +48,35 @@ Project-level hard constraints for task work in this repository.
    - `execute task X` or `execute feature <feature_id>`
 2. Every `plan feature <id>` result must be written to `dev/FEATURE_PLANS.md`; do not keep feature plans only in chat.
 3. In `dev/FEATURE_PLANS.md`, each feature plan must be stored under its own feature ID section and include: scope, out-of-scope, acceptance criteria, risks, dependencies, decomposition.
-4. `approve feature plan` always applies to the corresponding feature section in `dev/FEATURE_PLANS.md`; this approved section becomes the source of truth for subsequent decomposition/materialization/execution.
-5. If the approved feature section in `dev/FEATURE_PLANS.md` is changed later, continue only after a new explicit `approve feature plan`.
-6. `sync issues to task list for <id>` must create/update local `Issue -> Task` decomposition in the same change set across:
+4. `approve feature plan` always applies to the corresponding feature section in `dev/FEATURE_PLANS.md` and must set the target feature `status` to `Approved` in `dev/map/DEV_MAP.json`.
+5. Feature `status` in `dev/map/DEV_MAP.json` is the approval source of truth. If status is not `Approved`, no further feature step is allowed (`sync issues to task list`, `materialize feature`, `execute task X`, `execute feature <feature_id>`).
+6. If the approved feature section in `dev/FEATURE_PLANS.md` is changed later, continue only after a new explicit `approve feature plan` and status re-set to `Approved` in `dev/map/DEV_MAP.json`.
+7. `sync issues to task list for <id>` must run only when the target feature status in `dev/map/DEV_MAP.json` is `Approved`, and it must create/update local `Issue -> Task` decomposition in the same change set across:
    - `dev/map/DEV_MAP.json` (attach under selected parent chain: `Milestone -> Feature -> Issue` or `Milestone -> StandaloneIssue`),
    - `dev/TASK_LIST.md` (with `[M*][F*]` or `[M*][SI*]` markers),
    - `dev/TASK_EXECUTION_PIPELINE.md` (overlaps/dependencies).
-7. Do not materialize GitHub feature/work issues before explicit plan approval and before local decomposition is synced/reviewed.
-8. During `materialize feature` and `materialize standalone-issue`, create/update GitHub issues strictly from already-defined local issue nodes; do not invent additional decomposition only on GitHub.
-9. During `materialize feature` and `materialize standalone-issue`, every created/updated GitHub issue must be assigned to the corresponding GitHub milestone (not label-only assignment).
-10. If the target GitHub milestone does not exist or cannot be resolved, stop materialization and ask the user to create/select the milestone first.
-11. `sync issues to task list` is mandatory before any related `execute task X`.
-12. ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md` and must be used as-is (`F<local>-M<milestone>`, `I<local>-F<feature_local>-M<milestone>`, `SI<local>-M<milestone>`, global task IDs from `dev/TASK_LIST.md`).
-13. Before creating any new task/issue mapping, always analyze existing features in `dev/map/DEV_MAP.json` and propose candidate bindings to the user (one or more matching feature IDs, or standalone if no suitable feature exists).
-14. Immediately after candidate bindings are prepared, request user binding choice first; do not run extra preparatory checks unrelated to candidate binding before that question.
-15. Binding confirmation is mandatory: do not create/update task, issue, feature, or standalone mapping nodes until the user explicitly chooses the target binding.
-16. After user binding choice, continue only through the normal sync path (`DEV_MAP` + `TASK_LIST` + pipeline overlaps in the same change set).
-17. For standalone (non-product) work, use `Milestone -> StandaloneIssue -> Task` path.
-18. Orphan issues are not allowed: every issue must belong either to a feature (`Issue`) or to a milestone standalone container (`StandaloneIssue`).
-19. Local/GitHub completion is confirmation-gated:
+8. Do not materialize GitHub feature/work issues before explicit plan approval and before local decomposition is synced/reviewed.
+9. During `materialize feature` and `materialize standalone-issue`, create/update GitHub issues strictly from already-defined local issue nodes; do not invent additional decomposition only on GitHub.
+10. During `materialize feature` and `materialize standalone-issue`, every created/updated GitHub issue must be assigned to the corresponding GitHub milestone (not label-only assignment).
+11. If the target GitHub milestone does not exist or cannot be resolved, stop materialization and ask the user to create/select the milestone first.
+12. `sync issues to task list` is mandatory before any related `execute task X`.
+13. ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md` and must be used as-is (`F<local>-M<milestone>`, `I<local>-F<feature_local>-M<milestone>`, `SI<local>-M<milestone>`, global task IDs from `dev/TASK_LIST.md`).
+14. Before creating any new task/issue mapping, always analyze existing features in `dev/map/DEV_MAP.json` and propose candidate bindings to the user (one or more matching feature IDs, or standalone if no suitable feature exists).
+15. Immediately after candidate bindings are prepared, request user binding choice first; do not run extra preparatory checks unrelated to candidate binding before that question.
+16. Binding confirmation is mandatory: do not create/update task, issue, feature, or standalone mapping nodes until the user explicitly chooses the target binding.
+17. After user binding choice, continue only through the normal sync path (`DEV_MAP` + `TASK_LIST` + pipeline overlaps in the same change set).
+18. For standalone (non-product) work, use `Milestone -> StandaloneIssue -> Task` path.
+19. Orphan issues are not allowed: every issue must belong either to a feature (`Issue`) or to a milestone standalone container (`StandaloneIssue`).
+20. Local/GitHub completion is confirmation-gated:
    - Do not mark local `Issue`/`Feature`/`StandaloneIssue` as `Done` until the user explicitly confirms completion after review.
    - Do not close related GitHub issues before that explicit completion confirmation.
-20. When explicit completion confirmation is given for an `Issue`/`Feature`/`StandaloneIssue`, update local status and close corresponding GitHub issue in the same completion update run.
-21. GitHub issue content policy for `materialize feature` / `materialize standalone-issue`: write only issue-relevant content (title, scope/problem, planned work/tasks, acceptance context).
-22. In GitHub issue bodies, never include process boilerplate blocks such as `Work issue for ...`, `Source of truth`, `Notes`, protocol reminders, confirmation commands, or any `do not close before ...` wording.
-23. During feature planning and decomposition, enforce minimal-sufficient scope: include only items required to deliver feature behavior and explicit acceptance criteria.
-24. Do not add process artifacts by default (extra checklists, validation gates, signoff docs, protocol docs, contract docs) unless the user explicitly requests them or the feature acceptance criteria explicitly require them.
-25. Prefer updating existing docs/files over creating new standalone documentation files when both options satisfy the same requirement.
-26. If there is any doubt whether a planned item is required, ask the user before adding it to plan/issues/tasks.
+21. When explicit completion confirmation is given for an `Issue`/`Feature`/`StandaloneIssue`, update local status and close corresponding GitHub issue in the same completion update run.
+22. GitHub issue content policy for `materialize feature` / `materialize standalone-issue`: write only issue-relevant content (title, scope/problem, planned work/tasks, acceptance context).
+23. In GitHub issue bodies, never include process boilerplate blocks such as `Work issue for ...`, `Source of truth`, `Notes`, protocol reminders, confirmation commands, or any `do not close before ...` wording.
+24. During feature planning and decomposition, enforce minimal-sufficient scope: include only items required to deliver feature behavior and explicit acceptance criteria.
+25. Do not add process artifacts by default (extra checklists, validation gates, signoff docs, protocol docs, contract docs) unless the user explicitly requests them or the feature acceptance criteria explicitly require them.
+26. Prefer updating existing docs/files over creating new standalone documentation files when both options satisfy the same requirement.
+27. If there is any doubt whether a planned item is required, ask the user before adding it to plan/issues/tasks.
 
 ## Pipeline constraints
 

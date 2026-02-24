@@ -49,7 +49,7 @@ Purpose:
 - lock scope and decomposition boundaries.
 
 Required updates:
-- `dev/map/DEV_MAP.json`: feature/issue plan marked as approved for materialization.
+- `dev/map/DEV_MAP.json`: set target feature `status` to `Approved`.
 
 Validation before next step:
 - no open planning gaps from protocol gates.
@@ -73,6 +73,9 @@ Validation before next step:
 
 Purpose:
 - synchronize executable tasks and overlap metadata.
+
+Precondition:
+- target feature `status` in `dev/map/DEV_MAP.json` is `Approved`.
 
 Required updates:
 - `dev/TASK_LIST.md`: add/update tasks with `[M*][F*]` markers,

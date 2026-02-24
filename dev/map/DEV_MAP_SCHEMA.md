@@ -7,6 +7,7 @@ Canonical hierarchies:
 
 Allowed status values for nodes with status fields (`Feature`, `Issue`, `Task`):
 - `Planned`
+- `Approved`
 - `Done`
 
 Milestone nodes do not have a `status` field.
@@ -62,7 +63,7 @@ Task node in `DEV_MAP` must carry these fields:
 ```json
 {
   "schema_version": "1.4",
-  "statuses": ["Planned", "Done"],
+  "statuses": ["Planned", "Approved", "Done"],
   "updated_at": "2026-02-23T23:45:00+02:00",
   "task_count": 58,
   "milestones": [
@@ -83,7 +84,7 @@ Task node in `DEV_MAP` must carry these fields:
 ```json
 {
   "schema_version": "1.4",
-  "statuses": ["Planned", "Done"],
+  "statuses": ["Planned", "Approved", "Done"],
   "updated_at": "YYYY-MM-DDTHH:MM:SS+TZ:TZ",
   "task_count": 59,
   "milestones": [
