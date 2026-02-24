@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T22:38:06+02:00",
+  "updated_at": "2026-02-24T22:41:58+02:00",
   "task_count": 84,
   "milestones": [
     {
@@ -242,8 +242,8 @@
               "id": "I5-F4-M1",
               "title": "JSON-only tracker storage for task list and execution pipeline",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 85,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/85",
               "tasks": [
                 {
                   "id": "81",
