@@ -122,6 +122,12 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     )
     materialize_parser.add_argument("--id", required=True, help="Feature ID.")
     materialize_parser.add_argument(
+        "--mode",
+        required=True,
+        choices=["bootstrap", "issues-create", "issues-sync"],
+        help="Materialize mode contract.",
+    )
+    materialize_parser.add_argument(
         "--issue-id",
         help="Optional child issue ID filter to materialize only one issue node.",
     )
@@ -432,6 +438,7 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
 def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> int:
     """Materialize local feature issue nodes to GitHub with canonical branch policy."""
     feature_id, feature_milestone_num = _parse_feature_id(args.id)
+    materialize_mode = str(args.mode).strip()
     feature_local_num = _parse_feature_local_num(feature_id)
     milestone_id = f"M{feature_milestone_num}"
     dev_map = _load_json(context.dev_map_path)
@@ -532,6 +539,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             "feature_status": feature_status,
             "github_enabled": bool(args.github),
             "issue_id_filter": issue_id_filter,
+            "mode": materialize_mode,
             "issues_materialized": materialized_issues,
             "github_milestone_title": milestone_title,
             "milestone_id": milestone_id,

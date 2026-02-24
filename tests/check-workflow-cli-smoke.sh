@@ -294,7 +294,7 @@ EOF
 run_expect_failure_contains \
   "gate-materialize-missing-milestone" \
   "has empty title in DEV_MAP" \
-  "${GATE_MATERIALIZE_REPO}/dev/workflow" feature materialize --id F1-M1
+  "${GATE_MATERIALIZE_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync
 
 # Gate-fail: task preflight blocked for missing materialization metadata.
 GATE_PREFLIGHT_REPO="${TMP_DIR}/gate-preflight-fixture"
