@@ -605,30 +605,6 @@
       ]
     },
     {
-      "id": "90",
-      "marker": "[M1][F4]",
-      "title": "Add --issue-id selector for materialize issue modes",
-      "problem": "materialize issue modes currently operate on all issue nodes and cannot target one issue.",
-      "solution_option": "support explicit --issue-id for issues-create and issues-sync modes.",
-      "concrete_steps": [
-        "Add --issue-id argument parsing for feature materialize.",
-        "Apply selector only for issue materialization modes.",
-        "Report targeted issue in command output payload."
-      ]
-    },
-    {
-      "id": "91",
-      "marker": "[M1][F4]",
-      "title": "Validate issue ownership for scoped materialize",
-      "problem": "without ownership checks scoped materialize can touch issue IDs outside selected feature.",
-      "solution_option": "validate issue belongs to target feature before materialize operations.",
-      "concrete_steps": [
-        "Resolve issue node in selected feature subtree only.",
-        "Return gate-fail when issue is missing or belongs to another feature.",
-        "Materialize only selected issue when validation passes."
-      ]
-    },
-    {
       "id": "92",
       "marker": "[M1][F4]",
       "title": "Add missing child issue checkboxes in feature issue on materialize",
