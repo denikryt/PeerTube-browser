@@ -71,6 +71,10 @@ Project-level hard constraints for task work in this repository.
 20. When explicit completion confirmation is given for an `Issue`/`Feature`/`StandaloneIssue`, update local status and close corresponding GitHub issue in the same completion update run.
 21. GitHub issue content policy for `materialize feature` / `materialize standalone-issue`: write only issue-relevant content (title, scope/problem, planned work/tasks, acceptance context).
 22. In GitHub issue bodies, never include process boilerplate blocks such as `Work issue for ...`, `Source of truth`, `Notes`, protocol reminders, confirmation commands, or any `do not close before ...` wording.
+23. During feature planning and decomposition, enforce minimal-sufficient scope: include only items required to deliver feature behavior and explicit acceptance criteria.
+24. Do not add process artifacts by default (extra checklists, validation gates, signoff docs, protocol docs, contract docs) unless the user explicitly requests them or the feature acceptance criteria explicitly require them.
+25. Prefer updating existing docs/files over creating new standalone documentation files when both options satisfy the same requirement.
+26. If there is any doubt whether a planned item is required, ask the user before adding it to plan/issues/tasks.
 
 ## Pipeline constraints
 
