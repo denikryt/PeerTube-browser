@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T20:07:28+02:00",
+  "updated_at": "2026-02-24T20:25:10+02:00",
   "task_count": 75,
   "milestones": [
     {
@@ -134,7 +134,7 @@
             {
               "id": "I2-F4-M1",
               "title": "Tracking sync and validations",
-              "status": "Planned",
+              "status": "Done",
               "gh_issue_number": 83,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/83",
               "tasks": [
@@ -143,7 +143,7 @@
                   "date": "2026-02-24",
                   "time": "19:17:55",
                   "title": "Implement `feature sync --write` for DEV_MAP/TASK_LIST/PIPELINE",
-                  "status": "Planned",
+                  "status": "Done",
                   "summary": "Implement sync command that applies approved manual decomposition delta to the three local trackers in one change set."
                 },
                 {
@@ -151,7 +151,7 @@
                   "date": "2026-02-24",
                   "time": "19:17:56",
                   "title": "Add task_count-based allocation, ownership checks, and tracking/repo validation",
-                  "status": "Planned",
+                  "status": "Done",
                   "summary": "Enforce task ID allocation only via `task_count`, verify ownership markers and parent chains, and provide `validate --scope tracking|repo` checks."
                 }
               ]
