@@ -4,7 +4,7 @@
     "Planned",
     "Done"
   ],
-  "updated_at": "2026-02-24T03:10:39+02:00",
+  "updated_at": "2026-02-24T04:10:29+02:00",
   "task_count": 65,
   "milestones": [
     {
@@ -17,85 +17,9 @@
           "title": "Close remaining Engine/Client separation points and formally fix module boundaries.",
           "status": "Planned",
           "track": "Engine",
-          "gh_issue_number": 72,
-          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/72",
-          "issues": [
-            {
-              "id": "I1-F1-M1",
-              "title": "Boundary policy hardening.",
-              "status": "Planned",
-              "gh_issue_number": 74,
-              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/74",
-              "tasks": [
-                {
-                  "id": "60",
-                  "date": "2026-02-24",
-                  "time": "03:01:50",
-                  "title": "Boundary policy source of truth for Engine/Client separation",
-                  "status": "Planned",
-                  "summary": "Build one canonical Engine/Client boundary contract by inventorying all current rule locations, writing one source-of-truth rule matrix, replacing conflicting wording with references to it, and mapping every static-check pattern to explicit contract rules."
-                },
-                {
-                  "id": "61",
-                  "date": "2026-02-24",
-                  "time": "03:01:51",
-                  "title": "Harden static boundary checks for Client backend and frontend",
-                  "status": "Planned",
-                  "summary": "Harden static checks by extending boundary scripts with explicit forbidden pattern groups, standardized violation output, path globs/exclusions, and repeatable baseline runs that validate direct import/DB/API-base coupling regressions."
-                }
-              ]
-            },
-            {
-              "id": "I2-F1-M1",
-              "title": "Runtime surface isolation.",
-              "status": "Planned",
-              "gh_issue_number": 75,
-              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/75",
-              "tasks": [
-                {
-                  "id": "62",
-                  "date": "2026-02-24",
-                  "time": "03:01:52",
-                  "title": "Enforce runtime surface allowlists between Client and Engine",
-                  "status": "Planned",
-                  "summary": "Enforce runtime route/method/param allowlists by normalizing Client and Engine surface constants, returning deterministic reject payloads for non-allowlisted paths, and validating that Client write/profile behavior is never proxied into Engine read surface."
-                },
-                {
-                  "id": "63",
-                  "date": "2026-02-24",
-                  "time": "03:01:53",
-                  "title": "Add runtime split regression checks in architecture smoke flow",
-                  "status": "Planned",
-                  "summary": "Extend split-smoke regression flow with explicit named allow/reject checks, deterministic status assertions, users.db FD isolation verification, and reproducible failure diagnostics (method/url/expected/actual/response snippet)."
-                }
-              ]
-            },
-            {
-              "id": "I3-F1-M1",
-              "title": "Baseline validation gate.",
-              "status": "Planned",
-              "gh_issue_number": 73,
-              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/73",
-              "tasks": [
-                {
-                  "id": "64",
-                  "date": "2026-02-24",
-                  "time": "03:01:54",
-                  "title": "Define baseline validation gate for M1 separation contract",
-                  "status": "Planned",
-                  "summary": "Define one reproducible M1 validation gate with ordered commands, pass/fail criteria, required artifacts, and failure taxonomy so separation readiness can be evaluated consistently from concrete outputs."
-                },
-                {
-                  "id": "65",
-                  "date": "2026-02-24",
-                  "time": "03:01:55",
-                  "title": "Prepare M1 F1 sign-off checklist for separation reproducibility",
-                  "status": "Planned",
-                  "summary": "Prepare a concrete sign-off checklist template with evidence fields and issue/feature completion gates, linking required artifacts and protocol completion commands before `confirm issue`/`confirm feature` updates."
-                }
-              ]
-            }
-          ]
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": []
         },
         {
           "id": "F2-M1",
@@ -123,25 +47,7 @@
           "reason": "Validation criterion, not a standalone deliverable feature."
         }
       ],
-      "standalone_issues": [
-        {
-          "id": "SI1-M1",
-          "title": "Materialize DEV_MAP milestones and features to GitHub",
-          "status": "Planned",
-          "gh_issue_number": null,
-          "gh_issue_url": null,
-          "tasks": [
-            {
-              "id": "59",
-              "date": "2026-02-24",
-              "time": "01:57:08",
-              "title": "Materialize roadmap milestones and features from DEV_MAP to GitHub",
-              "status": "Done",
-              "summary": "Create/sync GitHub milestones using only DEV_MAP milestone/feature texts for descriptions, create high-level feature issues from DEV_MAP text without assigning GitHub milestones to issues, and persist resulting links back into DEV_MAP without task-level decomposition changes."
-            }
-          ]
-        }
-      ]
+      "standalone_issues": []
     },
     {
       "id": "M2",
