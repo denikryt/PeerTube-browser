@@ -23,6 +23,7 @@ Project-level hard constraints for task work in this repository.
 ## Task and tracking state constraints
 
 1. Do not mark any task or task block as completed until the user explicitly confirms completion after review.
+   - `confirm feature <id> done` is treated as explicit confirmation for the whole feature subtree (`Feature -> Issue -> Task`), and must trigger one cascading completion update run for all pending descendants.
 2. Keep implemented tasks in their current state (not completed) while awaiting user verification.
 3. `dev/map/DEV_MAP.json` is the planning source of truth for hierarchy (`Milestone -> Feature -> Issue -> Task` and `Milestone -> StandaloneIssue -> Task`) and for non-milestone status fields.
 4. `dev/TASK_LIST.md`, `dev/TASK_EXECUTION_PIPELINE.md`, and `dev/map/DEV_MAP.json` must stay synchronized when adding/updating tasks/features/standalone issues.
@@ -71,6 +72,7 @@ Project-level hard constraints for task work in this repository.
    - Do not mark local `Issue`/`Feature`/`StandaloneIssue` as `Done` until the user explicitly confirms completion after review.
    - Do not close related GitHub issues before that explicit completion confirmation.
 21. When explicit completion confirmation is given for an `Issue`/`Feature`/`StandaloneIssue`, update local status and close corresponding GitHub issue in the same completion update run.
+   - For `confirm feature <id> done`, also mark all pending child issues/tasks of that feature as `Done`, update synchronized local trackers, and close mapped child GitHub issues in the same run.
 22. GitHub issue content policy for `materialize feature` / `materialize standalone-issue`: write only issue-relevant content (title, scope/problem, planned work/tasks, acceptance context).
 23. In GitHub issue bodies, never include process boilerplate blocks such as `Work issue for ...`, `Source of truth`, `Notes`, protocol reminders, confirmation commands, or any `do not close before ...` wording.
 24. During feature planning and decomposition, enforce minimal-sufficient scope: include only items required to deliver feature behavior and explicit acceptance criteria.

@@ -76,7 +76,15 @@ Apply the corresponding completion update in one edit run:
    - Update local issue status to `Done` in `dev/map/DEV_MAP.json`.
    - Close mapped GitHub issue in the same completion update run.
 3. `confirm feature <feature_id> done`
-   - Verify all mapped child issues are already confirmed done.
+   - Treat this command as explicit confirmation for the full feature subtree.
+   - Resolve all child issues/tasks under `Milestone -> Feature -> Issue -> Task`.
+   - For every pending child task:
+     - update task status to `Done` in `dev/map/DEV_MAP.json`,
+     - update task state in `dev/TASK_LIST.md` (remove/move from future list),
+     - remove completed entries from `dev/TASK_EXECUTION_PIPELINE.md` (pipeline keeps only pending items).
+   - For every child issue:
+     - update local issue status to `Done` in `dev/map/DEV_MAP.json`,
+     - close mapped child GitHub issue in the same completion update run.
    - Update local feature status to `Done` in `dev/map/DEV_MAP.json`.
    - Close mapped feature GitHub issue in the same completion update run.
 4. `confirm standalone-issue <si_id> done`
