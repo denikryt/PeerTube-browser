@@ -4,15 +4,15 @@ Project-level hard constraints for task work in this repository.
 
 ## Execution trigger (strict)
 
-1. Do not start implementing any task until the user gives an explicit execution command in this exact format: `execute task X`.
-2. Any message that does not contain an explicit command in the format `execute task X` is non-execution (clarification, planning, task-text edits, review, or discussion only).
+1. Do not start implementing any task until the user gives an explicit execution command in one of these exact formats: `execute task X` or `execute feature <feature_id>`.
+2. Any message that does not contain an explicit command in one of these formats (`execute task X`, `execute feature <feature_id>`) is non-execution (clarification, planning, task-text edits, review, or discussion only).
 3. If user intent looks like execution but the command format is not explicit, ask for a direct command in the required format and do not start implementation.
 4. User confirmation that a task is completed is separate from execution start and must still be explicit.
 5. Once execution is allowed, follow `dev/TASK_EXECUTION_PROTOCOL.md` as the only process source of truth.
-6. Exception for corrective fixes: if the user asks to fix a bug/regression introduced by the assistant in already changed files, apply that fix immediately without requiring `execute task X`; keep the scope strictly limited to correcting that mistake (no new task scope).
-7. Direct `AGENTS.md` maintenance override: when the user explicitly instructs to edit `AGENTS.md`, apply the requested edits immediately, without requiring `execute task X`.
+6. Exception for corrective fixes: if the user asks to fix a bug/regression introduced by the assistant in already changed files, apply that fix immediately without requiring an execution command; keep the scope strictly limited to correcting that mistake (no new task scope).
+7. Direct `AGENTS.md` maintenance override: when the user explicitly instructs to edit `AGENTS.md`, apply the requested edits immediately, without requiring an execution command.
 8. For direct `AGENTS.md` edit requests, do not block on process-format arguments; execute the edit and report the exact changes.
-9. Direct edit command override (repository-wide): when the user explicitly instructs to make concrete code/config/script/file edits, apply those edits immediately without requiring `execute task X`.
+9. Direct edit command override (repository-wide): when the user explicitly instructs to make concrete code/config/script/file edits, apply those edits immediately without requiring an execution command.
 10. Treat such direct edit commands as side edits (outside task execution flow) unless the user explicitly frames them as task execution.
 11. For direct edit commands, do not block on task-command format; execute the requested edits and report changes.
 12. Never make any file/code/config/script changes unless the user has explicitly asked for those concrete edits in the current message.
@@ -44,7 +44,7 @@ Project-level hard constraints for task work in this repository.
    - `sync issues to task list for <id>` (local decomposition only)
    - user review/corrections of local decomposition
    - `materialize feature <id>` (GitHub materialization only)
-   - `execute task X`
+   - `execute task X` or `execute feature <feature_id>`
 2. Every `plan feature <id>` result must be written to `dev/FEATURE_PLANS.md`; do not keep feature plans only in chat.
 3. In `dev/FEATURE_PLANS.md`, each feature plan must be stored under its own feature ID section and include: scope, out-of-scope, acceptance criteria, risks, dependencies, decomposition.
 4. `approve feature plan` always applies to the corresponding feature section in `dev/FEATURE_PLANS.md`; this approved section becomes the source of truth for subsequent decomposition/materialization/execution.

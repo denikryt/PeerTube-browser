@@ -43,6 +43,20 @@ Use this procedure after an explicit execution command is given.
    - Summarize what was changed, what was validated, and any remaining risks.
    - Do not mark task completed until explicit user confirmation.
 
+## Feature chain execution flow (`execute feature <feature_id>`)
+
+Use this procedure when user requests execution of all tasks under one feature.
+
+1. Resolve `<feature_id>` in `dev/map/DEV_MAP.json` and collect all child tasks under `Milestone -> Feature -> Issue -> Task`.
+2. Keep only pending tasks (`status != Done`).
+3. Build execution order:
+   - first: task IDs that are present in `dev/TASK_EXECUTION_PIPELINE.md` execution order,
+   - then: remaining pending tasks in `DEV_MAP` issue/task order.
+4. Execute each task sequentially using the full **Standard execution flow (single task)**.
+5. After each task, run overlap/dependency validations relevant to the next tasks in the same feature chain.
+6. Stop on the first blocking failure and report the exact failed task + blocker; continue only if user explicitly asks to continue.
+7. Do not auto-mark task/issue/feature as `Done`; completion updates require explicit `confirm ... done` commands.
+
 ## Completion flow (after explicit user confirmation)
 
 Use explicit completion commands:
@@ -85,7 +99,7 @@ Use this procedure before executing tasks for a new feature.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
    - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
    - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
-7. Only then run `execute task X`.
+7. Only then run `execute task X` or `execute feature <feature_id>`.
 
 ## Standalone issue flow (non-product work)
 
@@ -144,3 +158,7 @@ When creating or rewriting a task definition:
 Use this command style when requesting multiple tasks:
 
 `Execute bundle: <taskA> -> <taskB> -> <taskC>, mode=strict, no-duplicate-logic`
+
+Feature-chain execution command:
+
+`execute feature <feature_id>`
