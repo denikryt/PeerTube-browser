@@ -439,6 +439,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
     """Materialize local feature issue nodes to GitHub with canonical branch policy."""
     feature_id, feature_milestone_num = _parse_feature_id(args.id)
     materialize_mode = str(args.mode).strip()
+    mode_action = _resolve_materialize_mode_action(materialize_mode)
     feature_local_num = _parse_feature_local_num(feature_id)
     milestone_id = f"M{feature_milestone_num}"
     dev_map = _load_json(context.dev_map_path)
@@ -458,30 +459,44 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             exit_code=4,
         )
 
-    issue_nodes = feature_node.get("issues", [])
-    if not issue_nodes:
+    all_issue_nodes = feature_node.get("issues", [])
+    if not isinstance(all_issue_nodes, list):
         raise WorkflowCommandError(
-            f"Feature {feature_id} has no local issue nodes to materialize.",
+            f"Feature {feature_id} has invalid issue list in DEV_MAP.",
             exit_code=4,
         )
     issue_id_filter = _resolve_materialize_issue_filter(args.issue_id)
-    if issue_id_filter is not None:
-        _assert_issue_belongs_to_feature(
-            issue_id=issue_id_filter,
-            feature_id=feature_id,
-            feature_milestone_num=feature_milestone_num,
-            feature_local_num=feature_local_num,
-        )
-        issue_nodes = [
-            issue_node
-            for issue_node in issue_nodes
-            if _normalize_id(str(issue_node.get("id", ""))) == issue_id_filter
-        ]
-        if not issue_nodes:
+    issue_nodes: list[dict[str, Any]] = []
+    if materialize_mode == "bootstrap":
+        if issue_id_filter is not None:
             raise WorkflowCommandError(
-                f"Issue {issue_id_filter} was not found in feature {feature_id}.",
+                "--issue-id is not allowed with --mode bootstrap.",
                 exit_code=4,
             )
+    else:
+        if not all_issue_nodes:
+            raise WorkflowCommandError(
+                f"Feature {feature_id} has no local issue nodes to materialize.",
+                exit_code=4,
+            )
+        issue_nodes = all_issue_nodes
+        if issue_id_filter is not None:
+            _assert_issue_belongs_to_feature(
+                issue_id=issue_id_filter,
+                feature_id=feature_id,
+                feature_milestone_num=feature_milestone_num,
+                feature_local_num=feature_local_num,
+            )
+            issue_nodes = [
+                issue_node
+                for issue_node in issue_nodes
+                if _normalize_id(str(issue_node.get("id", ""))) == issue_id_filter
+            ]
+            if not issue_nodes:
+                raise WorkflowCommandError(
+                    f"Issue {issue_id_filter} was not found in feature {feature_id}.",
+                    exit_code=4,
+                )
 
     branch_name = f"feature/{feature_id}"
     repo_url = _resolve_repository_url(context.root_dir, feature_node)
@@ -492,34 +507,37 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
         branch_action = plan_canonical_feature_branch(context.root_dir, branch_name)
 
     materialized_issues: list[dict[str, Any]] = []
-    if bool(args.write) and bool(args.github):
-        github_repo = resolve_github_repository(context.root_dir)
-        ensure_github_milestone_exists(
-            repo_name_with_owner=github_repo["name_with_owner"],
-            milestone_title=milestone_title,
-            milestone_id=milestone_id,
-        )
-        for issue_node in issue_nodes:
-            materialized = _materialize_feature_issue_node(
-                issue_node=issue_node,
-                milestone_title=milestone_title,
+    if materialize_mode != "bootstrap":
+        if bool(args.write) and bool(args.github):
+            github_repo = resolve_github_repository(context.root_dir)
+            ensure_github_milestone_exists(
                 repo_name_with_owner=github_repo["name_with_owner"],
-                repo_url=_normalize_repository_url(str(github_repo.get("url", ""))),
+                milestone_title=milestone_title,
+                milestone_id=milestone_id,
             )
-            materialized_issues.append(materialized)
-    else:
-        for issue_node in issue_nodes:
-            issue_id = str(issue_node.get("id", ""))
-            issue_number = issue_node.get("gh_issue_number")
-            issue_url = str(issue_node.get("gh_issue_url", "")).strip() or None
-            materialized_issues.append(
-                {
-                    "action": "would-update" if issue_number else "would-create",
-                    "issue_id": issue_id,
-                    "gh_issue_number": issue_number,
-                    "gh_issue_url": issue_url,
-                }
-            )
+            for issue_node in issue_nodes:
+                materialized = _materialize_feature_issue_node(
+                    issue_node=issue_node,
+                    milestone_title=milestone_title,
+                    repo_name_with_owner=github_repo["name_with_owner"],
+                    repo_url=_normalize_repository_url(str(github_repo.get("url", ""))),
+                )
+                materialized["mode_action"] = mode_action
+                materialized_issues.append(materialized)
+        else:
+            for issue_node in issue_nodes:
+                issue_id = str(issue_node.get("id", ""))
+                issue_number = issue_node.get("gh_issue_number")
+                issue_url = str(issue_node.get("gh_issue_url", "")).strip() or None
+                materialized_issues.append(
+                    {
+                        "action": "would-update" if issue_number else "would-create",
+                        "issue_id": issue_id,
+                        "gh_issue_number": issue_number,
+                        "gh_issue_url": issue_url,
+                        "mode_action": mode_action,
+                    }
+                )
 
     if bool(args.write):
         feature_node["branch_name"] = branch_name
@@ -540,6 +558,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             "github_enabled": bool(args.github),
             "issue_id_filter": issue_id_filter,
             "mode": materialize_mode,
+            "mode_action": mode_action,
             "issues_materialized": materialized_issues,
             "github_milestone_title": milestone_title,
             "milestone_id": milestone_id,
@@ -602,6 +621,17 @@ def _resolve_materialize_issue_filter(raw_issue_id: Any) -> str | None:
             exit_code=4,
         )
     return issue_id
+
+
+def _resolve_materialize_mode_action(materialize_mode: str) -> str:
+    """Return explicit mode-action label for materialize command output."""
+    if materialize_mode == "bootstrap":
+        return "branch-bootstrap-only"
+    if materialize_mode == "issues-create":
+        return "issue-materialization-create-mode"
+    if materialize_mode == "issues-sync":
+        return "issue-materialization-sync-mode"
+    raise WorkflowCommandError(f"Unsupported materialize mode: {materialize_mode!r}.", exit_code=4)
 
 
 def _collect_task_locations(dev_map: dict[str, Any]) -> dict[str, str]:
