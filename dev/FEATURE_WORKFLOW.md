@@ -17,7 +17,7 @@ Compact command index for milestone/feature operations.
 4. `sync issues to task list for <id>`
 5. review/refine local decomposition with user
 6. `materialize feature <id>`
-7. `execute task X` or `execute feature <feature_id>`
+7. `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`
 8. `confirm task <task_id> done` / `confirm issue <issue_id> done` / `confirm feature <feature_id> done`
 9. `confirm milestone done`
 
@@ -49,9 +49,9 @@ Compact command index for milestone/feature operations.
 - `materialize feature <id>`
   - Purpose: materialize already-synced local issue nodes to GitHub with milestone assignment and branch policy.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
-- `execute task X` / `execute feature <feature_id>`
-  - Purpose: run implementation flow for one task or full feature chain.
-  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Standard execution flow` + `Feature chain execution flow`.
+- `execute task X` / `execute issue <issue_id>` / `execute feature <feature_id>`
+  - Purpose: run implementation flow for one task, one issue chain, or full feature chain.
+  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Standard execution flow` + `Issue chain execution flow` + `Feature chain execution flow`.
 - `confirm ... done`
   - Purpose: apply completion updates after explicit user confirmation.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Completion flow`.

@@ -31,8 +31,8 @@ Canonical rule map (to prevent duplication drift):
 
 ## Execution trigger (strict)
 
-1. Do not start implementing any task until the user gives an explicit execution command in one of these exact formats: `execute task X` or `execute feature <feature_id>`.
-2. Any message that does not contain an explicit command in one of these formats (`execute task X`, `execute feature <feature_id>`) is non-execution (clarification, planning, task-text edits, review, or discussion only).
+1. Do not start implementing any task until the user gives an explicit execution command in one of these exact formats: `execute task X`, `execute issue <issue_id>`, or `execute feature <feature_id>`.
+2. Any message that does not contain an explicit command in one of these formats (`execute task X`, `execute issue <issue_id>`, `execute feature <feature_id>`) is non-execution (clarification, planning, task-text edits, review, or discussion only).
 3. If user intent looks like execution but the command format is not explicit, ask for a direct command in the required format and do not start implementation.
 4. User confirmation that a task is completed is separate from execution start and must still be explicit.
 5. Once execution is allowed, use `dev/TASK_EXECUTION_PROTOCOL.md` as the source of truth for command semantics/order, and use this file as the source of truth for hard policy constraints.
@@ -78,7 +78,7 @@ Canonical rule map (to prevent duplication drift):
    - `sync issues to task list for <id>` (local decomposition only)
    - user review/corrections of local decomposition
    - `materialize feature <id>` (GitHub materialization only)
-   - `execute task X` or `execute feature <feature_id>`
+   - `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`
 3. Every `plan feature <id>` result must be written to `dev/FEATURE_PLANS.md`; do not keep feature plans only in chat.
 4. In `dev/FEATURE_PLANS.md`, each feature plan must be stored under its own feature ID section and include:
    - dependencies,
@@ -86,7 +86,7 @@ Canonical rule map (to prevent duplication drift):
    - `Issue/Task Decomposition Assessment`.
    Do not require `Scope`, `Out-of-scope`, `Acceptance criteria`, or `Risks` sections unless the user explicitly asks for them.
 5. `approve feature plan` always applies to the corresponding feature section in `dev/FEATURE_PLANS.md` and must set the target feature `status` to `Approved` in `dev/map/DEV_MAP.json`.
-6. Feature `status` in `dev/map/DEV_MAP.json` is the approval source of truth. If status is not `Approved`, no further feature step is allowed (`sync issues to task list`, `materialize feature`, `execute task X`, `execute feature <feature_id>`).
+6. Feature `status` in `dev/map/DEV_MAP.json` is the approval source of truth. If status is not `Approved`, no further feature step is allowed (`sync issues to task list`, `materialize feature`, `execute task X`, `execute issue <issue_id>`, `execute feature <feature_id>`).
 7. If the approved feature section in `dev/FEATURE_PLANS.md` is changed later, continue only after a new explicit `approve feature plan` and status re-set to `Approved` in `dev/map/DEV_MAP.json`.
 8. `sync issues to task list for <id>` must run only when the target feature status in `dev/map/DEV_MAP.json` is `Approved`, and it must create/update local `Issue -> Task` decomposition in the same change set across:
    - `dev/map/DEV_MAP.json` (attach under selected parent chain: `Milestone -> Feature -> Issue` or `Milestone -> StandaloneIssue`),
@@ -97,7 +97,7 @@ Canonical rule map (to prevent duplication drift):
 10. During `materialize feature` and `materialize standalone-issue`, create/update GitHub issues strictly from already-defined local issue nodes; do not invent additional decomposition only on GitHub.
 11. During `create feature`, `materialize feature`, and `materialize standalone-issue`, every created/updated GitHub issue must be assigned to the corresponding GitHub milestone (not label-only assignment).
 12. If the target GitHub milestone does not exist or cannot be resolved, stop `create feature`/materialization and ask the user to create/select the milestone first.
-13. `sync issues to task list` is mandatory before any related `execute task X`.
+13. `sync issues to task list` is mandatory before any related `execute task X` / `execute issue <issue_id>`.
 14. ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md` and must be used as-is (`F<local>-M<milestone>`, `I<local>-F<feature_local>-M<milestone>`, `SI<local>-M<milestone>`, global task IDs from `dev/TASK_LIST.md`).
 15. Before creating any new task/issue mapping, always analyze existing features in `dev/map/DEV_MAP.json` and propose candidate bindings to the user (one or more matching feature IDs, or standalone if no suitable feature exists).
 16. Immediately after candidate bindings are prepared, request user binding choice first; do not run extra preparatory checks unrelated to candidate binding before that question.

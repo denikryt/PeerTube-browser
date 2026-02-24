@@ -73,6 +73,24 @@ Use this procedure when user requests execution of all tasks under one feature.
 7. Stop on the first blocking failure and report the exact failed task + blocker; continue only if user explicitly asks to continue.
 8. Do not auto-mark task/issue/feature as `Done`; completion updates require explicit `confirm ... done` commands.
 
+## Issue chain execution flow (`execute issue <issue_id>`)
+
+Use this procedure when user requests execution of all tasks under one feature issue.
+
+1. Resolve `<issue_id>` in `dev/map/DEV_MAP.json` under `Milestone -> Feature -> Issue`.
+2. Keep only pending tasks (`status != Done`) from this issue subtree.
+3. If no pending tasks remain, stop and report that this issue has nothing to execute.
+4. Enforce materialization gate for the target issue:
+   - require non-null `gh_issue_number` and `gh_issue_url` on this issue node,
+   - if either field is missing, stop execution and request `materialize feature <feature_id>`.
+5. Build execution order:
+   - first: task IDs that are present in `dev/TASK_EXECUTION_PIPELINE.md` execution order,
+   - then: remaining pending tasks in issue task order from `DEV_MAP`.
+6. Execute each task sequentially using the full **Standard execution flow (single task)**.
+7. After each task, run overlap/dependency validations relevant to the next tasks in the same issue chain.
+8. Stop on the first blocking failure and report the exact failed task + blocker; continue only if user explicitly asks to continue.
+9. Do not auto-mark task/issue/feature as `Done`; completion updates require explicit `confirm ... done` commands.
+
 ## Completion flow (after explicit user confirmation)
 
 Use explicit completion commands:
@@ -140,7 +158,7 @@ Use this procedure before executing tasks for a new feature.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
    - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
    - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
-7. Only then run `execute task X` or `execute feature <feature_id>`.
+7. Only then run `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`.
    - Execution gate: every parent `Issue` for the target task set must have non-null `gh_issue_number` and `gh_issue_url` in `dev/map/DEV_MAP.json`.
 
 ## Standalone issue flow (non-product work)
@@ -205,3 +223,7 @@ Use this command style when requesting multiple tasks:
 Feature-chain execution command:
 
 `execute feature <feature_id>`
+
+Issue-chain execution command:
+
+`execute issue <issue_id>`
