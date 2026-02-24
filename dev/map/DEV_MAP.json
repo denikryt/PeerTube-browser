@@ -4,7 +4,7 @@
     "Planned",
     "Done"
   ],
-  "updated_at": "2026-02-24T01:57:08+02:00",
+  "updated_at": "2026-02-24T02:22:21+02:00",
   "task_count": 59,
   "milestones": [
     {
@@ -60,7 +60,7 @@
               "date": "2026-02-24",
               "time": "01:57:08",
               "title": "Materialize roadmap milestones and features from DEV_MAP to GitHub",
-              "status": "Planned",
+              "status": "Done",
               "summary": "Create/sync GitHub milestones using only DEV_MAP milestone/feature texts for descriptions, create high-level feature issues from DEV_MAP text without assigning GitHub milestones to issues, and persist resulting links back into DEV_MAP without task-level decomposition changes."
             }
           ]
