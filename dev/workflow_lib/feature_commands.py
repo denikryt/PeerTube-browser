@@ -22,6 +22,12 @@ from .github_adapter import (
 )
 from .output import emit_json
 from .sync_delta import load_sync_delta, resolve_sync_delta_references
+from .tracker_json_contracts import (
+    build_pipeline_contract_payload,
+    build_task_list_contract_payload,
+    validate_pipeline_contract_payload,
+    validate_task_list_contract_payload,
+)
 from .tracking_writers import apply_pipeline_delta, apply_task_list_delta
 
 
@@ -357,11 +363,26 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         existing_task_locations=existing_task_locations,
     )
 
+    expected_marker = f"[M{feature_milestone_num}][F{feature_local_num}]"
+    task_list_contract_payload = build_task_list_contract_payload(
+        resolved_delta.get("task_list_entries", []),
+        expected_marker=expected_marker,
+    )
+    validate_task_list_contract_payload(
+        payload=task_list_contract_payload,
+        location="feature.sync.task_list_contract",
+    )
+    pipeline_contract_payload = build_pipeline_contract_payload(resolved_delta.get("pipeline", {}))
+    validate_pipeline_contract_payload(
+        payload=pipeline_contract_payload,
+        location="feature.sync.pipeline_contract",
+    )
+
     original_task_list_text = context.task_list_path.read_text(encoding="utf-8")
     updated_task_list_text, task_list_count = apply_task_list_delta(
         task_list_text=original_task_list_text,
         entries=resolved_delta.get("task_list_entries", []),
-        expected_marker=f"[M{feature_milestone_num}][F{feature_local_num}]",
+        expected_marker=expected_marker,
     )
 
     original_pipeline_text = context.pipeline_path.read_text(encoding="utf-8")

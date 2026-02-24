@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://peertube-browser.local/schemas/task-list.json",
+  "title": "Workflow Task List",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tasks"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "marker",
+          "title",
+          "problem",
+          "solution_option",
+          "concrete_steps"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "marker": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "problem": {
+            "type": "string",
+            "minLength": 1
+          },
+          "solution_option": {
+            "type": "string",
+            "minLength": 1
+          },
+          "concrete_steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}
