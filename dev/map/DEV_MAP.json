@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T04:41:40+02:00",
+  "updated_at": "2026-02-24T04:46:48+02:00",
   "task_count": 68,
   "milestones": [
     {
@@ -18,15 +18,15 @@
           "title": "Close remaining Engine/Client separation points and formally fix module boundaries.",
           "status": "Approved",
           "track": "Engine",
-          "gh_issue_number": null,
-          "gh_issue_url": null,
+          "gh_issue_number": 77,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/77",
           "issues": [
             {
               "id": "I1-F1-M1",
               "title": "Boundary contract freeze",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 78,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/78",
               "tasks": [
                 {
                   "id": "66",
@@ -42,8 +42,8 @@
               "id": "I2-F1-M1",
               "title": "Boundary enforcement and regression guards",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 76,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/76",
               "tasks": [
                 {
                   "id": "67",
@@ -59,8 +59,8 @@
               "id": "I3-F1-M1",
               "title": "Baseline contour validation",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 79,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/79",
               "tasks": [
                 {
                   "id": "68",
