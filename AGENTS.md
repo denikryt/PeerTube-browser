@@ -15,6 +15,7 @@ Use this matrix to avoid responsibility sprawl when process rules are updated.
 Conflict handling:
 - For command semantics/order conflicts, `dev/TASK_EXECUTION_PROTOCOL.md` is canonical.
 - For policy gate conflicts (`allowed/forbidden`), `AGENTS.md` is canonical.
+- Process change rule: when updating rules/protocol/workflow docs, change normative text only in the canonical owner file; in non-owner files keep only short references. Do not duplicate the same rule across multiple files.
 
 Canonical rule map (to prevent duplication drift):
 - Feature and standalone command order/step contracts:

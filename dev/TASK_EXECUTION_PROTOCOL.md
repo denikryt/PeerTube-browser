@@ -29,6 +29,10 @@ Use this procedure after an explicit execution command is given.
      - product path: `[M*][F*]`
      - standalone path: `[M*][SI*]`
      If task exists in `dev/map/DEV_MAP.json`, markers must match parent chain.
+   - Enforce execution materialization gate from local tracker state:
+     - resolve parent `Issue`/`StandaloneIssue` for task `X` in `dev/map/DEV_MAP.json`,
+     - require non-null `gh_issue_number` and `gh_issue_url` on that parent node,
+     - if any of those fields is missing, stop execution and request `materialize feature <id>` or `materialize standalone-issue`.
 
 3. **Prepare a short implementation plan**
    - List concrete files/modules to update.
@@ -58,13 +62,16 @@ Use this procedure when user requests execution of all tasks under one feature.
 
 1. Resolve `<feature_id>` in `dev/map/DEV_MAP.json` and collect all child tasks under `Milestone -> Feature -> Issue -> Task`.
 2. Keep only pending tasks (`status != Done`).
-3. Build execution order:
+3. Enforce materialization gate for feature child issues:
+   - for each issue that contains pending tasks, require non-null `gh_issue_number` and `gh_issue_url`,
+   - if any issue fails this check, stop execution and request `materialize feature <feature_id>`.
+4. Build execution order:
    - first: task IDs that are present in `dev/TASK_EXECUTION_PIPELINE.md` execution order,
    - then: remaining pending tasks in `DEV_MAP` issue/task order.
-4. Execute each task sequentially using the full **Standard execution flow (single task)**.
-5. After each task, run overlap/dependency validations relevant to the next tasks in the same feature chain.
-6. Stop on the first blocking failure and report the exact failed task + blocker; continue only if user explicitly asks to continue.
-7. Do not auto-mark task/issue/feature as `Done`; completion updates require explicit `confirm ... done` commands.
+5. Execute each task sequentially using the full **Standard execution flow (single task)**.
+6. After each task, run overlap/dependency validations relevant to the next tasks in the same feature chain.
+7. Stop on the first blocking failure and report the exact failed task + blocker; continue only if user explicitly asks to continue.
+8. Do not auto-mark task/issue/feature as `Done`; completion updates require explicit `confirm ... done` commands.
 
 ## Completion flow (after explicit user confirmation)
 
@@ -134,6 +141,7 @@ Use this procedure before executing tasks for a new feature.
    - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
    - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
 7. Only then run `execute task X` or `execute feature <feature_id>`.
+   - Execution gate: every parent `Issue` for the target task set must have non-null `gh_issue_number` and `gh_issue_url` in `dev/map/DEV_MAP.json`.
 
 ## Standalone issue flow (non-product work)
 
@@ -149,6 +157,7 @@ Use this when work should not be attached to a product feature (ops/process/tool
    - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
    - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
 7. Only then run `execute task X`.
+   - Execution gate: parent `StandaloneIssue` must have non-null `gh_issue_number` and `gh_issue_url` in `dev/map/DEV_MAP.json`.
 
 ## Multi-task execution flow
 
