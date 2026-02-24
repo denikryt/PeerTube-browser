@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T19:27:51+02:00",
+  "updated_at": "2026-02-24T20:07:28+02:00",
   "task_count": 75,
   "milestones": [
     {
@@ -109,7 +109,7 @@
             {
               "id": "I1-F4-M1",
               "title": "CLI and base workflow commands",
-              "status": "Planned",
+              "status": "Done",
               "gh_issue_number": 81,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/81",
               "tasks": [
@@ -118,7 +118,7 @@
                   "date": "2026-02-24",
                   "time": "19:17:53",
                   "title": "Add `dev/workflow` CLI entrypoint and command router",
-                  "status": "Planned",
+                  "status": "Done",
                   "summary": "Create the workflow CLI entrypoint with routing for feature/task/confirm/validate command groups used by the process flow."
                 },
                 {
@@ -126,7 +126,7 @@
                   "date": "2026-02-24",
                   "time": "19:17:54",
                   "title": "Implement feature base commands for create/plan/approve/execution-plan",
-                  "status": "Planned",
+                  "status": "Done",
                   "summary": "Implement base feature commands (`create`, `plan-init`, `plan-lint`, `approve`, `execution-plan`) with approved-state gates and deterministic output contracts."
                 }
               ]
