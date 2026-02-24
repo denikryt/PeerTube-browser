@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T22:41:58+02:00",
+  "updated_at": "2026-02-24T22:51:16+02:00",
   "task_count": 84,
   "milestones": [
     {
@@ -278,6 +278,22 @@
                   "time": "22:38:06"
                 }
               ]
+            },
+            {
+              "id": "I6-F4-M1",
+              "title": "Scoped issue materialization without touching sibling issues",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I7-F4-M1",
+              "title": "Issue creation command for feature/standalone with optional plan init",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F4-M1",
