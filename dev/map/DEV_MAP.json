@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T18:10:21+02:00",
+  "updated_at": "2026-02-24T18:55:17+02:00",
   "task_count": 69,
   "milestones": [
     {
@@ -118,7 +118,7 @@
                   "date": "2026-02-24",
                   "time": "18:10:21",
                   "title": "Refactor process docs to split responsibilities and remove duplicated rules",
-                  "status": "Planned",
+                  "status": "Done",
                   "summary": "Eliminate concrete process conflicts and duplication across AGENTS.md, TASK_EXECUTION_PROTOCOL.md, FEATURE_PLANNING_PROTOCOL.md, and FEATURE_WORKFLOW.md by fixing one canonical command order (sync before materialize), assigning one owner per concern, and replacing repeated normative blocks with explicit cross-references."
                 }
               ]
