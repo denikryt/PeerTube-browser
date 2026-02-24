@@ -5,8 +5,8 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T21:13:17+02:00",
-  "task_count": 75,
+  "updated_at": "2026-02-24T21:16:28+02:00",
+  "task_count": 80,
   "milestones": [
     {
       "id": "M1",
@@ -195,7 +195,48 @@
               "status": "Planned",
               "gh_issue_number": 84,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/84",
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "76",
+                  "title": "Make `dev/workflow` executable and align smoke entrypoint",
+                  "summary": "Set executable mode for `dev/workflow` and update smoke checks to run canonical `./dev/workflow` command.",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "21:16:28"
+                },
+                {
+                  "id": "77",
+                  "title": "Implement `task preflight|validate` command contracts",
+                  "summary": "Replace placeholder handlers with deterministic preflight/validate checks and stable JSON output contracts.",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "21:16:28"
+                },
+                {
+                  "id": "78",
+                  "title": "Complete `feature create --github` feature-issue wiring",
+                  "summary": "Implement feature-level GitHub issue create/update with milestone mapping and persist `gh_issue_number/gh_issue_url` in DEV_MAP during `--write`.",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "21:16:28"
+                },
+                {
+                  "id": "79",
+                  "title": "Split workflow command internals by responsibility",
+                  "summary": "Extract delta parsing, tracker writes, and git/github adapters from monolithic command modules while preserving CLI behavior.",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "21:16:28"
+                },
+                {
+                  "id": "80",
+                  "title": "Add regression smoke scenarios for full workflow chain",
+                  "summary": "Cover success and gate-fail paths for create/plan/approve/sync/materialize/execution-plan/confirm flows.",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "21:16:28"
+                }
+              ]
             }
           ],
           "branch_name": "feature/F4-M1",

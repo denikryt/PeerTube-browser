@@ -498,3 +498,53 @@
 2. Implement ownership validation for `[M*][F*]`/`[M*][SI*]` markers against `DEV_MAP` parent chains.
 3. Implement `validate --scope tracking|repo` checks for sync consistency and gate failures.
 
+
+### 76) [M1][F4] Workflow CLI entrypoint executable mode and canonical invocation
+**Problem:** `dev/workflow` is not executable and smoke checks bypass canonical `./dev/workflow` path by calling `python3 dev/workflow` directly.
+
+**Solution option:** Make `dev/workflow` executable and align smoke scripts with canonical CLI invocation path.
+
+#### **Concrete steps:**
+1. Set executable bit on `dev/workflow` and keep shebang-based execution as the primary command path.
+2. Update workflow smoke checks to invoke `./dev/workflow` for help/invalid-arg coverage.
+3. Run smoke script and verify canonical entrypoint works without fallback to `python3 dev/workflow`.
+
+### 77) [M1][F4] Implement task-level preflight and validate handlers
+**Problem:** `task preflight` and `task validate` still return placeholder `not-implemented` responses.
+
+**Solution option:** Implement real task handlers with deterministic checks and error contracts required by execution flow.
+
+#### **Concrete steps:**
+1. Replace placeholder dispatch in `task_commands.py` with implemented command handlers.
+2. Add preflight checks for task existence/ownership/materialization gates and structured JSON output.
+3. Add validate checks for task completion run output and deterministic non-zero error behavior on failures.
+
+### 78) [M1][F4] Feature create GitHub wiring completion
+**Problem:** `feature create --github` does not yet create/update feature-level GitHub issue metadata as required by the process contract.
+
+**Solution option:** Add GitHub issue create/update flow to `feature create` with milestone mapping from local milestone metadata.
+
+#### **Concrete steps:**
+1. Extend `feature create` handler to resolve target repository and mapped GitHub milestone title.
+2. Create or update feature-level GitHub issue when `--github --write` is passed.
+3. Persist resulting `gh_issue_number`/`gh_issue_url` in DEV_MAP in the same write run.
+
+### 79) [M1][F4] Workflow module decomposition by responsibility
+**Problem:** `feature_commands.py` and `confirm_commands.py` contain mixed responsibilities and are difficult to maintain safely.
+
+**Solution option:** Extract internal helper layers into focused modules while preserving existing CLI interface and outputs.
+
+#### **Concrete steps:**
+1. Move sync-delta parsing/allocation and tracker writers into dedicated workflow helper modules.
+2. Move GitHub and Git branch operations into adapter helpers reused by create/materialize/confirm flows.
+3. Keep command routers thin and re-run workflow smoke checks to verify no CLI contract regressions.
+
+### 80) [M1][F4] Regression smoke coverage for workflow chain and gate-fail paths
+**Problem:** Current smoke checks cover parser help/errors but do not protect complete workflow-chain and gate-failure behavior.
+
+**Solution option:** Add scenario-driven smoke checks that validate both success path and mandatory gate-stop behavior.
+
+#### **Concrete steps:**
+1. Add smoke scenarios for create -> plan-init/lint -> approve -> sync -> execution-plan flow with deterministic assertions.
+2. Add gate-fail smoke scenarios for missing milestone mapping, non-approved sync write, and missing materialization metadata.
+3. Integrate new smoke checks into the existing workflow test script entrypoint.

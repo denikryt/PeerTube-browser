@@ -29,6 +29,7 @@ Use it before implementing any task bundle.
 11. **70** then **71** then **72** then **73** (workflow CLI + sync/materialize/confirm automation)  
    Build workflow command routing first, then feature base commands, then tracker sync/validation, and only after that materialize and confirm cascade.
 
+12. **76** then **77** then **78** then **79** then **80** (workflow CLI hardening follow-up)
 ### Functional blocks (aligned with the same order)
 - **Block A: Similarity and recommendation core**
   - Tasks: **37 -> 33 -> 12a**
@@ -62,6 +63,10 @@ Use it before implementing any task bundle.
   - Tasks: **70 -> 71 -> 72 -> 73**
   - Scope: unified workflow CLI, feature lifecycle base commands, tracker sync+validation automation, and completion/materialization command contracts.
   - Outcome: the process flow (`create/plan/approve/sync/materialize/execute/confirm`) runs through `dev/workflow` with deterministic tracker updates, `task_count`-based ID allocation, canonical feature branch handling, and confirmation cascade with GitHub close.
+- **Block I: Workflow CLI hardening and completion**
+  - Tasks: **76 -> 77 -> 78 -> 79 -> 80**
+  - Scope: Entry-point correctness, missing task/create contracts, internal module decomposition, and regression coverage for workflow lifecycle gates.
+  - Outcome: Workflow CLI runs through canonical `./dev/workflow` entrypoint, task-level commands are implemented, feature create writes GitHub metadata, and regression smokes cover success and gate-fail paths.
 ### Cross-task overlaps and dependencies
 - **1 <-> 2 <-> 33**: all touch video-page similar retrieval/rendering behavior.  
   Backend candidate quality/diversity (**33**) should be stable before final UX behavior (**1**, **2**).
@@ -106,3 +111,6 @@ Update policy is maintained in `TASK_EXECUTION_PROTOCOL.md`.
 Use this command style when requesting multiple tasks:
 
 `Execute bundle: <taskA> -> <taskB> -> <taskC>, mode=strict, no-duplicate-logic`
+- **77 <-> 71**: Task-level preflight/validate contracts extend and depend on the base feature command argument/output model introduced in task 71.
+- **78 <-> 74**: Feature-create GitHub wiring must stay compatible with existing milestone mapping and materialization metadata behavior from task 74.
+- **79 <-> 75**: Module decomposition must preserve confirm cascade semantics and tracker cleanup/close-github behavior introduced in task 75.
