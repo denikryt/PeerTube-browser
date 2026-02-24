@@ -6,30 +6,29 @@ Use it before implementing any task bundle.
 ## Recommended implementation order
 
 ### Execution sequence (recommended)
-1. **37** (stable ANN IDs: `video_id+host -> int64`)  
+1. **37**  (stable ANN IDs: `video_id+host -> int64`)
    First establish stable ANN id contract before further similarity tuning.
-2. **33** (video-page similars diversity + larger pools)  
+2. **33**  (video-page similars diversity + larger pools)
    Build on finalized ANN/cache config and incremental recompute behavior.
-3. **3** (video metadata completeness + refresh mutable fields)  
+3. **3**  (video metadata completeness + refresh mutable fields)
    Improves data quality on video page and creates better API/DB test baseline.
-4. **1** then **2** (video-page UX flow for similars)  
+4. **1** then **2**  (video-page UX flow for similars)
    First fast initial response, then progressive loading/scroll behavior.
-5. **4** (comments) and **9/9b** (description + single-like removal)  
+5. **4**  (comments) and **9/9b** (description + single-like removal)
    Video/profile UX improvements with low backend risk.
-6. **12a** then **8b** (popular weighted-random + feed modes)  
+6. **12a** then **8b**  (popular weighted-random + feed modes)
    Finalize popular-layer behavior before exposing it as user-facing feed mode.
-7. **10** (search page) and **8c** (about outbound analytics)  
+7. **10** then **8c**  (about outbound analytics)
    Mostly orthogonal product features.
-8. **41** then **38** then **43** (timestamped lifecycle logs + request correlation + static-page visit logs)  
+8. **41** then **38** then **43**  (timestamped lifecycle logs + request correlation + static-page visit logs)
    Establish one logging contract first, then add request-id linked lifecycle logs, then extend observability to nginx-served static pages.
-9. **16l** then **39** then **44** then **56** then **40** (cache runtime safety + similarity precompute scope + shadow swap + zero-downtime deploy)  
+9. **16l** then **39** then **44** then **56** then **40**  (cache runtime safety + similarity precompute scope + shadow swap + zero-downtime deploy)
    Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache precompute scoping, then shadow cutover, then blue/green nginx switch automation.
-10. **16**, **11** (docs + docstrings)  
+10. **16** then **11**  (docs + docstrings)
    Finalize documentation polish after behavior/stability changes land.
-11. **70** then **71** then **72** then **73** (workflow CLI + sync/materialize/confirm automation)  
+11. **70** then **71** then **72** then **73**  (workflow CLI + sync/materialize/confirm automation)
    Build workflow command routing first, then feature base commands, then tracker sync/validation, and only after that materialize and confirm cascade.
 
-12. **76** then **77** then **78** then **79** then **80** (workflow CLI hardening follow-up)
 ### Functional blocks (aligned with the same order)
 - **Block A: Similarity and recommendation core**
   - Tasks: **37 -> 33 -> 12a**
@@ -63,10 +62,6 @@ Use it before implementing any task bundle.
   - Tasks: **70 -> 71 -> 72 -> 73**
   - Scope: unified workflow CLI, feature lifecycle base commands, tracker sync+validation automation, and completion/materialization command contracts.
   - Outcome: the process flow (`create/plan/approve/sync/materialize/execute/confirm`) runs through `dev/workflow` with deterministic tracker updates, `task_count`-based ID allocation, canonical feature branch handling, and confirmation cascade with GitHub close.
-- **Block I: Workflow CLI hardening and completion**
-  - Tasks: **76 -> 77 -> 78 -> 79 -> 80**
-  - Scope: Entry-point correctness, missing task/create contracts, internal module decomposition, and regression coverage for workflow lifecycle gates.
-  - Outcome: Workflow CLI runs through canonical `./dev/workflow` entrypoint, task-level commands are implemented, feature create writes GitHub metadata, and regression smokes cover success and gate-fail paths.
 ### Cross-task overlaps and dependencies
 - **1 <-> 2 <-> 33**: all touch video-page similar retrieval/rendering behavior.  
   Backend candidate quality/diversity (**33**) should be stable before final UX behavior (**1**, **2**).
@@ -94,9 +89,6 @@ Use it before implementing any task bundle.
   Freeze subcommand parsing and error format in **70** before implementing feature handlers in **71**.
 - **72 <-> 73**: sync write path and validation/ID-allocation rules must use one tracker model.  
   Implement sync write core in **72**, then enforce allocation/validation gates in **73** without duplicate state logic.
-- **77 <-> 71**: Task-level preflight/validate contracts extend and depend on the base feature command argument/output model introduced in task 71.
-- **78 <-> 74**: Feature-create GitHub wiring must stay compatible with existing milestone mapping and materialization metadata behavior from task 74.
-- **79 <-> 75**: Module decomposition must preserve confirm cascade semantics and tracker cleanup/close-github behavior introduced in task 75.
 - **16 / 11** depend on nearly all feature tasks.  
   Doing them earlier causes repeated rewrites.
 
