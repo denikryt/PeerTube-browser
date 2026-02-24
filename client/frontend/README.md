@@ -5,9 +5,13 @@ using data from the backend API. The client stays UI‑only: no database access 
 no ranking logic.
 
 ## What it does
-- Fetches Engine read endpoints (`/recommendations`, `/videos/similar`, `/api/video`).
+- Fetches Client-backend gateway routes (`/recommendations`, `/videos/similar`, `/api/video`, `/api/channels`).
 - Renders feeds (recommendations/random) and the video page.
 - Stores likes locally in the browser (temporary profile).
+
+## Boundary Contract (Frontend-side)
+- Frontend must use Client API base (`window.location.origin` or `VITE_CLIENT_API_BASE`) for reads.
+- Frontend must not use direct Engine API base or Engine internal endpoints.
 
 ## Build
 ```

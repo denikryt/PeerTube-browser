@@ -12,6 +12,12 @@ This service does not own user write/profile endpoints.
 - `/internal/events/ingest` temporary trusted bridge ingest for normalized events
   (`ENGINE_INGEST_MODE=bridge`).
 
+## Boundary Contract (Engine-side)
+- Engine owns read/analytics APIs and internal read/ingest contracts.
+- Engine does not own browser-facing write/profile routes (`/api/user-action`, `/api/user-profile/*`).
+- Engine runtime must not depend on `engine/server/db/users.db` for recommendation ranking.
+- Client backend integration with Engine must go through HTTP contracts, not direct Engine module or DB coupling.
+
 ## Notes
 - Reads from `DEFAULT_DB_PATH` and FAISS index.
 - Recommendation ranking does not depend on local users likes DB; likes are read

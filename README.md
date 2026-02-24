@@ -40,13 +40,18 @@ on local `engine/server/db/users.db` for recommendation ranking. Bridge-ingested
 events update aggregated `interaction_signals`, which are also used by ranking.
 This is not a heavy ML system; it is a transparent, controllable pipeline.
 
-## Current service split
-- Engine API (read): `/recommendations`, `/videos/{id}/similar`, `/videos/similar`, `/api/video`, `/api/health`.
-- Client backend (browser-facing gateway): `/api/user-action`, `/api/user-profile/*`, and read proxy routes for recommendations/similar/video/channels.
-- Internal Client->Engine read contract: `/internal/videos/resolve`, `/internal/videos/metadata`.
-- Temporary bridge contract: Client backend publishes events to Engine `/internal/events/ingest`.
-- Boundary rule: Client backend must not import `engine.server.*` modules and must not read `engine/server/db/*` directly.
-- Boundary rule: frontend reads must use Client API base only (no direct Engine API base usage in UI code).
+## Canonical Engine/Client boundary contract
+| Concern | Owner | Contract | Forbidden coupling |
+|---|---|---|---|
+| Public read API (`/recommendations`, `/videos/{id}/similar`, `/videos/similar`, `/api/video`, `/api/health`) | Engine | Exposed by Engine HTTP API only. | Client backend importing Engine modules or reading Engine DB files directly. |
+| Browser-facing write/profile API (`/api/user-action`, `/api/user-profile/*`) | Client backend | Exposed by Client backend only. | Moving write/profile ownership into Engine handlers. |
+| Browser-facing read gateway (`/recommendations`, `/videos/similar`, `/api/video`, `/api/channels`) | Client backend | Frontend reads use Client API base and gateway routes only. | Direct frontend Engine API base usage. |
+| Internal Client->Engine read contract (`/internal/videos/resolve`, `/internal/videos/metadata`) | Engine (provider), Client backend (consumer) | Client backend consumes these internal endpoints over HTTP. | Direct DB coupling instead of HTTP contract. |
+| Temporary bridge ingest (`/internal/events/ingest`) | Engine (ingest), Client backend (publisher) | Client backend publishes normalized events to Engine ingest endpoint. | Frontend direct ingest calls or bypassing Client normalization path. |
+
+Boundary guard policy:
+- Client backend must not import `engine.server.*`/`engine.*` internals and must not read `engine/server/db/*` directly.
+- Frontend runtime reads must stay Client-gateway only (no direct Engine API base or Engine internal route usage).
 
 ## Service installers
 Installer topology:
@@ -110,6 +115,31 @@ bash tests/run-arch-split-smoke.sh
 `run-arch-split-smoke.sh` starts Engine (`7072`) and Client (`7272`) locally,
 runs boundary + bridge checks, aggregates errors, prints diagnostics, and always
 stops started processes.
+
+### Split smoke stages and failure semantics
+1. Contract preflight checks:
+   - `tests/check-client-engine-boundary.sh`
+   - `tests/check-frontend-client-gateway.sh`
+   Any failure here is a hard fail and startup is aborted.
+2. Runtime readiness:
+   - Engine `/api/health` must become `200` within timeout.
+   - Client `/api/health` must become `200` within timeout.
+   Timeout/non-200 is a hard fail.
+3. Boundary enforcement checks:
+   - Engine must reject Client-owned endpoints (`/api/user-profile`, `/api/user-action`) with non-success.
+   - Client gateway routes must answer successfully (`/api/channels`, `/recommendations`, `/videos/similar`).
+   Any unexpected status is a hard fail.
+4. Bridge flow checks:
+   - Seed extraction from client recommendations response must succeed (`uuid+host`).
+   - Client proxy `/api/video` must return `200`.
+   - Client `/api/user-action` response must validate `ok=true`, `bridge_ok=true`, and empty `bridge_error`.
+   - Client `/api/user-profile/likes` must return a non-empty likes array after like action.
+   Parse/validation mismatch is a hard fail.
+5. Engine users DB ownership guard:
+   - Engine process must not keep `engine/server/db/users.db` file descriptor open.
+   Any open FD match is a hard fail.
+6. Failure diagnostics:
+   - Script prints aggregated check/error summary and stores run/check/error logs and service log tails for troubleshooting.
 
 ## Future ideas
 - ActivityPub integration (receive new video events, send likes/comments).

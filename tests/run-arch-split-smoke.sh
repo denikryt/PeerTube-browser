@@ -411,10 +411,10 @@ run_boundary_contract_check() {
   local name="client_engine_boundary_contract"
   CHECK_COUNT=$((CHECK_COUNT + 1))
   if bash "${ROOT_DIR}/tests/check-client-engine-boundary.sh" >"${TMP_DIR}/${name}.log" 2>&1; then
-    log_check_result "PASS" "${name}" "CHECK" "${ROOT_DIR}/tests/check-client-engine-boundary.sh" "OK" "no direct engine.server imports or Engine DB paths in client/backend"
+    log_check_result "PASS" "${name}" "CHECK" "${ROOT_DIR}/tests/check-client-engine-boundary.sh" "OK" "no direct Engine module imports or Engine DB coupling in client/backend"
     return
   fi
-  log_check_result "FAIL" "${name}" "CHECK" "${ROOT_DIR}/tests/check-client-engine-boundary.sh" "ERROR" "no direct engine.server imports or Engine DB paths in client/backend"
+  log_check_result "FAIL" "${name}" "CHECK" "${ROOT_DIR}/tests/check-client-engine-boundary.sh" "ERROR" "no direct Engine module imports or Engine DB coupling in client/backend"
   record_error "${name}: $(sed -n '1,120p' "${TMP_DIR}/${name}.log" | tr '\n' ' ' | sed 's/[[:space:]]\\+/ /g')"
 }
 
@@ -422,10 +422,10 @@ run_frontend_gateway_contract_check() {
   local name="frontend_client_gateway_contract"
   CHECK_COUNT=$((CHECK_COUNT + 1))
   if bash "${ROOT_DIR}/tests/check-frontend-client-gateway.sh" >"${TMP_DIR}/${name}.log" 2>&1; then
-    log_check_result "PASS" "${name}" "CHECK" "${ROOT_DIR}/tests/check-frontend-client-gateway.sh" "OK" "no direct Engine API base usage in frontend src"
+    log_check_result "PASS" "${name}" "CHECK" "${ROOT_DIR}/tests/check-frontend-client-gateway.sh" "OK" "no direct Engine API base/internal route usage in frontend src"
     return
   fi
-  log_check_result "FAIL" "${name}" "CHECK" "${ROOT_DIR}/tests/check-frontend-client-gateway.sh" "ERROR" "no direct Engine API base usage in frontend src"
+  log_check_result "FAIL" "${name}" "CHECK" "${ROOT_DIR}/tests/check-frontend-client-gateway.sh" "ERROR" "no direct Engine API base/internal route usage in frontend src"
   record_error "${name}: $(sed -n '1,120p' "${TMP_DIR}/${name}.log" | tr '\n' ' ' | sed 's/[[:space:]]\\+/ /g')"
 }
 
@@ -513,7 +513,7 @@ fi
 if (( ERROR_COUNT == 0 )); then
   log "Starting Engine process"
   ENGINE_INGEST_MODE=bridge "${RUNTIME_PY}" "${ROOT_DIR}/engine/server/api/server.py" \
-    --host "${ENGINE_HOST}" --port "${ENGINE_PORT}" >"${ENGINE_LOG}" 2>&1 &
+    --host "${ENGINE_HOST}" --port "${ENGINE_PORT}" --no-random-cache-refresh >"${ENGINE_LOG}" 2>&1 &
   ENGINE_PID="$!"
 
   CHECK_COUNT=$((CHECK_COUNT + 1))

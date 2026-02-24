@@ -19,13 +19,13 @@ search_py() {
   grep -RInE --include='*.py' "${pattern}" "${TARGET_DIR}"
 }
 
-if search_py "(^|[[:space:]])(from|import)[[:space:]]+engine\\.server" >"${TMP_FILE}" 2>/dev/null; then
-  echo "[client-engine-boundary] FAIL: direct imports from engine.server are forbidden"
+if search_py "(^|[[:space:]])from[[:space:]]+engine(\\.|[[:space:]])|(^|[[:space:]])import[[:space:]]+engine(\\.|[[:space:]])" >"${TMP_FILE}" 2>/dev/null; then
+  echo "[client-engine-boundary] FAIL: direct imports from Engine modules are forbidden"
   cat "${TMP_FILE}"
   violations=1
 fi
 
-if search_py "engine/server/db/|DEFAULT_ENGINE_DB_PATH|--engine-db" >"${TMP_FILE}" 2>/dev/null; then
+if search_py "engine/server/db/|engine\\.server\\.db|DEFAULT_ENGINE_DB_PATH|DEFAULT_DB_PATH|ENGINE_DB_PATH|--engine-db" >"${TMP_FILE}" 2>/dev/null; then
   echo "[client-engine-boundary] FAIL: direct Engine DB coupling is forbidden"
   cat "${TMP_FILE}"
   violations=1
@@ -35,4 +35,4 @@ if [[ ${violations} -ne 0 ]]; then
   exit 1
 fi
 
-echo "[client-engine-boundary] PASS: no direct Client->Engine code/DB coupling found"
+echo "[client-engine-boundary] PASS: no direct Client->Engine module/DB coupling found"
