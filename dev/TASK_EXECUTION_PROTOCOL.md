@@ -106,7 +106,11 @@ Apply the corresponding completion update in one edit run:
    - Update task status in `dev/map/DEV_MAP.json` under its existing parent chain.
    - Remove confirmed completed task/block from `dev/TASK_EXECUTION_PIPELINE.md` (keep only pending items).
 2. `confirm issue <issue_id> done`
-   - Verify all mapped child tasks are already confirmed done.
+   - Resolve all mapped child tasks under the selected issue.
+   - If any child task is not `Done`, request explicit additional confirmation to cascade these tasks to `Done`.
+   - If additional confirmation is not given, stop without applying completion updates.
+   - If additional confirmation is given:
+     - update child task statuses to `Done` in `dev/map/DEV_MAP.json`.
    - Update local issue status to `Done` in `dev/map/DEV_MAP.json`.
    - Close mapped GitHub issue in the same completion update run.
 3. `confirm feature <feature_id> done`
