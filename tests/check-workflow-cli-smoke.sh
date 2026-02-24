@@ -2,9 +2,20 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKFLOW=(python3 "${ROOT_DIR}/dev/workflow")
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
+
+WORKFLOW_ROOT="${ROOT_DIR}"
+if [[ ! -x "${ROOT_DIR}/dev/workflow" ]]; then
+  # Some filesystems (for example, NTFS/fuseblk mounts) ignore executable bits.
+  # Build a temporary POSIX-permission mirror and still verify canonical ./dev/workflow invocation there.
+  WORKFLOW_ROOT="${TMP_DIR}/workflow-posix"
+  mkdir -p "${WORKFLOW_ROOT}/dev/workflow_lib"
+  cp "${ROOT_DIR}/dev/workflow" "${WORKFLOW_ROOT}/dev/workflow"
+  cp "${ROOT_DIR}"/dev/workflow_lib/*.py "${WORKFLOW_ROOT}/dev/workflow_lib/"
+  chmod +x "${WORKFLOW_ROOT}/dev/workflow"
+fi
+WORKFLOW=("${WORKFLOW_ROOT}/dev/workflow")
 
 run_expect_success() {
   local name="$1"
