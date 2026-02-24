@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T20:25:10+02:00",
+  "updated_at": "2026-02-24T20:44:12+02:00",
   "task_count": 75,
   "milestones": [
     {
@@ -159,7 +159,7 @@
             {
               "id": "I3-F4-M1",
               "title": "Materialize/Confirm integration and protocol contract",
-              "status": "Planned",
+              "status": "Done",
               "gh_issue_number": 82,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/82",
               "tasks": [
@@ -168,7 +168,7 @@
                   "date": "2026-02-24",
                   "time": "19:17:57",
                   "title": "Implement `feature materialize` with canonical branch policy and milestone assignment",
-                  "status": "Planned",
+                  "status": "Done",
                   "summary": "Implement feature materialization from local issue nodes to GitHub with milestone resolution and canonical branch linkage persistence."
                 },
                 {
@@ -176,7 +176,7 @@
                   "date": "2026-02-24",
                   "time": "19:17:58",
                   "title": "Implement `confirm task|issue|feature|standalone-issue` cascade with GitHub close",
-                  "status": "Planned",
+                  "status": "Done",
                   "summary": "Implement confirmation commands that cascade local status updates, cleanup pending-only pipeline entries, and close mapped GitHub issues in the same run."
                 },
                 {

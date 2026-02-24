@@ -498,22 +498,3 @@
 2. Implement ownership validation for `[M*][F*]`/`[M*][SI*]` markers against `DEV_MAP` parent chains.
 3. Implement `validate --scope tracking|repo` checks for sync consistency and gate failures.
 
-### 74) [M1][F4] Materialize command with canonical feature branch policy
-**Problem:** GitHub materialization and branch handling are not automated by one command contract.
-
-**Solution option:** implement `feature materialize` that works only from local issue nodes and enforces canonical branch policy.
-
-#### **Concrete steps:**
-1. Implement materialization from local feature issues to GitHub with required milestone assignment.
-2. Implement canonical branch resolution/creation (`feature/<feature_id>`) and persist `branch_name`/`branch_url` in `DEV_MAP`.
-3. Add result contract that reports `Active feature branch: feature/<feature_id>` after successful run.
-
-### 75) [M1][F4] Confirm cascade commands with GitHub close
-**Problem:** confirmation flow is manual and can leave local/GitHub states inconsistent.
-
-**Solution option:** implement `confirm task|issue|feature|standalone-issue` cascade with same-run local+GitHub updates.
-
-#### **Concrete steps:**
-1. Implement `confirm task/issue/feature/standalone-issue` commands with explicit target resolution.
-2. Apply required cascade updates to `DEV_MAP`, `TASK_LIST`, and pending-only cleanup in `TASK_EXECUTION_PIPELINE`.
-3. Close mapped GitHub issues in the same confirmation run and fail if completion gates are not satisfied.
