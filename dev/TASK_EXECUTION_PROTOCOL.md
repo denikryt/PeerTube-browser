@@ -83,6 +83,8 @@ Use this procedure before executing tasks for a new feature.
 5. Review/refine local issues/tasks with the user until decomposition is final.
 6. `materialize feature <id>`: create/update GitHub feature/work issues strictly from the already-synced local issue structure, assign each issue to the corresponding GitHub milestone, and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
+   - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
+   - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
 7. Only then run `execute task X`.
 
 ## Standalone issue flow (non-product work)
@@ -96,6 +98,8 @@ Use this when work should not be attached to a product feature (ops/process/tool
 5. Review/refine local tasks with the user until decomposition is final.
 6. `materialize standalone-issue`: create/update GitHub issue from the already-synced local standalone issue structure, assign it to the corresponding GitHub milestone, and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
+   - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
+   - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
 7. Only then run `execute task X`.
 
 ## Multi-task execution flow

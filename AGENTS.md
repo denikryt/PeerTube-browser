@@ -69,6 +69,8 @@ Project-level hard constraints for task work in this repository.
    - Do not mark local `Issue`/`Feature`/`StandaloneIssue` as `Done` until the user explicitly confirms completion after review.
    - Do not close related GitHub issues before that explicit completion confirmation.
 20. When explicit completion confirmation is given for an `Issue`/`Feature`/`StandaloneIssue`, update local status and close corresponding GitHub issue in the same completion update run.
+21. GitHub issue content policy for `materialize feature` / `materialize standalone-issue`: write only issue-relevant content (title, scope/problem, planned work/tasks, acceptance context).
+22. In GitHub issue bodies, never include process boilerplate blocks such as `Work issue for ...`, `Source of truth`, `Notes`, protocol reminders, confirmation commands, or any `do not close before ...` wording.
 
 ## Pipeline constraints
 

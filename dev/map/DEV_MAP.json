@@ -4,7 +4,7 @@
     "Planned",
     "Done"
   ],
-  "updated_at": "2026-02-24T03:01:50+02:00",
+  "updated_at": "2026-02-24T03:10:39+02:00",
   "task_count": 65,
   "milestones": [
     {
@@ -17,15 +17,15 @@
           "title": "Close remaining Engine/Client separation points and formally fix module boundaries.",
           "status": "Planned",
           "track": "Engine",
-          "gh_issue_number": null,
-          "gh_issue_url": null,
+          "gh_issue_number": 72,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/72",
           "issues": [
             {
               "id": "I1-F1-M1",
               "title": "Boundary policy hardening.",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 74,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/74",
               "tasks": [
                 {
                   "id": "60",
@@ -49,8 +49,8 @@
               "id": "I2-F1-M1",
               "title": "Runtime surface isolation.",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 75,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/75",
               "tasks": [
                 {
                   "id": "62",
@@ -74,8 +74,8 @@
               "id": "I3-F1-M1",
               "title": "Baseline validation gate.",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 73,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/73",
               "tasks": [
                 {
                   "id": "64",
