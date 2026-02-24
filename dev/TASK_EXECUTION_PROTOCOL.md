@@ -97,14 +97,20 @@ Apply the corresponding completion update in one edit run:
 
 Use this procedure before executing tasks for a new feature.
 
-1. `create feature <id>`: create feature node in `dev/map/DEV_MAP.json` using ID format from `dev/map/DEV_MAP_SCHEMA.md`.
+1. `create feature <id>`: register the feature in local and GitHub trackers.
+   - Create feature node in `dev/map/DEV_MAP.json` using ID format from `dev/map/DEV_MAP_SCHEMA.md`.
+   - Create/update feature-level GitHub issue for this feature and assign it to the corresponding GitHub milestone.
+   - Persist feature `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json` in the same change set.
+   - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
+   - Registration-only boundary: do not auto-run `plan`, `approve`, `sync`, `materialize`, or `execute` after `create feature`.
 2. `plan feature <id>`: produce scope, out-of-scope, acceptance criteria, risks, dependencies, decomposition, and write/update the corresponding section in `dev/FEATURE_PLANS.md`.
 3. `approve feature plan`: freeze boundaries from the corresponding section in `dev/FEATURE_PLANS.md`, then set the target feature status to `Approved` in `dev/map/DEV_MAP.json`.
    - Feature status in `dev/map/DEV_MAP.json` is the source of truth for approval gates.
    - If that approved section is edited later, require a new explicit `approve feature plan` and re-set status to `Approved` before continuing.
 4. `sync issues to task list for <id>`: run only if the target feature status in `dev/map/DEV_MAP.json` is `Approved`; then create/update local `Issue -> Task` decomposition and sync it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.md`, and `dev/TASK_EXECUTION_PIPELINE.md`.
 5. Review/refine local issues/tasks with the user until decomposition is final.
-6. `materialize feature <id>`: create/update GitHub feature/work issues strictly from the already-synced local issue structure, assign each issue to the corresponding GitHub milestone, and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
+6. `materialize feature <id>`: create/update GitHub work issues (feature child `Issue` nodes) strictly from the already-synced local issue structure, assign each issue to the corresponding GitHub milestone, and persist issue `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
+   - Feature-level GitHub issue is managed at `create feature <id>` step; during materialization, update it only if metadata/body sync is explicitly required, without creating duplicates.
    - Branch policy (mandatory): use canonical feature branch `feature/<feature_id>`:
      - if local branch exists: checkout it;
      - else if remote `origin/feature/<feature_id>` exists: create local tracking branch and checkout;

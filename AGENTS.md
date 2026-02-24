@@ -40,59 +40,65 @@ Project-level hard constraints for task work in this repository.
 
 ## Feature planning and materialization constraints
 
-1. Feature work must follow this approval-gated sequence:
+1. `create feature <id>` is a standalone registration step:
+   - create a new feature node in `dev/map/DEV_MAP.json` by schema/ID rules;
+   - create/update the corresponding feature-level GitHub issue and assign it to the target GitHub milestone;
+   - persist feature `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json` in the same change set;
+   - do not auto-run planning/materialization/execution steps.
+2. Feature work must follow this approval-gated sequence (only after explicit next commands):
    - `plan feature <id>`
    - `approve feature plan`
    - `sync issues to task list for <id>` (local decomposition only)
    - user review/corrections of local decomposition
    - `materialize feature <id>` (GitHub materialization only)
    - `execute task X` or `execute feature <feature_id>`
-2. Every `plan feature <id>` result must be written to `dev/FEATURE_PLANS.md`; do not keep feature plans only in chat.
-3. In `dev/FEATURE_PLANS.md`, each feature plan must be stored under its own feature ID section and include: scope, out-of-scope, acceptance criteria, risks, dependencies, decomposition.
-4. `approve feature plan` always applies to the corresponding feature section in `dev/FEATURE_PLANS.md` and must set the target feature `status` to `Approved` in `dev/map/DEV_MAP.json`.
-5. Feature `status` in `dev/map/DEV_MAP.json` is the approval source of truth. If status is not `Approved`, no further feature step is allowed (`sync issues to task list`, `materialize feature`, `execute task X`, `execute feature <feature_id>`).
-6. If the approved feature section in `dev/FEATURE_PLANS.md` is changed later, continue only after a new explicit `approve feature plan` and status re-set to `Approved` in `dev/map/DEV_MAP.json`.
-7. `sync issues to task list for <id>` must run only when the target feature status in `dev/map/DEV_MAP.json` is `Approved`, and it must create/update local `Issue -> Task` decomposition in the same change set across:
+3. Every `plan feature <id>` result must be written to `dev/FEATURE_PLANS.md`; do not keep feature plans only in chat.
+4. In `dev/FEATURE_PLANS.md`, each feature plan must be stored under its own feature ID section and include: scope, out-of-scope, acceptance criteria, risks, dependencies, decomposition.
+5. `approve feature plan` always applies to the corresponding feature section in `dev/FEATURE_PLANS.md` and must set the target feature `status` to `Approved` in `dev/map/DEV_MAP.json`.
+6. Feature `status` in `dev/map/DEV_MAP.json` is the approval source of truth. If status is not `Approved`, no further feature step is allowed (`sync issues to task list`, `materialize feature`, `execute task X`, `execute feature <feature_id>`).
+7. If the approved feature section in `dev/FEATURE_PLANS.md` is changed later, continue only after a new explicit `approve feature plan` and status re-set to `Approved` in `dev/map/DEV_MAP.json`.
+8. `sync issues to task list for <id>` must run only when the target feature status in `dev/map/DEV_MAP.json` is `Approved`, and it must create/update local `Issue -> Task` decomposition in the same change set across:
    - `dev/map/DEV_MAP.json` (attach under selected parent chain: `Milestone -> Feature -> Issue` or `Milestone -> StandaloneIssue`),
    - `dev/TASK_LIST.md` (with `[M*][F*]` or `[M*][SI*]` markers),
    - `dev/TASK_EXECUTION_PIPELINE.md` (overlaps/dependencies).
-8. Do not materialize GitHub feature/work issues before explicit plan approval and before local decomposition is synced/reviewed.
-9. During `materialize feature` and `materialize standalone-issue`, create/update GitHub issues strictly from already-defined local issue nodes; do not invent additional decomposition only on GitHub.
-10. During `materialize feature` and `materialize standalone-issue`, every created/updated GitHub issue must be assigned to the corresponding GitHub milestone (not label-only assignment).
-11. If the target GitHub milestone does not exist or cannot be resolved, stop materialization and ask the user to create/select the milestone first.
-12. `sync issues to task list` is mandatory before any related `execute task X`.
-13. ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md` and must be used as-is (`F<local>-M<milestone>`, `I<local>-F<feature_local>-M<milestone>`, `SI<local>-M<milestone>`, global task IDs from `dev/TASK_LIST.md`).
-14. Before creating any new task/issue mapping, always analyze existing features in `dev/map/DEV_MAP.json` and propose candidate bindings to the user (one or more matching feature IDs, or standalone if no suitable feature exists).
-15. Immediately after candidate bindings are prepared, request user binding choice first; do not run extra preparatory checks unrelated to candidate binding before that question.
-16. Binding confirmation is mandatory: do not create/update task, issue, feature, or standalone mapping nodes until the user explicitly chooses the target binding.
-17. After user binding choice, continue only through the normal sync path (`DEV_MAP` + `TASK_LIST` + pipeline overlaps in the same change set).
-18. For standalone (non-product) work, use `Milestone -> StandaloneIssue -> Task` path.
-19. Orphan issues are not allowed: every issue must belong either to a feature (`Issue`) or to a milestone standalone container (`StandaloneIssue`).
-20. Local/GitHub completion is confirmation-gated:
+9. Do not materialize GitHub work issues before explicit plan approval and before local decomposition is synced/reviewed.
+   - Exception: feature-level GitHub issue creation/update is allowed during `create feature <id>`.
+10. During `materialize feature` and `materialize standalone-issue`, create/update GitHub issues strictly from already-defined local issue nodes; do not invent additional decomposition only on GitHub.
+11. During `create feature`, `materialize feature`, and `materialize standalone-issue`, every created/updated GitHub issue must be assigned to the corresponding GitHub milestone (not label-only assignment).
+12. If the target GitHub milestone does not exist or cannot be resolved, stop `create feature`/materialization and ask the user to create/select the milestone first.
+13. `sync issues to task list` is mandatory before any related `execute task X`.
+14. ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md` and must be used as-is (`F<local>-M<milestone>`, `I<local>-F<feature_local>-M<milestone>`, `SI<local>-M<milestone>`, global task IDs from `dev/TASK_LIST.md`).
+15. Before creating any new task/issue mapping, always analyze existing features in `dev/map/DEV_MAP.json` and propose candidate bindings to the user (one or more matching feature IDs, or standalone if no suitable feature exists).
+16. Immediately after candidate bindings are prepared, request user binding choice first; do not run extra preparatory checks unrelated to candidate binding before that question.
+17. Binding confirmation is mandatory: do not create/update task, issue, feature, or standalone mapping nodes until the user explicitly chooses the target binding.
+18. After user binding choice, continue only through the normal sync path (`DEV_MAP` + `TASK_LIST` + pipeline overlaps in the same change set).
+19. For standalone (non-product) work, use `Milestone -> StandaloneIssue -> Task` path.
+20. Orphan issues are not allowed: every issue must belong either to a feature (`Issue`) or to a milestone standalone container (`StandaloneIssue`).
+21. Local/GitHub completion is confirmation-gated:
    - Do not mark local `Issue`/`Feature`/`StandaloneIssue` as `Done` until the user explicitly confirms completion after review.
    - Do not close related GitHub issues before that explicit completion confirmation.
-21. When explicit completion confirmation is given for an `Issue`/`Feature`/`StandaloneIssue`, update local status and close corresponding GitHub issue in the same completion update run.
+22. When explicit completion confirmation is given for an `Issue`/`Feature`/`StandaloneIssue`, update local status and close corresponding GitHub issue in the same completion update run.
    - For `confirm feature <id> done`, also mark all pending child issues/tasks of that feature as `Done`, update synchronized local trackers, and close mapped child GitHub issues in the same run.
-22. GitHub issue content policy for `materialize feature` / `materialize standalone-issue`: write only issue-relevant content (title, scope/problem, planned work/tasks, acceptance context).
-23. In GitHub issue bodies, never include process boilerplate blocks such as `Work issue for ...`, `Source of truth`, `Notes`, protocol reminders, confirmation commands, or any `do not close before ...` wording.
-24. During feature planning and decomposition, enforce minimal-sufficient scope: include only items required to deliver feature behavior and explicit acceptance criteria.
-25. Do not add process artifacts by default (extra checklists, validation gates, signoff docs, protocol docs, contract docs) unless the user explicitly requests them or the feature acceptance criteria explicitly require them.
-26. Prefer updating existing docs/files over creating new standalone documentation files when both options satisfy the same requirement.
-27. If there is any doubt whether a planned item is required, ask the user before adding it to plan/issues/tasks.
-28. Feature branch policy for `materialize feature <id>` is mandatory:
+23. GitHub issue content policy for `materialize feature` / `materialize standalone-issue`: write only issue-relevant content (title, scope/problem, planned work/tasks, acceptance context).
+24. In GitHub issue bodies, never include process boilerplate blocks such as `Work issue for ...`, `Source of truth`, `Notes`, protocol reminders, confirmation commands, or any `do not close before ...` wording.
+25. During feature planning and decomposition, enforce minimal-sufficient scope: include only items required to deliver feature behavior and explicit acceptance criteria.
+26. Do not add process artifacts by default (extra checklists, validation gates, signoff docs, protocol docs, contract docs) unless the user explicitly requests them or the feature acceptance criteria explicitly require them.
+27. Prefer updating existing docs/files over creating new standalone documentation files when both options satisfy the same requirement.
+28. If there is any doubt whether a planned item is required, ask the user before adding it to plan/issues/tasks.
+29. Feature branch policy for `materialize feature <id>` is mandatory:
    - Canonical branch name format: `feature/<feature_id>`.
    - Example: `feature/F1-M1`.
-29. On every `materialize feature <id>`, switch work context to canonical feature branch using this order:
+30. On every `materialize feature <id>`, switch work context to canonical feature branch using this order:
    - if local `feature/<feature_id>` exists: checkout it;
    - else if remote `origin/feature/<feature_id>` exists: create local tracking branch from it and checkout;
    - else: create local branch `feature/<feature_id>` and checkout.
-30. Never create duplicate feature branches for the same feature id (for example, `feature/F1-M1-2`, `feature/F1-M1-new`).
-31. Default scope is one branch per feature; do not create per-issue branches during materialization unless user explicitly requests issue-level branches.
-32. After `materialize feature <id>`, explicitly report active feature branch in the result message using format: `Active feature branch: feature/<feature_id>`.
-33. `dev/map/DEV_MAP.json` feature nodes must store branch linkage fields:
+31. Never create duplicate feature branches for the same feature id (for example, `feature/F1-M1-2`, `feature/F1-M1-new`).
+32. Default scope is one branch per feature; do not create per-issue branches during materialization unless user explicitly requests issue-level branches.
+33. After `materialize feature <id>`, explicitly report active feature branch in the result message using format: `Active feature branch: feature/<feature_id>`.
+34. `dev/map/DEV_MAP.json` feature nodes must store branch linkage fields:
    - `branch_name` (canonical value: `feature/<feature_id>`),
    - `branch_url` (canonical value: `<repo_url>/tree/feature/<feature_id>`).
-34. During `materialize feature <id>`, when branch context is resolved/created, update `branch_name`/`branch_url` for that feature in the same change set as materialization metadata updates.
+35. During `materialize feature <id>`, when branch context is resolved/created, update `branch_name`/`branch_url` for that feature in the same change set as materialization metadata updates.
 
 ## Pipeline constraints
 
