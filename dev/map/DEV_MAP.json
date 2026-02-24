@@ -4,8 +4,8 @@
     "Planned",
     "Done"
   ],
-  "updated_at": "2026-02-23T23:59:00+02:00",
-  "task_count": 58,
+  "updated_at": "2026-02-24T01:57:08+02:00",
+  "task_count": 59,
   "milestones": [
     {
       "id": "M1",
@@ -47,7 +47,25 @@
           "reason": "Validation criterion, not a standalone deliverable feature."
         }
       ],
-      "standalone_issues": []
+      "standalone_issues": [
+        {
+          "id": "SI1-M1",
+          "title": "Materialize DEV_MAP milestones and features to GitHub",
+          "status": "Planned",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "tasks": [
+            {
+              "id": "59",
+              "date": "2026-02-24",
+              "time": "01:57:08",
+              "title": "Materialize roadmap milestones and features from DEV_MAP to GitHub",
+              "status": "Planned",
+              "summary": "Create/sync GitHub milestones using only DEV_MAP milestone/feature texts for descriptions, create high-level feature issues from DEV_MAP text without assigning GitHub milestones to issues, and persist resulting links back into DEV_MAP without task-level decomposition changes."
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "M2",

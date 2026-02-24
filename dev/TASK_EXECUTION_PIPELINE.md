@@ -26,6 +26,8 @@ Use it before implementing any task bundle.
    Add background/atomic cache refresh primitives first, then startup no-downtime hardening, then similarity-cache precompute scoping, then shadow cutover, then blue/green nginx switch automation.
 10. **16**, **11** (docs + docstrings)  
    Finalize documentation polish after behavior/stability changes land.
+11. **59** (materialize DEV_MAP milestones/features to GitHub)  
+   Execute after roadmap structure is stable to avoid repeated milestone/feature rematerialization churn.
 
 ### Functional blocks (aligned with the same order)
 - **Block A: Similarity and recommendation core**
@@ -56,6 +58,10 @@ Use it before implementing any task bundle.
   - Tasks: **16l -> 39 -> 44 -> 56 -> 40**
   - Scope: safe cache refresh/swap runtime behavior (random + similarity), scoped similarity precompute updates, and automated blue/green nginx cutover.
   - Outcome: random/similarity caches refresh via shadow files + atomic swap, updater similarity stage can rewrite scoped cache sources instead of full rebuilds, and deploy script performs blue/green switch on `7070/7071` with health-check gate and rollback.
+- **Block H: Roadmap materialization to GitHub**
+  - Tasks: **59**
+  - Scope: synchronize DEV_MAP high-level planning entities (milestones/features) with GitHub milestones/issues.
+  - Outcome: current DEV_MAP milestones exist on GitHub with descriptions sourced from DEV_MAP milestone/feature text, each feature has one high-level GitHub issue sourced from DEV_MAP text without issue-level milestone assignment, and links are persisted back into DEV_MAP.
 ### Cross-task overlaps and dependencies
 - **1 <-> 2 <-> 33**: all touch video-page similar retrieval/rendering behavior.  
   Backend candidate quality/diversity (**33**) should be stable before final UX behavior (**1**, **2**).
@@ -81,6 +87,7 @@ Use it before implementing any task bundle.
   Zero-downtime cutover (**40**) should be implemented after random-cache startup hardening (**39**).
 - **16 / 11** depend on nearly all feature tasks.  
   Doing them earlier causes repeated rewrites.
+- **59 <-> all planning-structure updates in DEV_MAP**: roadmap materialization should run after structural milestone/feature edits, otherwise created GitHub milestones/issues/descriptions may require immediate re-sync.
 
 ## Multi-task execution protocol
 
