@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-24T18:55:17+02:00",
+  "updated_at": "2026-02-24T19:16:05+02:00",
   "task_count": 69,
   "milestones": [
     {
@@ -101,7 +101,7 @@
         {
           "id": "F4-M1",
           "title": "Automate repeatable workflow and pipeline operations with scripts.",
-          "status": "Planned",
+          "status": "Approved",
           "track": "System/Test",
           "gh_issue_number": 80,
           "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/80",
