@@ -1,125 +1,59 @@
 # Feature Workflow Playbook
 
-Operational command flow for milestone/feature execution.
+Compact command index for milestone/feature operations.
 
-## Command Sequence
+## Scope ownership
+
+- This file is an index only.
+- Canonical command semantics/order are defined in `dev/TASK_EXECUTION_PROTOCOL.md`.
+- Planning-only quality requirements are defined in `dev/FEATURE_PLANNING_PROTOCOL.md`.
+- Hard policy constraints are defined in `AGENTS.md`.
+
+## Canonical command sequence (feature path)
 
 1. `create feature <id>`
 2. `plan feature <id>`
 3. `approve feature plan`
-4. `materialize feature`
-5. `sync issues to task list`
-6. `execute task X`
-7. `confirm feature done`
-8. `confirm milestone done`
+4. `sync issues to task list for <id>`
+5. review/refine local decomposition with user
+6. `materialize feature <id>`
+7. `execute task X` or `execute feature <feature_id>`
+8. `confirm task <task_id> done` / `confirm issue <issue_id> done` / `confirm feature <feature_id> done`
+9. `confirm milestone done`
 
-## Command Contracts
+## Canonical command sequence (standalone path)
 
-## 1) `create feature <id>`
+1. `create standalone-issue <id>`
+2. `plan standalone-issue <id>`
+3. `approve standalone-issue plan`
+4. `sync standalone-issue to task list`
+5. review/refine local decomposition with user
+6. `materialize standalone-issue`
+7. `execute task X`
+8. `confirm standalone-issue <si_id> done`
 
-Purpose:
-- register a new feature node in `dev/map/DEV_MAP.json` under a milestone.
+## Command index
 
-Required updates:
-- `dev/map/DEV_MAP.json`: add feature with status `Planned`, empty issue/task decomposition or draft issue node.
-- feature/issue IDs must follow `dev/map/DEV_MAP_SCHEMA.md`.
+- `create feature <id>`
+  - Purpose: register feature node and feature-level tracker linkage.
+  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
+- `plan feature <id>`
+  - Purpose: produce feature plan artifacts in `dev/FEATURE_PLANS.md`.
+  - Canonical planning requirements: `dev/FEATURE_PLANNING_PROTOCOL.md` -> `Planning Input Contract` + `Planning Quality Gates`.
+- `approve feature plan`
+  - Purpose: approve plan boundaries and unlock sync/materialize path.
+  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
+- `sync issues to task list for <id>`
+  - Purpose: sync local `Issue -> Task` decomposition across `DEV_MAP`/`TASK_LIST`/`PIPELINE`.
+  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
+- `materialize feature <id>`
+  - Purpose: materialize already-synced local issue nodes to GitHub with milestone assignment and branch policy.
+  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
+- `execute task X` / `execute feature <feature_id>`
+  - Purpose: run implementation flow for one task or full feature chain.
+  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Standard execution flow` + `Feature chain execution flow`.
+- `confirm ... done`
+  - Purpose: apply completion updates after explicit user confirmation.
+  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Completion flow`.
 
-Validation before next step:
-- feature id is unique,
-- milestone id exists,
-- status is `Planned`.
-
-## 2) `plan feature <id>`
-
-Purpose:
-- produce an approved-ready execution plan with strict step flow and decomposition assessment.
-
-Required updates:
-- `dev/FEATURE_PLANNING_PROTOCOL.md`: planning artifacts reference/checklist entry (if needed).
-- `dev/map/DEV_MAP.json`: draft issue/task nodes under the feature (status `Planned`).
-
-Validation before next step:
-- strict step flow is explicit (what to run / what script does / what executor does / step result),
-- dependencies are listed,
-- `Issue/Task Decomposition Assessment` is present.
-
-## 3) `approve feature plan`
-
-Purpose:
-- lock the approved step flow and decomposition boundaries.
-
-Required updates:
-- `dev/map/DEV_MAP.json`: set target feature `status` to `Approved`.
-
-Validation before next step:
-- no open planning gaps from protocol gates.
-
-## 4) `materialize feature`
-
-Purpose:
-- create/update GitHub feature/work issues and persist external references.
-
-Required updates:
-- GitHub milestone/issue state,
-- `dev/map/DEV_MAP.json`: write `gh_issue_number` and `gh_issue_url` for feature/work nodes.
- - each materialized GitHub issue must have the corresponding GitHub milestone assigned.
-
-Validation before next step:
-- links exist and point to correct repo/milestone,
-- no orphan issue node without parent feature.
- - milestone assignment is present on all created/updated issues (not label-only).
-
-## 5) `sync issues to task list`
-
-Purpose:
-- synchronize executable tasks and overlap metadata.
-
-Precondition:
-- target feature `status` in `dev/map/DEV_MAP.json` is `Approved`.
-
-Required updates:
-- `dev/TASK_LIST.md`: add/update tasks with `[M*][F*]` markers,
-- `dev/TASK_EXECUTION_PIPELINE.md`: add/update overlaps/dependencies for synced tasks,
-- `dev/map/DEV_MAP.json`: task nodes match current task list ids/titles.
-
-Validation before next step:
-- every mapped task exists in both `dev/map/DEV_MAP.json` and `dev/TASK_LIST.md`,
-- pipeline overlap entries exist for new/changed tasks.
-
-## 6) `execute task X`
-
-Purpose:
-- implementation run for one task.
-
-Preconditions:
-- steps 1-5 complete for the parent feature,
-- task is linked in `dev/map/DEV_MAP.json` and has `[M*][F*]` in `dev/TASK_LIST.md`.
-
-Required updates:
-- implementation files for task X,
-- status updates stay `Planned` until user confirms done.
-
-## 7) `confirm feature done`
-
-Purpose:
-- close feature after review.
-
-Required updates:
-- `dev/map/DEV_MAP.json`: feature/issues/tasks set to `Done`,
-- related status updates remain in `dev/map/DEV_MAP.json` as source of truth.
-
-Validation before next step:
-- all mapped tasks are `Done`,
-- mapped work issues are closed (or completed checklist).
-
-## 8) `confirm milestone done`
-
-Purpose:
-- close milestone after all features are done.
-
-Required updates:
-- no milestone status write (milestone has no `status` field).
-- completion is validated from feature statuses under that milestone.
-
-Validation:
-- all milestone features are `Done`.
+This file must not contain duplicated normative procedure text owned by canonical protocol files.

@@ -1,8 +1,14 @@
 # Feature Planning Protocol
 
-This protocol defines mandatory planning gates before implementation starts.
+This protocol defines planning-only requirements before implementation starts.
 `dev/map/DEV_MAP.json` is the planning source of truth.
 Canonical structure and ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md`.
+
+## Scope ownership
+
+- This file owns planning artifacts and planning quality gates only.
+- Command semantics/order (`create/plan/approve/sync/materialize/execute/confirm`) are owned by `dev/TASK_EXECUTION_PROTOCOL.md`.
+- Hard constraints are owned by `AGENTS.md`.
 
 ## 1) Planning Input Contract
 
@@ -15,7 +21,7 @@ Required input for `plan feature <id>`:
 - `step_flow`: strict command sequence with per-step actions (`what to run`, `what script does`, `what executor does`, `step result`).
 - `issue_task_decomposition_assessment`: explicit assessment whether to split or not split; if split, minimal logical issues/tasks.
 
-Required output:
+Required output in `dev/FEATURE_PLANS.md`:
 - dependencies section for the feature,
 - decomposition section with strict step-by-step flow,
 - `Issue/Task Decomposition Assessment`,
@@ -31,7 +37,7 @@ Required output:
   If parent nodes do not exist yet, create them first using `dev/map/DEV_MAP_SCHEMA.md`.
 - Every task in `dev/TASK_LIST.md` must carry markers `[M*][F*]` that match `dev/map/DEV_MAP.json`.
 
-## 3) Quality Gates
+## 3) Planning Quality Gates
 
 ### Gate A: Pre-approve
 
@@ -41,52 +47,28 @@ Checklist:
 - `Issue/Task Decomposition Assessment` exists,
 - decomposition is minimal-sufficient (no unnecessary splitting).
 
-### Gate B: Pre-materialize
+### Gate B: Pre-sync (local decomposition)
 
-- `approve feature plan` is required.
-- No GitHub issue creation/update before approval.
-- Materialized GitHub issues must be assigned to the target GitHub milestone.
-- If target milestone is missing on GitHub, materialization is blocked until milestone is created/selected.
+Checklist:
+- target feature plan is explicitly approved,
+- decomposition is represented as local `Issue -> Task` structure,
+- planned task markers/ownership are consistent with `DEV_MAP` parent chain,
+- decomposition scope is minimal and executable.
 
-### Gate C: Pre-execute
+### Gate C: Pre-materialize
 
-Before `execute task X`:
-- `dev/map/DEV_MAP.json` has feature/issue/task mapping,
-- `dev/TASK_LIST.md` has synced tasks with `[M*][F*]`,
-- `dev/TASK_EXECUTION_PIPELINE.md` has overlaps/dependencies for those tasks.
+Checklist:
+- local decomposition has been synced and reviewed,
+- GitHub materialization uses only already-defined local issue nodes,
+- every created/updated GitHub issue is assigned to the target milestone,
+- milestone resolution is confirmed before issuing materialization actions.
 
-### Gate D: Pre-done
+## 4) Execution Procedure References
 
-Before `confirm feature done`:
-- mapped work issues are closed (or checklists are complete),
-- mapped tasks are `Done` in `dev/map/DEV_MAP.json`,
-- required validation checks from the approved plan/protocol are green.
+Use canonical execution sections from `dev/TASK_EXECUTION_PROTOCOL.md`:
+- `Feature planning/materialization flow` for command order and command contracts.
+- `Standalone issue flow` for non-product work.
+- `Completion flow` for `confirm ... done` semantics.
+- `New/edited task update flow` for task allocation/sync procedure.
 
-## 4) Completion Semantics
-
-- `confirm feature done`:
-  allowed only when all mapped issues/tasks satisfy Gate D.
-- `confirm milestone done`:
-  allowed only when all milestone features in `dev/map/DEV_MAP.json` are `Done` (milestone completion is derived; no milestone `status` field is stored).
-
-## 5) New Entity Creation Paths
-
-### New task (no new feature)
-
-Allowed direct path:
-1. Add task under existing feature issue in `dev/map/DEV_MAP.json`.
-2. Add/update task in `dev/TASK_LIST.md` with `[M*][F*]`.
-3. Add/update overlaps in `dev/TASK_EXECUTION_PIPELINE.md`.
-
-All three updates must be in one change set.
-
-### New feature
-
-Required command-gated path:
-1. `create feature <id>`
-2. `plan feature <id>`
-3. `approve feature plan`
-4. `materialize feature`
-5. `sync issues to task list`
-
-Only after step 5 is `execute task X` allowed.
+This file must not duplicate those execution procedures.

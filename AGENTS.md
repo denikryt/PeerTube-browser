@@ -2,13 +2,39 @@
 
 Project-level hard constraints for task work in this repository.
 
+## Process document ownership matrix
+
+Use this matrix to avoid responsibility sprawl when process rules are updated.
+
+- `AGENTS.md` (this file): hard policy constraints and non-negotiable gates (`allowed/forbidden`, explicit command requirements, tracking constraints).
+- `dev/TASK_EXECUTION_PROTOCOL.md`: canonical command semantics and command order (execution, completion commands, feature/standalone execution flow).
+- `dev/FEATURE_PLANNING_PROTOCOL.md`: planning-only requirements (planning input contract, decomposition rules, planning quality gates).
+- `dev/FEATURE_WORKFLOW.md`: lightweight command index that links to canonical owners; no standalone normative contracts.
+- `dev/FEATURE_PLANS.md`: storage for feature plan artifacts only; not a procedure/command semantics source.
+
+Conflict handling:
+- For command semantics/order conflicts, `dev/TASK_EXECUTION_PROTOCOL.md` is canonical.
+- For policy gate conflicts (`allowed/forbidden`), `AGENTS.md` is canonical.
+
+Canonical rule map (to prevent duplication drift):
+- Feature and standalone command order/step contracts:
+  owner = `dev/TASK_EXECUTION_PROTOCOL.md`.
+- Completion command semantics (`confirm ... done` cascade behavior):
+  owner = `dev/TASK_EXECUTION_PROTOCOL.md`;
+  policy gate references remain in `AGENTS.md`.
+- Task creation/update procedure (`binding`, `task_count`, `DEV_MAP/TASK_LIST/PIPELINE` sync):
+  owner = `dev/TASK_EXECUTION_PROTOCOL.md`;
+  policy constraints remain in `AGENTS.md`.
+- Planning input/decomposition quality gates:
+  owner = `dev/FEATURE_PLANNING_PROTOCOL.md`.
+
 ## Execution trigger (strict)
 
 1. Do not start implementing any task until the user gives an explicit execution command in one of these exact formats: `execute task X` or `execute feature <feature_id>`.
 2. Any message that does not contain an explicit command in one of these formats (`execute task X`, `execute feature <feature_id>`) is non-execution (clarification, planning, task-text edits, review, or discussion only).
 3. If user intent looks like execution but the command format is not explicit, ask for a direct command in the required format and do not start implementation.
 4. User confirmation that a task is completed is separate from execution start and must still be explicit.
-5. Once execution is allowed, follow `dev/TASK_EXECUTION_PROTOCOL.md` as the only process source of truth.
+5. Once execution is allowed, use `dev/TASK_EXECUTION_PROTOCOL.md` as the source of truth for command semantics/order, and use this file as the source of truth for hard policy constraints.
 6. Exception for corrective fixes: if the user asks to fix a bug/regression introduced by the assistant in already changed files, apply that fix immediately without requiring an execution command; keep the scope strictly limited to correcting that mistake (no new task scope).
 7. Direct `AGENTS.md` maintenance override: when the user explicitly instructs to edit `AGENTS.md`, apply the requested edits immediately, without requiring an execution command.
 8. For direct `AGENTS.md` edit requests, do not block on process-format arguments; execute the edit and report the exact changes.
@@ -23,7 +49,7 @@ Project-level hard constraints for task work in this repository.
 ## Task and tracking state constraints
 
 1. Do not mark any task or task block as completed until the user explicitly confirms completion after review.
-   - `confirm feature <id> done` is treated as explicit confirmation for the whole feature subtree (`Feature -> Issue -> Task`), and must trigger one cascading completion update run for all pending descendants.
+   - Completion command semantics (including cascade behavior such as `confirm feature <id> done`) are defined in `dev/TASK_EXECUTION_PROTOCOL.md` (`Completion flow` section).
 2. Keep implemented tasks in their current state (not completed) while awaiting user verification.
 3. `dev/map/DEV_MAP.json` is the planning source of truth for hierarchy (`Milestone -> Feature -> Issue -> Task` and `Milestone -> StandaloneIssue -> Task`) and for non-milestone status fields.
 4. `dev/TASK_LIST.md`, `dev/TASK_EXECUTION_PIPELINE.md`, and `dev/map/DEV_MAP.json` must stay synchronized when adding/updating tasks/features/standalone issues.
@@ -82,7 +108,7 @@ Project-level hard constraints for task work in this repository.
    - Do not mark local `Issue`/`Feature`/`StandaloneIssue` as `Done` until the user explicitly confirms completion after review.
    - Do not close related GitHub issues before that explicit completion confirmation.
 22. When explicit completion confirmation is given for an `Issue`/`Feature`/`StandaloneIssue`, update local status and close corresponding GitHub issue in the same completion update run.
-   - For `confirm feature <id> done`, also mark all pending child issues/tasks of that feature as `Done`, update synchronized local trackers, and close mapped child GitHub issues in the same run.
+   - Use exact command semantics from `dev/TASK_EXECUTION_PROTOCOL.md` (`Completion flow`) for cascade updates.
 23. GitHub issue content policy for `materialize feature` / `materialize standalone-issue`: write only issue-relevant content (title, scope/problem, planned work/tasks, acceptance context).
 24. In GitHub issue bodies, never include process boilerplate blocks such as `Work issue for ...`, `Source of truth`, `Notes`, protocol reminders, confirmation commands, or any `do not close before ...` wording.
 25. During feature planning and decomposition, enforce minimal-sufficient scope: include only items required to deliver feature behavior and the approved step/decomposition flow.

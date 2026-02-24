@@ -3,6 +3,15 @@
 This file defines only the execution procedure (how to execute tasks).
 Hard constraints (what is allowed/forbidden) are defined in `AGENTS.md`.
 
+## Scope ownership (canonical)
+
+- This file owns command semantics and command order for execution-related flows.
+- `AGENTS.md` owns hard policy constraints and permission gates.
+- `dev/FEATURE_PLANNING_PROTOCOL.md` owns planning-only quality requirements.
+- `dev/FEATURE_WORKFLOW.md` is an index that points to canonical sections and must not duplicate normative contracts.
+
+If any command-order/step-contract wording differs across docs, this file is canonical.
+
 ## Standard execution flow (single task)
 
 Use this procedure after an explicit execution command is given.
