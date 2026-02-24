@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
@@ -101,6 +102,27 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
         help="Apply pipeline section updates from the delta payload.",
     )
     sync_parser.set_defaults(handler=_handle_feature_sync)
+
+    materialize_parser = feature_subparsers.add_parser(
+        "materialize",
+        help="Materialize local feature issues to GitHub and apply canonical branch policy.",
+    )
+    materialize_parser.add_argument("--id", required=True, help="Feature ID.")
+    materialize_parser.add_argument("--write", action="store_true", help="Persist tracker updates and side effects.")
+    materialize_parser.add_argument(
+        "--github",
+        dest="github",
+        action="store_true",
+        default=True,
+        help="Create or update mapped GitHub issues.",
+    )
+    materialize_parser.add_argument(
+        "--no-github",
+        dest="github",
+        action="store_false",
+        help="Skip GitHub issue create/update calls.",
+    )
+    materialize_parser.set_defaults(handler=_handle_feature_materialize)
 
     execution_plan_parser = feature_subparsers.add_parser(
         "execution-plan",
@@ -339,6 +361,89 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
             "task_count_before": task_count_before,
             "task_list_entries_added": task_list_count,
             "update_pipeline": bool(args.update_pipeline),
+            "write": bool(args.write),
+        }
+    )
+    return 0
+
+
+def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> int:
+    """Materialize local feature issue nodes to GitHub with canonical branch policy."""
+    feature_id, feature_milestone_num = _parse_feature_id(args.id)
+    milestone_id = f"M{feature_milestone_num}"
+    dev_map = _load_json(context.dev_map_path)
+    feature_ref = _find_feature(dev_map, feature_id)
+    if feature_ref is None:
+        raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
+
+    feature_node = feature_ref["feature"]
+    feature_status = str(feature_node.get("status", ""))
+    if feature_status != "Approved":
+        raise WorkflowCommandError(
+            f"Feature {feature_id} has status {feature_status}; expected Approved before materialize.",
+            exit_code=4,
+        )
+
+    issue_nodes = feature_node.get("issues", [])
+    if not issue_nodes:
+        raise WorkflowCommandError(
+            f"Feature {feature_id} has no local issue nodes to materialize.",
+            exit_code=4,
+        )
+
+    branch_name = f"feature/{feature_id}"
+    repo_url = _resolve_repository_url(context.root_dir, feature_node)
+    branch_url = _build_branch_url(repo_url, branch_name)
+    if bool(args.write):
+        branch_action = _checkout_canonical_feature_branch(context.root_dir, branch_name)
+    else:
+        branch_action = _plan_canonical_feature_branch(context.root_dir, branch_name)
+
+    materialized_issues: list[dict[str, Any]] = []
+    if bool(args.write) and bool(args.github):
+        github_repo = _resolve_github_repository(context.root_dir)
+        _ensure_github_milestone_exists(github_repo["name_with_owner"], milestone_id)
+        for issue_node in issue_nodes:
+            materialized = _materialize_feature_issue_node(
+                issue_node=issue_node,
+                milestone_id=milestone_id,
+                repo_name_with_owner=github_repo["name_with_owner"],
+                repo_url=_normalize_repository_url(str(github_repo.get("url", ""))),
+            )
+            materialized_issues.append(materialized)
+    else:
+        for issue_node in issue_nodes:
+            issue_id = str(issue_node.get("id", ""))
+            issue_number = issue_node.get("gh_issue_number")
+            issue_url = str(issue_node.get("gh_issue_url", "")).strip() or None
+            materialized_issues.append(
+                {
+                    "action": "would-update" if issue_number else "would-create",
+                    "issue_id": issue_id,
+                    "gh_issue_number": issue_number,
+                    "gh_issue_url": issue_url,
+                }
+            )
+
+    if bool(args.write):
+        feature_node["branch_name"] = branch_name
+        feature_node["branch_url"] = branch_url
+        _touch_updated_at(dev_map)
+        _write_json(context.dev_map_path, dev_map)
+
+    active_branch_message = f"Active feature branch: {branch_name}"
+    emit_json(
+        {
+            "active_feature_branch": branch_name,
+            "active_feature_branch_message": active_branch_message,
+            "branch_action": branch_action,
+            "branch_url": branch_url,
+            "command": "feature.materialize",
+            "feature_id": feature_id,
+            "feature_status": feature_status,
+            "github_enabled": bool(args.github),
+            "issues_materialized": materialized_issues,
+            "milestone_id": milestone_id,
             "write": bool(args.write),
         }
     )
@@ -954,6 +1059,332 @@ def _render_sequence_line(number: int, tasks: list[str], description: str) -> st
     if description:
         return f"{number}. {task_text} ({description})"
     return f"{number}. {task_text}"
+
+
+def _materialize_feature_issue_node(
+    issue_node: dict[str, Any],
+    milestone_id: str,
+    repo_name_with_owner: str,
+    repo_url: str | None,
+) -> dict[str, Any]:
+    """Create or update one GitHub issue from a local DEV_MAP issue node."""
+    issue_id = str(issue_node.get("id", "")).strip()
+    if not issue_id:
+        raise WorkflowCommandError("Feature issue node is missing required id during materialize.", exit_code=4)
+    title = str(issue_node.get("title", "")).strip() or issue_id
+    body = _build_materialized_issue_body(issue_node)
+    issue_number = _coerce_issue_number(issue_node.get("gh_issue_number"), issue_node.get("gh_issue_url"))
+    action = "updated" if issue_number is not None else "created"
+
+    if issue_number is None:
+        created_url = _gh_issue_create(
+            repo_name_with_owner=repo_name_with_owner,
+            title=title,
+            body=body,
+            milestone_id=milestone_id,
+        )
+        parsed_number = _parse_issue_number_from_url(created_url)
+        if parsed_number is None:
+            raise WorkflowCommandError(
+                f"Failed to parse created GitHub issue number from URL: {created_url}",
+                exit_code=5,
+            )
+        issue_number = parsed_number
+        issue_url = created_url
+    else:
+        _gh_issue_edit(
+            repo_name_with_owner=repo_name_with_owner,
+            issue_number=issue_number,
+            title=title,
+            body=body,
+            milestone_id=milestone_id,
+        )
+        issue_url = _build_issue_url(repo_url, issue_number) or str(issue_node.get("gh_issue_url", "")).strip() or None
+
+    issue_node["gh_issue_number"] = issue_number
+    issue_node["gh_issue_url"] = issue_url
+    return {
+        "action": action,
+        "gh_issue_number": issue_number,
+        "gh_issue_url": issue_url,
+        "issue_id": issue_id,
+    }
+
+
+def _build_materialized_issue_body(issue_node: dict[str, Any]) -> str:
+    """Build issue-focused GitHub body from local issue title and mapped tasks."""
+    issue_title = str(issue_node.get("title", "")).strip() or str(issue_node.get("id", "")).strip()
+    tasks = issue_node.get("tasks", [])
+    lines = [
+        "## Scope",
+        issue_title,
+        "",
+        "## Planned work/tasks",
+    ]
+    if isinstance(tasks, list) and tasks:
+        for task in tasks:
+            if not isinstance(task, dict):
+                continue
+            task_id = str(task.get("id", "")).strip()
+            task_title = str(task.get("title", "")).strip()
+            task_summary = str(task.get("summary", "")).strip()
+            checkbox = "x" if str(task.get("status", "")) == "Done" else " "
+            task_label = f"Task {task_id}: {task_title}" if task_id else task_title
+            if task_summary:
+                task_label = f"{task_label} - {task_summary}" if task_label else task_summary
+            lines.append(f"- [{checkbox}] {task_label or 'Task details pending local sync.'}")
+    else:
+        lines.append("- [ ] Local issue has no mapped tasks yet.")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _resolve_github_repository(root_dir: Path) -> dict[str, str]:
+    """Resolve GitHub repository metadata from gh CLI context."""
+    command = ["gh", "repo", "view", "--json", "nameWithOwner,url"]
+    output = _run_checked_command(command, cwd=root_dir, error_prefix="Failed to resolve GitHub repository")
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise WorkflowCommandError(f"Invalid JSON from gh repo view: {error}", exit_code=5) from error
+    name_with_owner = str(payload.get("nameWithOwner", "")).strip()
+    url = str(payload.get("url", "")).strip()
+    if not name_with_owner:
+        raise WorkflowCommandError("gh repo view did not return nameWithOwner.", exit_code=5)
+    return {"name_with_owner": name_with_owner, "url": url}
+
+
+def _ensure_github_milestone_exists(repo_name_with_owner: str, milestone_id: str) -> None:
+    """Require that the target GitHub milestone already exists before materialization."""
+    command = ["gh", "api", f"repos/{repo_name_with_owner}/milestones?state=all&per_page=100"]
+    output = _run_checked_command(
+        command,
+        cwd=None,
+        error_prefix=f"Failed to resolve GitHub milestones for {repo_name_with_owner}",
+    )
+    try:
+        milestones = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise WorkflowCommandError(f"Invalid milestones payload from gh api: {error}", exit_code=5) from error
+    if not isinstance(milestones, list):
+        raise WorkflowCommandError("Unexpected milestones payload format from gh api.", exit_code=5)
+    for milestone in milestones:
+        if str(milestone.get("title", "")).strip() == milestone_id:
+            return
+    raise WorkflowCommandError(
+        f"GitHub milestone {milestone_id} was not found for {repo_name_with_owner}; create/select it before materialize.",
+        exit_code=4,
+    )
+
+
+def _gh_issue_create(
+    repo_name_with_owner: str,
+    title: str,
+    body: str,
+    milestone_id: str,
+) -> str:
+    """Create a GitHub issue and return the created issue URL."""
+    command = [
+        "gh",
+        "issue",
+        "create",
+        "--repo",
+        repo_name_with_owner,
+        "--title",
+        title,
+        "--body",
+        body,
+        "--milestone",
+        milestone_id,
+    ]
+    output = _run_checked_command(command, cwd=None, error_prefix="Failed to create GitHub issue")
+    created_url = output.strip().splitlines()[-1].strip() if output.strip() else ""
+    if not created_url:
+        raise WorkflowCommandError("gh issue create returned empty output.", exit_code=5)
+    return created_url
+
+
+def _gh_issue_edit(
+    repo_name_with_owner: str,
+    issue_number: int,
+    title: str,
+    body: str,
+    milestone_id: str,
+) -> None:
+    """Update an existing GitHub issue title/body/milestone."""
+    command = [
+        "gh",
+        "issue",
+        "edit",
+        str(issue_number),
+        "--repo",
+        repo_name_with_owner,
+        "--title",
+        title,
+        "--body",
+        body,
+        "--milestone",
+        milestone_id,
+    ]
+    _run_checked_command(command, cwd=None, error_prefix=f"Failed to update GitHub issue #{issue_number}")
+
+
+def _run_checked_command(command: list[str], cwd: Path | None, error_prefix: str) -> str:
+    """Run one subprocess command and return stdout or raise workflow error."""
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=str(cwd) if cwd is not None else None,
+    )
+    if result.returncode != 0:
+        details = (result.stderr or result.stdout).strip() or "unknown command error"
+        raise WorkflowCommandError(f"{error_prefix}: {details}", exit_code=5)
+    return result.stdout.strip()
+
+
+def _checkout_canonical_feature_branch(root_dir: Path, branch_name: str) -> str:
+    """Resolve and checkout the canonical feature branch using protocol branch order."""
+    if _git_ref_exists(root_dir, f"refs/heads/{branch_name}"):
+        _run_checked_command(
+            ["git", "checkout", branch_name],
+            cwd=root_dir,
+            error_prefix=f"Failed to checkout existing branch {branch_name}",
+        )
+        return "checked-out-local"
+
+    remote_ref = f"refs/remotes/origin/{branch_name}"
+    if _git_ref_exists(root_dir, remote_ref):
+        _run_checked_command(
+            ["git", "checkout", "-b", branch_name, "--track", f"origin/{branch_name}"],
+            cwd=root_dir,
+            error_prefix=f"Failed to create tracking branch from origin/{branch_name}",
+        )
+        return "created-tracking-from-local-remote-ref"
+
+    remote_heads = _run_checked_command(
+        ["git", "ls-remote", "--heads", "origin", branch_name],
+        cwd=root_dir,
+        error_prefix="Failed to query remote branch heads",
+    )
+    if remote_heads:
+        _run_checked_command(
+            ["git", "checkout", "-b", branch_name, "--track", f"origin/{branch_name}"],
+            cwd=root_dir,
+            error_prefix=f"Failed to create tracking branch from origin/{branch_name}",
+        )
+        return "created-tracking-from-remote"
+
+    _run_checked_command(
+        ["git", "checkout", "-b", branch_name],
+        cwd=root_dir,
+        error_prefix=f"Failed to create branch {branch_name}",
+    )
+    return "created-local"
+
+
+def _plan_canonical_feature_branch(root_dir: Path, branch_name: str) -> str:
+    """Plan canonical branch action without mutating repository state."""
+    if _git_ref_exists(root_dir, f"refs/heads/{branch_name}"):
+        return "would-checkout-local"
+    if _git_ref_exists(root_dir, f"refs/remotes/origin/{branch_name}"):
+        return "would-create-tracking-from-local-remote-ref"
+    return "would-create-local"
+
+
+def _git_ref_exists(root_dir: Path, ref_name: str) -> bool:
+    """Check whether a Git ref exists locally."""
+    result = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", ref_name],
+        check=False,
+        cwd=str(root_dir),
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def _resolve_repository_url(root_dir: Path, feature_node: dict[str, Any]) -> str | None:
+    """Resolve canonical repository URL for branch linkage persistence."""
+    feature_issue_url = str(feature_node.get("gh_issue_url", "")).strip()
+    url_from_feature = _extract_repo_url_from_issue_url(feature_issue_url)
+    if url_from_feature is not None:
+        return url_from_feature
+    for issue in feature_node.get("issues", []):
+        issue_url = str(issue.get("gh_issue_url", "")).strip()
+        url_from_issue = _extract_repo_url_from_issue_url(issue_url)
+        if url_from_issue is not None:
+            return url_from_issue
+    result = subprocess.run(
+        ["git", "config", "--get", "remote.origin.url"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=str(root_dir),
+    )
+    if result.returncode != 0:
+        return None
+    return _normalize_repository_url(result.stdout.strip())
+
+
+def _extract_repo_url_from_issue_url(issue_url: str) -> str | None:
+    """Extract repository web URL from a GitHub issue URL."""
+    match = re.match(r"^(https?://github\.com/[^/]+/[^/]+)/issues/\d+\s*$", issue_url)
+    if match is None:
+        return None
+    return _normalize_repository_url(match.group(1))
+
+
+def _normalize_repository_url(raw_url: str) -> str | None:
+    """Normalize repository remote URL to canonical web URL when possible."""
+    value = raw_url.strip()
+    if not value:
+        return None
+    ssh_match = re.match(r"^git@github\.com:(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$", value)
+    if ssh_match is not None:
+        owner = ssh_match.group("owner")
+        repo = ssh_match.group("repo")
+        return f"https://github.com/{owner}/{repo}"
+    https_match = re.match(r"^(https?://[^ ]+)$", value)
+    if https_match is not None:
+        cleaned = https_match.group(1)
+        if cleaned.endswith(".git"):
+            cleaned = cleaned[:-4]
+        return cleaned.rstrip("/")
+    return None
+
+
+def _build_branch_url(repo_url: str | None, branch_name: str) -> str | None:
+    """Build canonical branch URL from repository URL and branch name."""
+    if not repo_url:
+        return None
+    return f"{repo_url}/tree/{branch_name}"
+
+
+def _coerce_issue_number(raw_number: Any, raw_url: Any) -> int | None:
+    """Normalize issue number from integer field or issue URL fallback."""
+    if isinstance(raw_number, int):
+        return raw_number
+    number_text = str(raw_number or "").strip()
+    if number_text.isdigit():
+        return int(number_text)
+    parsed = _parse_issue_number_from_url(str(raw_url or "").strip())
+    return parsed
+
+
+def _parse_issue_number_from_url(issue_url: str) -> int | None:
+    """Parse trailing issue number from a GitHub issue URL."""
+    match = re.search(r"/issues/(?P<number>\d+)\s*$", issue_url)
+    if match is None:
+        return None
+    return int(match.group("number"))
+
+
+def _build_issue_url(repo_url: str | None, issue_number: int) -> str | None:
+    """Build issue URL from repository URL and issue number."""
+    if not repo_url:
+        return None
+    return f"{repo_url}/issues/{issue_number}"
 
 
 def _normalize_id(raw_id: str) -> str:
