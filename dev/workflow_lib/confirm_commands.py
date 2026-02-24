@@ -522,22 +522,25 @@ def _cleanup_functional_blocks(blocks: list[Any], task_ids_to_remove: set[str]) 
     return cleaned, removed_blocks
 
 
-def _cleanup_overlap_items(items: list[Any], task_ids_to_remove: set[str]) -> tuple[list[dict[str, str]], int]:
+def _cleanup_overlap_items(items: list[Any], task_ids_to_remove: set[str]) -> tuple[list[dict[str, Any]], int]:
     """Remove overlap rows that reference completed task IDs."""
-    cleaned: list[dict[str, str]] = []
+    cleaned: list[dict[str, Any]] = []
     removed_rows = 0
     for item in items:
         if not isinstance(item, dict):
             continue
-        left = str(item.get("left", "")).strip()
-        right = str(item.get("right", "")).strip()
-        if left in task_ids_to_remove or right in task_ids_to_remove:
+        raw_tasks = item.get("tasks", [])
+        if not isinstance(raw_tasks, list):
+            continue
+        overlap_tasks = [str(task_id).strip() for task_id in raw_tasks if str(task_id).strip()]
+        if any(task_id in task_ids_to_remove for task_id in overlap_tasks):
             removed_rows += 1
+            continue
+        if len(overlap_tasks) != 2:
             continue
         cleaned.append(
             {
-                "left": left,
-                "right": right,
+                "tasks": overlap_tasks,
                 "description": str(item.get("description", "")).strip(),
             }
         )

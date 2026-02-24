@@ -79,18 +79,18 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "left",
-          "right",
+          "tasks",
           "description"
         ],
         "properties": {
-          "left": {
-            "type": "string",
-            "minLength": 1
-          },
-          "right": {
-            "type": "string",
-            "minLength": 1
+          "tasks": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           "description": {
             "type": "string",

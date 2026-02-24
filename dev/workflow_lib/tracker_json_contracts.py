@@ -108,8 +108,12 @@ def validate_pipeline_contract_payload(payload: dict[str, Any], location: str) -
     for overlap_index, overlap in enumerate(overlaps):
         if not isinstance(overlap, dict):
             raise WorkflowCommandError(f"{location}: overlaps[{overlap_index}] must be an object.", exit_code=4)
-        _require_non_empty_string(overlap, "left", f"{location}.overlaps[{overlap_index}]")
-        _require_non_empty_string(overlap, "right", f"{location}.overlaps[{overlap_index}]")
+        tasks = _require_non_empty_string_list(overlap, "tasks", f"{location}.overlaps[{overlap_index}]")
+        if len(tasks) != 2:
+            raise WorkflowCommandError(
+                f"{location}: overlaps[{overlap_index}].tasks must contain exactly 2 task IDs.",
+                exit_code=4,
+            )
         _require_non_empty_string(overlap, "description", f"{location}.overlaps[{overlap_index}]")
 
 

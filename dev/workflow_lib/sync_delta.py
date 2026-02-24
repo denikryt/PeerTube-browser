@@ -122,14 +122,19 @@ def resolve_sync_delta_references(
     for overlap_index, overlap in enumerate(pipeline_payload.get("overlaps_append", [])):
         if not isinstance(overlap, dict):
             raise WorkflowCommandError(f"pipeline.overlaps_append[{overlap_index}] must be an object.", exit_code=4)
-        overlap["left"] = collect_reference(
-            overlap.get("left"),
-            f"pipeline.overlaps_append[{overlap_index}].left",
-        )
-        overlap["right"] = collect_reference(
-            overlap.get("right"),
-            f"pipeline.overlaps_append[{overlap_index}].right",
-        )
+        tasks = overlap.get("tasks")
+        if not isinstance(tasks, list) or len(tasks) != 2:
+            raise WorkflowCommandError(
+                f"pipeline.overlaps_append[{overlap_index}].tasks must be a list with exactly 2 task references.",
+                exit_code=4,
+            )
+        overlap["tasks"] = [
+            collect_reference(
+                task_ref,
+                f"pipeline.overlaps_append[{overlap_index}].tasks[{task_index}]",
+            )
+            for task_index, task_ref in enumerate(tasks)
+        ]
 
     if tokens_in_order and not allocate_task_ids:
         joined = ", ".join(tokens_in_order)
@@ -199,5 +204,4 @@ def replace_task_reference_tokens(payload: dict[str, Any], token_to_id: dict[str
     for block in pipeline_payload.get("functional_blocks_append", []):
         block["tasks"] = [token_to_id.get(task_id, task_id) for task_id in block.get("tasks", [])]
     for overlap in pipeline_payload.get("overlaps_append", []):
-        overlap["left"] = token_to_id.get(str(overlap.get("left", "")), str(overlap.get("left", "")))
-        overlap["right"] = token_to_id.get(str(overlap.get("right", "")), str(overlap.get("right", "")))
+        overlap["tasks"] = [token_to_id.get(task_id, task_id) for task_id in overlap.get("tasks", [])]

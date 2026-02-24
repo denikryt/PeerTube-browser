@@ -19,6 +19,10 @@ BLOCK_TITLE_PATTERN = re.compile(r"^- \*\*(?P<title>.+)\*\*$")
 OVERLAP_LINE_PATTERN = re.compile(
     r"^\s*-\s+\*\*(?P<left>[0-9]+[a-z]?)\s*<->\s*(?P<right>[0-9]+[a-z]?)\*\*:\s*(?P<description>.+)\s*$"
 )
+MARKDOWN_LINK_PATTERN = re.compile(r"\[(?P<label>[^\]]+)\]\([^)]+\)")
+MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[(?P<label>[^\]]*)\]\([^)]+\)")
+MARKDOWN_EMPHASIS_PATTERN = re.compile(r"(?<!\w)(\*\*|__|\*|_)(?P<body>[^*_]+)\1(?!\w)")
+MARKDOWN_HEADING_PREFIX_PATTERN = re.compile(r"^(?:>+\s*)?(?:#{1,6}\s+)?")
 
 
 def load_task_list_payload(context: WorkflowContext) -> dict[str, Any]:
@@ -63,7 +67,7 @@ def load_pipeline_payload(context: WorkflowContext) -> dict[str, Any]:
 
 def write_pipeline_payload(context: WorkflowContext, payload: dict[str, Any]) -> None:
     """Persist pipeline payload to canonical JSON path."""
-    _write_json_file(context.pipeline_path, payload)
+    _write_pipeline_json_file(context.pipeline_path, payload)
 
 
 def parse_task_list_markdown(task_list_text: str) -> dict[str, Any]:
@@ -80,21 +84,22 @@ def parse_task_list_markdown(task_list_text: str) -> dict[str, Any]:
         end_line = headings[heading_index + 1][0] if heading_index + 1 < len(headings) else len(lines)
         section_lines = lines[start_line:end_line]
         marker = str(match.group("marker") or "").strip() or "[M?][F?]"
-        title = str(match.group("title") or "").strip()
+        title = _strip_markdown_inline(str(match.group("title") or "").strip())
         problem = _extract_prefixed_line(section_lines, "**Problem:**")
         solution_option = _extract_prefixed_line(section_lines, "**Solution option:**")
         concrete_steps = _extract_numbered_steps(section_lines)
         if not concrete_steps:
             concrete_steps = _extract_solution_details_bullets(section_lines)
+        concrete_steps = [step for step in (_strip_markdown_inline(item) for item in concrete_steps) if step]
         if not concrete_steps:
-            concrete_steps = ["Review legacy TASK_LIST section details."]
+            concrete_steps = [_strip_markdown_inline("Review legacy TASK_LIST section details.")]
         tasks.append(
             {
                 "id": str(match.group("task_id")),
                 "marker": marker,
                 "title": title or str(match.group("task_id")),
-                "problem": problem or "Legacy TASK_LIST task entry.",
-                "solution_option": solution_option or "Legacy TASK_LIST task entry.",
+                "problem": _strip_markdown_inline(problem) or "Legacy TASK_LIST task entry.",
+                "solution_option": _strip_markdown_inline(solution_option) or "Legacy TASK_LIST task entry.",
                 "concrete_steps": concrete_steps,
             }
         )
@@ -170,8 +175,7 @@ def parse_pipeline_markdown(pipeline_text: str) -> dict[str, Any]:
                 continue
             overlaps.append(
                 {
-                    "left": match.group("left").strip(),
-                    "right": match.group("right").strip(),
+                    "tasks": [match.group("left").strip(), match.group("right").strip()],
                     "description": match.group("description").strip(),
                 }
             )
@@ -191,6 +195,24 @@ def _extract_prefixed_line(lines: list[str], prefix: str) -> str:
         if stripped.startswith(prefix):
             return stripped.split(":", 1)[1].strip()
     return ""
+
+
+def _strip_markdown_inline(text: str) -> str:
+    """Normalize simple markdown inline markup to plain text."""
+    value = str(text).strip()
+    if not value:
+        return ""
+    value = MARKDOWN_IMAGE_PATTERN.sub(lambda match: match.group("label"), value)
+    value = MARKDOWN_LINK_PATTERN.sub(lambda match: match.group("label"), value)
+    value = value.replace("`", "")
+    while True:
+        next_value = MARKDOWN_EMPHASIS_PATTERN.sub(lambda match: match.group("body"), value)
+        if next_value == value:
+            break
+        value = next_value
+    value = value.replace("**", "").replace("__", "")
+    value = MARKDOWN_HEADING_PREFIX_PATTERN.sub("", value, count=1)
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def _extract_numbered_steps(lines: list[str]) -> list[str]:
@@ -280,3 +302,38 @@ def _write_json_file(path: Any, payload: dict[str, Any]) -> None:
     """Persist one JSON file with stable formatting."""
     path.write_text(f"{json.dumps(payload, indent=2, ensure_ascii=False)}\n", encoding="utf-8")
 
+
+def _write_pipeline_json_file(path: Any, payload: dict[str, Any]) -> None:
+    """Persist pipeline JSON with single-line task arrays for readability."""
+    formatted = json.dumps(payload, indent=2, ensure_ascii=False)
+    path.write_text(f"{_inline_tasks_arrays(formatted)}\n", encoding="utf-8")
+
+
+def _inline_tasks_arrays(formatted_json: str) -> str:
+    """Collapse every JSON `tasks` array block into one line."""
+    lines = formatted_json.splitlines()
+    rendered: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.strip() != '"tasks": [':
+            rendered.append(line)
+            index += 1
+            continue
+
+        indent = line[: len(line) - len(line.lstrip())]
+        values: list[str] = []
+        index += 1
+        while index < len(lines):
+            current = lines[index]
+            stripped = current.strip()
+            if stripped.startswith("]"):
+                trailing = "," if stripped.endswith(",") else ""
+                rendered.append(f'{indent}"tasks": [{", ".join(values)}]{trailing}')
+                index += 1
+                break
+            item = stripped[:-1].strip() if stripped.endswith(",") else stripped
+            if item:
+                values.append(item)
+            index += 1
+    return "\n".join(rendered)

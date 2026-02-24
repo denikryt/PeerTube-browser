@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .errors import WorkflowCommandError
+
+MARKDOWN_LINK_PATTERN = re.compile(r"\[(?P<label>[^\]]+)\]\([^)]+\)")
+MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[(?P<label>[^\]]*)\]\([^)]+\)")
+MARKDOWN_EMPHASIS_PATTERN = re.compile(r"(?<!\w)(\*\*|__|\*|_)(?P<body>[^*_]+)\1(?!\w)")
 
 
 def apply_task_list_delta(
@@ -120,10 +125,19 @@ def apply_pipeline_delta(
                 f"pipeline.overlaps_append[{overlap_index}] must be an object.",
                 exit_code=4,
             )
+        overlap_tasks = _required_list_field(
+            overlap,
+            "tasks",
+            f"pipeline.overlaps_append[{overlap_index}]",
+        )
+        if len(overlap_tasks) != 2:
+            raise WorkflowCommandError(
+                f"pipeline.overlaps_append[{overlap_index}].tasks must contain exactly 2 task IDs.",
+                exit_code=4,
+            )
         appended_overlaps.append(
             {
-                "left": _required_string_field(overlap, "left", f"pipeline.overlaps_append[{overlap_index}]"),
-                "right": _required_string_field(overlap, "right", f"pipeline.overlaps_append[{overlap_index}]"),
+                "tasks": overlap_tasks,
                 "description": _required_string_field(
                     overlap,
                     "description",
@@ -146,13 +160,25 @@ def apply_pipeline_delta(
 
 def _normalize_task_list_entry(task_id: str, marker: str, entry: dict[str, Any], entry_index: int) -> dict[str, Any]:
     """Normalize one task-list entry into canonical JSON structure."""
+    normalized_steps = [
+        _strip_markdown_inline(step)
+        for step in _required_list_field(entry, "concrete_steps", f"task_list_entries[{entry_index}]")
+    ]
+    normalized_steps = [step for step in normalized_steps if step]
+    if not normalized_steps:
+        raise WorkflowCommandError(
+            f"task_list_entries[{entry_index}].concrete_steps must contain at least one non-empty step.",
+            exit_code=4,
+        )
     return {
         "id": task_id,
         "marker": marker,
-        "title": _required_string_field(entry, "title", f"task_list_entries[{entry_index}]"),
-        "problem": _required_string_field(entry, "problem", f"task_list_entries[{entry_index}]"),
-        "solution_option": _required_string_field(entry, "solution_option", f"task_list_entries[{entry_index}]"),
-        "concrete_steps": _required_list_field(entry, "concrete_steps", f"task_list_entries[{entry_index}]"),
+        "title": _strip_markdown_inline(_required_string_field(entry, "title", f"task_list_entries[{entry_index}]")),
+        "problem": _strip_markdown_inline(_required_string_field(entry, "problem", f"task_list_entries[{entry_index}]")),
+        "solution_option": _strip_markdown_inline(
+            _required_string_field(entry, "solution_option", f"task_list_entries[{entry_index}]")
+        ),
+        "concrete_steps": normalized_steps,
     }
 
 
@@ -177,3 +203,19 @@ def _required_list_field(payload: dict[str, Any], key: str, location: str) -> li
         normalized.append(item)
     return normalized
 
+
+def _strip_markdown_inline(text: str) -> str:
+    """Normalize simple markdown inline markup to plain text."""
+    value = str(text).strip()
+    if not value:
+        return ""
+    value = MARKDOWN_IMAGE_PATTERN.sub(lambda match: match.group("label"), value)
+    value = MARKDOWN_LINK_PATTERN.sub(lambda match: match.group("label"), value)
+    value = value.replace("`", "")
+    while True:
+        next_value = MARKDOWN_EMPHASIS_PATTERN.sub(lambda match: match.group("body"), value)
+        if next_value == value:
+            break
+        value = next_value
+    value = value.replace("**", "").replace("__", "")
+    return re.sub(r"\s+", " ", value).strip()

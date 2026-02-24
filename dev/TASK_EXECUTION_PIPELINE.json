@@ -1,0 +1,171 @@
+{
+  "schema_version": "1.0",
+  "execution_sequence": [
+    {
+      "tasks": ["37"],
+      "description": "stable ANN IDs: `video_id+host -> int64`"
+    },
+    {
+      "tasks": ["33"],
+      "description": "video-page similars diversity + larger pools"
+    },
+    {
+      "tasks": ["3"],
+      "description": "video metadata completeness + refresh mutable fields"
+    },
+    {
+      "tasks": ["1", "2"],
+      "description": "video-page UX flow for similars"
+    },
+    {
+      "tasks": ["4", "9", "9b"],
+      "description": "description + single-like removal"
+    },
+    {
+      "tasks": ["12a", "8b"],
+      "description": "popular weighted-random + feed modes"
+    },
+    {
+      "tasks": ["10", "8c"],
+      "description": "about outbound analytics"
+    },
+    {
+      "tasks": ["41", "38", "43"],
+      "description": "timestamped lifecycle logs + request correlation + static-page visit logs"
+    },
+    {
+      "tasks": ["16l", "39", "44", "56", "40"],
+      "description": "cache runtime safety + similarity precompute scope + shadow swap + zero-downtime deploy"
+    },
+    {
+      "tasks": ["16", "11"],
+      "description": "docs + docstrings"
+    },
+    {
+      "tasks": ["70", "71", "72", "73"],
+      "description": "workflow CLI + sync/materialize/confirm automation"
+    },
+    {
+      "tasks": ["81", "82", "83", "84"],
+      "description": "JSON tracker migration for workflow runtime"
+    }
+  ],
+  "functional_blocks": [
+    {
+      "title": "Block A: Similarity and recommendation core",
+      "tasks": ["37", "33", "12a"],
+      "scope": "ANN/similarity defaults, impacted recompute, upnext diversity, popular-layer sampling quality.",
+      "outcome": "ANN switches to stable `ann_id` mapping, upnext refresh stops repeating the same 8 cards, and popular feed uses weighted-random by similarity instead of flat random sampling."
+    },
+    {
+      "title": "Block B: Video page data + UX behavior",
+      "tasks": ["3", "1", "2", "4", "9", "9b"],
+      "scope": "metadata completeness, fast similar rendering, comments, profile/likes interactions.",
+      "outcome": "video page loads similars immediately (without waiting for remote metadata), renders progressive similars from one larger batch on scroll, shows tags/category with mutable-field refresh, supports read-only comments with pagination, has collapsible description, and allows removing one like instead of only full reset."
+    },
+    {
+      "title": "Block C: Feed and discovery product features",
+      "tasks": ["8b", "10", "15"],
+      "scope": "feed modes, search UX/API, crawler seed mode from one instance/subscriptions.",
+      "outcome": "home page gets explicit feed mode switch (`recommendations/hot/recent/random/popular`), backend exposes video search API (`/api/search/videos` with paging/sort), and crawler can start from one `--seed-instance` and expand through federated subscriptions."
+    },
+    {
+      "title": "Block D: Analytics and style infrastructure",
+      "tasks": ["8c", "8"],
+      "scope": "outbound click analytics and optional styling-system consolidation.",
+      "outcome": "About-page outbound links send tracked events to a dedicated API endpoint and SQLite analytics table (with validation/rate-limit path), while repeated styling patterns can be migrated to a shared Tailwind-based system for new blocks."
+    },
+    {
+      "title": "Block E: Documentation and maintenance",
+      "tasks": ["16", "11"],
+      "scope": "recommendations docs alignment and missing docstrings.",
+      "outcome": "`RECOMMENDATIONS_OVERVIEW` is aligned with actual runtime pipeline (candidate generation/mixing/filters), and touched modules/functions/classes have explicit docstrings so behavior is readable without code archaeology."
+    },
+    {
+      "title": "Block F: Logging and observability",
+      "tasks": ["41", "38", "43"],
+      "scope": "explicit timestamped request logs, request-id correlation across request lifecycle, and static-page visit visibility for About/static informational pages.",
+      "outcome": "every API request gets `request-start -> work logs -> request-end` with one shared `request_id` and explicit timestamp format, and nginx adds dedicated visit logs for static informational routes with request-correlation-compatible fields."
+    },
+    {
+      "title": "Block G: Runtime reliability and operations",
+      "tasks": ["16l", "39", "44", "56", "40"],
+      "scope": "safe cache refresh/swap runtime behavior (random + similarity), scoped similarity precompute updates, and automated blue/green nginx cutover.",
+      "outcome": "random/similarity caches refresh via shadow files + atomic swap, updater similarity stage can rewrite scoped cache sources instead of full rebuilds, and deploy script performs blue/green switch on `7070/7071` with health-check gate and rollback."
+    },
+    {
+      "title": "Block H: Workflow automation for planning/materialization execution",
+      "tasks": ["70", "71", "72", "73"],
+      "scope": "unified workflow CLI, feature lifecycle base commands, tracker sync+validation automation, and completion/materialization command contracts.",
+      "outcome": "the process flow (`create/plan/approve/sync/materialize/execute/confirm`) runs through `dev/workflow` with deterministic tracker updates, `task_count`-based ID allocation, canonical feature branch handling, and confirmation cascade with GitHub close."
+    },
+    {
+      "title": "Block I: Workflow tracker JSON migration",
+      "tasks": ["81", "82", "83", "84"],
+      "scope": "Replace Markdown-based tracker runtime paths with canonical JSON storage without changing workflow command semantics.",
+      "outcome": "Workflow commands operate on JSON-only task list/pipeline trackers with validated schema, migrated data, and updated smoke/protocol coverage."
+    }
+  ],
+  "overlaps": [
+    {
+      "tasks": ["8b", "12a"],
+      "description": "both touch popular layer output behavior."
+    },
+    {
+      "tasks": ["41", "38"],
+      "description": "same logging contract and request context propagation."
+    },
+    {
+      "tasks": ["38", "43"],
+      "description": "both rely on cross-log correlation (`request_id`, timestamp conventions, runbook)."
+    },
+    {
+      "tasks": ["8c", "43"],
+      "description": "both touch About-page observability and can overlap in intent (analytics vs logging)."
+    },
+    {
+      "tasks": ["38", "40"],
+      "description": "both touch nginx-facing request metadata (`X-Request-ID` propagation and operational config)."
+    },
+    {
+      "tasks": ["16l", "39"],
+      "description": "same random-cache runtime path (background refresh, atomic swap, locks)."
+    },
+    {
+      "tasks": ["39", "44"],
+      "description": "same operational primitives (shadow file build, atomic swap, lock-scoped reconnect)."
+    },
+    {
+      "tasks": ["44", "56"],
+      "description": "both touch updater similarity stage and cache rewrite behavior."
+    },
+    {
+      "tasks": ["44", "40"],
+      "description": "deploy orchestration and cache cutover both affect runtime availability windows."
+    },
+    {
+      "tasks": ["39", "40"],
+      "description": "deploy safety depends on fast readiness and warm startup behavior."
+    },
+    {
+      "tasks": ["70", "71"],
+      "description": "command parser contract and feature command handlers share one CLI argument model."
+    },
+    {
+      "tasks": ["72", "73"],
+      "description": "sync write path and validation/ID-allocation rules must use one tracker model."
+    },
+    {
+      "tasks": ["81", "82"],
+      "description": "Reader/writer refactor depends on finalized JSON schema and field names."
+    },
+    {
+      "tasks": ["82", "83"],
+      "description": "Migration tooling must target the same runtime JSON structures used by command handlers."
+    },
+    {
+      "tasks": ["83", "84"],
+      "description": "Protocol and smoke updates must document/validate final migrated JSON workflow behavior."
+    }
+  ]
+}
