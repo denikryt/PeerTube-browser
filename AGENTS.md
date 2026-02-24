@@ -79,6 +79,20 @@ Project-level hard constraints for task work in this repository.
 25. Do not add process artifacts by default (extra checklists, validation gates, signoff docs, protocol docs, contract docs) unless the user explicitly requests them or the feature acceptance criteria explicitly require them.
 26. Prefer updating existing docs/files over creating new standalone documentation files when both options satisfy the same requirement.
 27. If there is any doubt whether a planned item is required, ask the user before adding it to plan/issues/tasks.
+28. Feature branch policy for `materialize feature <id>` is mandatory:
+   - Canonical branch name format: `feature/<feature_id>`.
+   - Example: `feature/F1-M1`.
+29. On every `materialize feature <id>`, switch work context to canonical feature branch using this order:
+   - if local `feature/<feature_id>` exists: checkout it;
+   - else if remote `origin/feature/<feature_id>` exists: create local tracking branch from it and checkout;
+   - else: create local branch `feature/<feature_id>` and checkout.
+30. Never create duplicate feature branches for the same feature id (for example, `feature/F1-M1-2`, `feature/F1-M1-new`).
+31. Default scope is one branch per feature; do not create per-issue branches during materialization unless user explicitly requests issue-level branches.
+32. After `materialize feature <id>`, explicitly report active feature branch in the result message using format: `Active feature branch: feature/<feature_id>`.
+33. `dev/map/DEV_MAP.json` feature nodes must store branch linkage fields:
+   - `branch_name` (canonical value: `feature/<feature_id>`),
+   - `branch_url` (canonical value: `<repo_url>/tree/feature/<feature_id>`).
+34. During `materialize feature <id>`, when branch context is resolved/created, update `branch_name`/`branch_url` for that feature in the same change set as materialization metadata updates.
 
 ## Pipeline constraints
 

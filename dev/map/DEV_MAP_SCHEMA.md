@@ -58,6 +58,17 @@ Task node in `DEV_MAP` must carry these fields:
 - `title`: short task title
 - `summary`: detailed task description
 
+## Feature Node Contract
+
+Feature node in `DEV_MAP` must carry these fields:
+- `id`: feature id (`F<local>-M<milestone>`)
+- `title`: feature title
+- `status`: `Planned` | `Approved` | `Done`
+- `gh_issue_number`: mapped feature-level GitHub issue number or `null`
+- `gh_issue_url`: mapped feature-level GitHub issue URL or `null`
+- `branch_name`: canonical feature branch name `feature/<feature_id>` or `null`
+- `branch_url`: canonical feature branch URL `<repo_url>/tree/feature/<feature_id>` or `null`
+
 ## Example A: Current minimal state (milestones only)
 
 ```json
@@ -121,6 +132,8 @@ Task node in `DEV_MAP` must carry these fields:
           "note": null,
           "gh_issue_number": null,
           "gh_issue_url": null,
+          "branch_name": null,
+          "branch_url": null,
           "issues": [
             {
               "id": "I1-F1-M1",

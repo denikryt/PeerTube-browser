@@ -105,6 +105,16 @@ Use this procedure before executing tasks for a new feature.
 4. `sync issues to task list for <id>`: run only if the target feature status in `dev/map/DEV_MAP.json` is `Approved`; then create/update local `Issue -> Task` decomposition and sync it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.md`, and `dev/TASK_EXECUTION_PIPELINE.md`.
 5. Review/refine local issues/tasks with the user until decomposition is final.
 6. `materialize feature <id>`: create/update GitHub feature/work issues strictly from the already-synced local issue structure, assign each issue to the corresponding GitHub milestone, and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
+   - Branch policy (mandatory): use canonical feature branch `feature/<feature_id>`:
+     - if local branch exists: checkout it;
+     - else if remote `origin/feature/<feature_id>` exists: create local tracking branch and checkout;
+     - else: create local branch `feature/<feature_id>` and checkout.
+   - Never create duplicate branches for the same feature id (for example `feature/F1-M1-2`).
+   - Default: one branch per feature; create issue-level branches only by explicit user request.
+   - Persist branch linkage on target feature node in `dev/map/DEV_MAP.json`:
+     - `branch_name = feature/<feature_id>`,
+     - `branch_url = <repo_url>/tree/feature/<feature_id>` (or `null` if repository URL cannot be resolved).
+   - Include branch context in result message: `Active feature branch: feature/<feature_id>`.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
    - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
    - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
