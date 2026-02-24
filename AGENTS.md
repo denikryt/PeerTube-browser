@@ -53,7 +53,11 @@ Project-level hard constraints for task work in this repository.
    - `materialize feature <id>` (GitHub materialization only)
    - `execute task X` or `execute feature <feature_id>`
 3. Every `plan feature <id>` result must be written to `dev/FEATURE_PLANS.md`; do not keep feature plans only in chat.
-4. In `dev/FEATURE_PLANS.md`, each feature plan must be stored under its own feature ID section and include: scope, out-of-scope, acceptance criteria, risks, dependencies, decomposition.
+4. In `dev/FEATURE_PLANS.md`, each feature plan must be stored under its own feature ID section and include:
+   - dependencies,
+   - decomposition (strict step-by-step command flow),
+   - `Issue/Task Decomposition Assessment`.
+   Do not require `Scope`, `Out-of-scope`, `Acceptance criteria`, or `Risks` sections unless the user explicitly asks for them.
 5. `approve feature plan` always applies to the corresponding feature section in `dev/FEATURE_PLANS.md` and must set the target feature `status` to `Approved` in `dev/map/DEV_MAP.json`.
 6. Feature `status` in `dev/map/DEV_MAP.json` is the approval source of truth. If status is not `Approved`, no further feature step is allowed (`sync issues to task list`, `materialize feature`, `execute task X`, `execute feature <feature_id>`).
 7. If the approved feature section in `dev/FEATURE_PLANS.md` is changed later, continue only after a new explicit `approve feature plan` and status re-set to `Approved` in `dev/map/DEV_MAP.json`.
@@ -81,8 +85,8 @@ Project-level hard constraints for task work in this repository.
    - For `confirm feature <id> done`, also mark all pending child issues/tasks of that feature as `Done`, update synchronized local trackers, and close mapped child GitHub issues in the same run.
 23. GitHub issue content policy for `materialize feature` / `materialize standalone-issue`: write only issue-relevant content (title, scope/problem, planned work/tasks, acceptance context).
 24. In GitHub issue bodies, never include process boilerplate blocks such as `Work issue for ...`, `Source of truth`, `Notes`, protocol reminders, confirmation commands, or any `do not close before ...` wording.
-25. During feature planning and decomposition, enforce minimal-sufficient scope: include only items required to deliver feature behavior and explicit acceptance criteria.
-26. Do not add process artifacts by default (extra checklists, validation gates, signoff docs, protocol docs, contract docs) unless the user explicitly requests them or the feature acceptance criteria explicitly require them.
+25. During feature planning and decomposition, enforce minimal-sufficient scope: include only items required to deliver feature behavior and the approved step/decomposition flow.
+26. Do not add process artifacts by default (extra checklists, validation gates, signoff docs, protocol docs, contract docs) unless the user explicitly requests them or the approved feature plan structure explicitly requires them.
 27. Prefer updating existing docs/files over creating new standalone documentation files when both options satisfy the same requirement.
 28. If there is any doubt whether a planned item is required, ask the user before adding it to plan/issues/tasks.
 29. Feature branch policy for `materialize feature <id>` is mandatory:

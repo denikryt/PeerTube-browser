@@ -10,17 +10,16 @@ Required input for `plan feature <id>`:
 - `feature_id`: stable feature id in schema format (for example `F1-M1`).
 - `feature_title`: short title.
 - `milestone_id`: target milestone (`M1..Mn`).
-- `scope`: in-scope behavior and boundaries.
-- `out_of_scope`: explicitly excluded behavior.
 - `dependencies`: task/feature/issue dependencies.
 - `overlaps`: affected tasks in `dev/TASK_EXECUTION_PIPELINE.md`.
+- `step_flow`: strict command sequence with per-step actions (`what to run`, `what script does`, `what executor does`, `step result`).
+- `issue_task_decomposition_assessment`: explicit assessment whether to split or not split; if split, minimal logical issues/tasks.
 
 Required output:
-- draft decomposition (`Feature -> Issue(s) -> Task(s)`),
-- acceptance criteria,
-- risk list,
-- validation strategy,
-- rollback notes.
+- dependencies section for the feature,
+- decomposition section with strict step-by-step flow,
+- `Issue/Task Decomposition Assessment`,
+- draft decomposition (`Feature -> Issue(s) -> Task(s)`) only if splitting is actually needed.
 
 ## 2) Decomposition Rules
 
@@ -37,10 +36,10 @@ Required output:
 ### Gate A: Pre-approve
 
 Checklist:
-- scope and out-of-scope are explicit,
-- decomposition exists,
-- acceptance criteria are measurable,
-- risks and rollback are defined.
+- strict step flow exists and is executable,
+- manual vs script responsibilities are explicit for each step,
+- `Issue/Task Decomposition Assessment` exists,
+- decomposition is minimal-sufficient (no unnecessary splitting).
 
 ### Gate B: Pre-materialize
 
@@ -61,7 +60,7 @@ Before `execute task X`:
 Before `confirm feature done`:
 - mapped work issues are closed (or checklists are complete),
 - mapped tasks are `Done` in `dev/map/DEV_MAP.json`,
-- acceptance criteria validation is green.
+- required validation checks from the approved plan/protocol are green.
 
 ## 4) Completion Semantics
 

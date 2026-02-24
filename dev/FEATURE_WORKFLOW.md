@@ -32,21 +32,21 @@ Validation before next step:
 ## 2) `plan feature <id>`
 
 Purpose:
-- produce approved-ready decomposition and acceptance plan.
+- produce an approved-ready execution plan with strict step flow and decomposition assessment.
 
 Required updates:
 - `dev/FEATURE_PLANNING_PROTOCOL.md`: planning artifacts reference/checklist entry (if needed).
 - `dev/map/DEV_MAP.json`: draft issue/task nodes under the feature (status `Planned`).
 
 Validation before next step:
-- scope/out-of-scope is explicit,
-- acceptance criteria is measurable,
-- risks/dependencies are listed.
+- strict step flow is explicit (what to run / what script does / what executor does / step result),
+- dependencies are listed,
+- `Issue/Task Decomposition Assessment` is present.
 
 ## 3) `approve feature plan`
 
 Purpose:
-- lock scope and decomposition boundaries.
+- lock the approved step flow and decomposition boundaries.
 
 Required updates:
 - `dev/map/DEV_MAP.json`: set target feature `status` to `Approved`.
