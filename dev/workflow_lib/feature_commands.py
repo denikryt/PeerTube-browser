@@ -121,6 +121,10 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
         help="Materialize local feature issues to GitHub and apply canonical branch policy.",
     )
     materialize_parser.add_argument("--id", required=True, help="Feature ID.")
+    materialize_parser.add_argument(
+        "--issue-id",
+        help="Optional child issue ID filter to materialize only one issue node.",
+    )
     materialize_parser.add_argument("--write", action="store_true", help="Persist tracker updates and side effects.")
     materialize_parser.add_argument(
         "--github",
@@ -452,6 +456,18 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             f"Feature {feature_id} has no local issue nodes to materialize.",
             exit_code=4,
         )
+    issue_id_filter = _resolve_materialize_issue_filter(args.issue_id)
+    if issue_id_filter is not None:
+        issue_nodes = [
+            issue_node
+            for issue_node in issue_nodes
+            if _normalize_id(str(issue_node.get("id", ""))) == issue_id_filter
+        ]
+        if not issue_nodes:
+            raise WorkflowCommandError(
+                f"Issue {issue_id_filter} was not found in feature {feature_id}.",
+                exit_code=4,
+            )
 
     branch_name = f"feature/{feature_id}"
     repo_url = _resolve_repository_url(context.root_dir, feature_node)
@@ -508,6 +524,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             "feature_id": feature_id,
             "feature_status": feature_status,
             "github_enabled": bool(args.github),
+            "issue_id_filter": issue_id_filter,
             "issues_materialized": materialized_issues,
             "github_milestone_title": milestone_title,
             "milestone_id": milestone_id,
@@ -557,6 +574,19 @@ def _parse_feature_local_num(feature_id: str) -> int:
     if match is None:
         raise WorkflowCommandError(f"Cannot parse feature local number from {feature_id}.", exit_code=4)
     return int(match.group("feature_num"))
+
+
+def _resolve_materialize_issue_filter(raw_issue_id: Any) -> str | None:
+    """Normalize optional issue filter for feature materialize command."""
+    if raw_issue_id is None:
+        return None
+    issue_id = _normalize_id(str(raw_issue_id))
+    if ISSUE_ID_PATTERN.fullmatch(issue_id) is None:
+        raise WorkflowCommandError(
+            f"Invalid --issue-id value {raw_issue_id!r}; expected I<local>-F<feature_local>-M<milestone>.",
+            exit_code=4,
+        )
+    return issue_id
 
 
 def _collect_task_locations(dev_map: dict[str, Any]) -> dict[str, str]:
