@@ -1191,7 +1191,9 @@ assert_file_contains "description-body-materialize-description" "${DESCRIPTION_B
 assert_file_not_contains "description-body-materialize-no-scope" "${DESCRIPTION_BODY_FILE}" "## Scope"
 assert_file_not_contains "description-body-materialize-no-tasks-section" "${DESCRIPTION_BODY_FILE}" "## Planned work/tasks"
 assert_file_not_contains "description-body-materialize-no-checkbox" "${DESCRIPTION_BODY_FILE}" "- [ ]"
-assert_file_contains "description-body-feature-related-issues" "${DESCRIPTION_FEATURE_BODY_FILE}" "Related issues:"
+assert_file_contains "description-body-feature-description" "${DESCRIPTION_FEATURE_BODY_FILE}" "This feature addresses"
+assert_file_not_contains "description-body-feature-no-related-issues" "${DESCRIPTION_FEATURE_BODY_FILE}" "Related issues:"
+assert_file_not_contains "description-body-feature-no-child-issue-title" "${DESCRIPTION_FEATURE_BODY_FILE}" "I1-F1-M1:"
 assert_file_not_contains "description-body-feature-no-checkbox" "${DESCRIPTION_FEATURE_BODY_FILE}" "- [ ]"
 run_expect_success \
   "description-body-confirm-issue-done" \

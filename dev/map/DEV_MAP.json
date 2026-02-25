@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T01:42:35+02:00",
+  "updated_at": "2026-02-26T01:55:39+02:00",
   "task_count": 140,
   "milestones": [
     {
@@ -19,6 +19,7 @@
         {
           "id": "F1-M1",
           "title": "Close remaining Engine/Client separation points and formally fix module boundaries.",
+          "description": "This feature introduces close remaining Engine/Client separation points and formally fix module boundaries and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Done",
           "track": "Engine",
           "gh_issue_number": 77,
@@ -85,6 +86,7 @@
         {
           "id": "F2-M1",
           "title": "Formalize the Client <-> Engine API contract in a separate specification and make it the source of truth.",
+          "description": "This feature introduces formalize the Client <-> Engine API contract in a separate specification and make it the source of truth and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -96,6 +98,7 @@
         {
           "id": "F3-M1",
           "title": "Lock and document the baseline Client <-> Engine integration contract (validation, error handling, proxy behavior).",
+          "description": "This feature introduces lock and document the baseline Client <-> Engine integration contract (validation, error handling, proxy behavior) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -107,6 +110,7 @@
         {
           "id": "F4-M1",
           "title": "Automate repeatable workflow and pipeline operations with scripts.",
+          "description": "This feature introduces automate repeatable workflow and pipeline operations with scripts and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Approved",
           "track": "System/Test",
           "gh_issue_number": 80,
@@ -967,6 +971,7 @@
         {
           "id": "F1-M2",
           "title": "Migrate to video-ID-based indexing (top priority).",
+          "description": "This feature introduces migrate to video-ID-based indexing (top priority) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -978,6 +983,7 @@
         {
           "id": "F2-M2",
           "title": "Adapt the existing full index rebuild mechanism to video ID.",
+          "description": "This feature introduces adapt the existing full index rebuild mechanism to video ID and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -989,6 +995,7 @@
         {
           "id": "F3-M2",
           "title": "Implement/adapt incremental vector and index recomputation for the new scheme.",
+          "description": "This feature introduces implement/adapt incremental vector and index recomputation for the new scheme and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1000,6 +1007,7 @@
         {
           "id": "F4-M2",
           "title": "Ensure correct content deletion without full index rebuild.",
+          "description": "This feature introduces ensure correct content deletion without full index rebuild and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1011,6 +1019,7 @@
         {
           "id": "F5-M2",
           "title": "Perform a major frontend refactor (replace static HTML/CSS).",
+          "description": "This feature introduces perform a major frontend refactor (replace static HTML/CSS) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1022,6 +1031,7 @@
         {
           "id": "F6-M2",
           "title": "Introduce a scalable frontend framework and component architecture.",
+          "description": "This feature introduces introduce a scalable frontend framework and component architecture and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1033,6 +1043,7 @@
         {
           "id": "F7-M2",
           "title": "Design and implement a unified design system.",
+          "description": "This feature introduces design and implement a unified design system and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1044,6 +1055,7 @@
         {
           "id": "F8-M2",
           "title": "Implement a responsive and mobile-friendly interface.",
+          "description": "This feature introduces implement a responsive and mobile-friendly interface and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1055,6 +1067,7 @@
         {
           "id": "F9-M2",
           "title": "Implement the Home page (feed modes, video cards, dynamic loading).",
+          "description": "This feature introduces implement the Home page (feed modes, video cards, dynamic loading) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1066,6 +1079,7 @@
         {
           "id": "F10-M2",
           "title": "Implement the video search page.",
+          "description": "This feature introduces implement the video search page and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1077,6 +1091,7 @@
         {
           "id": "F11-M2",
           "title": "Implement the video page (player, comments, similar/up-next block).",
+          "description": "This feature introduces implement the video page (player, comments, similar/up-next block) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1088,6 +1103,7 @@
         {
           "id": "F12-M2",
           "title": "Implement like/dislike functionality (add/remove).",
+          "description": "This feature introduces implement like/dislike functionality (add/remove) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1114,6 +1130,7 @@
         {
           "id": "F1-M3",
           "title": "Design and implement a public REST API.",
+          "description": "This feature introduces design and implement a public REST API and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1125,6 +1142,7 @@
         {
           "id": "F2-M3",
           "title": "Implement API versioning.",
+          "description": "This feature introduces implement API versioning and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1136,6 +1154,7 @@
         {
           "id": "F3-M3",
           "title": "Implement feed modes: random, hot, popular, fresh, recommendations.",
+          "description": "This feature introduces implement feed modes: random, hot, popular, fresh, recommendations and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1147,6 +1166,7 @@
         {
           "id": "F4-M3",
           "title": "Implement endpoint similar(video_id).",
+          "description": "This feature introduces implement endpoint similar(video_id) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1158,6 +1178,7 @@
         {
           "id": "F5-M3",
           "title": "Implement endpoint recommendations(list_of_video_ids).",
+          "description": "This feature introduces implement endpoint recommendations(list_of_video_ids) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1169,6 +1190,7 @@
         {
           "id": "F6-M3",
           "title": "Implement a separate search API.",
+          "description": "This feature introduces implement a separate search API and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1180,6 +1202,7 @@
         {
           "id": "F7-M3",
           "title": "Verify client read compatibility during indexing scheme changes.",
+          "description": "This feature introduces verify client read compatibility during indexing scheme changes and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1206,6 +1229,7 @@
         {
           "id": "F1-M4",
           "title": "Implement content selection endpoint within a specified instance/source.",
+          "description": "Content selection is currently too broad and cannot be scoped to one specific source. Add a dedicated endpoint that returns content constrained to the selected instance/source.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1217,6 +1241,7 @@
         {
           "id": "F2-M4",
           "title": "Add crawler mode with federated scope limitation (via a new flag).",
+          "description": "This feature introduces add crawler mode with federated scope limitation (via a new flag) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1228,28 +1253,30 @@
         {
           "id": "F3-M4",
           "title": "Implement storage of local user actions (likes/comments) in a local data model.",
+          "description": "This feature introduces implement storage of local user actions (likes/comments) in a local data model and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
-          "optional": true,
-          "note": "If required by product.",
           "gh_issue_number": null,
           "gh_issue_url": null,
           "issues": [],
           "branch_name": null,
-          "branch_url": null
+          "branch_url": null,
+          "optional": true,
+          "note": "If required by product."
         },
         {
           "id": "F4-M4",
           "title": "Implement a feed parameter panel.",
+          "description": "Feed behavior is currently hard-coded and not transparent to users. Add a feed parameter panel so users can tune feed controls and understand how results are formed.",
           "status": "Planned",
           "track": "Client",
-          "optional": true,
-          "note": "If required by product.",
           "gh_issue_number": null,
           "gh_issue_url": null,
           "issues": [],
           "branch_name": null,
-          "branch_url": null
+          "branch_url": null,
+          "optional": true,
+          "note": "If required by product."
         }
       ],
       "non_feature_items": [
@@ -1269,6 +1296,7 @@
         {
           "id": "F1-M5",
           "title": "Implement ActivityPub actor for Engine.",
+          "description": "This feature introduces implement ActivityPub actor for Engine and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1280,6 +1308,7 @@
         {
           "id": "F2-M5",
           "title": "Implement follow logic and processing of incoming ActivityPub updates.",
+          "description": "This feature introduces implement follow logic and processing of incoming ActivityPub updates and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1291,6 +1320,7 @@
         {
           "id": "F3-M5",
           "title": "Implement deduplication of incoming ActivityPub activities.",
+          "description": "This feature introduces implement deduplication of incoming ActivityPub activities and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1302,6 +1332,7 @@
         {
           "id": "F4-M5",
           "title": "Implement sending likes and comments via ActivityPub to the source instance.",
+          "description": "This feature introduces implement sending likes and comments via ActivityPub to the source instance and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1313,32 +1344,35 @@
         {
           "id": "F5-M5",
           "title": "Implement user profile (avatar, nickname, settings).",
+          "description": "This feature introduces implement user profile (avatar, nickname, settings) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
-          "optional": true,
-          "note": "If required by product.",
           "gh_issue_number": null,
           "gh_issue_url": null,
           "issues": [],
           "branch_name": null,
-          "branch_url": null
+          "branch_url": null,
+          "optional": true,
+          "note": "If required by product."
         },
         {
           "id": "F6-M5",
           "title": "Implement user data export mechanism.",
+          "description": "This feature introduces implement user data export mechanism and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
-          "optional": true,
-          "note": "If required by product.",
           "gh_issue_number": null,
           "gh_issue_url": null,
           "issues": [],
           "branch_name": null,
-          "branch_url": null
+          "branch_url": null,
+          "optional": true,
+          "note": "If required by product."
         },
         {
           "id": "F7-M5",
           "title": "Add integration and contract tests for the federated flow.",
+          "description": "This feature introduces add integration and contract tests for the federated flow and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "System/Test",
           "gh_issue_number": null,
@@ -1370,6 +1404,7 @@
         {
           "id": "F1-M6",
           "title": "Implement Engine moderation system (ban instances, channels).",
+          "description": "This feature introduces implement Engine moderation system (ban instances, channels) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1381,6 +1416,7 @@
         {
           "id": "F2-M6",
           "title": "Implement public Engine dashboard (key statistics).",
+          "description": "This feature introduces implement public Engine dashboard (key statistics) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1392,6 +1428,7 @@
         {
           "id": "F3-M6",
           "title": "Implement collection and publication of statistical data.",
+          "description": "This feature introduces implement collection and publication of statistical data and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1403,6 +1440,7 @@
         {
           "id": "F4-M6",
           "title": "Implement display of blocked / active / new instances.",
+          "description": "This feature introduces implement display of blocked / active / new instances and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1414,6 +1452,7 @@
         {
           "id": "F5-M6",
           "title": "Implement moderation and data management UI for Engine.",
+          "description": "This feature introduces implement moderation and data management UI for Engine and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1425,6 +1464,7 @@
         {
           "id": "F6-M6",
           "title": "Implement UI for Engine analytics.",
+          "description": "This feature introduces implement UI for Engine analytics and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1436,6 +1476,7 @@
         {
           "id": "F7-M6",
           "title": "Implement user reporting mechanism (report + reason).",
+          "description": "This feature introduces implement user reporting mechanism (report + reason) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1447,6 +1488,7 @@
         {
           "id": "F8-M6",
           "title": "Implement moderation dashboard.",
+          "description": "This feature introduces implement moderation dashboard and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1458,6 +1500,7 @@
         {
           "id": "F9-M6",
           "title": "Implement client-side moderation system (users/content/comments).",
+          "description": "This feature introduces implement client-side moderation system (users/content/comments) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1484,6 +1527,7 @@
         {
           "id": "F1-M7",
           "title": "Implement independent production deployment for Engine.",
+          "description": "This feature introduces implement independent production deployment for Engine and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1495,6 +1539,7 @@
         {
           "id": "F2-M7",
           "title": "Simplify build and data build into a single command workflow (production-ready).",
+          "description": "This feature introduces simplify build and data build into a single command workflow (production-ready) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1506,6 +1551,7 @@
         {
           "id": "F3-M7",
           "title": "Implement database migration system.",
+          "description": "This feature introduces implement database migration system and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1517,6 +1563,7 @@
         {
           "id": "F4-M7",
           "title": "Implement data backup mechanism (database and indexes).",
+          "description": "This feature introduces implement data backup mechanism (database and indexes) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1528,6 +1575,7 @@
         {
           "id": "F5-M7",
           "title": "Implement task queue system for heavy operations.",
+          "description": "This feature introduces implement task queue system for heavy operations and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1539,6 +1587,7 @@
         {
           "id": "F6-M7",
           "title": "Enable third-party instances to use Engine via API (plugin-like scenario).",
+          "description": "This feature introduces enable third-party instances to use Engine via API (plugin-like scenario) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1550,6 +1599,7 @@
         {
           "id": "F7-M7",
           "title": "Implement API-level rate limiting (IP, instance, service keys).",
+          "description": "This feature introduces implement API-level rate limiting (IP, instance, service keys) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1561,6 +1611,7 @@
         {
           "id": "F8-M7",
           "title": "Implement IP and instance-level blocking and restriction mechanisms.",
+          "description": "This feature introduces implement IP and instance-level blocking and restriction mechanisms and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1572,6 +1623,7 @@
         {
           "id": "F9-M7",
           "title": "Implement input size limits and request validation.",
+          "description": "This feature introduces implement input size limits and request validation and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1583,6 +1635,7 @@
         {
           "id": "F10-M7",
           "title": "Implement service/API keys for internal and admin scenarios (not end-user auth).",
+          "description": "This feature introduces implement service/API keys for internal and admin scenarios (not end-user auth) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1594,6 +1647,7 @@
         {
           "id": "F11-M7",
           "title": "Implement service key management (create, revoke, limits).",
+          "description": "This feature introduces implement service key management (create, revoke, limits) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1605,6 +1659,7 @@
         {
           "id": "F12-M7",
           "title": "Implement baseline roles/permissions for admin operations.",
+          "description": "This feature introduces implement baseline roles/permissions for admin operations and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Engine",
           "gh_issue_number": null,
@@ -1616,6 +1671,7 @@
         {
           "id": "F13-M7",
           "title": "Implement independent production deployment for Client.",
+          "description": "This feature introduces implement independent production deployment for Client and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1627,6 +1683,7 @@
         {
           "id": "F14-M7",
           "title": "Implement client-side security hardening (XSS, CSRF, session protection, secure headers).",
+          "description": "This feature introduces implement client-side security hardening (XSS, CSRF, session protection, secure headers) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Client",
           "gh_issue_number": null,
@@ -1653,6 +1710,7 @@
         {
           "id": "F1-M8",
           "title": "Create a separate project presentation website.",
+          "description": "This feature introduces create a separate project presentation website and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Presentation/Docs",
           "gh_issue_number": null,
@@ -1664,6 +1722,7 @@
         {
           "id": "F2-M8",
           "title": "Describe architecture (Engine + Client + interaction model).",
+          "description": "This feature introduces describe architecture (Engine + Client + interaction model) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Presentation/Docs",
           "gh_issue_number": null,
@@ -1675,6 +1734,7 @@
         {
           "id": "F3-M8",
           "title": "Describe platform capabilities and usage scenarios.",
+          "description": "This feature introduces describe platform capabilities and usage scenarios and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Presentation/Docs",
           "gh_issue_number": null,
@@ -1686,6 +1746,7 @@
         {
           "id": "F4-M8",
           "title": "Add a section about the public API and integration possibilities.",
+          "description": "This feature introduces add a section about the public API and integration possibilities and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Presentation/Docs",
           "gh_issue_number": null,
@@ -1697,6 +1758,7 @@
         {
           "id": "F5-M8",
           "title": "Add links to live demo / UI.",
+          "description": "This feature introduces add links to live demo / UI and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Presentation/Docs",
           "gh_issue_number": null,
@@ -1708,6 +1770,7 @@
         {
           "id": "F6-M8",
           "title": "Prepare full technical documentation (installation, startup, deployment, data build, API usage).",
+          "description": "This feature introduces prepare full technical documentation (installation, startup, deployment, data build, API usage) and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Presentation/Docs",
           "gh_issue_number": null,
@@ -1719,6 +1782,7 @@
         {
           "id": "F7-M8",
           "title": "Provide clear documentation for third-party developers who want to use Engine.",
+          "description": "This feature introduces provide clear documentation for third-party developers who want to use Engine and defines the expected behavior, boundaries, and outcome for implementation.",
           "status": "Planned",
           "track": "Presentation/Docs",
           "gh_issue_number": null,

@@ -81,6 +81,10 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     create_parser.add_argument("--id", required=True, help="Feature ID (for example, F1-M1).")
     create_parser.add_argument("--milestone", help="Milestone ID (for example, M1).")
     create_parser.add_argument("--title", help="Feature title when creating a new node.")
+    create_parser.add_argument(
+        "--description",
+        help="Optional concise feature description (used for feature issue body sync).",
+    )
     create_parser.add_argument("--track", default="System/Test", help="Track label for feature node.")
     create_parser.add_argument("--write", action="store_true", help="Write local tracker updates.")
     create_parser.add_argument("--github", action="store_true", help="Enable GitHub sync wiring.")
@@ -295,6 +299,7 @@ def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
     feature_ref = _find_feature(dev_map, feature_id)
     feature_exists = feature_ref is not None
     wrote_changes = False
+    requested_feature_description = str(getattr(args, "description", "") or "").strip()
     if feature_ref is not None:
         existing_milestone = feature_ref["milestone"]["id"]
         if existing_milestone != milestone_id:
@@ -303,10 +308,19 @@ def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
                 exit_code=4,
             )
         feature_node = feature_ref["feature"]
+        if bool(args.write):
+            if requested_feature_description:
+                feature_node["description"] = requested_feature_description
+                wrote_changes = True
+            elif not str(feature_node.get("description", "")).strip():
+                feature_node["description"] = _build_default_feature_description(feature_node)
+                wrote_changes = True
+            _normalize_feature_node_layout(feature_node)
     else:
         feature_node = _build_feature_node(
             feature_id=feature_id,
             title=(args.title or f"Feature {feature_id}"),
+            description=requested_feature_description,
             track=args.track,
         )
         if bool(args.write):
@@ -350,6 +364,7 @@ def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
             "action": "already-exists" if feature_exists else ("created" if bool(args.write) else "would-create"),
             "command": "feature.create",
             "feature_id": feature_id,
+            "description": str(feature_node.get("description", "")).strip() or None,
             "gh_issue_number": feature_node.get("gh_issue_number"),
             "gh_issue_url": feature_node.get("gh_issue_url"),
             "github_enabled": bool(args.github),
@@ -607,6 +622,7 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         feature_node=feature_node,
         write=bool(args.write),
     )
+    _normalize_feature_node_layout(feature_node)
     _normalize_feature_issue_nodes_layout(feature_node)
 
     expected_marker = f"[M{feature_milestone_num}][F{feature_local_num}]"
@@ -694,6 +710,9 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
 
     feature_node = feature_ref["feature"]
     feature_status = str(feature_node.get("status", ""))
+    if not str(feature_node.get("description", "")).strip():
+        feature_node["description"] = _build_default_feature_description(feature_node)
+    _normalize_feature_node_layout(feature_node)
     issue_description_backfill = _backfill_missing_issue_descriptions_for_feature(feature_node)
     _normalize_feature_issue_nodes_layout(feature_node)
 
@@ -1748,25 +1767,29 @@ def _materialize_feature_registration_issue(
 
 
 def _build_feature_registration_issue_body(feature_node: dict[str, Any]) -> str:
-    """Build concise feature-level body with related issue summaries."""
-    feature_title = str(feature_node.get("title", "")).strip() or str(feature_node.get("id", "")).strip()
-    lines = [feature_title]
-    issues = feature_node.get("issues", [])
-    if isinstance(issues, list) and issues:
-        lines.extend(["", "Related issues:"])
-        for issue in issues:
-            if not isinstance(issue, dict):
-                continue
-            issue_id = str(issue.get("id", "")).strip()
-            issue_title = str(issue.get("title", "")).strip()
-            issue_description = _resolve_issue_description(issue)
-            issue_label = f"{issue_id}: {issue_title}" if issue_id and issue_title else issue_id or issue_title
-            lines.append(f"- {issue_label or 'Issue details pending local sync.'}")
-            if issue_description:
-                lines.append(f"  - {issue_description}")
-    else:
-        lines.extend(["", "Related issues are not mapped yet."])
-    return "\n".join(lines).strip() + "\n"
+    """Build concise feature-level body from feature description only."""
+    return _resolve_feature_description(feature_node).strip() + "\n"
+
+
+def _resolve_feature_description(feature_node: dict[str, Any]) -> str:
+    """Return feature description from node or deterministic fallback from title."""
+    description = str(feature_node.get("description", "")).strip()
+    if description:
+        return description
+    return _build_default_feature_description(feature_node)
+
+
+def _build_default_feature_description(feature_node: dict[str, Any]) -> str:
+    """Build concise default feature description with problem/change context."""
+    feature_title = str(feature_node.get("title", "")).strip() or str(feature_node.get("id", "")).strip() or "feature scope"
+    compact_title = " ".join(feature_title.split()).strip().rstrip(".")
+    if not compact_title:
+        return "This feature defines the required behavior and expected outcome."
+    title_text = compact_title[0].lower() + compact_title[1:] if len(compact_title) > 1 else compact_title.lower()
+    return (
+        f"This feature addresses {title_text} by defining the required change "
+        "and the expected user-visible outcome."
+    )
 
 
 def _backfill_missing_issue_descriptions_for_feature(feature_node: dict[str, Any]) -> dict[str, Any]:
@@ -1808,6 +1831,32 @@ def _build_default_issue_description(issue_node: dict[str, Any]) -> str:
         f"This issue addresses {title_text} by defining the required change and "
         "the problem it resolves."
     )
+
+
+def _normalize_feature_node_layout(feature_node: dict[str, Any]) -> None:
+    """Place feature description directly under title while preserving existing fields."""
+    ordered_keys = (
+        "id",
+        "title",
+        "description",
+        "status",
+        "track",
+        "gh_issue_number",
+        "gh_issue_url",
+        "issues",
+        "branch_name",
+        "branch_url",
+    )
+    reordered: dict[str, Any] = {}
+    for key in ordered_keys:
+        if key in feature_node:
+            reordered[key] = feature_node[key]
+    for key, value in feature_node.items():
+        if key in reordered:
+            continue
+        reordered[key] = value
+    feature_node.clear()
+    feature_node.update(reordered)
 
 
 def _normalize_feature_issue_nodes_layout(feature_node: dict[str, Any]) -> None:
@@ -2049,11 +2098,16 @@ def _resolve_issue_owner_feature(dev_map: dict[str, Any], issue_id: str) -> dict
     return matches[0]
 
 
-def _build_feature_node(feature_id: str, title: str, track: str) -> dict[str, Any]:
+def _build_feature_node(feature_id: str, title: str, description: str, track: str) -> dict[str, Any]:
     """Build canonical feature node shape for DEV_MAP."""
+    normalized_title = title.strip()
+    description_value = description.strip() or _build_default_feature_description(
+        {"id": feature_id, "title": normalized_title}
+    )
     return {
         "id": feature_id,
-        "title": title.strip(),
+        "title": normalized_title,
+        "description": description_value,
         "status": "Planned",
         "track": track.strip(),
         "gh_issue_number": None,

@@ -66,6 +66,10 @@ Task node in `DEV_MAP` must carry these fields:
 Feature node in `DEV_MAP` must carry these fields:
 - `id`: feature id (`F<local>-M<milestone>`)
 - `title`: feature title
+- `description`: short human-readable feature explanation placed immediately after `title`
+  - keep it concise but informative (usually 1-2 short sentences);
+  - explain what behavior/change the feature introduces and what problem/gap it resolves;
+  - do not include child issue titles, issue lists, task lists, or checklist blocks.
 - `status`: `Planned` | `Approved` | `Done`
 - `gh_issue_number`: mapped feature-level GitHub issue number or `null`
 - `gh_issue_url`: mapped feature-level GitHub issue URL or `null`
@@ -147,6 +151,7 @@ Issue node in `DEV_MAP` must carry these fields:
         {
           "id": "F1-M1",
           "title": "Feature title",
+          "description": "Short human-readable feature explanation.",
           "status": "Planned",
           "track": "Engine|Client|Presentation/Docs|System/Test",
           "optional": false,

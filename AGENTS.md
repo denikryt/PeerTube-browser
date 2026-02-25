@@ -29,7 +29,7 @@ Canonical rule map (to prevent duplication drift):
   policy constraints remain in `AGENTS.md`.
 - Planning input/decomposition quality gates:
   owner = `dev/FEATURE_PLANNING_PROTOCOL.md`.
-- Issue `description` rules (content format, brevity, forbidden content, and field placement under `title`):
+- Feature/Issue `description` rules (content format, brevity, forbidden content, and field placement under `title`):
   owner = `dev/map/DEV_MAP_SCHEMA.md`;
   all other docs must reference this owner only and must not restate or duplicate those rules.
 
