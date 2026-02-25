@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-25T22:23:15+02:00",
+  "updated_at": "2026-02-26T00:00:26+02:00",
   "task_count": 126,
   "milestones": [
     {
@@ -791,6 +791,14 @@
                   "time": "21:40:22"
                 }
               ]
+            },
+            {
+              "id": "I26-F4-M1",
+              "title": "Add plan tasks for issues command for batch issue decomposition in one run",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F4-M1",
