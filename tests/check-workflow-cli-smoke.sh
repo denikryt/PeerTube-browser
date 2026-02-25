@@ -635,6 +635,7 @@ cat >"${CREATE_ONLY_REPO}/dev/map/DEV_MAP.json" <<'EOF'
   ]
 }
 EOF
+cp "${CREATE_ONLY_REPO}/dev/map/DEV_MAP.json" "${CREATE_ONLY_REPO}/dev/map/DEV_MAP.initial.json"
 FAKE_GH_DIR="${TMP_DIR}/fake-gh-bin"
 FAKE_GH_LOG="${TMP_DIR}/fake-gh-calls.log"
 mkdir -p "${FAKE_GH_DIR}"
@@ -671,6 +672,23 @@ assert_json_value "create-only-no-edit" "issues_materialized.1.issue_id" "I2-F1-
 assert_json_value "create-only-no-edit" "issues_materialized.1.action" "created"
 assert_file_contains "create-only-gh-create-called" "${FAKE_GH_LOG}" "issue create"
 assert_file_not_contains "create-only-gh-edit-not-called" "${FAKE_GH_LOG}" "issue edit"
+cp "${CREATE_ONLY_REPO}/dev/map/DEV_MAP.initial.json" "${CREATE_ONLY_REPO}/dev/map/DEV_MAP.json"
+run_expect_success \
+  "create-only-queue-order" \
+  env PATH="${FAKE_GH_DIR}:${PATH}" FAKE_GH_LOG="${FAKE_GH_LOG}" \
+  "${CREATE_ONLY_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-create --issue-id I2-F1-M1 --issue-id I1-F1-M1 --write --github
+assert_json_value "create-only-queue-order" "issue_id_queue.0" "I2-F1-M1"
+assert_json_value "create-only-queue-order" "issue_id_queue.1" "I1-F1-M1"
+assert_json_value "create-only-queue-order" "selected_issue_ids.0" "I2-F1-M1"
+assert_json_value "create-only-queue-order" "selected_issue_ids.1" "I1-F1-M1"
+assert_json_value "create-only-queue-order" "issues_materialized.0.issue_id" "I2-F1-M1"
+assert_json_value "create-only-queue-order" "issues_materialized.0.action" "created"
+assert_json_value "create-only-queue-order" "issues_materialized.1.issue_id" "I1-F1-M1"
+assert_json_value "create-only-queue-order" "issues_materialized.1.action" "skipped"
+run_expect_failure_contains \
+  "create-only-queue-duplicate-rejected" \
+  "Duplicate --issue-id value I1-F1-M1" \
+  "${CREATE_ONLY_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync --issue-id I1-F1-M1 --issue-id I1-F1-M1 --no-github
 
 # Materialize/confirm: keep feature-level checklist in sync for child issue rows.
 CHECKLIST_SYNC_REPO="${TMP_DIR}/checklist-sync-fixture"

@@ -160,7 +160,8 @@ Use this procedure before executing tasks for a new feature.
    - `--mode bootstrap`: resolve/create canonical feature branch context and persist branch linkage metadata; do not materialize child issues.
    - `--mode issues-create`: materialize feature child `Issue` nodes to GitHub in create-oriented flow from local issue structure.
    - `--mode issues-sync`: materialize feature child `Issue` nodes to GitHub in sync/update flow from local issue structure.
-   - `--issue-id <issue_id>` is allowed only with `issues-create`/`issues-sync` and targets one issue node.
+   - `--issue-id <issue_id>` is allowed only with `issues-create`/`issues-sync`; the flag is repeatable and forms an ordered issue queue.
+   - Queue mode example: `materialize feature <id> --mode issues-sync --issue-id <issue_a> --issue-id <issue_b>`.
    - Status gate (`issues-create`/`issues-sync`): selected issue nodes must have status `Tasked`.
    - Feature-level GitHub issue is managed at `create feature <id>` step; during materialization, update it only if metadata/body sync is explicitly required, without creating duplicates.
    - Branch policy (mandatory): resolve canonical feature branch `feature/<feature_id>` and persist branch linkage metadata; do not auto-checkout/switch branches during `materialize`.
