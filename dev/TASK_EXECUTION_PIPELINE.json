@@ -48,10 +48,6 @@
     {
       "tasks": ["94", "95"],
       "description": "feature checklist sync and issue approved gate"
-    },
-    {
-      "tasks": ["127", "128", "129"],
-      "description": "multi-issue decomposition command and contract coverage"
     }
   ],
   "functional_blocks": [
@@ -108,12 +104,6 @@
       "tasks": ["94", "95"],
       "scope": "explicit materialize modes, scoped issue materialization, create-only behavior, feature checklist sync, and issue-level approval gate enforcement.",
       "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
-    },
-    {
-      "title": "Block K: Batch issue decomposition command",
-      "tasks": ["127", "128", "129"],
-      "scope": "workflow CLI support for one-run multi-issue decomposition with queue validation, shared allocation, and tracker sync.",
-      "outcome": "workflow supports plan tasks for issues with one delta run, deterministic queue validation, and overlaps covering both new and existing pipeline tasks."
     }
   ],
   "overlaps": [
@@ -164,26 +154,6 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
-    },
-    {
-      "tasks": ["127", "128"],
-      "description": "CLI command surface and decomposition execution path must stay contract-aligned."
-    },
-    {
-      "tasks": ["128", "129"],
-      "description": "behavioral contract changes require synchronized smoke/docs coverage."
-    },
-    {
-      "tasks": ["127", "70"],
-      "description": "both touch workflow CLI parser and command routing surfaces."
-    },
-    {
-      "tasks": ["128", "72"],
-      "description": "both modify decomposition sync semantics across DEV_MAP/TASK_LIST/PIPELINE."
-    },
-    {
-      "tasks": ["129", "95"],
-      "description": "docs and smoke gates must stay aligned with issue-level workflow command constraints."
     }
   ]
 }

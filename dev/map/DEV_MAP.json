@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T00:05:02+02:00",
+  "updated_at": "2026-02-26T00:14:16+02:00",
   "task_count": 129,
   "milestones": [
     {
@@ -795,7 +795,7 @@
             {
               "id": "I26-F4-M1",
               "title": "Add plan tasks for issues command for batch issue decomposition in one run",
-              "status": "Tasked",
+              "status": "Done",
               "gh_issue_number": 103,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/103",
               "tasks": [
@@ -803,7 +803,7 @@
                   "id": "127",
                   "title": "Add CLI command surface for plan tasks for issues",
                   "summary": "Register plan tasks for issues command with repeatable --issue-id and deterministic output contract for multi-issue scope.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-26",
                   "time": "00:03:28"
                 },
@@ -811,7 +811,7 @@
                   "id": "128",
                   "title": "Implement multi-issue queue filter and one-pass decomposition application",
                   "summary": "Validate issue queue ownership/duplicates and apply one-pass task allocation and delta filtering for selected issue IDs.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-26",
                   "time": "00:03:28"
                 },
@@ -819,7 +819,7 @@
                   "id": "129",
                   "title": "Add smoke coverage and docs for multi-issue plan tasks command",
                   "summary": "Extend workflow smoke and protocol/workflow docs with success and failure contracts for plan tasks for issues.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-26",
                   "time": "00:03:28"
                 }

@@ -33,10 +33,9 @@ Canonical per-issue plan block format inside a feature section:
 1. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
 2. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
 3. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
-4. `I26-F4-M1` - Add plan tasks for issues command for batch issue decomposition in one run
-5. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
-6. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
-7. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
+4. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
+5. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
+6. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
 ### Dependencies
 - See issue-level dependency blocks below.
 
@@ -164,35 +163,3 @@ Canonical per-issue plan block format inside a feature section:
 2. Why `3`:
    - integration layer, materialize reconcile logic, and regression coverage are separate risk domains and should be validated independently.
 
-### I26-F4-M1 - Add plan tasks for issues command for batch issue decomposition in one run
-
-#### Dependencies
-- `dev/workflow_lib/feature_commands.py`
-- `dev/workflow_lib/sync_delta.py`
-- `dev/workflow_lib/tracking_writers.py`
-- `tests/check-workflow-cli-smoke.sh`
-- `dev/TASK_EXECUTION_PROTOCOL.md`
-- `dev/FEATURE_WORKFLOW.md`
-
-#### Decomposition
-1. Add batch issue decomposition command in workflow CLI.
-   - Register `plan tasks for issues` with repeatable `--issue-id` and shared `--delta-file`.
-   - Keep command output deterministic and explicit for multi-issue scope.
-2. Implement multi-issue queue validation and filtering.
-   - Validate every provided issue ID belongs to selected feature.
-   - Reject duplicate IDs and reject delta payloads that contain issues outside requested queue.
-3. Execute batch decomposition in one write transaction.
-   - Apply one `task_count` allocation pass for all selected issues so cross-issue task references are deterministic.
-   - Support one `pipeline.overlaps_append` payload that can include both new cross-issue task pairs and pairs with existing pipeline task IDs.
-4. Cover behavior with smoke tests and docs.
-   - Add success case for `plan tasks for issues` with multiple issue IDs and overlap entries.
-   - Add failure cases for duplicate issue IDs and non-owned issue IDs.
-   - Update protocol/workflow docs with the new command syntax and constraints.
-
-#### Issue/Task Decomposition Assessment
-1. Recommended split: `task_count = 3`.
-   - Task 1: CLI surface and multi-issue argument contract.
-   - Task 2: multi-issue filter/execution path with one-pass allocation and overlap support.
-   - Task 3: smoke and docs alignment for success/failure contracts.
-2. Why `3`:
-   - command surface, core decomposition semantics, and regression/docs validation are separate risk domains.
