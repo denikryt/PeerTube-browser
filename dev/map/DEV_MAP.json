@@ -3,6 +3,7 @@
   "statuses": [
     "Pending",
     "Planned",
+    "Tasked",
     "Approved",
     "Rejected",
     "Done"

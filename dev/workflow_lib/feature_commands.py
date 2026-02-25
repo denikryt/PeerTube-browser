@@ -58,7 +58,7 @@ REQUIRED_ISSUE_PLAN_SUBHEADINGS = (
     "Decomposition",
     "Issue/Task Decomposition Assessment",
 )
-ISSUE_PLANNING_ACTIVE_STATUSES = {"Pending", "Planned"}
+ISSUE_PLANNING_ACTIVE_STATUSES = {"Pending", "Planned", "Tasked"}
 ISSUE_TERMINAL_STATUSES = {"Done", "Rejected"}
 ISSUE_ALLOWED_PLANNING_STATUSES = ISSUE_PLANNING_ACTIVE_STATUSES | ISSUE_TERMINAL_STATUSES
 
@@ -904,6 +904,7 @@ def _apply_issue_delta(
             raise WorkflowCommandError(f"issues[{issue_index}].tasks must be a list.", exit_code=4)
         tasks = issue_node.setdefault("tasks", [])
         tasks_by_id = {str(task.get("id", "")): task for task in tasks}
+        issue_task_upsert_count = 0
         for task_index, task_payload in enumerate(task_payloads):
             if not isinstance(task_payload, dict):
                 raise WorkflowCommandError(
@@ -943,6 +944,9 @@ def _apply_issue_delta(
             task_node["date"] = str(task_payload.get("date", task_node.get("date", now_date))).strip() or now_date
             task_node["time"] = str(task_payload.get("time", task_node.get("time", now_time))).strip() or now_time
             task_upsert_count += 1
+            issue_task_upsert_count += 1
+        if issue_task_upsert_count > 0 and str(issue_node.get("status", "")).strip() not in ISSUE_TERMINAL_STATUSES:
+            issue_node["status"] = "Tasked"
     return {
         "created_issue_ids": created_issue_ids,
         "issues_upserted": issue_upsert_count,
@@ -1952,7 +1956,7 @@ def _collect_issue_planning_status_mismatches(
         status_before = str(issue.get("status", "")).strip()
         if status_before in ISSUE_TERMINAL_STATUSES:
             continue
-        status_expected = "Planned" if issue_id in issue_plan_block_ids else "Pending"
+        status_expected = _expected_issue_planning_status(issue=issue, issue_plan_block_ids=issue_plan_block_ids)
         if status_before == status_expected:
             continue
         mismatches.append(
@@ -1965,6 +1969,21 @@ def _collect_issue_planning_status_mismatches(
         )
     mismatches.sort(key=lambda item: item["issue_id"])
     return mismatches
+
+
+def _expected_issue_planning_status(issue: dict[str, Any], issue_plan_block_ids: set[str]) -> str:
+    """Return expected issue planning status from plan-block coverage and decomposition presence."""
+    issue_id = str(issue.get("id", "")).strip()
+    if issue_id not in issue_plan_block_ids:
+        return "Pending"
+    tasks = issue.get("tasks", [])
+    has_tasks = isinstance(tasks, list) and any(
+        isinstance(task, dict) and str(task.get("id", "")).strip()
+        for task in tasks
+    )
+    if has_tasks:
+        return "Tasked"
+    return "Planned"
 
 
 def _count_active_issues(feature_node: dict[str, Any]) -> int:

@@ -8,6 +8,7 @@ Canonical hierarchies:
 Allowed status values for nodes with status fields (`Feature`, `Issue`, `Task`):
 - `Pending`
 - `Planned`
+- `Tasked`
 - `Approved`
 - `Rejected`
 - `Done`
@@ -76,9 +77,10 @@ Feature node in `DEV_MAP` must carry these fields:
 Issue node in `DEV_MAP` must carry these fields:
 - `id`: issue id (`I<local>-F<feature_local>-M<milestone>`)
 - `title`: issue title
-- `status`: `Pending` | `Planned` | `Done` | `Rejected`
+- `status`: `Pending` | `Planned` | `Tasked` | `Done` | `Rejected`
   - `Pending`: issue exists in `DEV_MAP`, but no persisted issue-plan block exists in `dev/FEATURE_PLANS.md`.
   - `Planned`: canonical issue-plan block exists in `dev/FEATURE_PLANS.md`.
+  - `Tasked`: issue has canonical plan block and at least one mapped task from decomposition.
   - `Done` and `Rejected` are terminal statuses.
 - `gh_issue_number`: mapped issue-level GitHub issue number or `null`
 - `gh_issue_url`: mapped issue-level GitHub issue URL or `null`
@@ -88,7 +90,7 @@ Issue node in `DEV_MAP` must carry these fields:
 ```json
 {
   "schema_version": "1.4",
-  "statuses": ["Pending", "Planned", "Approved", "Rejected", "Done"],
+  "statuses": ["Pending", "Planned", "Tasked", "Approved", "Rejected", "Done"],
   "updated_at": "2026-02-23T23:45:00+02:00",
   "task_count": 58,
   "milestones": [
@@ -109,7 +111,7 @@ Issue node in `DEV_MAP` must carry these fields:
 ```json
 {
   "schema_version": "1.4",
-  "statuses": ["Pending", "Planned", "Approved", "Rejected", "Done"],
+  "statuses": ["Pending", "Planned", "Tasked", "Approved", "Rejected", "Done"],
   "updated_at": "YYYY-MM-DDTHH:MM:SS+TZ:TZ",
   "task_count": 59,
   "milestones": [
