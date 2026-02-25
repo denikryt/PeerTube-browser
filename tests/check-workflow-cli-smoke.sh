@@ -894,6 +894,162 @@ run_expect_failure_contains \
   "Duplicate --issue-id value I1-F1-M1" \
   "${CREATE_ONLY_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync --issue-id I1-F1-M1 --issue-id I1-F1-M1 --no-github
 
+# Materialize sub-issues reconcile: first run adds missing links, second run is idempotent.
+SUBISSUE_RECONCILE_REPO="${TMP_DIR}/subissue-reconcile-fixture"
+create_workflow_fixture_repo "${SUBISSUE_RECONCILE_REPO}"
+git -C "${SUBISSUE_RECONCILE_REPO}" init -q
+git -C "${SUBISSUE_RECONCILE_REPO}" checkout -q -b feature/F1-M1
+cat >"${SUBISSUE_RECONCILE_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+{
+  "version": "1.0",
+  "updated_at": "2026-02-24T00:00:00+00:00",
+  "task_count": 2,
+  "statuses": ["Planned", "InProgress", "Done", "Approved"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Milestone 1",
+      "status": "Planned",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Feature F1-M1",
+          "status": "Approved",
+          "track": "System/Test",
+          "gh_issue_number": 500,
+          "gh_issue_url": "https://github.com/owner/repo/issues/500",
+          "issues": [
+            {
+              "id": "I1-F1-M1",
+              "title": "Mapped issue",
+              "status": "Tasked",
+              "gh_issue_number": 401,
+              "gh_issue_url": "https://github.com/owner/repo/issues/401",
+              "tasks": [
+                {
+                  "id": "1",
+                  "title": "Task 1",
+                  "summary": "Summary",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
+            },
+            {
+              "id": "I2-F1-M1",
+              "title": "Unmapped issue",
+              "status": "Tasked",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": [
+                {
+                  "id": "2",
+                  "title": "Task 2",
+                  "summary": "Summary",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
+        }
+      ],
+      "standalone_issues": []
+    }
+  ]
+}
+EOF
+SUBISSUE_STATE_FILE="${TMP_DIR}/subissue-state.json"
+cat >"${SUBISSUE_STATE_FILE}" <<'EOF'
+{"numbers":[401]}
+EOF
+SUBISSUE_FAKE_GH_DIR="${TMP_DIR}/subissue-fake-gh-bin"
+SUBISSUE_FAKE_GH_LOG="${TMP_DIR}/subissue-fake-gh.log"
+mkdir -p "${SUBISSUE_FAKE_GH_DIR}"
+cat >"${SUBISSUE_FAKE_GH_DIR}/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "$*" >> "${SUBISSUE_FAKE_GH_LOG}"
+if [[ "$1" == "repo" && "$2" == "view" ]]; then
+  echo '{"nameWithOwner":"owner/repo","url":"https://github.com/owner/repo"}'
+  exit 0
+fi
+if [[ "$1" == "api" ]]; then
+  route=""
+  sub_issue_number=""
+  for token in "$@"; do
+    if [[ "${token}" == repos/owner/repo/* ]]; then
+      route="${token}"
+    fi
+    if [[ "${token}" == sub_issue_id=* ]]; then
+      sub_issue_number="${token#sub_issue_id=}"
+    fi
+  done
+  if [[ "${route}" == repos/owner/repo/milestones* ]]; then
+    echo '[{"title":"Milestone 1"}]'
+    exit 0
+  fi
+  if [[ "${route}" == "repos/owner/repo/issues/500/sub_issues?per_page=100" ]]; then
+    python3 - "${SUBISSUE_STATE_FILE}" <<'PY'
+import json
+import pathlib
+import sys
+state = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(json.dumps([{"number": number} for number in state.get("numbers", [])]))
+PY
+    exit 0
+  fi
+  if [[ "${route}" == "repos/owner/repo/issues/500/sub_issues" ]]; then
+    python3 - "${SUBISSUE_STATE_FILE}" "${sub_issue_number}" <<'PY'
+import json
+import pathlib
+import sys
+state_path = pathlib.Path(sys.argv[1])
+number = int(sys.argv[2])
+state = json.loads(state_path.read_text(encoding="utf-8"))
+numbers = [int(item) for item in state.get("numbers", [])]
+if number not in numbers:
+    numbers.append(number)
+state["numbers"] = numbers
+state_path.write_text(json.dumps(state), encoding="utf-8")
+print("{}")
+PY
+    exit 0
+  fi
+fi
+if [[ "$1" == "issue" && "$2" == "create" ]]; then
+  echo "https://github.com/owner/repo/issues/402"
+  exit 0
+fi
+if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  exit 0
+fi
+if [[ "$1" == "issue" && "$2" == "close" ]]; then
+  exit 0
+fi
+echo "unsupported gh call: $*" >&2
+exit 1
+EOF
+chmod +x "${SUBISSUE_FAKE_GH_DIR}/gh"
+run_expect_success \
+  "subissue-reconcile-first-run" \
+  env PATH="${SUBISSUE_FAKE_GH_DIR}:${PATH}" SUBISSUE_FAKE_GH_LOG="${SUBISSUE_FAKE_GH_LOG}" SUBISSUE_STATE_FILE="${SUBISSUE_STATE_FILE}" \
+  "${SUBISSUE_RECONCILE_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-create --write --github
+assert_json_value "subissue-reconcile-first-run" "sub_issues_sync.attempted" "true"
+assert_json_value "subissue-reconcile-first-run" "sub_issues_sync.added.0.issue_id" "I2-F1-M1"
+assert_json_value "subissue-reconcile-first-run" "missing_issue_mappings" "[]"
+run_expect_success \
+  "subissue-reconcile-second-run" \
+  env PATH="${SUBISSUE_FAKE_GH_DIR}:${PATH}" SUBISSUE_FAKE_GH_LOG="${SUBISSUE_FAKE_GH_LOG}" SUBISSUE_STATE_FILE="${SUBISSUE_STATE_FILE}" \
+  "${SUBISSUE_RECONCILE_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-create --write --github
+assert_json_value "subissue-reconcile-second-run" "sub_issues_sync.attempted" "true"
+assert_json_value "subissue-reconcile-second-run" "sub_issues_sync.added" "[]"
+assert_json_value "subissue-reconcile-second-run" "missing_issue_mappings" "[]"
+
 # Materialize/confirm: issue bodies are description-driven (no checkbox sync side-effects).
 DESCRIPTION_BODY_REPO="${TMP_DIR}/description-body-fixture"
 create_workflow_fixture_repo "${DESCRIPTION_BODY_REPO}"

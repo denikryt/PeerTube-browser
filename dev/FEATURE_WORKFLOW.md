@@ -58,6 +58,7 @@ Compact command index for milestone/feature operations.
   - Purpose: run explicit materialization mode (bootstrap branch context, create flow, or sync flow) for already-synced local issue nodes.
   - Gate (`issues-create`/`issues-sync`): selected issues must be `Tasked`.
   - Queue usage: repeat `--issue-id` to preserve explicit issue order (for example, `--issue-id I2-F1-M1 --issue-id I1-F1-M1`).
+  - Reconcile behavior: parent feature issue sub-issues are synced from mapped local child issues; response includes `sub_issues_sync` and `missing_issue_mappings`.
   - Issue body contract: description-driven readable sections; no checkbox checklist transport in GitHub bodies.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
 - `execute task X` / `execute issue <issue_id>` / `execute feature <feature_id>`
