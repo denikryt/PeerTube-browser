@@ -410,6 +410,16 @@ def _handle_feature_plan_issue(args: Namespace, context: WorkflowContext) -> int
         issue_node=issue_node,
     )
     plan_block_updated = block_action in {"created", "updated"}
+    _lint_plan_issue_block_scoped(
+        section_lines=updated_section_lines,
+        issue_id=issue_id,
+        strict=bool(args.strict),
+    )
+    _enforce_plan_issue_order_row_presence(
+        section_lines=updated_section_lines,
+        issue_id=issue_id,
+        issue_status=str(issue_node.get("status", "")).strip(),
+    )
     if bool(args.write) and plan_block_updated:
         feature_plans_lines[section_start:section_end] = updated_section_lines
         context.feature_plans_path.write_text("\n".join(feature_plans_lines) + "\n", encoding="utf-8")
@@ -421,7 +431,7 @@ def _handle_feature_plan_issue(args: Namespace, context: WorkflowContext) -> int
             "command": "feature.plan-issue",
             "feature_id": feature_id,
             "issue_id": issue_id,
-            "issue_order_checked": False,
+            "issue_order_checked": True,
             "issue_order_mutated": False,
             "plan_block_updated": plan_block_updated,
             "strict": bool(args.strict),
@@ -1731,6 +1741,45 @@ def _resolve_issue_plan_block_insert_index(section_lines: list[str]) -> int:
         if line.strip() == "### Issue/Task Decomposition Assessment":
             return index
     return len(section_lines)
+
+
+def _lint_plan_issue_block_scoped(section_lines: list[str], issue_id: str, strict: bool) -> None:
+    """Run scoped lint for one target issue-plan block inside one feature section."""
+    block_bounds = _find_issue_plan_block_bounds(section_lines, issue_id)
+    if block_bounds is None:
+        raise WorkflowCommandError(
+            f"Issue plan block for {issue_id} is missing after plan-issue upsert.",
+            exit_code=4,
+        )
+    start_index, end_index = block_bounds
+    _lint_one_issue_plan_block(lines=section_lines, start_index=start_index, end_index=end_index, issue_id=issue_id)
+    if not strict:
+        return
+    content_lines = _filter_section_content(section_lines[start_index + 1 : end_index])
+    if any("TODO" in line.upper() or "TBD" in line.upper() for line in content_lines):
+        raise WorkflowCommandError(
+            f"Issue plan block {issue_id} contains TODO/TBD placeholder content under --strict lint.",
+            exit_code=4,
+        )
+
+
+def _enforce_plan_issue_order_row_presence(section_lines: list[str], issue_id: str, issue_status: str) -> None:
+    """Require active issue to be present in read-only Issue Execution Order rows."""
+    if issue_status in ISSUE_TERMINAL_STATUSES:
+        return
+    section_text = "\n".join(section_lines) + "\n"
+    order_block_found, parsed_rows = _parse_issue_execution_order_rows(section_text)
+    if not order_block_found:
+        raise WorkflowCommandError(
+            f"plan-issue requires {ISSUE_EXECUTION_ORDER_HEADING} with active row for {issue_id}.",
+            exit_code=4,
+        )
+    row_issue_ids = {row["id"] for row in parsed_rows}
+    if issue_id not in row_issue_ids:
+        raise WorkflowCommandError(
+            f"plan-issue requires active issue row `{issue_id}` in {ISSUE_EXECUTION_ORDER_HEADING}.",
+            exit_code=4,
+        )
 
 
 def _lint_plan_section(
