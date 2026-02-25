@@ -58,14 +58,15 @@ Canonical per-issue plan block format inside a feature section:
 
 #### Decomposition
 1. Extend issue completion contract with explicit reject transition.
-   - Add CLI/state handling for reject transition in confirm flow for feature issues.
+   - Add explicit command contract `reject issue <id>` for feature issue nodes.
+   - Command behavior: set local issue status to `Rejected`.
    - Keep deterministic issue-ID validation and ownership checks.
 2. Implement local tracker transition to `Rejected`.
    - Persist explicit issue status update to `Rejected` in `DEV_MAP`.
    - Keep terminal-status behavior stable for planning/materialization/execution filters.
 3. Implement mapped GitHub issue reject handling.
-   - Add explicit rejection marker update for mapped issue body (or equivalent deterministic reject note).
-   - Close mapped GitHub issue in the same write run after rejection marker is applied.
+   - If mapped GitHub issue exists (`gh_issue_number`/`gh_issue_url`), close it in the same reject run.
+   - If mapping is missing, keep reject command successful with local status update only (no hard failure).
 4. Add regression coverage and docs updates.
    - Cover success path, missing mapping behavior, and idempotent repeated reject attempts.
    - Update protocol/workflow docs for explicit rejected-state semantics.
