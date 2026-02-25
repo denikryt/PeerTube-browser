@@ -102,15 +102,6 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     plan_lint_parser.add_argument("--strict", action="store_true", help="Enable strict lint checks.")
     plan_lint_parser.set_defaults(handler=_handle_feature_plan_lint)
 
-    approve_parser = feature_subparsers.add_parser(
-        "approve",
-        help="Approve feature plan and update feature status gate.",
-    )
-    approve_parser.add_argument("--id", required=True, help="Feature ID.")
-    approve_parser.add_argument("--write", action="store_true", help="Write status update to tracker.")
-    approve_parser.add_argument("--strict", action="store_true", help="Require strict plan lint pass.")
-    approve_parser.set_defaults(handler=_handle_feature_approve)
-
     materialize_parser = feature_subparsers.add_parser(
         "materialize",
         help="Materialize local feature issues to GitHub and apply canonical branch policy.",
@@ -368,49 +359,6 @@ def _handle_feature_plan_lint(args: Namespace, context: WorkflowContext) -> int:
             "messages": lint_result["messages"],
             "strict": bool(args.strict),
             "valid": True,
-        }
-    )
-    return 0
-
-
-def _handle_feature_approve(args: Namespace, context: WorkflowContext) -> int:
-    """Approve a feature plan after lint checks and update DEV_MAP status."""
-    feature_id, _ = _parse_feature_id(args.id)
-    section_text = _extract_feature_plan_section(context.feature_plans_path, feature_id)
-    dev_map = _load_json(context.dev_map_path)
-    feature_ref = _find_feature(dev_map, feature_id)
-    if feature_ref is None:
-        raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
-    _lint_plan_section(
-        section_text,
-        strict=bool(args.strict),
-        feature_id=feature_id,
-        feature_node=feature_ref["feature"],
-        require_issue_order_for_active=True,
-    )
-
-    feature_node = feature_ref["feature"]
-    previous_status = str(feature_node.get("status", ""))
-    if previous_status == "Done":
-        raise WorkflowCommandError(f"Feature {feature_id} is already Done and cannot be re-approved.", exit_code=4)
-
-    action = "already-approved"
-    if previous_status != "Approved":
-        action = "approved" if args.write else "would-approve"
-        if args.write:
-            feature_node["status"] = "Approved"
-            _touch_updated_at(dev_map)
-            _write_json(context.dev_map_path, dev_map)
-
-    emit_json(
-        {
-            "action": action,
-            "command": "feature.approve",
-            "feature_id": feature_id,
-            "strict": bool(args.strict),
-            "status_after": "Approved" if action != "would-approve" else previous_status,
-            "status_before": previous_status,
-            "write": bool(args.write),
         }
     )
     return 0

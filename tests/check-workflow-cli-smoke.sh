@@ -164,8 +164,9 @@ run_expect_failure_contains \
   "materialize-missing-mode" \
   "the following arguments are required: --mode" \
   "${WORKFLOW[@]}" feature materialize --id F1-M1
+run_expect_failure "feature-approve-unsupported" "${WORKFLOW[@]}" feature approve --id F1-M1
 
-# Success-chain smoke (create -> plan-init/lint -> approve -> plan tasks -> execution-plan).
+# Success-chain smoke (create -> plan-init/lint -> plan tasks -> execution-plan).
 CHAIN_REPO="${TMP_DIR}/chain-fixture"
 create_workflow_fixture_repo "${CHAIN_REPO}"
 cat >"${CHAIN_REPO}/dev/map/DEV_MAP.json" <<'EOF'
@@ -237,9 +238,16 @@ run_expect_success "chain-plan-init" "${CHAIN_REPO}/dev/workflow" feature plan-i
 assert_json_value "chain-plan-init" "action" "created"
 run_expect_success "chain-plan-lint" "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 assert_json_value "chain-plan-lint" "valid" "true"
-run_expect_success "chain-approve" "${CHAIN_REPO}/dev/workflow" feature approve --id F9-M1 --write
-assert_json_value "chain-approve" "action" "approved"
-assert_json_value "chain-approve" "status_after" "Approved"
+python3 - "${CHAIN_REPO}/dev/map/DEV_MAP.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+payload = json.loads(path.read_text(encoding="utf-8"))
+payload["milestones"][0]["features"][0]["status"] = "Approved"
+path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
 run_expect_success "chain-sync" "${CHAIN_REPO}/dev/workflow" plan tasks for feature --id F9-M1 --delta-file "${CHAIN_REPO}/dev/sync_delta.json" --write --allocate-task-ids --update-pipeline
 assert_json_value "chain-sync" "action" "planned-tasks"
 assert_json_value "chain-sync" "task_count_after" "1"
