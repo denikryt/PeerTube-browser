@@ -545,30 +545,6 @@
       ]
     },
     {
-      "id": "92",
-      "marker": "[M1][F4]",
-      "title": "Add missing child issue checkboxes in feature issue on materialize",
-      "problem": "feature-level issue checklist may miss new child issues after local decomposition updates.",
-      "solution_option": "append missing checklist rows when child issues are materialized.",
-      "concrete_steps": [
-        "Build checklist map from feature issue body.",
-        "Append rows for child issues that do not exist in checklist.",
-        "Update feature issue body only when checklist changes."
-      ]
-    },
-    {
-      "id": "93",
-      "marker": "[M1][F4]",
-      "title": "Update feature issue checklist on confirm issue done",
-      "problem": "confirm issue done updates local status but does not mark corresponding feature issue checkbox as done.",
-      "solution_option": "on issue confirmation update corresponding checklist line to checked state.",
-      "concrete_steps": [
-        "Locate feature issue checkbox row by issue ID.",
-        "Switch row state to checked when issue status becomes Done.",
-        "Preserve all other checklist rows unchanged."
-      ]
-    },
-    {
       "id": "94",
       "marker": "[M1][F4]",
       "title": "Add issue-level Approved transition",

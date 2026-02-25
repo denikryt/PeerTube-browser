@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-25T02:37:02+02:00",
+  "updated_at": "2026-02-25T02:51:26+02:00",
   "task_count": 95,
   "milestones": [
     {
@@ -348,7 +348,7 @@
             {
               "id": "I10-F4-M1",
               "title": "Sync feature-issue checklist on child issue materialize and confirm",
-              "status": "Planned",
+              "status": "Done",
               "gh_issue_number": 90,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/90",
               "tasks": [
@@ -356,7 +356,7 @@
                   "id": "92",
                   "title": "Append missing child-issue checkboxes in feature issue during materialize",
                   "summary": "When child issues are materialized ensure feature-level issue body contains checklist lines for missing child issues.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "01:17:05"
                 },
@@ -364,7 +364,7 @@
                   "id": "93",
                   "title": "Update feature-issue checklist state on confirm issue done",
                   "summary": "When confirming issue done update corresponding checkbox to checked state in feature-level GitHub issue.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "01:17:05"
                 }

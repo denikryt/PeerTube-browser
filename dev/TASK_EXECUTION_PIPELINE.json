@@ -46,7 +46,7 @@
       "description": "workflow CLI + sync/materialize/confirm automation"
     },
     {
-      "tasks": ["92", "93", "94", "95"],
+      "tasks": ["94", "95"],
       "description": "feature checklist sync and issue approved gate"
     }
   ],
@@ -101,7 +101,7 @@
     },
     {
       "title": "Block J: Materialize mode split and issue-level gates",
-      "tasks": ["92", "93", "94", "95"],
+      "tasks": ["94", "95"],
       "scope": "explicit materialize modes, scoped issue materialization, create-only behavior, feature checklist sync, and issue-level approval gate enforcement.",
       "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
     }
@@ -154,10 +154,6 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
-    },
-    {
-      "tasks": ["93", "94"],
-      "description": "confirm issue transition logic drives both checklist updates and issue lifecycle status changes."
     }
   ]
 }
