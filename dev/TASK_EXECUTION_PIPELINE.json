@@ -50,6 +50,22 @@
       "description": "feature checklist sync and issue approved gate"
     },
     {
+      "tasks": ["99", "100", "101"],
+      "description": "issue planning status split (Pending vs Planned) and reconciliation"
+    },
+    {
+      "tasks": ["102", "103", "104"],
+      "description": "decomposition command rename to plan-tasks and hard legacy rejection"
+    },
+    {
+      "tasks": ["105", "106", "107"],
+      "description": "confirm issue scripted cleanup across plans and trackers"
+    },
+    {
+      "tasks": ["108", "109", "110"],
+      "description": "canonical per-issue plan block format and strict lint enforcement"
+    },
+    {
       "tasks": ["96", "97", "98"],
       "description": "feature-plan issue sequencing source and execution guidance"
     }
@@ -110,10 +126,16 @@
       "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
     },
     {
-      "title": "Block K: Issue-level execution sequencing from feature plans",
-      "tasks": ["96", "97", "98"],
-      "scope": "canonical issue order block format in FEATURE_PLANS, lint synchronization with DEV_MAP, and execution-plan visibility of next issue.",
-      "outcome": "each feature plan exposes one deterministic issue execution order, lint blocks drift from DEV_MAP active issues, and execution-plan output reports the next issue to run."
+      "title": "Block K: Issue-plan structure and issue sequencing contracts",
+      "tasks": ["108", "109", "110", "96", "97", "98"],
+      "scope": "canonical per-issue plan block format, strict lint hierarchy/validation, and deterministic issue execution ordering in feature plans.",
+      "outcome": "feature plans use one canonical per-issue block structure, lint rejects malformed/duplicate issue blocks and order drift, and execution-plan output reports the next issue from validated order rows."
+    },
+    {
+      "title": "Block L: Planning lifecycle and confirm cleanup automation",
+      "tasks": ["99", "100", "101", "102", "103", "104", "105", "106", "107"],
+      "scope": "issue planning status lifecycle split, decomposition command naming as plan-tasks, and scripted confirm cleanup of plan and tracker artifacts.",
+      "outcome": "active issues are distinguished as Pending (no plan block) vs Planned (has plan block), decomposition uses canonical `plan tasks for issue|feature` commands, and `confirm issue ... done` removes linked plan/order/tracker artifacts in one idempotent scripted flow."
     }
   ],
   "overlaps": [
@@ -164,6 +186,26 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
+    },
+    {
+      "tasks": ["99", "108"],
+      "description": "Pending/Planned status split depends on canonical issue-plan block presence detection."
+    },
+    {
+      "tasks": ["100", "109"],
+      "description": "issue-plan parsing and strict lint touch the same feature plan section parser contracts."
+    },
+    {
+      "tasks": ["102", "103"],
+      "description": "CLI command rename and protocol command semantics must be updated atomically."
+    },
+    {
+      "tasks": ["106", "110"],
+      "description": "confirm cleanup and issue-plan normalization both depend on stable issue-block heading boundaries."
+    },
+    {
+      "tasks": ["105", "106"],
+      "description": "confirm cleanup contract and write-path implementation must remain aligned for idempotent behavior."
     }
   ]
 }

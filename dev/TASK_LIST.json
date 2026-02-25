@@ -603,6 +603,150 @@
         "Include next issue metadata in output JSON without changing task-level dependency logic.",
         "Add smoke/docs updates for happy path and mismatch validation behavior."
       ]
+    },
+    {
+      "id": "99",
+      "marker": "[M1][F4]",
+      "title": "Define Pending vs Planned issue-planning status contract",
+      "problem": "Issue planning state is ambiguous because Planned is used both for issues with and without plan blocks.",
+      "solution_option": "Split issue planning state into Pending (no plan block) and Planned (plan block exists).",
+      "concrete_steps": [
+        "Update issue status contract docs/schema so Pending and Planned semantics are explicit for planning lifecycle.",
+        "Ensure feature issue statuses accept Pending for planning state while preserving Done/Rejected terminal behavior.",
+        "Add deterministic validation error wording for invalid planning-status transitions."
+      ]
+    },
+    {
+      "id": "100",
+      "marker": "[M1][F4]",
+      "title": "Implement issue-plan presence detection and status reconciliation",
+      "problem": "Tracker status can drift from actual issue plan coverage in FEATURE_PLANS.",
+      "solution_option": "Parse issue plan blocks and reconcile active issue statuses against plan presence.",
+      "concrete_steps": [
+        "Implement parser logic that detects per-issue plan blocks in a feature plan section.",
+        "Map active issues with plan blocks to Planned and issues without blocks to Pending in write paths.",
+        "Keep reconciliation deterministic and scoped to issues under the selected feature."
+      ]
+    },
+    {
+      "id": "101",
+      "marker": "[M1][F4]",
+      "title": "Add lint and smoke coverage for Pending/Planned split",
+      "problem": "Without regression checks, Pending/Planned behavior can break silently.",
+      "solution_option": "Add lint and smoke tests that verify status split and mismatch failures.",
+      "concrete_steps": [
+        "Add smoke case for new issue defaulting to Pending when no plan block exists.",
+        "Add smoke case for transition to Planned after issue plan block is added.",
+        "Add negative lint case that reports deterministic mismatch when status and plan presence diverge."
+      ]
+    },
+    {
+      "id": "102",
+      "marker": "[M1][F4]",
+      "title": "Implement canonical plan-tasks command names in CLI",
+      "problem": "Decomposition command naming does not reflect behavior and still uses sync terminology.",
+      "solution_option": "Implement first-class plan-tasks command names for issue/feature decomposition.",
+      "concrete_steps": [
+        "Add CLI command handlers for `plan tasks for issue <issue_id>` and `plan tasks for feature <feature_id>`.",
+        "Route decomposition logic through the new command names as canonical entrypoints.",
+        "Remove legacy decomposition command path that uses sync wording."
+      ]
+    },
+    {
+      "id": "103",
+      "marker": "[M1][F4]",
+      "title": "Update protocol/workflow docs to plan-tasks terminology",
+      "problem": "Protocol and workflow docs still reference old sync naming for decomposition.",
+      "solution_option": "Rename decomposition commands in canonical docs to plan-tasks naming.",
+      "concrete_steps": [
+        "Update TASK_EXECUTION_PROTOCOL decomposition-step command names to plan-tasks wording.",
+        "Update FEATURE_WORKFLOW command index/sequence to the same canonical command names.",
+        "Keep wording consistent across docs so operators see one command vocabulary."
+      ]
+    },
+    {
+      "id": "104",
+      "marker": "[M1][F4]",
+      "title": "Add regression coverage for hard command rename",
+      "problem": "Command rename can regress without test enforcement.",
+      "solution_option": "Add smoke checks for new command names and explicit failure for removed legacy path.",
+      "concrete_steps": [
+        "Add positive smoke scenarios for both canonical plan-tasks command forms.",
+        "Add negative smoke scenario where legacy sync decomposition command is rejected.",
+        "Assert deterministic error messages that guide operator to canonical command names."
+      ]
+    },
+    {
+      "id": "105",
+      "marker": "[M1][F4]",
+      "title": "Define confirm-issue cleanup contract for plans and trackers",
+      "problem": "Confirm issue done currently leaves plan artifacts and issue node artifacts behind.",
+      "solution_option": "Define one scripted cleanup contract for all artifacts linked to confirmed issue completion.",
+      "concrete_steps": [
+        "Specify cleanup scope for confirm issue write mode: FEATURE_PLANS, DEV_MAP, TASK_LIST, and PIPELINE.",
+        "Define idempotent behavior when some artifacts were already removed.",
+        "Define preview output fields for non-write mode showing planned removals."
+      ]
+    },
+    {
+      "id": "106",
+      "marker": "[M1][F4]",
+      "title": "Implement FEATURE_PLANS and DEV_MAP issue-node cleanup in confirm flow",
+      "problem": "Confirm flow does not remove issue plan block/order rows or issue node from DEV_MAP.",
+      "solution_option": "Implement scripted removal of issue plan artifacts and issue node during confirm issue write path.",
+      "concrete_steps": [
+        "In confirm issue write path, remove issue row from Issue Execution Order in FEATURE_PLANS.",
+        "Remove the issue plan block under the owning feature section in FEATURE_PLANS.",
+        "Remove the confirmed issue node and embedded child tasks from DEV_MAP while preserving other feature issues."
+      ]
+    },
+    {
+      "id": "107",
+      "marker": "[M1][F4]",
+      "title": "Add smoke and idempotency checks for confirm cleanup behavior",
+      "problem": "Cross-file cleanup can regress or become non-idempotent without dedicated tests.",
+      "solution_option": "Add smoke tests for cleanup behavior and repeat-run no-op stability.",
+      "concrete_steps": [
+        "Add smoke scenario verifying confirm issue removes plan block, issue order row, and issue node.",
+        "Add smoke assertions that linked task list and pipeline entries are cleaned in same run.",
+        "Add repeated confirm scenario asserting deterministic no-op cleanup output."
+      ]
+    },
+    {
+      "id": "108",
+      "marker": "[M1][F4]",
+      "title": "Define canonical per-issue plan block format",
+      "problem": "Issue plan blocks in FEATURE_PLANS use mixed heading and section patterns.",
+      "solution_option": "Define one canonical issue block heading and section structure.",
+      "concrete_steps": [
+        "Specify canonical issue block heading format for one issue per block.",
+        "Specify allowed inner section headings and mandatory content sections.",
+        "Document canonical format in planning protocol and feature plans guidance."
+      ]
+    },
+    {
+      "id": "109",
+      "marker": "[M1][F4]",
+      "title": "Enforce strict lint for issue-plan block hierarchy",
+      "problem": "Plan-lint currently allows structural drift in per-issue plan blocks.",
+      "solution_option": "Extend lint to enforce canonical issue block hierarchy and required content.",
+      "concrete_steps": [
+        "Validate one issue ID per issue block and reject duplicate issue block definitions.",
+        "Reject invalid heading hierarchy inside feature plan issue blocks.",
+        "Validate required section presence and emit deterministic lint errors with offending heading/issue ID."
+      ]
+    },
+    {
+      "id": "110",
+      "marker": "[M1][F4]",
+      "title": "Normalize existing issue-plan blocks and add regression checks",
+      "problem": "Existing plan entries are not fully aligned with the new canonical issue block shape.",
+      "solution_option": "Migrate existing issue plan blocks to canonical format and lock behavior with smoke tests.",
+      "concrete_steps": [
+        "Rewrite existing issue plan blocks to canonical heading/section shape without changing meaning.",
+        "Add positive smoke case for canonical issue block parsing and lint pass.",
+        "Add negative smoke cases for malformed or duplicate issue block headings."
+      ]
     }
   ]
 }

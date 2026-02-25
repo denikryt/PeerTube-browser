@@ -6,8 +6,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-25T19:11:40+02:00",
-  "task_count": 98,
+  "updated_at": "2026-02-25T19:12:45+02:00",
+  "task_count": 110,
   "milestones": [
     {
       "id": "M1",
@@ -459,7 +459,32 @@
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "99",
+                  "title": "Define Pending vs Planned issue-planning status contract",
+                  "summary": "Extend issue status contract so Pending means no issue plan block and Planned means issue plan block exists.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                },
+                {
+                  "id": "100",
+                  "title": "Implement issue-plan presence detection and status reconciliation",
+                  "summary": "Add parser/reconciliation logic that maps issue-plan block presence in FEATURE_PLANS to Pending/Planned status for active issues.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                },
+                {
+                  "id": "101",
+                  "title": "Add lint and smoke coverage for Pending/Planned split",
+                  "summary": "Add regression checks for Pending defaults, Pending->Planned transition, and deterministic mismatch errors.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                }
+              ]
             },
             {
               "id": "I17-F4-M1",
@@ -475,7 +500,32 @@
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "108",
+                  "title": "Define canonical per-issue plan block format",
+                  "summary": "Specify one canonical issue-plan heading/section structure for FEATURE_PLANS and document required sections.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                },
+                {
+                  "id": "109",
+                  "title": "Enforce strict lint for issue-plan block hierarchy",
+                  "summary": "Extend feature plan lint to validate issue block headings, uniqueness, and required section content.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                },
+                {
+                  "id": "110",
+                  "title": "Normalize existing issue-plan blocks and add regression checks",
+                  "summary": "Migrate existing issue-plan entries to canonical format and add smoke checks for parser/lint stability.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                }
+              ]
             },
             {
               "id": "I19-F4-M1",
@@ -516,7 +566,32 @@
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "102",
+                  "title": "Implement canonical plan-tasks command names in CLI",
+                  "summary": "Add first-class command handlers for plan tasks for issue/feature and remove decomposition naming drift in CLI entrypoints.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                },
+                {
+                  "id": "103",
+                  "title": "Update protocol/workflow docs to plan-tasks terminology",
+                  "summary": "Replace decomposition-step command wording from sync to plan tasks for issue/feature in canonical docs.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                },
+                {
+                  "id": "104",
+                  "title": "Add regression coverage for hard command rename",
+                  "summary": "Add smoke tests for new plan-tasks commands and explicit rejection of removed legacy sync command path.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                }
+              ]
             },
             {
               "id": "I21-F4-M1",
@@ -524,7 +599,32 @@
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "105",
+                  "title": "Define confirm-issue cleanup contract for plans and trackers",
+                  "summary": "Define write-mode cleanup semantics for confirm issue so linked plan/tracker artifacts are removed in one scripted flow.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                },
+                {
+                  "id": "106",
+                  "title": "Implement FEATURE_PLANS and DEV_MAP issue-node cleanup in confirm flow",
+                  "summary": "Remove issue plan block/order row and remove confirmed issue node with child tasks during confirm issue write path.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                },
+                {
+                  "id": "107",
+                  "title": "Add smoke and idempotency checks for confirm cleanup behavior",
+                  "summary": "Cover cleanup behavior across FEATURE_PLANS/DEV_MAP/TASK_LIST/PIPELINE and repeated confirm no-op stability.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "19:12:45"
+                }
+              ]
             }
           ],
           "branch_name": "feature/F4-M1",
