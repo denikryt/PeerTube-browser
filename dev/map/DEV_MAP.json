@@ -7,7 +7,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-25T19:19:44+02:00",
+  "updated_at": "2026-02-25T20:06:52+02:00",
   "task_count": 110,
   "milestones": [
     {
@@ -457,7 +457,7 @@
             {
               "id": "I16-F4-M1",
               "title": "Issue planning status split: Pending (no plan) vs Planned (has plan)",
-              "status": "Planned",
+              "status": "Done",
               "gh_issue_number": 95,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/95",
               "tasks": [
@@ -465,7 +465,7 @@
                   "id": "99",
                   "title": "Define Pending vs Planned issue-planning status contract",
                   "summary": "Extend issue status contract so Pending means no issue plan block and Planned means issue plan block exists.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 },
@@ -473,7 +473,7 @@
                   "id": "100",
                   "title": "Implement issue-plan presence detection and status reconciliation",
                   "summary": "Add parser/reconciliation logic that maps issue-plan block presence in FEATURE_PLANS to Pending/Planned status for active issues.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 },
@@ -481,7 +481,7 @@
                   "id": "101",
                   "title": "Add lint and smoke coverage for Pending/Planned split",
                   "summary": "Add regression checks for Pending defaults, Pending->Planned transition, and deterministic mismatch errors.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 }
@@ -498,7 +498,7 @@
             {
               "id": "I18-F4-M1",
               "title": "Standardize per-issue plan block format in FEATURE_PLANS and enforce strict heading lint",
-              "status": "Planned",
+              "status": "Done",
               "gh_issue_number": 96,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/96",
               "tasks": [
@@ -506,7 +506,7 @@
                   "id": "108",
                   "title": "Define canonical per-issue plan block format",
                   "summary": "Specify one canonical issue-plan heading/section structure for FEATURE_PLANS and document required sections.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 },
@@ -514,7 +514,7 @@
                   "id": "109",
                   "title": "Enforce strict lint for issue-plan block hierarchy",
                   "summary": "Extend feature plan lint to validate issue block headings, uniqueness, and required section content.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 },
@@ -522,7 +522,7 @@
                   "id": "110",
                   "title": "Normalize existing issue-plan blocks and add regression checks",
                   "summary": "Migrate existing issue-plan entries to canonical format and add smoke checks for parser/lint stability.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 }
@@ -564,7 +564,7 @@
             {
               "id": "I20-F4-M1",
               "title": "Rename decomposition commands from sync to plan tasks for issue/feature",
-              "status": "Planned",
+              "status": "Done",
               "gh_issue_number": 97,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/97",
               "tasks": [
@@ -572,7 +572,7 @@
                   "id": "102",
                   "title": "Implement canonical plan-tasks command names in CLI",
                   "summary": "Add first-class command handlers for plan tasks for issue/feature and remove decomposition naming drift in CLI entrypoints.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 },
@@ -580,7 +580,7 @@
                   "id": "103",
                   "title": "Update protocol/workflow docs to plan-tasks terminology",
                   "summary": "Replace decomposition-step command wording from sync to plan tasks for issue/feature in canonical docs.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 },
@@ -588,7 +588,7 @@
                   "id": "104",
                   "title": "Add regression coverage for hard command rename",
                   "summary": "Add smoke tests for new plan-tasks commands and explicit rejection of removed legacy sync command path.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 }
@@ -597,7 +597,7 @@
             {
               "id": "I21-F4-M1",
               "title": "Confirm issue done: script-driven cleanup of issue plan block and linked issue/task tracker nodes",
-              "status": "Planned",
+              "status": "Done",
               "gh_issue_number": 98,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/98",
               "tasks": [
@@ -605,7 +605,7 @@
                   "id": "105",
                   "title": "Define confirm-issue cleanup contract for plans and trackers",
                   "summary": "Define write-mode cleanup semantics for confirm issue so linked plan/tracker artifacts are removed in one scripted flow.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 },
@@ -613,7 +613,7 @@
                   "id": "106",
                   "title": "Implement FEATURE_PLANS and DEV_MAP issue-node cleanup in confirm flow",
                   "summary": "Remove issue plan block/order row and remove confirmed issue node with child tasks during confirm issue write path.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 },
@@ -621,7 +621,7 @@
                   "id": "107",
                   "title": "Add smoke and idempotency checks for confirm cleanup behavior",
                   "summary": "Cover cleanup behavior across FEATURE_PLANS/DEV_MAP/TASK_LIST/PIPELINE and repeated confirm no-op stability.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 }
