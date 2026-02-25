@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-25T02:51:26+02:00",
+  "updated_at": "2026-02-25T03:36:06+02:00",
   "task_count": 95,
   "milestones": [
     {
@@ -439,6 +439,22 @@
             {
               "id": "I14-F4-M1",
               "title": "Replace checkbox-based GitHub issue body with description-driven readable content",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I15-F4-M1",
+              "title": "Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I16-F4-M1",
+              "title": "Issue planning status split: Pending (no plan) vs Planned (has plan)",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
