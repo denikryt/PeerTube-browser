@@ -228,6 +228,34 @@ def register_plan_router(subparsers: argparse._SubParsersAction[argparse.Argumen
     )
     issue_parser.set_defaults(handler=_handle_plan_tasks_for_issue)
 
+    issues_parser = for_subparsers.add_parser(
+        "issues",
+        help="Plan tasks for multiple issues in one decomposition delta run.",
+    )
+    issues_parser.add_argument(
+        "--issue-id",
+        action="append",
+        required=True,
+        help="Repeatable issue selector; queue order is preserved.",
+    )
+    issues_parser.add_argument(
+        "--delta-file",
+        required=True,
+        help="Path to JSON delta describing issue/task and tracker updates.",
+    )
+    issues_parser.add_argument("--write", action="store_true", help="Persist tracker updates.")
+    issues_parser.add_argument(
+        "--allocate-task-ids",
+        action="store_true",
+        help="Allocate numeric IDs from DEV_MAP task_count for token IDs ($token).",
+    )
+    issues_parser.add_argument(
+        "--update-pipeline",
+        action="store_true",
+        help="Apply pipeline section updates from the delta payload.",
+    )
+    issues_parser.set_defaults(handler=_handle_plan_tasks_for_issues)
+
 
 def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
     """Create feature node and optionally sync feature-level GitHub issue metadata."""
@@ -457,8 +485,29 @@ def _handle_plan_tasks_for_issue(args: Namespace, context: WorkflowContext) -> i
     issue_id, feature_local_num, feature_milestone_num = _parse_issue_id(args.id)
     setattr(args, "id", f"F{feature_local_num}-M{feature_milestone_num}")
     setattr(args, "issue_id_filter", issue_id)
+    setattr(args, "issue_id_queue", [issue_id])
     setattr(args, "command_label", "plan tasks for issue")
     setattr(args, "command_output", "plan.tasks.for.issue")
+    return _handle_feature_sync(args, context)
+
+
+def _handle_plan_tasks_for_issues(args: Namespace, context: WorkflowContext) -> int:
+    """Handle `plan tasks for issues` command by resolving one owning feature and queue filter."""
+    issue_id_queue = _resolve_plan_tasks_issue_batch_queue(args.issue_id)
+    first_issue_id, feature_local_num, feature_milestone_num = _parse_issue_id(issue_id_queue[0])
+    feature_id = f"F{feature_local_num}-M{feature_milestone_num}"
+    _assert_issue_queue_belongs_to_feature(
+        issue_id_queue=issue_id_queue,
+        feature_id=feature_id,
+        feature_milestone_num=feature_milestone_num,
+        feature_local_num=feature_local_num,
+        command_label="plan tasks for issues",
+    )
+    setattr(args, "id", feature_id)
+    setattr(args, "issue_id_filter", first_issue_id if len(issue_id_queue) == 1 else None)
+    setattr(args, "issue_id_queue", issue_id_queue)
+    setattr(args, "command_label", "plan tasks for issues")
+    setattr(args, "command_output", "plan.tasks.for.issues")
     return _handle_feature_sync(args, context)
 
 
@@ -481,6 +530,16 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         feature_milestone_num=feature_milestone_num,
         feature_local_num=feature_local_num,
     )
+    issue_id_queue = _resolve_plan_tasks_issue_queue(
+        raw_issue_ids=getattr(args, "issue_id_queue", None),
+        feature_id=feature_id,
+        feature_milestone_num=feature_milestone_num,
+        feature_local_num=feature_local_num,
+    )
+    if issue_id_filter is not None and issue_id_filter not in issue_id_queue:
+        issue_id_queue.append(issue_id_filter)
+    if issue_id_filter is None and len(issue_id_queue) == 1:
+        issue_id_filter = issue_id_queue[0]
     delta = load_sync_delta(Path(args.delta_file))
     existing_task_locations = _collect_task_locations(dev_map)
     resolved_delta, allocation = resolve_sync_delta_references(
@@ -492,11 +551,14 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
     issue_payloads = _filter_issue_payloads_for_plan_tasks(
         issue_payloads=resolved_delta.get("issues", []),
         issue_id_filter=issue_id_filter,
+        issue_id_queue=issue_id_queue,
+        command_label=command_label,
     )
     _enforce_plan_tasks_issue_status_gate(
         feature_node=feature_node,
         issue_payloads=issue_payloads,
         issue_id_filter=issue_id_filter,
+        issue_id_queue=issue_id_queue,
         command_label=command_label,
     )
     issue_counts = _apply_issue_delta(
@@ -576,6 +638,7 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
             "dev_map_tasks_upserted": issue_counts["tasks_upserted"],
             "feature_id": feature_id,
             "issue_id_filter": issue_id_filter,
+            "issue_id_queue": issue_id_queue,
             "issue_execution_order_sync": issue_execution_order_sync,
             "issue_planning_status_reconciliation": issue_planning_status_reconciliation,
             "pipeline_blocks_added": pipeline_counts["blocks_added"],
@@ -952,20 +1015,98 @@ def _resolve_plan_tasks_issue_filter(
     return issue_id
 
 
+def _resolve_plan_tasks_issue_batch_queue(raw_issue_ids: Any) -> list[str]:
+    """Normalize issue-id queue for `plan tasks for issues` and enforce no duplicates."""
+    if not isinstance(raw_issue_ids, list) or not raw_issue_ids:
+        raise WorkflowCommandError(
+            "plan tasks for issues requires at least one --issue-id value.",
+            exit_code=4,
+        )
+    issue_id_queue: list[str] = []
+    seen_issue_ids: set[str] = set()
+    for raw_issue_id in raw_issue_ids:
+        issue_id = _normalize_id(str(raw_issue_id))
+        if ISSUE_ID_PATTERN.fullmatch(issue_id) is None:
+            raise WorkflowCommandError(
+                f"Invalid --issue-id value {raw_issue_id!r}; expected I<local>-F<feature_local>-M<milestone>.",
+                exit_code=4,
+            )
+        if issue_id in seen_issue_ids:
+            raise WorkflowCommandError(
+                f"Duplicate --issue-id value {issue_id}; provide each issue once in queue order.",
+                exit_code=4,
+            )
+        seen_issue_ids.add(issue_id)
+        issue_id_queue.append(issue_id)
+    return issue_id_queue
+
+
+def _assert_issue_queue_belongs_to_feature(
+    *,
+    issue_id_queue: list[str],
+    feature_id: str,
+    feature_milestone_num: int,
+    feature_local_num: int,
+    command_label: str,
+) -> None:
+    """Validate that all queued issue IDs belong to the same selected feature chain."""
+    for issue_id in issue_id_queue:
+        try:
+            _assert_issue_belongs_to_feature(
+                issue_id=issue_id,
+                feature_id=feature_id,
+                feature_milestone_num=feature_milestone_num,
+                feature_local_num=feature_local_num,
+            )
+        except WorkflowCommandError as error:
+            raise WorkflowCommandError(
+                f"{command_label} requires issue IDs from one feature chain; {error}",
+                exit_code=4,
+            ) from error
+
+
+def _resolve_plan_tasks_issue_queue(
+    raw_issue_ids: Any,
+    *,
+    feature_id: str,
+    feature_milestone_num: int,
+    feature_local_num: int,
+) -> list[str]:
+    """Normalize optional plan-tasks issue queue and validate ownership chain."""
+    if raw_issue_ids is None:
+        return []
+    if not isinstance(raw_issue_ids, list):
+        raw_issue_ids = [raw_issue_ids]
+    issue_id_queue = _resolve_plan_tasks_issue_batch_queue(raw_issue_ids)
+    _assert_issue_queue_belongs_to_feature(
+        issue_id_queue=issue_id_queue,
+        feature_id=feature_id,
+        feature_milestone_num=feature_milestone_num,
+        feature_local_num=feature_local_num,
+        command_label="plan tasks for issues",
+    )
+    return issue_id_queue
+
+
 def _filter_issue_payloads_for_plan_tasks(
     issue_payloads: list[dict[str, Any]],
     issue_id_filter: str | None,
+    issue_id_queue: list[str],
+    command_label: str,
 ) -> list[dict[str, Any]]:
-    """Restrict delta issue payloads to one issue when issue-scoped decomposition is requested."""
-    if issue_id_filter is None:
+    """Restrict delta issue payloads to selected issue ID(s) for issue-scoped decomposition."""
+    if issue_id_filter is None and not issue_id_queue:
         return issue_payloads
+    expected_issue_ids = issue_id_queue if issue_id_queue else [issue_id_filter] if issue_id_filter else []
+    expected_issue_set = set(expected_issue_ids)
     filtered_payloads: list[dict[str, Any]] = []
     for issue_index, issue_payload in enumerate(issue_payloads):
         payload_issue_id = _required_string_field(issue_payload, "id", f"issues[{issue_index}]")
-        if payload_issue_id != issue_id_filter:
+        if payload_issue_id not in expected_issue_set:
+            expected_joined = ", ".join(expected_issue_ids)
             raise WorkflowCommandError(
-                "plan tasks for issue delta contains non-target issue "
-                f"{payload_issue_id}; expected only {issue_id_filter}.",
+                f"{command_label} delta contains non-target issue {payload_issue_id}; "
+                f"expected only: {expected_joined}.",
                 exit_code=4,
             )
         filtered_payloads.append(issue_payload)
@@ -977,6 +1118,7 @@ def _enforce_plan_tasks_issue_status_gate(
     feature_node: dict[str, Any],
     issue_payloads: list[dict[str, Any]],
     issue_id_filter: str | None,
+    issue_id_queue: list[str],
     command_label: str,
 ) -> None:
     """Reject decomposition updates for pending/missing issue nodes."""
@@ -995,6 +1137,9 @@ def _enforce_plan_tasks_issue_status_gate(
             target_issue_ids.append(payload_issue_id)
     if issue_id_filter is not None and issue_id_filter not in target_issue_ids:
         target_issue_ids.append(issue_id_filter)
+    for issue_id in issue_id_queue:
+        if issue_id not in target_issue_ids:
+            target_issue_ids.append(issue_id)
 
     for issue_id in target_issue_ids:
         issue_status = issue_status_by_id.get(issue_id)

@@ -442,6 +442,210 @@ run_expect_failure_contains \
   "Issue Execution Order references unknown issue" \
   "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 
+# Multi-issue decomposition: one run for explicit issue queue.
+BATCH_ISSUES_REPO="${TMP_DIR}/batch-issues-fixture"
+create_workflow_fixture_repo "${BATCH_ISSUES_REPO}"
+cat >"${BATCH_ISSUES_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+{
+  "version": "1.0",
+  "updated_at": "2026-02-24T00:00:00+00:00",
+  "task_count": 0,
+  "statuses": ["Pending", "Planned", "Tasked", "Done", "Rejected", "Approved"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Milestone 1",
+      "status": "Planned",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Feature F1-M1",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F1-M1",
+              "title": "Issue one",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F1-M1",
+              "title": "Issue two",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
+        },
+        {
+          "id": "F2-M1",
+          "title": "Feature F2-M1",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F2-M1",
+              "title": "Issue from another feature",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
+        }
+      ],
+      "standalone_issues": []
+    }
+  ]
+}
+EOF
+cat >"${BATCH_ISSUES_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F1-M1
+### Dependencies
+- smoke
+
+### Decomposition
+1. smoke
+
+### Issue Execution Order
+1. `I1-F1-M1` - Issue one
+2. `I2-F1-M1` - Issue two
+
+### I1-F1-M1 - Issue one
+
+#### Dependencies
+- smoke
+
+#### Decomposition
+1. smoke
+
+#### Issue/Task Decomposition Assessment
+- smoke
+
+### I2-F1-M1 - Issue two
+
+#### Dependencies
+- smoke
+
+#### Decomposition
+1. smoke
+
+#### Issue/Task Decomposition Assessment
+- smoke
+
+### Issue/Task Decomposition Assessment
+- smoke
+EOF
+cat >"${BATCH_ISSUES_REPO}/dev/batch_delta.json" <<'EOF'
+{
+  "issues": [
+    {
+      "id": "I2-F1-M1",
+      "tasks": [
+        {
+          "id": "$t1",
+          "title": "Issue two task",
+          "summary": "Summary two"
+        }
+      ]
+    },
+    {
+      "id": "I1-F1-M1",
+      "tasks": [
+        {
+          "id": "$t2",
+          "title": "Issue one task",
+          "summary": "Summary one"
+        }
+      ]
+    }
+  ],
+  "task_list_entries": [
+    {
+      "id": "$t1",
+      "title": "Issue two task",
+      "problem": "Need one-run decomposition for selected issue queue.",
+      "solution_option": "Support batch issue-scope decomposition command.",
+      "concrete_steps": [
+        "Run plan tasks for issues with explicit queue."
+      ]
+    },
+    {
+      "id": "$t2",
+      "title": "Issue one task",
+      "problem": "Need queue-scoped delta filtering.",
+      "solution_option": "Filter delta by selected issue IDs only.",
+      "concrete_steps": [
+        "Validate queue and filter issues payload."
+      ]
+    }
+  ],
+  "pipeline": {
+    "execution_sequence_append": [
+      {
+        "tasks": ["$t1", "$t2"],
+        "description": "batch issues"
+      }
+    ],
+    "functional_blocks_append": [
+      {
+        "title": "Batch issues block",
+        "tasks": ["$t1", "$t2"],
+        "scope": "queue-scoped decomposition run.",
+        "outcome": "one run plans selected issue set."
+      }
+    ],
+    "overlaps_append": [
+      {
+        "tasks": ["$t1", "$t2"],
+        "description": "same batch decomposition path."
+      }
+    ]
+  }
+}
+EOF
+run_expect_success \
+  "batch-issues-sync" \
+  "${BATCH_ISSUES_REPO}/dev/workflow" plan tasks for issues --issue-id I2-F1-M1 --issue-id I1-F1-M1 --delta-file "${BATCH_ISSUES_REPO}/dev/batch_delta.json" --write --allocate-task-ids --update-pipeline
+assert_json_value "batch-issues-sync" "command" "plan.tasks.for.issues"
+assert_json_value "batch-issues-sync" "issue_id_filter" "null"
+assert_json_value "batch-issues-sync" "issue_id_queue.0" "I2-F1-M1"
+assert_json_value "batch-issues-sync" "issue_id_queue.1" "I1-F1-M1"
+assert_json_value "batch-issues-sync" "dev_map_tasks_upserted" "2"
+assert_json_value "batch-issues-sync" "task_count_after" "2"
+assert_jq_file_value \
+  "batch-issues-status-issue1" \
+  "${BATCH_ISSUES_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues[] | select(.id=="I1-F1-M1") | .status' \
+  "Tasked"
+assert_jq_file_value \
+  "batch-issues-status-issue2" \
+  "${BATCH_ISSUES_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues[] | select(.id=="I2-F1-M1") | .status' \
+  "Tasked"
+run_expect_failure_contains \
+  "batch-issues-duplicate-queue" \
+  "Duplicate --issue-id value I1-F1-M1" \
+  "${BATCH_ISSUES_REPO}/dev/workflow" plan tasks for issues --issue-id I1-F1-M1 --issue-id I1-F1-M1 --delta-file "${BATCH_ISSUES_REPO}/dev/batch_delta.json"
+run_expect_failure_contains \
+  "batch-issues-non-owned-queue" \
+  "requires issue IDs from one feature chain" \
+  "${BATCH_ISSUES_REPO}/dev/workflow" plan tasks for issues --issue-id I1-F1-M1 --issue-id I1-F2-M1 --delta-file "${BATCH_ISSUES_REPO}/dev/batch_delta.json"
+
 # No-approve gate: plan tasks --write must not require feature Approved status.
 GATE_SYNC_REPO="${TMP_DIR}/gate-sync-fixture"
 create_workflow_fixture_repo "${GATE_SYNC_REPO}"

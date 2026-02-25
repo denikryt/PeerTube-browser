@@ -14,7 +14,7 @@ Compact command index for milestone/feature operations.
 1. `create feature <id>`
 2. `plan feature <id>`
 3. `plan issue <issue_id>` (repeat per issue as needed)
-4. `plan tasks for feature <id>` or `plan tasks for issue <issue_id>`
+4. `plan tasks for feature <id>` or `plan tasks for issue <issue_id>` or `plan tasks for issues --issue-id <issue_a> --issue-id <issue_b> ...`
 5. review/refine local decomposition with user
 6. `materialize feature <id> --mode bootstrap`
 7. `materialize feature <id> --mode issues-create` or `materialize feature <id> --mode issues-sync`
@@ -46,7 +46,7 @@ Compact command index for milestone/feature operations.
   - Scope: target issue block only; `Issue Execution Order` is checked as read-only and is not mutated by this command.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
   - Canonical planning requirements: `dev/FEATURE_PLANNING_PROTOCOL.md` -> `Planning Input Contract` + `Planning Quality Gates`.
-- `plan tasks for feature <id>` / `plan tasks for issue <issue_id>`
+- `plan tasks for feature <id>` / `plan tasks for issue <issue_id>` / `plan tasks for issues --issue-id <issue_a> --issue-id <issue_b> ...`
   - Purpose: persist local `Issue -> Task` decomposition across `DEV_MAP`/`TASK_LIST`/`PIPELINE`.
   - Gate: selected issues must not be `Pending`; run `plan issue <issue_id>` first for pending issues.
   - Transition: successful decomposition moves selected issues to `Tasked`.

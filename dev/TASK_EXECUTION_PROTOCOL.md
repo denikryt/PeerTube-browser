@@ -154,6 +154,7 @@ Use this procedure before executing tasks for a new feature.
    - Persist plan content to `dev/FEATURE_PLANS.md` in the same run (no chat-only plan output).
 4. `plan tasks for feature <id>`: create/update local `Issue -> Task` decomposition and persist it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.json`, and `dev/TASK_EXECUTION_PIPELINE.json`.
    - Optional issue scope: `plan tasks for issue <issue_id>` for one issue-targeted decomposition run.
+   - Optional batch issue scope: `plan tasks for issues --issue-id <issue_a> --issue-id <issue_b> ...` for one queue-targeted decomposition run with shared ID allocation and pipeline updates.
    - Status gate: selected issue nodes must not be `Pending`; run `plan issue <issue_id>` first for pending issues.
    - Transition rule: successful decomposition marks selected issue nodes as `Tasked`.
 5. Review/refine local issues/tasks with the user until decomposition is final.
