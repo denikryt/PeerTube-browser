@@ -543,6 +543,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
     issue_id_queue = _resolve_materialize_issue_queue(args.issue_id)
     issue_id_filter = issue_id_queue[0] if len(issue_id_queue) == 1 else None
     issue_nodes: list[dict[str, Any]] = []
+    selected_issue_ids: list[str] = []
     if materialize_mode == "bootstrap":
         if issue_id_queue:
             raise WorkflowCommandError(
@@ -577,6 +578,11 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                     )
                 queued_issue_nodes.append(matched_issue_node)
             issue_nodes = queued_issue_nodes
+        selected_issue_ids = [
+            _normalize_id(str(issue_node.get("id", "")))
+            for issue_node in issue_nodes
+            if _normalize_id(str(issue_node.get("id", "")))
+        ]
         _enforce_materialize_issue_status_gate(issue_nodes)
 
     branch_name = f"feature/{feature_id}"
@@ -678,6 +684,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             "github_enabled": bool(args.github),
             "issue_id_filter": issue_id_filter,
             "issue_id_queue": issue_id_queue,
+            "selected_issue_ids": selected_issue_ids,
             "mode": materialize_mode,
             "mode_action": mode_action,
             "issues_materialized": materialized_issues,
@@ -781,6 +788,7 @@ def _resolve_materialize_issue_queue(raw_issue_ids: Any) -> list[str]:
     if not isinstance(raw_issue_ids, list):
         raw_issue_ids = [raw_issue_ids]
     issue_id_queue: list[str] = []
+    seen_issue_ids: set[str] = set()
     for raw_issue_id in raw_issue_ids:
         issue_id = _normalize_id(str(raw_issue_id))
         if ISSUE_ID_PATTERN.fullmatch(issue_id) is None:
@@ -788,6 +796,12 @@ def _resolve_materialize_issue_queue(raw_issue_ids: Any) -> list[str]:
                 f"Invalid --issue-id value {raw_issue_id!r}; expected I<local>-F<feature_local>-M<milestone>.",
                 exit_code=4,
             )
+        if issue_id in seen_issue_ids:
+            raise WorkflowCommandError(
+                f"Duplicate --issue-id value {issue_id}; provide each issue once in queue order.",
+                exit_code=4,
+            )
+        seen_issue_ids.add(issue_id)
         issue_id_queue.append(issue_id)
     return issue_id_queue
 
