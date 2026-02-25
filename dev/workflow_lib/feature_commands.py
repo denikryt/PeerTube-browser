@@ -382,7 +382,9 @@ def _handle_feature_plan_issue(args: Namespace, context: WorkflowContext) -> int
     dev_map = _load_json(context.dev_map_path)
     issue_resolution = _resolve_issue_owner_feature(dev_map=dev_map, issue_id=issue_id)
     feature_id = issue_resolution["feature_id"]
-    feature_assertion = str(getattr(args, "feature_id", "")).strip()
+    issue_node = issue_resolution["issue"]
+    raw_feature_assertion = getattr(args, "feature_id", None)
+    feature_assertion = str(raw_feature_assertion).strip() if raw_feature_assertion is not None else ""
     if feature_assertion:
         normalized_feature_assertion, _ = _parse_feature_id(feature_assertion)
         if normalized_feature_assertion != feature_id:
@@ -391,15 +393,37 @@ def _handle_feature_plan_issue(args: Namespace, context: WorkflowContext) -> int
                 exit_code=4,
             )
 
+    feature_plans_text = context.feature_plans_path.read_text(encoding="utf-8")
+    section_bounds = _find_h2_section_bounds(feature_plans_text, feature_id)
+    if section_bounds is None:
+        raise WorkflowCommandError(
+            f"Feature plan section ## {feature_id} not found in {context.feature_plans_path}.",
+            exit_code=4,
+        )
+    section_start, section_end = section_bounds
+    feature_plans_lines = feature_plans_text.splitlines()
+    section_lines = feature_plans_lines[section_start:section_end]
+    updated_section_lines, block_action = _upsert_issue_plan_block_in_section(
+        section_lines=section_lines,
+        issue_id=issue_id,
+        issue_title=str(issue_node.get("title", "")).strip() or issue_id,
+        issue_node=issue_node,
+    )
+    plan_block_updated = block_action in {"created", "updated"}
+    if bool(args.write) and plan_block_updated:
+        feature_plans_lines[section_start:section_end] = updated_section_lines
+        context.feature_plans_path.write_text("\n".join(feature_plans_lines) + "\n", encoding="utf-8")
+    action = block_action if bool(args.write) else _render_plan_issue_dry_run_action(block_action)
+
     emit_json(
         {
-            "action": "would-update",
+            "action": action,
             "command": "feature.plan-issue",
             "feature_id": feature_id,
             "issue_id": issue_id,
             "issue_order_checked": False,
             "issue_order_mutated": False,
-            "plan_block_updated": False,
+            "plan_block_updated": plan_block_updated,
             "strict": bool(args.strict),
             "write": bool(args.write),
         }
@@ -1582,6 +1606,15 @@ def _build_feature_plan_scaffold(feature_id: str) -> str:
     )
 
 
+def _render_plan_issue_dry_run_action(block_action: str) -> str:
+    """Convert persisted plan-issue action to dry-run action token."""
+    if block_action == "created":
+        return "would-create"
+    if block_action == "updated":
+        return "would-update"
+    return "unchanged"
+
+
 def _extract_feature_plan_section(feature_plans_path: Path, feature_id: str) -> str:
     """Extract one feature section from FEATURE_PLANS by ID."""
     text = feature_plans_path.read_text(encoding="utf-8")
@@ -1594,6 +1627,110 @@ def _extract_feature_plan_section(feature_plans_path: Path, feature_id: str) -> 
     lines = text.splitlines()
     start_line, end_line = bounds
     return "\n".join(lines[start_line:end_line]) + "\n"
+
+
+def _upsert_issue_plan_block_in_section(
+    *,
+    section_lines: list[str],
+    issue_id: str,
+    issue_title: str,
+    issue_node: dict[str, Any],
+) -> tuple[list[str], str]:
+    """Create or update one canonical issue-plan block inside a feature section."""
+    block_lines = _build_issue_plan_block_lines(issue_id=issue_id, issue_title=issue_title, issue_node=issue_node)
+    updated_section_lines = list(section_lines)
+    existing_bounds = _find_issue_plan_block_bounds(updated_section_lines, issue_id)
+    if existing_bounds is not None:
+        start_index, end_index = existing_bounds
+        existing_block = updated_section_lines[start_index:end_index]
+        if existing_block == block_lines:
+            return updated_section_lines, "unchanged"
+        updated_section_lines[start_index:end_index] = block_lines
+        return updated_section_lines, "updated"
+
+    insert_index = _resolve_issue_plan_block_insert_index(updated_section_lines)
+    updated_section_lines[insert_index:insert_index] = block_lines
+    return updated_section_lines, "created"
+
+
+def _build_issue_plan_block_lines(*, issue_id: str, issue_title: str, issue_node: dict[str, Any]) -> list[str]:
+    """Build canonical issue-plan markdown block lines for one issue node."""
+    normalized_title = issue_title.strip() or issue_id
+    tasks = issue_node.get("tasks", [])
+    task_items = [task for task in tasks if isinstance(task, dict)] if isinstance(tasks, list) else []
+    task_ids = [str(task.get("id", "")).strip() for task in task_items if str(task.get("id", "")).strip()]
+    decomposition_steps: list[str] = []
+    for index, task in enumerate(task_items, start=1):
+        task_title = str(task.get("title", "")).strip()
+        task_id = str(task.get("id", "")).strip()
+        task_label = task_title or (f"task {task_id}" if task_id else "mapped task")
+        decomposition_steps.append(f"{index}. Implement {task_label}.")
+    if not decomposition_steps:
+        decomposition_steps = ["1. Implement issue scope and produce executable task updates."]
+    task_ids_line = ", ".join(task_ids) if task_ids else "none"
+    return [
+        "",
+        f"### {issue_id} - {normalized_title}",
+        "",
+        "#### Dependencies",
+        f"- DEV_MAP issue node `{issue_id}` and mapped workflow tasks.",
+        "",
+        "#### Decomposition",
+        *decomposition_steps,
+        "",
+        "#### Issue/Task Decomposition Assessment",
+        f"- task_count = {len(task_items)}",
+        f"- task_ids = {task_ids_line}",
+        "",
+    ]
+
+
+def _find_issue_plan_block_bounds(section_lines: list[str], issue_id: str) -> tuple[int, int] | None:
+    """Find canonical issue-plan block bounds by issue ID inside one feature section."""
+    heading_indexes: list[tuple[int, str]] = []
+    for index, line in enumerate(section_lines):
+        canonical_match = CANONICAL_ISSUE_PLAN_BLOCK_HEADING_PATTERN.fullmatch(line.strip())
+        if canonical_match is None:
+            continue
+        heading_indexes.append((index, canonical_match.group("issue_id").strip()))
+    for heading_index, (start_index, candidate_issue_id) in enumerate(heading_indexes):
+        if candidate_issue_id != issue_id:
+            continue
+        end_index = len(section_lines)
+        if heading_index + 1 < len(heading_indexes):
+            end_index = heading_indexes[heading_index + 1][0]
+        for probe_index in range(start_index + 1, end_index):
+            stripped = section_lines[probe_index].strip()
+            if stripped.startswith("## ") or stripped.startswith("### "):
+                end_index = probe_index
+                break
+        return start_index, end_index
+    return None
+
+
+def _resolve_issue_plan_block_insert_index(section_lines: list[str]) -> int:
+    """Resolve insertion index for a new issue-plan block in one feature section."""
+    last_block_end: int | None = None
+    heading_indexes: list[int] = []
+    for index, line in enumerate(section_lines):
+        if CANONICAL_ISSUE_PLAN_BLOCK_HEADING_PATTERN.fullmatch(line.strip()) is not None:
+            heading_indexes.append(index)
+    for heading_index, start_index in enumerate(heading_indexes):
+        end_index = len(section_lines)
+        if heading_index + 1 < len(heading_indexes):
+            end_index = heading_indexes[heading_index + 1]
+        for probe_index in range(start_index + 1, end_index):
+            stripped = section_lines[probe_index].strip()
+            if stripped.startswith("## ") or stripped.startswith("### "):
+                end_index = probe_index
+                break
+        last_block_end = end_index
+    if last_block_end is not None:
+        return last_block_end
+    for index, line in enumerate(section_lines):
+        if line.strip() == "### Issue/Task Decomposition Assessment":
+            return index
+    return len(section_lines)
 
 
 def _lint_plan_section(
