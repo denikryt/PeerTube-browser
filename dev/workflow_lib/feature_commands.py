@@ -43,6 +43,9 @@ SECTION_H2_PATTERN = re.compile(r"^##\s+([^#].*?)\s*$")
 SECTION_H3_PATTERN = re.compile(r"^###\s+([^#].*?)\s*$")
 ISSUE_EXECUTION_ORDER_HEADING = "### Issue Execution Order"
 ISSUE_ORDER_ROW_PATTERN = re.compile(r"^\d+\.\s+`(?P<issue_id>I\d+-F\d+-M\d+)`\s+-\s+(?P<issue_title>.+\S)\s*$")
+ISSUE_PLAN_BLOCK_HEADING_PATTERN = re.compile(
+    r"^###\s+(?:Follow-up issue:\s*)?`?(?P<issue_id>I\d+-F\d+-M\d+)`?(?:\s*(?:-|—|:)\s*.+)?\s*$"
+)
 REQUIRED_PLAN_HEADINGS = (
     "Dependencies",
     "Decomposition",
@@ -409,6 +412,12 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         issue_title_by_id=issue_title_by_id,
         write=bool(args.write),
     )
+    issue_planning_status_reconciliation = _reconcile_feature_issue_planning_statuses(
+        feature_plans_path=context.feature_plans_path,
+        feature_id=feature_id,
+        feature_node=feature_node,
+        write=bool(args.write),
+    )
 
     expected_marker = f"[M{feature_milestone_num}][F{feature_local_num}]"
     task_list_contract_payload = build_task_list_contract_payload(
@@ -459,6 +468,7 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
             "dev_map_tasks_upserted": issue_counts["tasks_upserted"],
             "feature_id": feature_id,
             "issue_execution_order_sync": issue_execution_order_sync,
+            "issue_planning_status_reconciliation": issue_planning_status_reconciliation,
             "pipeline_blocks_added": pipeline_counts["blocks_added"],
             "pipeline_execution_rows_added": pipeline_counts["sequence_rows_added"],
             "pipeline_overlaps_added": pipeline_counts["overlaps_added"],
@@ -1656,6 +1666,71 @@ def _sync_issue_execution_order_for_new_issues(
         "block_created": False,
         "updated": True,
     }
+
+
+def _reconcile_feature_issue_planning_statuses(
+    feature_plans_path: Path,
+    feature_id: str,
+    feature_node: dict[str, Any],
+    write: bool,
+) -> dict[str, Any]:
+    """Reconcile active issue statuses from issue-plan block coverage in FEATURE_PLANS."""
+    section_text = _extract_feature_plan_section(feature_plans_path, feature_id)
+    issue_plan_block_ids = _extract_issue_plan_block_ids(section_text)
+    reconciled_issue_ids: list[str] = []
+    mismatches: list[dict[str, Any]] = []
+    active_issue_count = 0
+
+    issues = feature_node.get("issues", [])
+    if not isinstance(issues, list):
+        raise WorkflowCommandError(f"Feature {feature_id} has invalid issue list in DEV_MAP.", exit_code=4)
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        issue_id = str(issue.get("id", "")).strip()
+        if not issue_id:
+            continue
+        status_before = str(issue.get("status", "")).strip()
+        if status_before in ISSUE_TERMINAL_STATUSES:
+            continue
+        active_issue_count += 1
+        expected_status = "Planned" if issue_id in issue_plan_block_ids else "Pending"
+        has_plan_block = issue_id in issue_plan_block_ids
+        if status_before != expected_status:
+            mismatches.append(
+                {
+                    "issue_id": issue_id,
+                    "has_plan_block": has_plan_block,
+                    "status_before": status_before,
+                    "status_expected": expected_status,
+                }
+            )
+            if write:
+                issue["status"] = expected_status
+                reconciled_issue_ids.append(issue_id)
+
+    return {
+        "active_issue_count": active_issue_count,
+        "issue_plan_block_ids": sorted(issue_plan_block_ids),
+        "mismatch_count": len(mismatches),
+        "mismatches": mismatches,
+        "reconciled_issue_ids": reconciled_issue_ids,
+        "write_applied": write,
+    }
+
+
+def _extract_issue_plan_block_ids(section_text: str) -> set[str]:
+    """Collect issue IDs that have an explicit issue-plan block in one feature section."""
+    issue_ids: set[str] = set()
+    for raw_line in section_text.splitlines():
+        stripped = raw_line.strip()
+        if stripped == ISSUE_EXECUTION_ORDER_HEADING:
+            continue
+        match = ISSUE_PLAN_BLOCK_HEADING_PATTERN.fullmatch(stripped)
+        if match is None:
+            continue
+        issue_ids.add(match.group("issue_id").strip())
+    return issue_ids
 
 
 def _filter_section_content(lines: list[str]) -> list[str]:
