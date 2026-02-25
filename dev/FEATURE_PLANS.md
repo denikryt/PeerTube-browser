@@ -92,30 +92,38 @@ Canonical per-issue plan block format inside a feature section:
 - `dev/FEATURE_WORKFLOW.md`
 
 #### Decomposition
-1. Add issue-level human-readable description field to local model.
-   - Extend issue node contract in `DEV_MAP` and schema docs with `description` (non-empty text explaining problem/context of issue).
+1. Define issue-level `description` contract for human-readable GitHub bodies.
+   - Extend issue node contract in `DEV_MAP` and schema docs with `description`.
+   - Description must be short and readable: what the issue is about and why it exists; avoid deep technical detail by default.
    - Extend sync write path so issue `description` is accepted from delta payload and persisted in issue nodes.
-2. Rewrite feature child GitHub issue body to description-driven readable text.
-   - Rework `_build_materialized_issue_body` to generate readable text sections (for example: problem/context, expected outcome, implementation notes).
-   - Remove markdown checkbox rendering from child issue body output.
-3. Rewrite feature-level GitHub issue body without checkboxes.
-   - Rework `_build_feature_registration_issue_body` to a readable list/summary format without checkbox syntax.
-   - Keep child issue references as readable bullets/links (no checkbox state transport in body).
-4. Remove checkbox coupling from confirm-path.
-   - Keep `confirm issue ... done` focused on status transition + GitHub close.
-   - Remove dependency on feature-issue body parsing/sync (`row_found`-style behavior should no longer affect completion semantics).
-5. Update tests and docs.
-   - Add/adjust smoke assertions for description-based issue body (checkbox-free).
-   - Update protocol/workflow docs to describe `description`-driven issue body contract.
+2. Add default description generation for new issues.
+   - When a new issue has no explicit description, derive one from issue title plus mapped child-task titles/summaries.
+   - Keep deterministic fallback text for issues without mapped tasks.
+3. Rewrite child issue GitHub body to description-driven content.
+   - Rework `_build_materialized_issue_body` to render readable sections based on `description` (no checklist syntax).
+   - Keep body concise and issue-focused; remove markdown checkbox transport entirely.
+4. Rewrite feature-level GitHub issue body without checkboxes.
+   - Rework `_build_feature_registration_issue_body` to a readable feature summary + child issue list.
+   - Keep child issue references in plain readable format (id/title/short description), without checkbox state.
+5. Decouple completion flow from checkbox parsing/sync.
+   - Keep `confirm issue ... done` focused on status transition + GitHub close only.
+   - Remove feature-issue body checklist update dependency from confirm/materialize flows.
+6. Backfill descriptions for existing issues and sync GitHub bodies.
+   - Add `description` text for all existing local issue nodes, using title and child-task context as source.
+   - Run GitHub issue body update path for already mapped issues so all existing GitHub issue bodies are converted to the new description-based format.
+7. Update tests and docs.
+   - Add/adjust smoke assertions for description-based issue body rendering and no-checkbox guarantees.
+   - Update protocol/workflow docs to describe the `description`-driven body contract and backfill/sync behavior.
 
 #### Issue/Task Decomposition Assessment
-1. Recommended split: `task_count = 4`.
+1. Recommended split: `task_count = 5`.
    - Task 1: model/schema/sync support for issue `description`.
-   - Task 2: child issue body rewrite (checkbox-free, readable explanation).
-   - Task 3: feature issue body rewrite (checkbox-free summary).
-   - Task 4: smoke/docs/protocol alignment + confirm-path checkbox decoupling.
-2. Why `4`:
-   - model contract, renderer changes, and confirmation decoupling are the minimal set for checkbox-free readable issue bodies.
+   - Task 2: default description generation + local backfill for existing issue nodes.
+   - Task 3: child issue body rewrite (checkbox-free, readable text).
+   - Task 4: feature issue body rewrite + confirm/materialize checklist decoupling.
+   - Task 5: smoke/docs alignment + mapped GitHub body resync coverage.
+2. Why `5`:
+   - description contract, generation/backfill, renderers, and resync/verification are separate risk domains and should be validated independently.
 
 ### I15-F4-M1 - Feature materialize sub-issues reconcile for parent feature issue
 
