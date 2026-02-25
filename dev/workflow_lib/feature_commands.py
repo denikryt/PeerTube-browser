@@ -570,6 +570,7 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         issue_payloads=issue_payloads,
         existing_task_locations=existing_task_locations,
     )
+    issue_description_backfill = _backfill_missing_issue_descriptions_for_feature(feature_node)
     issue_title_by_id = {
         str(issue.get("id", "")).strip(): str(issue.get("title", "")).strip()
         for issue in feature_node.get("issues", [])
@@ -640,6 +641,7 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
             "issue_id_filter": issue_id_filter,
             "issue_id_queue": issue_id_queue,
             "issue_execution_order_sync": issue_execution_order_sync,
+            "issue_description_backfill": issue_description_backfill,
             "issue_planning_status_reconciliation": issue_planning_status_reconciliation,
             "pipeline_blocks_added": pipeline_counts["blocks_added"],
             "pipeline_execution_rows_added": pipeline_counts["sequence_rows_added"],
@@ -672,6 +674,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
 
     feature_node = feature_ref["feature"]
     feature_status = str(feature_node.get("status", ""))
+    issue_description_backfill = _backfill_missing_issue_descriptions_for_feature(feature_node)
 
     all_issue_nodes = feature_node.get("issues", [])
     if not isinstance(all_issue_nodes, list):
@@ -821,6 +824,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             "feature_issue_checklist_sync": feature_issue_checklist_sync,
             "feature_status": feature_status,
             "github_enabled": bool(args.github),
+            "issue_description_backfill": issue_description_backfill,
             "issue_id_filter": issue_id_filter,
             "issue_id_queue": issue_id_queue,
             "selected_issue_ids": selected_issue_ids,
@@ -1414,10 +1418,14 @@ def _materialize_feature_issue_node(
 def _build_materialized_issue_body(issue_node: dict[str, Any]) -> str:
     """Build issue-focused GitHub body from local issue title and mapped tasks."""
     issue_title = str(issue_node.get("title", "")).strip() or str(issue_node.get("id", "")).strip()
+    issue_description = _resolve_issue_description(issue_node)
     tasks = issue_node.get("tasks", [])
     lines = [
         "## Scope",
         issue_title,
+        "",
+        "## Why this issue exists",
+        issue_description,
         "",
         "## Planned work/tasks",
     ]
@@ -1428,13 +1436,12 @@ def _build_materialized_issue_body(issue_node: dict[str, Any]) -> str:
             task_id = str(task.get("id", "")).strip()
             task_title = str(task.get("title", "")).strip()
             task_summary = str(task.get("summary", "")).strip()
-            checkbox = "x" if str(task.get("status", "")) == "Done" else " "
             task_label = f"Task {task_id}: {task_title}" if task_id else task_title
             if task_summary:
                 task_label = f"{task_label} - {task_summary}" if task_label else task_summary
-            lines.append(f"- [{checkbox}] {task_label or 'Task details pending local sync.'}")
+            lines.append(f"- {task_label or 'Task details pending local sync.'}")
     else:
-        lines.append("- [ ] Local issue has no mapped tasks yet.")
+        lines.append("- No mapped tasks yet.")
     return "\n".join(lines).strip() + "\n"
 
 
@@ -1505,12 +1512,72 @@ def _build_feature_registration_issue_body(feature_node: dict[str, Any]) -> str:
                 continue
             issue_id = str(issue.get("id", "")).strip()
             issue_title = str(issue.get("title", "")).strip()
+            issue_description = _resolve_issue_description(issue)
             issue_label = f"{issue_id}: {issue_title}" if issue_id else issue_title
-            checkbox = "x" if str(issue.get("status", "")) == "Done" else " "
-            lines.append(f"- [{checkbox}] {issue_label or 'Issue details pending local sync.'}")
+            lines.append(f"- {issue_label or 'Issue details pending local sync.'}")
+            if issue_description:
+                lines.append(f"  - {issue_description}")
     else:
-        lines.append("- [ ] Local feature has no mapped issues yet.")
+        lines.append("- Local feature has no mapped issues yet.")
     return "\n".join(lines).strip() + "\n"
+
+
+def _backfill_missing_issue_descriptions_for_feature(feature_node: dict[str, Any]) -> dict[str, Any]:
+    """Backfill missing issue descriptions inside one feature node."""
+    issues = feature_node.get("issues", [])
+    if not isinstance(issues, list):
+        return {"count": 0, "issue_ids": []}
+    backfilled_issue_ids: list[str] = []
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        issue_id = str(issue.get("id", "")).strip()
+        if str(issue.get("description", "")).strip():
+            continue
+        issue["description"] = _build_default_issue_description(issue)
+        if issue_id:
+            backfilled_issue_ids.append(issue_id)
+    return {"count": len(backfilled_issue_ids), "issue_ids": backfilled_issue_ids}
+
+
+def _resolve_issue_description(issue_node: dict[str, Any]) -> str:
+    """Return issue description from node or deterministic fallback from title/tasks."""
+    description = str(issue_node.get("description", "")).strip()
+    if description:
+        return description
+    return _build_default_issue_description(issue_node)
+
+
+def _build_default_issue_description(issue_node: dict[str, Any]) -> str:
+    """Build deterministic issue description from issue title and mapped task context."""
+    issue_title = str(issue_node.get("title", "")).strip() or str(issue_node.get("id", "")).strip() or "Issue"
+    tasks = issue_node.get("tasks", [])
+    if not isinstance(tasks, list) or not tasks:
+        return f"{issue_title}. No mapped tasks yet; details will be added during decomposition."
+
+    task_fragments: list[str] = []
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        task_title = str(task.get("title", "")).strip()
+        task_summary = str(task.get("summary", "")).strip()
+        if task_title and task_summary:
+            task_fragments.append(f"{task_title} ({task_summary})")
+            continue
+        if task_title:
+            task_fragments.append(task_title)
+            continue
+        if task_summary:
+            task_fragments.append(task_summary)
+    if not task_fragments:
+        return f"{issue_title}. Mapped tasks exist but are missing readable details."
+
+    selected = task_fragments[:3]
+    remainder = len(task_fragments) - len(selected)
+    fragments_text = "; ".join(selected)
+    if remainder > 0:
+        fragments_text = f"{fragments_text}; plus {remainder} more task(s)"
+    return f"{issue_title}. Planned work: {fragments_text}."
 
 
 def _resolve_repository_url(root_dir: Path, feature_node: dict[str, Any]) -> str | None:
