@@ -16,8 +16,10 @@ from .errors import WorkflowCommandError
 from .git_adapter import plan_canonical_feature_branch
 from .github_adapter import (
     ensure_github_milestone_exists,
+    gh_issue_add_sub_issue,
     gh_issue_create,
     gh_issue_edit,
+    gh_issue_list_sub_issue_numbers,
     resolve_github_repository,
 )
 from .output import emit_json
@@ -730,6 +732,17 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
     branch_action = plan_canonical_feature_branch(context.root_dir, branch_name)
 
     materialized_issues: list[dict[str, Any]] = []
+    missing_issue_mappings: list[dict[str, Any]] = []
+    sub_issues_sync: dict[str, Any] = {
+        "attempted": False,
+        "added": [],
+        "skipped": [],
+        "errors": [],
+        "existing_sub_issue_numbers": [],
+        "target_sub_issue_numbers": [],
+        "parent_issue_number": None,
+        "reason": "materialize-mode-bootstrap",
+    }
     feature_issue_checklist_sync: dict[str, Any] = {
         "attempted": False,
         "updated": False,
@@ -774,6 +787,8 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                 )
                 materialized["mode_action"] = mode_action
                 materialized_issues.append(materialized)
+            if materialize_mode in {"issues-create", "issues-sync"}:
+                missing_issue_mappings = _collect_missing_issue_mappings(all_issue_nodes)
         else:
             for issue_node in issue_nodes:
                 issue_id = str(issue_node.get("id", ""))
@@ -796,6 +811,30 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                         "mode_action": mode_action,
                     }
                 )
+            if materialize_mode in {"issues-create", "issues-sync"}:
+                missing_issue_mappings = _collect_missing_issue_mappings(all_issue_nodes)
+
+    if materialize_mode != "bootstrap":
+        if bool(args.write) and bool(args.github) and github_repo_name_with_owner is not None:
+            sub_issues_sync = _reconcile_feature_sub_issues(
+                feature_node=feature_node,
+                issue_nodes=all_issue_nodes,
+                repo_name_with_owner=github_repo_name_with_owner,
+            )
+        else:
+            sub_issues_sync = {
+                "attempted": False,
+                "added": [],
+                "skipped": [],
+                "errors": [],
+                "existing_sub_issue_numbers": [],
+                "target_sub_issue_numbers": [],
+                "parent_issue_number": _coerce_issue_number(
+                    feature_node.get("gh_issue_number"),
+                    feature_node.get("gh_issue_url"),
+                ),
+                "reason": "sub-issue-sync-requires-write-and-github",
+            }
 
     if bool(args.write):
         feature_node["branch_name"] = branch_name
@@ -822,6 +861,8 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             "mode": materialize_mode,
             "mode_action": mode_action,
             "issues_materialized": materialized_issues,
+            "missing_issue_mappings": missing_issue_mappings,
+            "sub_issues_sync": sub_issues_sync,
             "github_milestone_title": milestone_title,
             "milestone_id": milestone_id,
             "write": bool(args.write),
@@ -1397,6 +1438,120 @@ def _build_materialized_issue_body(issue_node: dict[str, Any]) -> str:
     else:
         lines.append("- No mapped tasks yet in DEV_MAP.")
     return "\n".join(lines).strip() + "\n"
+
+
+def _collect_missing_issue_mappings(issue_nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collect issue mapping gaps for deterministic materialize output."""
+    missing: list[dict[str, Any]] = []
+    for issue in issue_nodes:
+        if not isinstance(issue, dict):
+            continue
+        issue_id = str(issue.get("id", "")).strip()
+        missing_fields: list[str] = []
+        if _coerce_issue_number(issue.get("gh_issue_number"), issue.get("gh_issue_url")) is None:
+            missing_fields.append("gh_issue_number")
+        if not str(issue.get("gh_issue_url", "")).strip():
+            missing_fields.append("gh_issue_url")
+        if not missing_fields:
+            continue
+        missing.append({"issue_id": issue_id, "missing_fields": missing_fields})
+    return missing
+
+
+def _reconcile_feature_sub_issues(
+    *,
+    feature_node: dict[str, Any],
+    issue_nodes: list[dict[str, Any]],
+    repo_name_with_owner: str,
+) -> dict[str, Any]:
+    """Reconcile feature parent sub-issues against mapped local child issue set."""
+    parent_issue_number = _coerce_issue_number(feature_node.get("gh_issue_number"), feature_node.get("gh_issue_url"))
+    if parent_issue_number is None:
+        return {
+            "attempted": False,
+            "added": [],
+            "skipped": [],
+            "errors": [],
+            "existing_sub_issue_numbers": [],
+            "target_sub_issue_numbers": [],
+            "parent_issue_number": None,
+            "reason": "feature-issue-not-mapped",
+        }
+
+    mapped_children: list[tuple[str, int]] = []
+    for issue in issue_nodes:
+        if not isinstance(issue, dict):
+            continue
+        issue_id = str(issue.get("id", "")).strip()
+        issue_number = _coerce_issue_number(issue.get("gh_issue_number"), issue.get("gh_issue_url"))
+        issue_url = str(issue.get("gh_issue_url", "")).strip()
+        if issue_number is None or not issue_url:
+            continue
+        mapped_children.append((issue_id, issue_number))
+
+    target_numbers = [number for _, number in mapped_children]
+    errors: list[str] = []
+    try:
+        existing_numbers = gh_issue_list_sub_issue_numbers(
+            repo_name_with_owner=repo_name_with_owner,
+            parent_issue_number=parent_issue_number,
+        )
+    except WorkflowCommandError as error:
+        return {
+            "attempted": True,
+            "added": [],
+            "skipped": [],
+            "errors": [str(error)],
+            "existing_sub_issue_numbers": [],
+            "target_sub_issue_numbers": target_numbers,
+            "parent_issue_number": parent_issue_number,
+        }
+
+    existing_set = set(existing_numbers)
+    added: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for issue_id, child_number in mapped_children:
+        if child_number == parent_issue_number:
+            skipped.append(
+                {
+                    "issue_id": issue_id,
+                    "gh_issue_number": child_number,
+                    "reason": "parent-issue-cannot-be-sub-issue",
+                }
+            )
+            continue
+        if child_number in existing_set:
+            skipped.append(
+                {
+                    "issue_id": issue_id,
+                    "gh_issue_number": child_number,
+                    "reason": "already-linked",
+                }
+            )
+            continue
+        try:
+            gh_issue_add_sub_issue(
+                repo_name_with_owner=repo_name_with_owner,
+                parent_issue_number=parent_issue_number,
+                sub_issue_number=child_number,
+            )
+        except WorkflowCommandError as error:
+            errors.append(
+                f"issue {issue_id} #{child_number}: {error}"
+            )
+            continue
+        existing_set.add(child_number)
+        added.append({"issue_id": issue_id, "gh_issue_number": child_number})
+
+    return {
+        "attempted": True,
+        "added": added,
+        "skipped": skipped,
+        "errors": errors,
+        "existing_sub_issue_numbers": existing_numbers,
+        "target_sub_issue_numbers": target_numbers,
+        "parent_issue_number": parent_issue_number,
+    }
 
 
 def _materialize_feature_registration_issue(
