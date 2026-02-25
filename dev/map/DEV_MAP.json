@@ -435,6 +435,14 @@
               "gh_issue_number": 93,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/93",
               "tasks": []
+            },
+            {
+              "id": "I14-F4-M1",
+              "title": "Replace checkbox-based GitHub issue body with description-driven readable content",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F4-M1",
