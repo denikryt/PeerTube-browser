@@ -570,6 +570,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                     f"Issue {issue_id_filter} was not found in feature {feature_id}.",
                     exit_code=4,
                 )
+        _enforce_materialize_issue_status_gate(issue_nodes)
 
     branch_name = f"feature/{feature_id}"
     repo_url = _resolve_repository_url(context.root_dir, feature_node)
@@ -787,6 +788,24 @@ def _resolve_materialize_mode_action(materialize_mode: str) -> str:
     if materialize_mode == "issues-sync":
         return "issue-materialization-sync-mode"
     raise WorkflowCommandError(f"Unsupported materialize mode: {materialize_mode!r}.", exit_code=4)
+
+
+def _enforce_materialize_issue_status_gate(issue_nodes: list[dict[str, Any]]) -> None:
+    """Require Tasked status for issues selected for materialize create/sync modes."""
+    non_tasked_statuses: list[str] = []
+    for issue_node in issue_nodes:
+        issue_id = str(issue_node.get("id", "")).strip() or "<unknown-issue>"
+        issue_status = str(issue_node.get("status", "")).strip() or "Pending"
+        if issue_status != "Tasked":
+            non_tasked_statuses.append(f"{issue_id}(status={issue_status!r})")
+    if non_tasked_statuses:
+        raise WorkflowCommandError(
+            "feature materialize requires status 'Tasked' for selected issue nodes; "
+            "run plan tasks for issue/feature first for: "
+            + ", ".join(non_tasked_statuses)
+            + ".",
+            exit_code=4,
+        )
 
 
 def _collect_task_locations(dev_map: dict[str, Any]) -> dict[str, str]:
