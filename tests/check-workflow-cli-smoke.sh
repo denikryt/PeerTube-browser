@@ -111,6 +111,24 @@ assert_file_not_contains() {
   echo "ok-file-no-fragment:${name}"
 }
 
+assert_jq_file_value() {
+  local name="$1"
+  local file_path="$2"
+  local jq_path="$3"
+  local expected="$4"
+  local actual
+  actual="$(jq -r "${jq_path}" "${file_path}")"
+  if [[ "${actual}" != "${expected}" ]]; then
+    echo "fail-jq-value:${name}"
+    echo "path: ${jq_path}"
+    echo "expected: ${expected}"
+    echo "actual: ${actual}"
+    cat "${file_path}"
+    return 1
+  fi
+  echo "ok-jq:${name}:${jq_path}"
+}
+
 create_workflow_fixture_repo() {
   local repo_dir="$1"
   mkdir -p "${repo_dir}/dev/map" "${repo_dir}/dev/workflow_lib"
@@ -227,6 +245,12 @@ assert_json_value "chain-sync" "action" "synced"
 assert_json_value "chain-sync" "task_count_after" "1"
 assert_json_value "chain-sync" "task_list_entries_added" "1"
 assert_json_value "chain-sync" "pipeline_execution_rows_added" "1"
+assert_json_value "chain-sync" "issue_planning_status_reconciliation.mismatch_count" "0"
+assert_jq_file_value \
+  "chain-sync-issue-status-pending" \
+  "${CHAIN_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues[0].status' \
+  "Pending"
 run_expect_success "chain-execution-plan" "${CHAIN_REPO}/dev/workflow" feature execution-plan --id F9-M1
 assert_json_value "chain-execution-plan" "task_count" "1"
 assert_json_value "chain-execution-plan" "tasks.0.id" "1"
@@ -246,16 +270,55 @@ cat >"${CHAIN_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
 ### Issue Execution Order
 1. `I1-F9-M1` - Smoke issue
 
+### Follow-up issue: I1-F9-M1
+
+#### Dependencies
+- smoke
+
+#### Decomposition
+1. smoke
+
+#### Issue/Task Decomposition Assessment
+- smoke
+
 ### Issue/Task Decomposition Assessment
 - smoke
 EOF
 
+cat >"${CHAIN_REPO}/dev/empty_delta.json" <<'EOF'
+{}
+EOF
+run_expect_success \
+  "chain-sync-promote-planned" \
+  "${CHAIN_REPO}/dev/workflow" feature sync --id F9-M1 --delta-file "${CHAIN_REPO}/dev/empty_delta.json" --write
+assert_json_value "chain-sync-promote-planned" "issue_planning_status_reconciliation.reconciled_issue_ids.0" "I1-F9-M1"
+assert_jq_file_value \
+  "chain-sync-issue-status-planned" \
+  "${CHAIN_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues[0].status' \
+  "Planned"
 run_expect_success "chain-plan-lint-order-ok" "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 assert_json_value "chain-plan-lint-order-ok" "valid" "true"
-assert_json_value "chain-plan-lint-order-ok" "messages.3" "Issue Execution Order:ok"
+assert_json_value "chain-plan-lint-order-ok" "messages.3" "Issue Planning Status:ok"
+assert_json_value "chain-plan-lint-order-ok" "messages.4" "Issue Execution Order:ok"
 run_expect_success "chain-execution-plan-order-ok" "${CHAIN_REPO}/dev/workflow" feature execution-plan --id F9-M1
 assert_json_value "chain-execution-plan-order-ok" "issue_execution_order.0.id" "I1-F9-M1"
 assert_json_value "chain-execution-plan-order-ok" "next_issue_from_plan_order.id" "I1-F9-M1"
+
+python3 - "${CHAIN_REPO}/dev/map/DEV_MAP.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+payload = json.loads(path.read_text(encoding="utf-8"))
+payload["milestones"][0]["features"][0]["issues"][0]["status"] = "Pending"
+path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+run_expect_failure_contains \
+  "chain-plan-lint-status-mismatch" \
+  "Issue planning status mismatch: I1-F9-M1(status='Pending', expected='Planned', has_plan_block=True)." \
+  "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 
 cat >"${CHAIN_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
 # Feature Plans

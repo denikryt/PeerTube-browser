@@ -1406,6 +1406,23 @@ def _lint_plan_section(
             feature_node=feature_node,
             require_issue_order_for_active=require_issue_order_for_active,
         )
+        issue_planning_mismatches = _collect_issue_planning_status_mismatches(
+            feature_node=feature_node,
+            issue_plan_block_ids=_extract_issue_plan_block_ids(section_text),
+        )
+        if issue_planning_mismatches:
+            mismatch_tokens = [
+                (
+                    f"{item['issue_id']}(status={item['status_before']!r}, "
+                    f"expected={item['status_expected']!r}, has_plan_block={item['has_plan_block']})"
+                )
+                for item in issue_planning_mismatches
+            ]
+            raise WorkflowCommandError(
+                "Issue planning status mismatch: " + "; ".join(mismatch_tokens) + ".",
+                exit_code=4,
+            )
+        messages.append("Issue Planning Status:ok")
         if issue_order_state["rows"]:
             messages.append("Issue Execution Order:ok")
         elif issue_order_state["active_issue_count"] == 0:
@@ -1678,36 +1695,29 @@ def _reconcile_feature_issue_planning_statuses(
     section_text = _extract_feature_plan_section(feature_plans_path, feature_id)
     issue_plan_block_ids = _extract_issue_plan_block_ids(section_text)
     reconciled_issue_ids: list[str] = []
-    mismatches: list[dict[str, Any]] = []
     active_issue_count = 0
 
     issues = feature_node.get("issues", [])
     if not isinstance(issues, list):
         raise WorkflowCommandError(f"Feature {feature_id} has invalid issue list in DEV_MAP.", exit_code=4)
-    for issue in issues:
-        if not isinstance(issue, dict):
-            continue
-        issue_id = str(issue.get("id", "")).strip()
-        if not issue_id:
-            continue
-        status_before = str(issue.get("status", "")).strip()
-        if status_before in ISSUE_TERMINAL_STATUSES:
-            continue
-        active_issue_count += 1
-        expected_status = "Planned" if issue_id in issue_plan_block_ids else "Pending"
-        has_plan_block = issue_id in issue_plan_block_ids
-        if status_before != expected_status:
-            mismatches.append(
-                {
-                    "issue_id": issue_id,
-                    "has_plan_block": has_plan_block,
-                    "status_before": status_before,
-                    "status_expected": expected_status,
-                }
-            )
-            if write:
-                issue["status"] = expected_status
-                reconciled_issue_ids.append(issue_id)
+    active_issue_count = _count_active_issues(feature_node)
+    mismatches = _collect_issue_planning_status_mismatches(
+        feature_node=feature_node,
+        issue_plan_block_ids=issue_plan_block_ids,
+    )
+    if write:
+        issues_by_id = {
+            str(issue.get("id", "")).strip(): issue
+            for issue in issues
+            if isinstance(issue, dict) and str(issue.get("id", "")).strip()
+        }
+        for mismatch in mismatches:
+            issue_id = mismatch["issue_id"]
+            issue = issues_by_id.get(issue_id)
+            if issue is None:
+                continue
+            issue["status"] = mismatch["status_expected"]
+            reconciled_issue_ids.append(issue_id)
 
     return {
         "active_issue_count": active_issue_count,
@@ -1731,6 +1741,58 @@ def _extract_issue_plan_block_ids(section_text: str) -> set[str]:
             continue
         issue_ids.add(match.group("issue_id").strip())
     return issue_ids
+
+
+def _collect_issue_planning_status_mismatches(
+    *,
+    feature_node: dict[str, Any],
+    issue_plan_block_ids: set[str],
+) -> list[dict[str, Any]]:
+    """Return active issue-status mismatches against plan-block coverage."""
+    issues = feature_node.get("issues", [])
+    if not isinstance(issues, list):
+        return []
+    mismatches: list[dict[str, Any]] = []
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        issue_id = str(issue.get("id", "")).strip()
+        if not issue_id:
+            continue
+        status_before = str(issue.get("status", "")).strip()
+        if status_before in ISSUE_TERMINAL_STATUSES:
+            continue
+        status_expected = "Planned" if issue_id in issue_plan_block_ids else "Pending"
+        if status_before == status_expected:
+            continue
+        mismatches.append(
+            {
+                "has_plan_block": issue_id in issue_plan_block_ids,
+                "issue_id": issue_id,
+                "status_before": status_before,
+                "status_expected": status_expected,
+            }
+        )
+    mismatches.sort(key=lambda item: item["issue_id"])
+    return mismatches
+
+
+def _count_active_issues(feature_node: dict[str, Any]) -> int:
+    """Count feature issues that are not terminal (`Done`/`Rejected`)."""
+    issues = feature_node.get("issues", [])
+    if not isinstance(issues, list):
+        return 0
+    count = 0
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        issue_id = str(issue.get("id", "")).strip()
+        if not issue_id:
+            continue
+        if str(issue.get("status", "")).strip() in ISSUE_TERMINAL_STATUSES:
+            continue
+        count += 1
+    return count
 
 
 def _filter_section_content(lines: list[str]) -> list[str]:
