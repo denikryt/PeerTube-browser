@@ -6,7 +6,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-25T18:58:58+02:00",
+  "updated_at": "2026-02-25T19:11:40+02:00",
   "task_count": 98,
   "milestones": [
     {
@@ -513,6 +513,14 @@
             {
               "id": "I20-F4-M1",
               "title": "Rename decomposition commands from sync to plan tasks for issue/feature",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I21-F4-M1",
+              "title": "Confirm issue done: script-driven cleanup of issue plan block and linked issue/task tracker nodes",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,

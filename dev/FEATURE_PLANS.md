@@ -27,14 +27,15 @@ Each feature plan section must use the feature ID as a heading and include:
 ### Issue Execution Order
 1. `I16-F4-M1` - Issue planning status split: Pending (no plan) vs Planned (has plan)
 2. `I20-F4-M1` - Rename decomposition commands from sync to plan tasks for issue/feature
-3. `I18-F4-M1` - Standardize per-issue plan block format in FEATURE_PLANS and enforce strict heading lint
-4. `I19-F4-M1` - Feature plan issue execution order block as the source of issue sequencing
-5. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
-6. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
-7. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
-8. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
-9. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
-10. `I13-F4-M1` - Auto-delete sync delta file after successful feature sync write
+3. `I21-F4-M1` - Confirm issue done: script-driven cleanup of issue plan block and linked issue/task tracker nodes
+4. `I18-F4-M1` - Standardize per-issue plan block format in FEATURE_PLANS and enforce strict heading lint
+5. `I19-F4-M1` - Feature plan issue execution order block as the source of issue sequencing
+6. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
+7. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
+8. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
+9. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
+10. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
+11. `I13-F4-M1` - Auto-delete sync delta file after successful feature sync write
 
 ### Follow-up issue: I16-F4-M1
 
@@ -114,6 +115,49 @@ Each feature plan section must use the feature ID as a heading and include:
    - Task 3: smoke tests and output contract verification for hard command rename.
 2. Why `3`:
    - naming contract, command implementation, and regression coverage are separate risk domains and should be validated independently.
+
+### Follow-up issue: I21-F4-M1
+
+**Title**
+- `I21-F4-M1`: Confirm issue done: script-driven cleanup of issue plan block and linked issue/task tracker nodes
+
+### Dependencies
+- `dev/workflow_lib/confirm_commands.py`
+- `dev/workflow_lib/feature_commands.py` (helpers for `FEATURE_PLANS` section parsing and order rows)
+- `dev/FEATURE_PLANS.md`
+- `dev/map/DEV_MAP.json`
+- `dev/TASK_LIST.json`
+- `dev/TASK_EXECUTION_PIPELINE.json`
+- `tests/check-workflow-cli-smoke.sh`
+- `dev/TASK_EXECUTION_PROTOCOL.md`
+- `dev/FEATURE_WORKFLOW.md`
+
+### Decomposition
+1. Define cleanup contract for `confirm issue <issue_id> done`.
+   - When confirm issue completion is applied with write mode, perform script-driven cleanup for all artifacts linked to the target issue.
+   - Cleanup scope must include both tracker cleanup and plan-document cleanup in one run.
+2. Implement `FEATURE_PLANS` cleanup in confirm flow.
+   - Remove target issue row from feature `Issue Execution Order`.
+   - Remove target issue plan block from `FEATURE_PLANS` under the owning feature section.
+   - If issue block is absent, keep command idempotent and return deterministic `not-found/skipped` cleanup fields.
+3. Implement issue-node removal in tracker cleanup path.
+   - Remove confirmed issue node from `dev/map/DEV_MAP.json` together with embedded child task nodes.
+   - Keep existing cleanup behavior for `TASK_LIST.json` and `TASK_EXECUTION_PIPELINE.json` for child task IDs.
+4. Ensure operation ordering and safety.
+   - Apply all local file updates in one write path after confirmation gates pass.
+   - If write is disabled, return full cleanup preview describing what would be removed in plans/map/task-list/pipeline.
+5. Add regression tests and protocol docs.
+   - Smoke: confirm issue removes issue plan block, removes order row, removes DEV_MAP issue node, and cleans task-list/pipeline entries.
+   - Smoke idempotency: repeated confirm on already-cleaned issue returns deterministic no-op cleanup details.
+   - Update execution protocol/workflow docs with explicit cleanup semantics for confirm-issue flow.
+
+### Issue/Task Decomposition Assessment
+1. Recommended split: `task_count = 3`.
+   - Task 1: cleanup contract + protocol/docs updates.
+   - Task 2: confirm command implementation for `FEATURE_PLANS` and `DEV_MAP` issue-node removal.
+   - Task 3: smoke regression and idempotency validation.
+2. Why `3`:
+   - behavior contract, write-path implementation, and regression/idempotency coverage are separate risk domains and should be validated independently.
 
 ### Follow-up issue: I14-F4-M1
 
