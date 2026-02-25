@@ -771,11 +771,18 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
         "added_issue_ids": [],
         "reason": "description-driven-body-no-checklist-sync",
     }
+    feature_issue_body_sync: dict[str, Any] = {
+        "attempted": False,
+        "updated": False,
+        "reason": "feature-issue-sync-runs-in-issues-sync-write-github-mode",
+    }
     github_repo_name_with_owner: str | None = None
+    github_repo_url: str | None = None
     if materialize_mode != "bootstrap":
         if bool(args.write) and bool(args.github):
             github_repo = resolve_github_repository(context.root_dir)
             github_repo_name_with_owner = github_repo["name_with_owner"]
+            github_repo_url = _normalize_repository_url(str(github_repo.get("url", "")))
             ensure_github_milestone_exists(
                 repo_name_with_owner=github_repo_name_with_owner,
                 milestone_title=milestone_title,
@@ -808,7 +815,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                     issue_node=issue_node,
                     milestone_title=milestone_title,
                     repo_name_with_owner=github_repo_name_with_owner,
-                    repo_url=_normalize_repository_url(str(github_repo.get("url", ""))),
+                    repo_url=github_repo_url,
                     max_retries=materialize_request_policy["max_retries"],
                     retry_pause_seconds=materialize_request_policy["pause_seconds"],
                     request_timeout=materialize_request_policy["request_timeout"],
@@ -848,6 +855,27 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                 missing_issue_mappings = _collect_missing_issue_mappings(all_issue_nodes)
 
     if materialize_mode != "bootstrap":
+        if (
+            materialize_mode == "issues-sync"
+            and bool(args.write)
+            and bool(args.github)
+            and github_repo_name_with_owner is not None
+        ):
+            feature_issue_body_sync = _sync_feature_issue_body_for_materialize(
+                feature_node=feature_node,
+                repo_name_with_owner=github_repo_name_with_owner,
+                milestone_title=milestone_title,
+                repo_url=github_repo_url,
+                max_retries=materialize_request_policy["max_retries"],
+                retry_pause_seconds=materialize_request_policy["pause_seconds"],
+                request_timeout=materialize_request_policy["request_timeout"],
+            )
+        else:
+            feature_issue_body_sync = {
+                "attempted": False,
+                "updated": False,
+                "reason": "feature-issue-sync-requires-issues-sync-write-github",
+            }
         if bool(args.write) and bool(args.github) and github_repo_name_with_owner is not None:
             sub_issues_sync = _reconcile_feature_sub_issues(
                 feature_node=feature_node,
@@ -888,6 +916,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             "command": "feature.materialize",
             "feature_id": feature_id,
             "feature_issue_checklist_sync": feature_issue_checklist_sync,
+            "feature_issue_body_sync": feature_issue_body_sync,
             "feature_status": feature_status,
             "github_enabled": bool(args.github),
             "issue_description_backfill": issue_description_backfill,
@@ -1620,6 +1649,50 @@ def _reconcile_feature_sub_issues(
         "existing_sub_issue_numbers": existing_numbers,
         "target_sub_issue_numbers": target_numbers,
         "parent_issue_number": parent_issue_number,
+    }
+
+
+def _sync_feature_issue_body_for_materialize(
+    *,
+    feature_node: dict[str, Any],
+    repo_name_with_owner: str,
+    milestone_title: str,
+    repo_url: str | None,
+    max_retries: int,
+    retry_pause_seconds: float,
+    request_timeout: float,
+) -> dict[str, Any]:
+    """Refresh mapped feature-level GitHub issue title/body during issues-sync."""
+    feature_issue_number = _coerce_issue_number(feature_node.get("gh_issue_number"), feature_node.get("gh_issue_url"))
+    if feature_issue_number is None:
+        return {
+            "attempted": False,
+            "updated": False,
+            "reason": "feature-issue-not-mapped",
+            "gh_issue_number": None,
+        }
+
+    feature_title = str(feature_node.get("title", "")).strip() or str(feature_node.get("id", "")).strip()
+    feature_body = _build_feature_registration_issue_body(feature_node)
+    gh_issue_edit(
+        repo_name_with_owner=repo_name_with_owner,
+        issue_number=feature_issue_number,
+        title=feature_title,
+        body=feature_body,
+        milestone_title=milestone_title,
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=request_timeout,
+    )
+    feature_node["gh_issue_number"] = feature_issue_number
+    if repo_url:
+        feature_node["gh_issue_url"] = _build_issue_url(repo_url, feature_issue_number)
+    return {
+        "attempted": True,
+        "updated": True,
+        "reason": "feature-issue-body-updated",
+        "gh_issue_number": feature_issue_number,
+        "gh_issue_url": feature_node.get("gh_issue_url"),
     }
 
 

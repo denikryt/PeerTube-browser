@@ -281,6 +281,52 @@ def gh_issue_edit_body(
     )
 
 
+def gh_issue_get_id(
+    repo_name_with_owner: str,
+    issue_number: int,
+    *,
+    max_retries: int = 0,
+    retry_pause_seconds: float = 0.0,
+    timeout_seconds: float | None = None,
+) -> int:
+    """Resolve numeric GitHub issue database ID for one issue number."""
+    command = [
+        "gh",
+        "api",
+        f"repos/{repo_name_with_owner}/issues/{issue_number}",
+    ]
+    output = run_checked_command(
+        command,
+        cwd=None,
+        error_prefix=f"Failed to resolve GitHub issue ID for issue #{issue_number}",
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=timeout_seconds,
+    )
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise WorkflowCommandError(
+            f"Invalid issue payload for GitHub issue #{issue_number}: {error}",
+            exit_code=5,
+        ) from error
+    if not isinstance(payload, dict):
+        raise WorkflowCommandError(
+            f"Unexpected issue payload type while resolving GitHub issue #{issue_number}.",
+            exit_code=5,
+        )
+    raw_id = payload.get("id")
+    if isinstance(raw_id, int):
+        return raw_id
+    raw_id_text = str(raw_id or "").strip()
+    if raw_id_text.isdigit():
+        return int(raw_id_text)
+    raise WorkflowCommandError(
+        f"GitHub issue #{issue_number} payload is missing numeric id field.",
+        exit_code=5,
+    )
+
+
 def close_github_issue(
     issue_number: int,
     *,
@@ -342,14 +388,21 @@ def gh_issue_add_sub_issue(
     timeout_seconds: float | None = None,
 ) -> None:
     """Add one child sub-issue link to a parent issue via gh api."""
+    sub_issue_id = gh_issue_get_id(
+        repo_name_with_owner=repo_name_with_owner,
+        issue_number=sub_issue_number,
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=timeout_seconds,
+    )
     command = [
         "gh",
         "api",
         "--method",
         "POST",
         f"repos/{repo_name_with_owner}/issues/{parent_issue_number}/sub_issues",
-        "-f",
-        f"sub_issue_id={sub_issue_number}",
+        "-F",
+        f"sub_issue_id={sub_issue_id}",
     ]
     run_checked_command(
         command,

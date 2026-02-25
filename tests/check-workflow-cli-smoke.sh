@@ -994,6 +994,11 @@ if [[ "$1" == "api" ]]; then
     echo '[{"title":"Milestone 1"}]'
     exit 0
   fi
+  if [[ "${route}" =~ ^repos/owner/repo/issues/[0-9]+$ ]]; then
+    issue_number="${route##*/}"
+    printf '{"id":%s,"number":%s}\n' "${issue_number}" "${issue_number}"
+    exit 0
+  fi
   if [[ "${route}" == "repos/owner/repo/issues/500/sub_issues?per_page=100" ]]; then
     python3 - "${SUBISSUE_STATE_FILE}" <<'PY'
 import json
@@ -1121,6 +1126,7 @@ cat >"${DESCRIPTION_BODY_REPO}/dev/map/DEV_MAP.json" <<'EOF'
 }
 EOF
 DESCRIPTION_BODY_FILE="${TMP_DIR}/materialized-issue-body.md"
+DESCRIPTION_FEATURE_BODY_FILE="${TMP_DIR}/materialized-feature-issue-body.md"
 cat >"${DESCRIPTION_BODY_FILE}" <<'EOF'
 ## Scope
 Legacy checkbox body
@@ -1161,6 +1167,9 @@ if [[ "$1" == "issue" && "$2" == "edit" ]]; then
   if [[ "$issue_number" == "402" ]]; then
     printf "%s" "${body_value}" > "${DESCRIPTION_BODY_FILE}"
   fi
+  if [[ "$issue_number" == "500" ]]; then
+    printf "%s" "${body_value}" > "${DESCRIPTION_FEATURE_BODY_FILE}"
+  fi
   exit 0
 fi
 if [[ "$1" == "issue" && "$2" == "close" ]]; then
@@ -1172,14 +1181,18 @@ EOF
 chmod +x "${DESCRIPTION_FAKE_GH_DIR}/gh"
 run_expect_success \
   "description-body-materialize-sync" \
-  env PATH="${DESCRIPTION_FAKE_GH_DIR}:${PATH}" DESCRIPTION_FAKE_GH_LOG="${DESCRIPTION_FAKE_GH_LOG}" DESCRIPTION_BODY_FILE="${DESCRIPTION_BODY_FILE}" \
+  env PATH="${DESCRIPTION_FAKE_GH_DIR}:${PATH}" DESCRIPTION_FAKE_GH_LOG="${DESCRIPTION_FAKE_GH_LOG}" DESCRIPTION_BODY_FILE="${DESCRIPTION_BODY_FILE}" DESCRIPTION_FEATURE_BODY_FILE="${DESCRIPTION_FEATURE_BODY_FILE}" \
   "${DESCRIPTION_BODY_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync --issue-id I2-F1-M1 --write --github
 assert_json_value "description-body-materialize-sync" "issues_materialized.0.action" "updated"
 assert_json_value "description-body-materialize-sync" "feature_issue_checklist_sync.attempted" "false"
+assert_json_value "description-body-materialize-sync" "feature_issue_body_sync.attempted" "true"
+assert_json_value "description-body-materialize-sync" "feature_issue_body_sync.updated" "true"
 assert_file_contains "description-body-materialize-description" "${DESCRIPTION_BODY_FILE}" "Materialize should rewrite this body using readable description-driven sections."
 assert_file_not_contains "description-body-materialize-no-scope" "${DESCRIPTION_BODY_FILE}" "## Scope"
 assert_file_not_contains "description-body-materialize-no-tasks-section" "${DESCRIPTION_BODY_FILE}" "## Planned work/tasks"
 assert_file_not_contains "description-body-materialize-no-checkbox" "${DESCRIPTION_BODY_FILE}" "- [ ]"
+assert_file_contains "description-body-feature-related-issues" "${DESCRIPTION_FEATURE_BODY_FILE}" "Related issues:"
+assert_file_not_contains "description-body-feature-no-checkbox" "${DESCRIPTION_FEATURE_BODY_FILE}" "- [ ]"
 run_expect_success \
   "description-body-confirm-issue-done" \
   env PATH="${DESCRIPTION_FAKE_GH_DIR}:${PATH}" DESCRIPTION_FAKE_GH_LOG="${DESCRIPTION_FAKE_GH_LOG}" DESCRIPTION_BODY_FILE="${DESCRIPTION_BODY_FILE}" \
