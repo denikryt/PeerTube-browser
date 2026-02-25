@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from .errors import WorkflowCommandError
 
@@ -167,3 +168,101 @@ def close_github_issue(issue_number: int) -> None:
     """Close a mapped GitHub issue through gh CLI."""
     command = ["gh", "issue", "close", str(issue_number)]
     run_checked_command(command, cwd=None, error_prefix=f"Failed to close GitHub issue #{issue_number}")
+
+
+def gh_issue_list_sub_issue_numbers(
+    repo_name_with_owner: str,
+    parent_issue_number: int,
+) -> list[int]:
+    """List child sub-issue numbers for one parent issue via gh api."""
+    command = [
+        "gh",
+        "api",
+        f"repos/{repo_name_with_owner}/issues/{parent_issue_number}/sub_issues?per_page=100",
+    ]
+    output = run_checked_command(
+        command,
+        cwd=None,
+        error_prefix=f"Failed to list sub-issues for GitHub issue #{parent_issue_number}",
+    )
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise WorkflowCommandError(
+            f"Invalid sub-issues payload for GitHub issue #{parent_issue_number}: {error}",
+            exit_code=5,
+        ) from error
+    return _extract_sub_issue_numbers(payload=payload, parent_issue_number=parent_issue_number)
+
+
+def gh_issue_add_sub_issue(
+    repo_name_with_owner: str,
+    parent_issue_number: int,
+    sub_issue_number: int,
+) -> None:
+    """Add one child sub-issue link to a parent issue via gh api."""
+    command = [
+        "gh",
+        "api",
+        "--method",
+        "POST",
+        f"repos/{repo_name_with_owner}/issues/{parent_issue_number}/sub_issues",
+        "-f",
+        f"sub_issue_id={sub_issue_number}",
+    ]
+    run_checked_command(
+        command,
+        cwd=None,
+        error_prefix=(
+            f"Failed to add sub-issue #{sub_issue_number} to GitHub issue #{parent_issue_number}"
+        ),
+    )
+
+
+def _extract_sub_issue_numbers(payload: Any, parent_issue_number: int) -> list[int]:
+    """Extract child sub-issue numbers from supported gh api payload shapes."""
+    raw_items: Any
+    if isinstance(payload, list):
+        raw_items = payload
+    elif isinstance(payload, dict):
+        if isinstance(payload.get("sub_issues"), list):
+            raw_items = payload.get("sub_issues")
+        elif isinstance(payload.get("items"), list):
+            raw_items = payload.get("items")
+        elif isinstance(payload.get("nodes"), list):
+            raw_items = payload.get("nodes")
+        else:
+            raise WorkflowCommandError(
+                "Unsupported sub-issues payload shape for "
+                f"GitHub issue #{parent_issue_number}: expected list or object with sub_issues/items/nodes.",
+                exit_code=5,
+            )
+    else:
+        raise WorkflowCommandError(
+            f"Unsupported sub-issues payload type for GitHub issue #{parent_issue_number}.",
+            exit_code=5,
+        )
+
+    numbers: list[int] = []
+    seen: set[int] = set()
+    for index, item in enumerate(raw_items):
+        if not isinstance(item, dict):
+            raise WorkflowCommandError(
+                f"Unsupported sub-issues payload item at index {index} for GitHub issue #{parent_issue_number}.",
+                exit_code=5,
+            )
+        raw_number = item.get("number")
+        if not isinstance(raw_number, int):
+            number_text = str(raw_number or "").strip()
+            if not number_text.isdigit():
+                raise WorkflowCommandError(
+                    "Unsupported sub-issues payload item at index "
+                    f"{index} for GitHub issue #{parent_issue_number}: missing numeric number field.",
+                    exit_code=5,
+                )
+            raw_number = int(number_text)
+        if raw_number in seen:
+            continue
+        seen.add(raw_number)
+        numbers.append(raw_number)
+    return numbers
