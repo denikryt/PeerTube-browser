@@ -84,6 +84,33 @@ PY
   echo "ok-json:${name}:${path}"
 }
 
+assert_file_contains() {
+  local name="$1"
+  local file_path="$2"
+  local expected_fragment="$3"
+  if grep -Fq "${expected_fragment}" "${file_path}"; then
+    echo "ok-file-match:${name}"
+  else
+    echo "fail-file-missing-fragment:${name}"
+    echo "expected fragment: ${expected_fragment}"
+    cat "${file_path}"
+    return 1
+  fi
+}
+
+assert_file_not_contains() {
+  local name="$1"
+  local file_path="$2"
+  local forbidden_fragment="$3"
+  if grep -Fq "${forbidden_fragment}" "${file_path}"; then
+    echo "fail-file-unexpected-fragment:${name}"
+    echo "forbidden fragment: ${forbidden_fragment}"
+    cat "${file_path}"
+    return 1
+  fi
+  echo "ok-file-no-fragment:${name}"
+}
+
 create_workflow_fixture_repo() {
   local repo_dir="$1"
   mkdir -p "${repo_dir}/dev/map" "${repo_dir}/dev/workflow_lib"
@@ -299,6 +326,112 @@ run_expect_failure_contains \
   "gate-materialize-missing-milestone" \
   "has empty title in DEV_MAP" \
   "${GATE_MATERIALIZE_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync
+
+# Materialize issues-create: mapped issues must be skipped (no gh issue edit); only unmapped issues are created.
+CREATE_ONLY_REPO="${TMP_DIR}/create-only-fixture"
+create_workflow_fixture_repo "${CREATE_ONLY_REPO}"
+git -C "${CREATE_ONLY_REPO}" init -q
+git -C "${CREATE_ONLY_REPO}" checkout -q -b feature/F1-M1
+cat >"${CREATE_ONLY_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+{
+  "version": "1.0",
+  "updated_at": "2026-02-24T00:00:00+00:00",
+  "task_count": 2,
+  "statuses": ["Planned", "InProgress", "Done", "Approved"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Milestone 1",
+      "status": "Planned",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Feature F1-M1",
+          "status": "Approved",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F1-M1",
+              "title": "Mapped issue",
+              "status": "Planned",
+              "gh_issue_number": 401,
+              "gh_issue_url": "https://github.com/owner/repo/issues/401",
+              "tasks": [
+                {
+                  "id": "1",
+                  "title": "Task 1",
+                  "summary": "Summary",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
+            },
+            {
+              "id": "I2-F1-M1",
+              "title": "Unmapped issue",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": [
+                {
+                  "id": "2",
+                  "title": "Task 2",
+                  "summary": "Summary",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
+        }
+      ],
+      "standalone_issues": []
+    }
+  ]
+}
+EOF
+FAKE_GH_DIR="${TMP_DIR}/fake-gh-bin"
+FAKE_GH_LOG="${TMP_DIR}/fake-gh-calls.log"
+mkdir -p "${FAKE_GH_DIR}"
+cat >"${FAKE_GH_DIR}/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "$*" >> "${FAKE_GH_LOG}"
+if [[ "$1" == "repo" && "$2" == "view" ]]; then
+  echo '{"nameWithOwner":"owner/repo","url":"https://github.com/owner/repo"}'
+  exit 0
+fi
+if [[ "$1" == "api" ]]; then
+  echo '[{"title":"Milestone 1"}]'
+  exit 0
+fi
+if [[ "$1" == "issue" && "$2" == "create" ]]; then
+  echo "https://github.com/owner/repo/issues/777"
+  exit 0
+fi
+if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  exit 0
+fi
+echo "unsupported gh call: $*" >&2
+exit 1
+EOF
+chmod +x "${FAKE_GH_DIR}/gh"
+run_expect_success \
+  "create-only-no-edit" \
+  env PATH="${FAKE_GH_DIR}:${PATH}" FAKE_GH_LOG="${FAKE_GH_LOG}" \
+  "${CREATE_ONLY_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-create --write --github
+assert_json_value "create-only-no-edit" "issues_materialized.0.issue_id" "I1-F1-M1"
+assert_json_value "create-only-no-edit" "issues_materialized.0.action" "skipped"
+assert_json_value "create-only-no-edit" "issues_materialized.1.issue_id" "I2-F1-M1"
+assert_json_value "create-only-no-edit" "issues_materialized.1.action" "created"
+assert_file_contains "create-only-gh-create-called" "${FAKE_GH_LOG}" "issue create"
+assert_file_not_contains "create-only-gh-edit-not-called" "${FAKE_GH_LOG}" "issue edit"
 
 # Gate-fail: task preflight blocked for missing materialization metadata.
 GATE_PREFLIGHT_REPO="${TMP_DIR}/gate-preflight-fixture"

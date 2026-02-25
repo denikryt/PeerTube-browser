@@ -13,7 +13,7 @@ from typing import Any
 
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
-from .git_adapter import checkout_canonical_feature_branch, plan_canonical_feature_branch
+from .git_adapter import plan_canonical_feature_branch
 from .github_adapter import (
     ensure_github_milestone_exists,
     gh_issue_create,
@@ -501,10 +501,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
     branch_name = f"feature/{feature_id}"
     repo_url = _resolve_repository_url(context.root_dir, feature_node)
     branch_url = _build_branch_url(repo_url, branch_name)
-    if bool(args.write):
-        branch_action = checkout_canonical_feature_branch(context.root_dir, branch_name)
-    else:
-        branch_action = plan_canonical_feature_branch(context.root_dir, branch_name)
+    branch_action = plan_canonical_feature_branch(context.root_dir, branch_name)
 
     materialized_issues: list[dict[str, Any]] = []
     if materialize_mode != "bootstrap":
@@ -572,7 +569,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
         _touch_updated_at(dev_map)
         _write_json(context.dev_map_path, dev_map)
 
-    active_branch_message = f"Active feature branch: {branch_name}"
+    active_branch_message = f"Canonical feature branch: {branch_name}"
     emit_json(
         {
             "active_feature_branch": branch_name,

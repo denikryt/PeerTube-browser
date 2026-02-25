@@ -153,16 +153,13 @@ Use this procedure before executing tasks for a new feature.
    - `--mode issues-sync`: materialize feature child `Issue` nodes to GitHub in sync/update flow from local issue structure.
    - `--issue-id <issue_id>` is allowed only with `issues-create`/`issues-sync` and targets one issue node.
    - Feature-level GitHub issue is managed at `create feature <id>` step; during materialization, update it only if metadata/body sync is explicitly required, without creating duplicates.
-   - Branch policy (mandatory): use canonical feature branch `feature/<feature_id>`:
-     - if local branch exists: checkout it;
-     - else if remote `origin/feature/<feature_id>` exists: create local tracking branch and checkout;
-     - else: create local branch `feature/<feature_id>` and checkout.
+   - Branch policy (mandatory): resolve canonical feature branch `feature/<feature_id>` and persist branch linkage metadata; do not auto-checkout/switch branches during `materialize`.
    - Never create duplicate branches for the same feature id (for example `feature/F1-M1-2`).
    - Default: one branch per feature; create issue-level branches only by explicit user request.
    - Persist branch linkage on target feature node in `dev/map/DEV_MAP.json`:
      - `branch_name = feature/<feature_id>`,
      - `branch_url = <repo_url>/tree/feature/<feature_id>` (or `null` if repository URL cannot be resolved).
-   - Include branch context in result message: `Active feature branch: feature/<feature_id>`.
+   - Include branch context in result message: `Canonical feature branch: feature/<feature_id>`.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
    - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
    - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
