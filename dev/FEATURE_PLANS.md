@@ -33,12 +33,13 @@ Canonical per-issue plan block format inside a feature section:
 1. `I24-F4-M1` - Remove approve feature plan command and approval gate from workflow lifecycle
 2. `I23-F4-M1` - Issue lifecycle status contract: Pending -> Planned -> Tasked with planning/materialize gates
 3. `I22-F4-M1` - Feature materialize: support multi-issue queue in one command run
-4. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
-5. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
-6. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
-7. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
-8. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
-9. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
+4. `I25-F4-M1` - Automate `plan issue` command with canonical issue-plan block upsert and scoped lint
+5. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
+6. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
+7. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
+8. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
+9. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
+10. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
 ### Dependencies
 - See issue-level dependency blocks below.
 
@@ -163,6 +164,122 @@ Canonical per-issue plan block format inside a feature section:
    - Task 3: smoke/docs updates for queue behavior and failure paths.
 2. Why `3`:
    - parser/input contract, materialize runtime behavior, and regression/docs are separate change domains and can be validated independently.
+
+### I25-F4-M1 - Automate `plan issue` command with canonical issue-plan block upsert and scoped lint
+
+#### Dependencies
+- `dev/workflow_lib/feature_commands.py`
+- `dev/workflow_lib/cli.py`
+- `tests/check-workflow-cli-smoke.sh`
+- `dev/TASK_EXECUTION_PROTOCOL.md`
+- `dev/FEATURE_PLANNING_PROTOCOL.md`
+- `dev/FEATURE_WORKFLOW.md`
+
+#### Decomposition
+1. Add a dedicated CLI subcommand for issue planning.
+   - Register `feature plan-issue` in `register_feature_router(...)` next to `plan-lint`/`materialize`.
+   - Input contract:
+     - required: `--id <I*-F*-M*>`,
+     - optional: `--write`, `--strict`,
+     - optional: `--feature-id <F*-M*>` only as an ownership assertion (must match resolved owner).
+   - Output contract (JSON): `command`, `issue_id`, `feature_id`, `action`, `write`, `strict`, `plan_block_updated`, `issue_order_checked`, `issue_order_mutated`.
+2. Implement issue resolution and ownership validation in one deterministic function.
+   - Parse ID via existing `_parse_issue_id(...)`.
+   - Resolve issue node from `DEV_MAP` and owner feature from `Milestone -> Feature -> Issue`.
+   - Reject cases with explicit error text:
+     - malformed issue id,
+     - issue not found in `DEV_MAP`,
+     - multiple matches (if map integrity is broken),
+     - `--feature-id` mismatch with resolved owner.
+3. Implement canonical issue-plan block upsert in `FEATURE_PLANS.md`.
+   - Read owner feature section via existing `_extract_feature_plan_section(...)`.
+   - Find existing block `### <issue_id> - <issue_title>`:
+     - if present: replace only this block content,
+     - if absent: insert one new block after existing issue blocks in the same feature section.
+   - Enforce canonical inner structure exactly:
+     - `#### Dependencies`,
+     - `#### Decomposition`,
+     - `#### Issue/Task Decomposition Assessment`.
+   - Keep update scope strict: do not mutate other issue blocks.
+4. Add scoped lint for target issue instead of full section lint, with read-only `Issue Execution Order` checks.
+   - Validate only:
+     - heading format `### <issue_id> - <issue_title>`,
+     - allowed `####` subheadings and non-empty content,
+     - ownership of issue id to target feature,
+     - row presence/format in `Issue Execution Order` for this issue when issue is active.
+   - `plan-issue` must not mutate `Issue Execution Order`:
+     - do not add/remove/reorder rows,
+     - if active issue row is missing, fail with deterministic error and keep file unchanged.
+   - Reuse existing validators (`_lint_issue_plan_blocks`, `_lint_one_issue_plan_block`, `_resolve_issue_execution_order_state`) through a narrow wrapper, without changing behavior of full `feature plan-lint`.
+5. Add smoke coverage for command behavior and edge cases.
+   - Success path:
+     - create block when missing (`--write`),
+     - update block when exists (`--write`),
+     - dry-run reports planned mutation without file write.
+   - Failure path:
+     - unknown issue id,
+     - malformed id,
+     - feature mismatch via `--feature-id`,
+     - missing active issue row in order block,
+     - invalid custom heading inside target block.
+   - Stability path:
+     - repeated `--write` is idempotent (no additional mutations after first success).
+6. Update protocol/docs to include command and boundaries.
+   - `dev/TASK_EXECUTION_PROTOCOL.md`: add `plan issue` automation note and scoped-lint behavior.
+   - `dev/FEATURE_WORKFLOW.md`: add canonical usage example.
+   - `dev/FEATURE_PLANNING_PROTOCOL.md`: clarify that output is persisted via command, block is canonical single-source artifact, and `Issue Execution Order` is read-only for `plan-issue`.
+
+#### Issue/Task Decomposition Assessment
+1. Recommended split: `task_count = 5`.
+   - Task 1: CLI surface and output contract.
+     - Files: `dev/workflow_lib/feature_commands.py`, `dev/workflow_lib/cli.py`.
+     - Acceptance: `python3 dev/workflow feature --help` shows `plan-issue`.
+   - Task 2: issue resolver and ownership/error contract.
+     - File: `dev/workflow_lib/feature_commands.py`.
+     - Acceptance: deterministic errors for malformed/unknown/mismatch cases.
+   - Task 3: issue-plan block upsert engine.
+     - File: `dev/workflow_lib/feature_commands.py`.
+     - Acceptance: one canonical block created/updated without touching other issue blocks.
+   - Task 4: scoped lint wrapper + read-only `Issue Execution Order` guard.
+     - File: `dev/workflow_lib/feature_commands.py`.
+     - Acceptance: target-block lint passes/fails deterministically; missing active issue row fails without modifying order block.
+   - Task 5: regression tests and docs sync.
+     - Files: `tests/check-workflow-cli-smoke.sh`, `dev/TASK_EXECUTION_PROTOCOL.md`, `dev/FEATURE_WORKFLOW.md`, `dev/FEATURE_PLANNING_PROTOCOL.md`.
+     - Acceptance: smoke scenarios for success/failure/idempotency pass.
+2. Why `5`:
+   - CLI surface, resolver contract, markdown mutation, order/lint semantics, and regression/docs have separate failure modes and should be validated independently.
+
+### I17-F4-M1 - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
+
+#### Dependencies
+- `dev/workflow_lib/confirm_commands.py`
+- `dev/workflow_lib/feature_commands.py`
+- `dev/workflow_lib/github_adapter.py`
+- `tests/check-workflow-cli-smoke.sh`
+- `dev/TASK_EXECUTION_PROTOCOL.md`
+- `dev/FEATURE_WORKFLOW.md`
+
+#### Decomposition
+1. Extend issue completion contract with explicit reject transition.
+   - Add CLI/state handling for reject transition in confirm flow for feature issues.
+   - Keep deterministic issue-ID validation and ownership checks.
+2. Implement local tracker transition to `Rejected`.
+   - Persist explicit issue status update to `Rejected` in `DEV_MAP`.
+   - Keep terminal-status behavior stable for planning/materialization/execution filters.
+3. Implement mapped GitHub issue reject handling.
+   - Add explicit rejection marker update for mapped issue body (or equivalent deterministic reject note).
+   - Close mapped GitHub issue in the same write run after rejection marker is applied.
+4. Add regression coverage and docs updates.
+   - Cover success path, missing mapping behavior, and idempotent repeated reject attempts.
+   - Update protocol/workflow docs for explicit rejected-state semantics.
+
+#### Issue/Task Decomposition Assessment
+1. Recommended split: `task_count = 3`.
+   - Task 1: confirm flow contract and local `Rejected` transition support.
+   - Task 2: GitHub reject marker + close behavior with deterministic error/skip contract.
+   - Task 3: smoke/docs alignment and repeated-call stability checks.
+2. Why `3`:
+   - local state transition, GitHub side effects, and regression/docs validation are separate risk domains.
 
 ### I14-F4-M1 - Replace checkbox-based GitHub issue body with description-driven readable content
 
