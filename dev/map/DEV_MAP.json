@@ -7,7 +7,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-25T21:40:22+02:00",
+  "updated_at": "2026-02-25T21:51:55+02:00",
   "task_count": 126,
   "milestones": [
     {
@@ -746,8 +746,8 @@
               "id": "I25-F4-M1",
               "title": "Automate plan issue command with canonical issue-plan block upsert and scoped lint",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 102,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/102",
               "tasks": [
                 {
                   "id": "122",
