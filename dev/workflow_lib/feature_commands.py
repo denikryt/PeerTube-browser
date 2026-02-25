@@ -1418,11 +1418,13 @@ def _materialize_feature_issue_node(
 def _build_materialized_issue_body(issue_node: dict[str, Any]) -> str:
     """Build issue-focused GitHub body from local issue title and mapped tasks."""
     issue_title = str(issue_node.get("title", "")).strip() or str(issue_node.get("id", "")).strip()
+    issue_id = str(issue_node.get("id", "")).strip()
     issue_description = _resolve_issue_description(issue_node)
     tasks = issue_node.get("tasks", [])
     lines = [
         "## Scope",
         issue_title,
+        f"Issue ID: {issue_id}" if issue_id else "",
         "",
         "## Why this issue exists",
         issue_description,
@@ -1441,7 +1443,7 @@ def _build_materialized_issue_body(issue_node: dict[str, Any]) -> str:
                 task_label = f"{task_label} - {task_summary}" if task_label else task_summary
             lines.append(f"- {task_label or 'Task details pending local sync.'}")
     else:
-        lines.append("- No mapped tasks yet.")
+        lines.append("- No mapped tasks yet in DEV_MAP.")
     return "\n".join(lines).strip() + "\n"
 
 
