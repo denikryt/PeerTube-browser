@@ -244,23 +244,30 @@ run_expect_success "chain-plan-init" "${CHAIN_REPO}/dev/workflow" feature plan-i
 assert_json_value "chain-plan-init" "action" "created"
 run_expect_success "chain-plan-lint" "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 assert_json_value "chain-plan-lint" "valid" "true"
-run_expect_success "chain-sync" "${CHAIN_REPO}/dev/workflow" plan tasks for feature --id F9-M1 --delta-file "${CHAIN_REPO}/dev/sync_delta.json" --write --allocate-task-ids --update-pipeline
-assert_json_value "chain-sync" "action" "planned-tasks"
-assert_json_value "chain-sync" "task_count_after" "1"
-assert_json_value "chain-sync" "task_list_entries_added" "1"
-assert_json_value "chain-sync" "pipeline_execution_rows_added" "1"
-assert_json_value "chain-sync" "issue_planning_status_reconciliation.mismatch_count" "0"
-assert_jq_file_value \
-  "chain-sync-issue-status-pending" \
-  "${CHAIN_REPO}/dev/map/DEV_MAP.json" \
-  '.milestones[0].features[0].issues[0].status' \
-  "Pending"
-run_expect_success "chain-execution-plan" "${CHAIN_REPO}/dev/workflow" feature execution-plan --id F9-M1
-assert_json_value "chain-execution-plan" "feature_status" "Planned"
-assert_json_value "chain-execution-plan" "task_count" "1"
-assert_json_value "chain-execution-plan" "tasks.0.id" "1"
-assert_json_value "chain-execution-plan" "tasks.0.issue_id" "I1-F9-M1"
-assert_json_value "chain-execution-plan" "next_issue_from_plan_order.id" "I1-F9-M1"
+python3 - "${CHAIN_REPO}/dev/map/DEV_MAP.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+payload = json.loads(path.read_text(encoding="utf-8"))
+feature = payload["milestones"][0]["features"][0]
+feature["issues"] = [
+    {
+        "id": "I1-F9-M1",
+        "title": "Smoke issue",
+        "status": "Pending",
+        "gh_issue_number": None,
+        "gh_issue_url": None,
+        "tasks": []
+    }
+]
+path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+run_expect_failure_contains \
+  "chain-sync-pending-gate" \
+  "status 'Pending'; run plan issue I1-F9-M1 first." \
+  "${CHAIN_REPO}/dev/workflow" plan tasks for feature --id F9-M1 --delta-file "${CHAIN_REPO}/dev/sync_delta.json" --write --allocate-task-ids --update-pipeline
 
 cat >"${CHAIN_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
 # Feature Plans
@@ -302,14 +309,27 @@ assert_jq_file_value \
   "${CHAIN_REPO}/dev/map/DEV_MAP.json" \
   '.milestones[0].features[0].issues[0].status' \
   "Planned"
+run_expect_success "chain-sync" "${CHAIN_REPO}/dev/workflow" plan tasks for feature --id F9-M1 --delta-file "${CHAIN_REPO}/dev/sync_delta.json" --write --allocate-task-ids --update-pipeline
+assert_json_value "chain-sync" "action" "planned-tasks"
+assert_json_value "chain-sync" "task_count_after" "1"
+assert_json_value "chain-sync" "task_list_entries_added" "1"
+assert_json_value "chain-sync" "pipeline_execution_rows_added" "1"
+assert_json_value "chain-sync" "issue_planning_status_reconciliation.mismatch_count" "0"
+assert_jq_file_value \
+  "chain-sync-issue-status-tasked" \
+  "${CHAIN_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues[0].status' \
+  "Tasked"
 run_expect_success "chain-plan-lint-order-ok" "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 assert_json_value "chain-plan-lint-order-ok" "valid" "true"
 assert_json_value "chain-plan-lint-order-ok" "messages.3" "Issue Plan Blocks:ok"
 assert_json_value "chain-plan-lint-order-ok" "messages.4" "Issue Planning Status:ok"
 assert_json_value "chain-plan-lint-order-ok" "messages.5" "Issue Execution Order:ok"
 run_expect_success "chain-execution-plan-order-ok" "${CHAIN_REPO}/dev/workflow" feature execution-plan --id F9-M1
+assert_json_value "chain-execution-plan-order-ok" "feature_status" "Planned"
 assert_json_value "chain-execution-plan-order-ok" "issue_execution_order.0.id" "I1-F9-M1"
 assert_json_value "chain-execution-plan-order-ok" "next_issue_from_plan_order.id" "I1-F9-M1"
+assert_json_value "chain-execution-plan-order-ok" "tasks.0.issue_id" "I1-F9-M1"
 
 python3 - "${CHAIN_REPO}/dev/map/DEV_MAP.json" <<'PY'
 import json
@@ -318,12 +338,12 @@ import sys
 
 path = pathlib.Path(sys.argv[1])
 payload = json.loads(path.read_text(encoding="utf-8"))
-payload["milestones"][0]["features"][0]["issues"][0]["status"] = "Pending"
+payload["milestones"][0]["features"][0]["issues"][0]["status"] = "Planned"
 path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 PY
 run_expect_failure_contains \
   "chain-plan-lint-status-mismatch" \
-  "Issue planning status mismatch: I1-F9-M1(status='Pending', expected='Planned', has_plan_block=True)." \
+  "Issue planning status mismatch: I1-F9-M1(status='Planned', expected='Tasked', has_plan_block=True)." \
   "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 
 cat >"${CHAIN_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
@@ -513,7 +533,7 @@ cat >"${GATE_MATERIALIZE_REPO}/dev/map/DEV_MAP.json" <<'EOF'
             {
               "id": "I1-F1-M1",
               "title": "Issue I1-F1-M1",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": [
@@ -574,7 +594,7 @@ cat >"${CREATE_ONLY_REPO}/dev/map/DEV_MAP.json" <<'EOF'
             {
               "id": "I1-F1-M1",
               "title": "Mapped issue",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": 401,
               "gh_issue_url": "https://github.com/owner/repo/issues/401",
               "tasks": [
@@ -591,7 +611,7 @@ cat >"${CREATE_ONLY_REPO}/dev/map/DEV_MAP.json" <<'EOF'
             {
               "id": "I2-F1-M1",
               "title": "Unmapped issue",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": [
@@ -695,7 +715,7 @@ cat >"${CHECKLIST_SYNC_REPO}/dev/map/DEV_MAP.json" <<'EOF'
             {
               "id": "I2-F1-M1",
               "title": "Second issue",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": 402,
               "gh_issue_url": "https://github.com/owner/repo/issues/402",
               "tasks": [

@@ -153,12 +153,15 @@ Use this procedure before executing tasks for a new feature.
    - Persist plan content to `dev/FEATURE_PLANS.md` in the same run (no chat-only plan output).
 4. `plan tasks for feature <id>`: create/update local `Issue -> Task` decomposition and persist it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.json`, and `dev/TASK_EXECUTION_PIPELINE.json`.
    - Optional issue scope: `plan tasks for issue <issue_id>` for one issue-targeted decomposition run.
+   - Status gate: selected issue nodes must not be `Pending`; run `plan issue <issue_id>` first for pending issues.
+   - Transition rule: successful decomposition marks selected issue nodes as `Tasked`.
 5. Review/refine local issues/tasks with the user until decomposition is final.
 6. `materialize feature <id> --mode <bootstrap|issues-create|issues-sync>`: run explicit materialization mode for an already-synced feature.
    - `--mode bootstrap`: resolve/create canonical feature branch context and persist branch linkage metadata; do not materialize child issues.
    - `--mode issues-create`: materialize feature child `Issue` nodes to GitHub in create-oriented flow from local issue structure.
    - `--mode issues-sync`: materialize feature child `Issue` nodes to GitHub in sync/update flow from local issue structure.
    - `--issue-id <issue_id>` is allowed only with `issues-create`/`issues-sync` and targets one issue node.
+   - Status gate (`issues-create`/`issues-sync`): selected issue nodes must have status `Tasked`.
    - Feature-level GitHub issue is managed at `create feature <id>` step; during materialization, update it only if metadata/body sync is explicitly required, without creating duplicates.
    - Branch policy (mandatory): resolve canonical feature branch `feature/<feature_id>` and persist branch linkage metadata; do not auto-checkout/switch branches during `materialize`.
    - Never create duplicate branches for the same feature id (for example `feature/F1-M1-2`).

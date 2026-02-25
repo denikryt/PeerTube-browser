@@ -47,12 +47,15 @@ Compact command index for milestone/feature operations.
   - Canonical planning requirements: `dev/FEATURE_PLANNING_PROTOCOL.md` -> `Planning Input Contract` + `Planning Quality Gates`.
 - `plan tasks for feature <id>` / `plan tasks for issue <issue_id>`
   - Purpose: persist local `Issue -> Task` decomposition across `DEV_MAP`/`TASK_LIST`/`PIPELINE`.
+  - Gate: selected issues must not be `Pending`; run `plan issue <issue_id>` first for pending issues.
+  - Transition: successful decomposition moves selected issues to `Tasked`.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
 - `feature execution-plan --id <feature_id>`
   - Purpose: return pending task order and include the next issue from `Issue Execution Order` in `FEATURE_PLANS`.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
 - `materialize feature <id> --mode <bootstrap|issues-create|issues-sync>`
   - Purpose: run explicit materialization mode (bootstrap branch context, create flow, or sync flow) for already-synced local issue nodes.
+  - Gate (`issues-create`/`issues-sync`): selected issues must be `Tasked`.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
 - `execute task X` / `execute issue <issue_id>` / `execute feature <feature_id>`
   - Purpose: run implementation flow for one task, one issue chain, or full feature chain.

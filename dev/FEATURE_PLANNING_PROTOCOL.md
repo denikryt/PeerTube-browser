@@ -85,14 +85,17 @@ Checklist:
 
 Checklist:
 - target feature plan is lint-clean and reviewed,
+- target issue nodes are not `Pending` (pending issues must be planned first via `plan issue <issue_id>`),
 - decomposition is represented as local `Issue -> Task` structure,
 - planned task markers/ownership are consistent with `DEV_MAP` parent chain,
-- decomposition scope is minimal and executable.
+- decomposition scope is minimal and executable,
+- successful decomposition is expected to transition selected issues to `Tasked`.
 
 ### Gate C: Pre-materialize
 
 Checklist:
 - local decomposition has been synced and reviewed,
+- selected issue nodes for `issues-create`/`issues-sync` have status `Tasked`,
 - GitHub materialization uses only already-defined local issue nodes,
 - every created/updated GitHub issue is assigned to the target milestone,
 - milestone resolution is confirmed before issuing materialization actions.
