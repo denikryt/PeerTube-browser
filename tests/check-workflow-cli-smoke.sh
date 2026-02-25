@@ -165,7 +165,7 @@ run_expect_failure_contains \
   "the following arguments are required: --mode" \
   "${WORKFLOW[@]}" feature materialize --id F1-M1
 
-# Success-chain smoke (create -> plan-init/lint -> approve -> sync -> execution-plan).
+# Success-chain smoke (create -> plan-init/lint -> approve -> plan tasks -> execution-plan).
 CHAIN_REPO="${TMP_DIR}/chain-fixture"
 create_workflow_fixture_repo "${CHAIN_REPO}"
 cat >"${CHAIN_REPO}/dev/map/DEV_MAP.json" <<'EOF'
@@ -240,8 +240,8 @@ assert_json_value "chain-plan-lint" "valid" "true"
 run_expect_success "chain-approve" "${CHAIN_REPO}/dev/workflow" feature approve --id F9-M1 --write
 assert_json_value "chain-approve" "action" "approved"
 assert_json_value "chain-approve" "status_after" "Approved"
-run_expect_success "chain-sync" "${CHAIN_REPO}/dev/workflow" feature sync --id F9-M1 --delta-file "${CHAIN_REPO}/dev/sync_delta.json" --write --allocate-task-ids --update-pipeline
-assert_json_value "chain-sync" "action" "synced"
+run_expect_success "chain-sync" "${CHAIN_REPO}/dev/workflow" plan tasks for feature --id F9-M1 --delta-file "${CHAIN_REPO}/dev/sync_delta.json" --write --allocate-task-ids --update-pipeline
+assert_json_value "chain-sync" "action" "planned-tasks"
 assert_json_value "chain-sync" "task_count_after" "1"
 assert_json_value "chain-sync" "task_list_entries_added" "1"
 assert_json_value "chain-sync" "pipeline_execution_rows_added" "1"
@@ -290,7 +290,7 @@ cat >"${CHAIN_REPO}/dev/empty_delta.json" <<'EOF'
 EOF
 run_expect_success \
   "chain-sync-promote-planned" \
-  "${CHAIN_REPO}/dev/workflow" feature sync --id F9-M1 --delta-file "${CHAIN_REPO}/dev/empty_delta.json" --write
+  "${CHAIN_REPO}/dev/workflow" plan tasks for feature --id F9-M1 --delta-file "${CHAIN_REPO}/dev/empty_delta.json" --write
 assert_json_value "chain-sync-promote-planned" "issue_planning_status_reconciliation.reconciled_issue_ids.0" "I1-F9-M1"
 assert_jq_file_value \
   "chain-sync-issue-status-planned" \
@@ -341,7 +341,7 @@ run_expect_failure_contains \
   "Issue Execution Order references unknown issue" \
   "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 
-# Gate-fail: sync --write blocked for non-approved feature status.
+# Gate-fail: plan tasks --write blocked for non-approved feature status.
 GATE_SYNC_REPO="${TMP_DIR}/gate-sync-fixture"
 create_workflow_fixture_repo "${GATE_SYNC_REPO}"
 cat >"${GATE_SYNC_REPO}/dev/map/DEV_MAP.json" <<'EOF'
@@ -379,6 +379,10 @@ EOF
 run_expect_failure_contains \
   "gate-sync-non-approved" \
   "requires status Approved" \
+  "${GATE_SYNC_REPO}/dev/workflow" plan tasks for feature --id F1-M1 --delta-file "${GATE_SYNC_REPO}/dev/empty_delta.json" --write
+run_expect_failure_contains \
+  "legacy-feature-sync-rejected" \
+  "Command 'feature sync' was removed." \
   "${GATE_SYNC_REPO}/dev/workflow" feature sync --id F1-M1 --delta-file "${GATE_SYNC_REPO}/dev/empty_delta.json" --write
 
 # Gate-fail: materialize blocked when milestone-to-title mapping is missing.
