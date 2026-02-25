@@ -111,7 +111,14 @@ Apply the corresponding completion update in one edit run:
    - If additional confirmation is not given, stop without applying completion updates.
    - If additional confirmation is given:
      - update child task statuses to `Done` in `dev/map/DEV_MAP.json`.
-   - Update local issue status to `Done` in `dev/map/DEV_MAP.json`.
+   - In write mode, apply one scripted cleanup transaction across:
+     - `dev/FEATURE_PLANS.md`: remove issue row from `Issue Execution Order` and remove issue plan block under owning feature section.
+     - `dev/map/DEV_MAP.json`: remove confirmed issue node (with embedded child tasks) from owning feature.
+     - `dev/TASK_LIST.json`: remove child task entries.
+     - `dev/TASK_EXECUTION_PIPELINE.json`: remove child task references from sequence/blocks/overlaps.
+   - Cleanup must be idempotent: if an artifact is already absent, report deterministic skipped/not-found fields and continue.
+   - In non-write mode, return preview payload with planned removals for all cleanup targets (`FEATURE_PLANS`, `DEV_MAP`, `TASK_LIST`, `PIPELINE`).
+   - Do not keep the confirmed issue node as `Done` in `DEV_MAP`; confirmed issue is removed by cleanup contract.
    - Close mapped GitHub issue in the same completion update run.
 3. `confirm feature <feature_id> done`
    - Treat this command as explicit confirmation for the full feature subtree.
