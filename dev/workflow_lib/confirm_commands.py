@@ -28,6 +28,12 @@ TASK_ID_PATTERN = re.compile(r"^[0-9]+[a-z]?$")
 ISSUE_ID_PATTERN = re.compile(r"^I[0-9]+-F[0-9]+-M[0-9]+$")
 FEATURE_ID_PATTERN = re.compile(r"^F[0-9]+-M[0-9]+$")
 STANDALONE_ISSUE_ID_PATTERN = re.compile(r"^SI[0-9]+-M[0-9]+$")
+SECTION_H2_PATTERN = re.compile(r"^##\s+([^#].*?)\s*$")
+ISSUE_EXECUTION_ORDER_HEADING = "### Issue Execution Order"
+ISSUE_ORDER_ROW_PATTERN = re.compile(r"^\d+\.\s+`(?P<issue_id>I\d+-F\d+-M\d+)`\s+-\s+(?P<issue_title>.+\S)\s*$")
+ISSUE_PLAN_BLOCK_HEADING_PATTERN = re.compile(
+    r"^###\s+(?:Follow-up issue:\s*)?`?(?P<issue_id>I\d+-F\d+-M\d+)`?(?:\s*(?:-|—|:)\s*.+)?\s*$"
+)
 
 
 def register_confirm_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -153,6 +159,8 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
         raise WorkflowCommandError(f"Issue {issue_id} not found in DEV_MAP.", exit_code=4)
 
     issue_node = issue_ref["issue"]
+    feature_node = issue_ref["feature"]
+    feature_id = str(feature_node.get("id", "")).strip()
     child_tasks = issue_node.get("tasks", [])
     child_task_ids = [str(task.get("id", "")).strip() for task in child_tasks if str(task.get("id", "")).strip()]
     pending_child_ids = [
@@ -176,18 +184,41 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
             exit_code=4,
         )
 
+    cleanup_preview = _compute_tracker_cleanup_preview(context, set(child_task_ids))
+    feature_plan_cleanup_preview = _cleanup_feature_plan_issue_artifacts(
+        feature_plans_path=context.feature_plans_path,
+        feature_id=feature_id,
+        issue_id=issue_id,
+        write=False,
+    )
+    issue_node_cleanup_preview = {
+        "issue_id": issue_id,
+        "removed": False,
+        "would_remove": True,
+    }
+    cleanup_preview["feature_plans"] = feature_plan_cleanup_preview
+    cleanup_preview["dev_map"] = issue_node_cleanup_preview
     if bool(args.write):
         for task in child_tasks:
             task["status"] = "Done"
         issue_node["status"] = "Done"
-
-    cleanup_preview = _compute_tracker_cleanup_preview(context, set(child_task_ids))
-    if bool(args.write):
+        feature_plan_cleanup_result = _cleanup_feature_plan_issue_artifacts(
+            feature_plans_path=context.feature_plans_path,
+            feature_id=feature_id,
+            issue_id=issue_id,
+            write=True,
+        )
+        issue_node_removed = _remove_issue_node_from_feature(feature_node=feature_node, issue_id=issue_id)
         cleanup_result = _apply_tracker_cleanup(
             context=context,
             dev_map=dev_map,
             task_ids_to_remove=set(child_task_ids),
         )
+        cleanup_result["feature_plans"] = feature_plan_cleanup_result
+        cleanup_result["dev_map"] = {
+            "issue_id": issue_id,
+            "removed": issue_node_removed,
+        }
     else:
         cleanup_result = cleanup_preview
 
@@ -200,7 +231,7 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
     if bool(args.write) and bool(args.close_github):
         feature_issue_checklist_sync = _sync_feature_issue_checklist_on_issue_done(
             context=context,
-            feature_node=issue_ref["feature"],
+            feature_node=feature_node,
             issue_id=issue_id,
         )
     if bool(args.write) and bool(args.close_github):
@@ -214,7 +245,7 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
             "close_github": bool(args.close_github),
             "command": "confirm.issue",
             "extra_confirmation_required": needs_extra_confirmation,
-            "feature_id": str(issue_ref["feature"].get("id", "")),
+            "feature_id": feature_id,
             "feature_issue_checklist_sync": feature_issue_checklist_sync,
             "github_closed": github_closed,
             "issue_id": issue_id,
@@ -705,6 +736,165 @@ def _find_feature(dev_map: dict[str, Any], feature_id: str) -> dict[str, Any] | 
                     "feature": feature,
                     "milestone": milestone,
                 }
+    return None
+
+
+def _remove_issue_node_from_feature(feature_node: dict[str, Any], issue_id: str) -> bool:
+    """Remove one issue node from owning feature while preserving other issues."""
+    issues = feature_node.get("issues", [])
+    if not isinstance(issues, list):
+        raise WorkflowCommandError("Feature issue list must be a list for confirm issue cleanup.", exit_code=4)
+    original_count = len(issues)
+    feature_node["issues"] = [
+        issue
+        for issue in issues
+        if not isinstance(issue, dict) or str(issue.get("id", "")).strip().upper() != issue_id
+    ]
+    return len(feature_node["issues"]) < original_count
+
+
+def _cleanup_feature_plan_issue_artifacts(
+    feature_plans_path: Path,
+    feature_id: str,
+    issue_id: str,
+    write: bool,
+) -> dict[str, Any]:
+    """Remove one issue order row + issue plan block from FEATURE_PLANS feature section."""
+    text = feature_plans_path.read_text(encoding="utf-8")
+    bounds = _find_h2_section_bounds(text, feature_id)
+    if bounds is None:
+        return {
+            "attempted": False,
+            "feature_section_found": False,
+            "issue_block_removed": False,
+            "issue_order_row_removed": False,
+            "order_block_found": False,
+            "updated": False,
+        }
+
+    lines = text.splitlines()
+    start_line, end_line = bounds
+    section_lines = lines[start_line:end_line]
+    issue_order_row_removed, issue_order_updated = _remove_issue_from_issue_execution_order_block(
+        section_lines=section_lines,
+        issue_id=issue_id,
+    )
+    issue_block_removed, issue_block_updated = _remove_issue_plan_block(
+        section_lines=section_lines,
+        issue_id=issue_id,
+    )
+    updated = issue_order_updated or issue_block_updated
+    if write and updated:
+        lines[start_line:end_line] = section_lines
+        feature_plans_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    return {
+        "attempted": True,
+        "feature_section_found": True,
+        "issue_block_removed": issue_block_removed,
+        "issue_order_row_removed": issue_order_row_removed,
+        "order_block_found": _find_issue_execution_order_heading(section_lines) is not None,
+        "updated": updated if write else (issue_order_row_removed or issue_block_removed),
+    }
+
+
+def _remove_issue_from_issue_execution_order_block(section_lines: list[str], issue_id: str) -> tuple[bool, bool]:
+    """Remove one issue row from Issue Execution Order and renumber remaining rows."""
+    heading_index = _find_issue_execution_order_heading(section_lines)
+    if heading_index is None:
+        return False, False
+    rows_start = heading_index + 1
+    rows_end = rows_start
+    while rows_end < len(section_lines):
+        stripped = section_lines[rows_end].strip()
+        if stripped.startswith("### ") or stripped.startswith("## "):
+            break
+        rows_end += 1
+
+    parsed_rows: list[dict[str, str]] = []
+    for raw_line in section_lines[rows_start:rows_end]:
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("<!--"):
+            continue
+        match = ISSUE_ORDER_ROW_PATTERN.fullmatch(stripped)
+        if match is None:
+            continue
+        parsed_rows.append(
+            {
+                "issue_id": match.group("issue_id").strip(),
+                "issue_title": match.group("issue_title").strip(),
+            }
+        )
+    remaining_rows = [row for row in parsed_rows if row["issue_id"] != issue_id]
+    issue_removed = len(remaining_rows) != len(parsed_rows)
+    if not issue_removed:
+        return False, False
+
+    replacement_rows = [
+        f"{index}. `{row['issue_id']}` - {row['issue_title']}"
+        for index, row in enumerate(remaining_rows, start=1)
+    ]
+    section_lines[rows_start:rows_end] = replacement_rows
+    return True, True
+
+
+def _remove_issue_plan_block(section_lines: list[str], issue_id: str) -> tuple[bool, bool]:
+    """Remove one issue plan block identified by issue heading."""
+    block_start: int | None = None
+    block_end: int | None = None
+    for index, line in enumerate(section_lines):
+        if not _is_issue_plan_block_heading_for_issue(line, issue_id):
+            continue
+        block_start = index
+        block_end = len(section_lines)
+        for next_index in range(index + 1, len(section_lines)):
+            stripped = section_lines[next_index].strip()
+            if stripped.startswith("### ") or stripped.startswith("## "):
+                block_end = next_index
+                break
+        break
+
+    if block_start is None or block_end is None:
+        return False, False
+    del section_lines[block_start:block_end]
+    while block_start < len(section_lines) and not section_lines[block_start].strip():
+        del section_lines[block_start]
+    return True, True
+
+
+def _find_issue_execution_order_heading(section_lines: list[str]) -> int | None:
+    """Find Issue Execution Order heading line index inside one feature section."""
+    for index, line in enumerate(section_lines):
+        if line.strip() == ISSUE_EXECUTION_ORDER_HEADING:
+            return index
+    return None
+
+
+def _is_issue_plan_block_heading_for_issue(line: str, issue_id: str) -> bool:
+    """Check if one markdown heading line is an issue-plan block heading for issue_id."""
+    match = ISSUE_PLAN_BLOCK_HEADING_PATTERN.fullmatch(line.strip())
+    if match is None:
+        return False
+    return match.group("issue_id").strip().upper() == issue_id
+
+
+def _find_h2_section_bounds(text: str, heading: str) -> tuple[int, int] | None:
+    """Locate a level-2 markdown section by exact heading title."""
+    lines = text.splitlines()
+    starts: list[tuple[str, int]] = []
+    for index, line in enumerate(lines):
+        match = SECTION_H2_PATTERN.match(line)
+        if match is not None:
+            starts.append((match.group(1).strip(), index))
+    for index, (title, start_line) in enumerate(starts):
+        if title != heading:
+            continue
+        end_line = len(lines)
+        if index + 1 < len(starts):
+            end_line = starts[index + 1][1]
+        return start_line, end_line
     return None
 
 
