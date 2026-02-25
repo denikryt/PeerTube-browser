@@ -147,6 +147,8 @@ Canonical per-issue plan block format inside a feature section:
    - Keep deterministic output payload (`sub_issues_sync`: attempted/added/skipped/errors).
 3. Keep create/sync behavior aligned with partial mappings.
    - If some child issues are not materialized yet (`gh_issue_number/url` missing), skip only those and report them explicitly.
+   - At the end of `feature materialize --mode issues-sync`, return explicit output list of such issues (for example `missing_issue_mappings` with issue id + missing fields).
+   - Keep output deterministic: include this field in success responses even when the list is empty.
    - Do not fail whole materialize run for skipped-unmapped child issues; continue with successfully created/mapped items.
 4. Add smoke coverage and docs.
    - Add fake-gh smoke scenario validating: first run adds missing sub-issue links, second run adds zero (idempotent).
