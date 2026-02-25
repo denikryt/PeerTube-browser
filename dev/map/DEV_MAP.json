@@ -5,7 +5,7 @@
     "Approved",
     "Done"
   ],
-  "updated_at": "2026-02-25T03:36:06+02:00",
+  "updated_at": "2026-02-25T03:56:53+02:00",
   "task_count": 95,
   "milestones": [
     {
@@ -455,6 +455,14 @@
             {
               "id": "I16-F4-M1",
               "title": "Issue planning status split: Pending (no plan) vs Planned (has plan)",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I17-F4-M1",
+              "title": "Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
