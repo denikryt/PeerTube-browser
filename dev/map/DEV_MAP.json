@@ -468,6 +468,14 @@
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []
+            },
+            {
+              "id": "I18-F4-M1",
+              "title": "Standardize per-issue plan block format in FEATURE_PLANS and enforce strict heading lint",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F4-M1",
