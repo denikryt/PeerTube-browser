@@ -567,6 +567,41 @@
         "Return clear gate error messages with required status.",
         "Add regression checks for blocked non-approved issue paths."
       ]
+    },
+    {
+      "id": "127",
+      "marker": "[M1][F4]",
+      "title": "Add CLI command surface for plan tasks for issues",
+      "problem": "Workflow supports issue-scoped decomposition only one issue per command run.",
+      "solution_option": "Add batch issue-scoped command form with repeatable issue-id queue and deterministic output fields.",
+      "concrete_steps": [
+        "Register plan tasks for issues parser route with repeatable --issue-id and shared delta-file flags.",
+        "Emit deterministic command output token for multi-issue mode."
+      ]
+    },
+    {
+      "id": "128",
+      "marker": "[M1][F4]",
+      "title": "Implement multi-issue queue filter and one-pass decomposition application",
+      "problem": "Single-issue filter rejects multi-issue payloads and prevents one-pass allocation across selected issues.",
+      "solution_option": "Add queue-aware issue filtering/validation and run one decomposition write over selected issue set.",
+      "concrete_steps": [
+        "Validate multi-issue queue ownership and reject duplicates/non-feature issue IDs.",
+        "Allow delta issues only from selected queue and apply one allocation pass for all selected issues.",
+        "Keep overlaps processing compatible with both new token IDs and existing task IDs."
+      ]
+    },
+    {
+      "id": "129",
+      "marker": "[M1][F4]",
+      "title": "Add smoke coverage and docs for multi-issue plan tasks command",
+      "problem": "Command behavior for multi-issue decomposition is not covered in smoke tests and canonical docs.",
+      "solution_option": "Add smoke scenarios and update protocol/workflow docs for command syntax, gates, and failure contracts.",
+      "concrete_steps": [
+        "Add smoke success scenario for plan tasks for issues with two or more issue IDs.",
+        "Add smoke failure scenarios for duplicate queue IDs and non-owned issue IDs.",
+        "Update TASK_EXECUTION_PROTOCOL and FEATURE_WORKFLOW command index for the new command."
+      ]
     }
   ]
 }
