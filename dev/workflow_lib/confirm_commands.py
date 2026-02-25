@@ -156,7 +156,44 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
     dev_map = _load_json(context.dev_map_path)
     issue_ref = _find_issue(dev_map, issue_id)
     if issue_ref is None:
-        raise WorkflowCommandError(f"Issue {issue_id} not found in DEV_MAP.", exit_code=4)
+        _, feature_local_num, feature_milestone_num = _parse_feature_chain_from_issue_id(issue_id)
+        feature_id = f"F{feature_local_num}-M{feature_milestone_num}"
+        feature_plan_cleanup = _cleanup_feature_plan_issue_artifacts(
+            feature_plans_path=context.feature_plans_path,
+            feature_id=feature_id,
+            issue_id=issue_id,
+            write=bool(args.write),
+        )
+        cleanup_result = _compute_tracker_cleanup_preview(context, set())
+        cleanup_result["feature_plans"] = feature_plan_cleanup
+        cleanup_result["dev_map"] = {
+            "already_absent": True,
+            "issue_id": issue_id,
+            "removed": False,
+        }
+        emit_json(
+            {
+                "child_tasks_marked_done": 0,
+                "cleanup": cleanup_result,
+                "close_github": bool(args.close_github),
+                "command": "confirm.issue",
+                "extra_confirmation_required": False,
+                "feature_id": feature_id,
+                "feature_issue_checklist_sync": {
+                    "attempted": False,
+                    "reason": "issue-node-not-found",
+                    "row_found": False,
+                    "updated": False,
+                },
+                "github_closed": False,
+                "issue_id": issue_id,
+                "issue_status_after": "Absent",
+                "noop": True,
+                "pending_child_tasks": [],
+                "write": bool(args.write),
+            }
+        )
+        return 0
 
     issue_node = issue_ref["issue"]
     feature_node = issue_ref["feature"]
@@ -663,6 +700,17 @@ def _ask_pending_tasks_confirmation(issue_id: str, pending_child_ids: list[str])
 def _normalize_identifier(raw_identifier: str) -> str:
     """Normalize identifier text to canonical uppercase representation."""
     return str(raw_identifier).strip().upper()
+
+
+def _parse_feature_chain_from_issue_id(issue_id: str) -> tuple[int, int, int]:
+    """Parse issue ID into local issue/feature/milestone numeric chain."""
+    match = re.fullmatch(r"^I(?P<issue>\d+)-F(?P<feature>\d+)-M(?P<milestone>\d+)$", issue_id)
+    if match is None:
+        raise WorkflowCommandError(
+            f"Invalid issue ID {issue_id!r}; expected I<local>-F<feature_local>-M<milestone>.",
+            exit_code=4,
+        )
+    return int(match.group("issue")), int(match.group("feature")), int(match.group("milestone"))
 
 
 def _load_json(path: Path) -> dict[str, Any]:
