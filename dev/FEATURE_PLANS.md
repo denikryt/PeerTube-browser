@@ -127,6 +127,43 @@ Canonical per-issue plan block format inside a feature section:
 2. Why `4`:
    - status transitions, decomposition gate, materialize gate, and regression/docs are separate change domains.
 
+### I22-F4-M1 - Feature materialize: support multi-issue queue in one command run
+
+#### Dependencies
+- `dev/workflow_lib/feature_commands.py`
+- `dev/workflow_lib/cli.py`
+- `tests/check-workflow-cli-smoke.sh`
+- `dev/TASK_EXECUTION_PROTOCOL.md`
+- `dev/FEATURE_WORKFLOW.md`
+
+#### Decomposition
+1. Extend materialize CLI input contract from one optional issue selector to an ordered issue queue.
+   - Replace single-value parsing (`--issue-id`) with repeatable queue parsing that preserves user-provided order.
+   - Keep `--mode bootstrap` incompatible with any issue selectors.
+   - Expected result: materialize command accepts multiple issue IDs in one run without ambiguous ordering.
+2. Add queue validation and issue-node resolution in materialize flow.
+   - Validate each requested issue ID format and ownership (`I*-F*-M*` belongs to target feature).
+   - Resolve only requested issue nodes and fail deterministically when any requested issue is missing.
+   - Handle duplicate issue IDs deterministically (reject duplicate queue entries with clear error).
+   - Expected result: issue selection is deterministic, safe, and explicit before any GitHub side effects.
+3. Execute materialization loop against the resolved queue for `issues-create` and `issues-sync`.
+   - Reuse current per-issue create/update/skip behavior, but process in queue order.
+   - Preserve create-only semantics (`issues-create` skips mapped issues) for each queued issue.
+   - Return output payload with queue-aware selection metadata (selected issue IDs and per-issue action results).
+   - Expected result: one command run can materialize multiple selected issues with stable ordering and output.
+4. Add regression coverage and protocol/workflow wording updates.
+   - Add smoke tests for multi-issue queue success, duplicate-ID rejection, and mixed mapped/unmapped behavior in create-only mode.
+   - Update protocol/workflow command examples to document queue usage for `materialize feature ... --mode issues-create|issues-sync`.
+   - Expected result: queue behavior is verifiable and documented as canonical command usage.
+
+#### Issue/Task Decomposition Assessment
+1. Recommended split: `task_count = 3`.
+   - Task 1: CLI + parser contract for repeatable issue queue input and queue validation helpers.
+   - Task 2: materialize execution path update for queue-based issue filtering/order and deterministic output contract.
+   - Task 3: smoke/docs updates for queue behavior and failure paths.
+2. Why `3`:
+   - parser/input contract, materialize runtime behavior, and regression/docs are separate change domains and can be validated independently.
+
 ### I14-F4-M1 - Replace checkbox-based GitHub issue body with description-driven readable content
 
 #### Dependencies
