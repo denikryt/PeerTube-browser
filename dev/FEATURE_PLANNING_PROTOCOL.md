@@ -21,12 +21,26 @@ Required input for `plan feature <id>`:
 - `step_flow`: strict command sequence with per-step actions (`what to run`, `what script does`, `what executor does`, `step result`).
 - `issue_task_decomposition_assessment`: explicit assessment whether to split or not split; if split, minimal logical issues/tasks.
 
+Required input for `plan issue <issue_id>`:
+- `issue_id`: stable issue id in schema format (for example `I16-F4-M1`).
+- `parent_feature_id`: resolved owner feature id from `DEV_MAP`.
+- `dependencies`: issue-specific dependencies.
+- `step_flow`: strict issue-level implementation flow (ordered actions and expected result per step).
+- `issue_task_decomposition_assessment`: explicit minimal-sufficient split decision for this issue.
+
 Required output in `dev/FEATURE_PLANS.md`:
 - dependencies section for the feature,
 - decomposition section with strict step-by-step flow,
 - `Issue Execution Order` block with ordered active issue rows (``<issue_id>`` - `<issue_title>`),
 - `Issue/Task Decomposition Assessment`,
 - draft decomposition (`Feature -> Issue(s) -> Task(s)`) only if splitting is actually needed.
+
+Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
+- one issue-plan block under the parent feature section for the target issue id,
+- issue-specific `Dependencies`,
+- issue-specific `Decomposition` with strict step flow,
+- issue-specific `Issue/Task Decomposition Assessment`,
+- keep `Issue Execution Order` aligned for active issues.
 
 ## 2) Decomposition Rules
 

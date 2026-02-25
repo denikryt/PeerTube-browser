@@ -13,14 +13,15 @@ Compact command index for milestone/feature operations.
 
 1. `create feature <id>`
 2. `plan feature <id>`
-3. `approve feature plan`
-4. `sync issues to task list for <id>`
-5. review/refine local decomposition with user
-6. `materialize feature <id> --mode bootstrap`
-7. `materialize feature <id> --mode issues-create` or `materialize feature <id> --mode issues-sync`
-8. `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`
-9. `confirm task <task_id> done` / `confirm issue <issue_id> done` / `confirm feature <feature_id> done`
-10. `confirm milestone done`
+3. `plan issue <issue_id>` (repeat per issue as needed)
+4. `approve feature plan`
+5. `sync issues to task list for <id>`
+6. review/refine local decomposition with user
+7. `materialize feature <id> --mode bootstrap`
+8. `materialize feature <id> --mode issues-create` or `materialize feature <id> --mode issues-sync`
+9. `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`
+10. `confirm task <task_id> done` / `confirm issue <issue_id> done` / `confirm feature <feature_id> done`
+11. `confirm milestone done`
 
 ## Canonical command sequence (standalone path)
 
@@ -40,6 +41,10 @@ Compact command index for milestone/feature operations.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
 - `plan feature <id>`
   - Purpose: produce feature plan artifacts in `dev/FEATURE_PLANS.md`.
+  - Canonical planning requirements: `dev/FEATURE_PLANNING_PROTOCOL.md` -> `Planning Input Contract` + `Planning Quality Gates`.
+- `plan issue <issue_id>`
+  - Purpose: produce/update one issue-level plan block in `dev/FEATURE_PLANS.md` under the owning feature section.
+  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
   - Canonical planning requirements: `dev/FEATURE_PLANNING_PROTOCOL.md` -> `Planning Input Contract` + `Planning Quality Gates`.
 - `approve feature plan`
   - Purpose: approve plan boundaries and unlock sync/materialize path.
