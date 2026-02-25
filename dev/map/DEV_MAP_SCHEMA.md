@@ -6,8 +6,10 @@ Canonical hierarchies:
 - Standalone path (non-product work): `Milestone -> StandaloneIssue -> Task`
 
 Allowed status values for nodes with status fields (`Feature`, `Issue`, `Task`):
+- `Pending`
 - `Planned`
 - `Approved`
+- `Rejected`
 - `Done`
 
 Milestone nodes do not have a `status` field.
@@ -69,12 +71,24 @@ Feature node in `DEV_MAP` must carry these fields:
 - `branch_name`: canonical feature branch name `feature/<feature_id>` or `null`
 - `branch_url`: canonical feature branch URL `<repo_url>/tree/feature/<feature_id>` or `null`
 
+## Issue Node Contract
+
+Issue node in `DEV_MAP` must carry these fields:
+- `id`: issue id (`I<local>-F<feature_local>-M<milestone>`)
+- `title`: issue title
+- `status`: `Pending` | `Planned` | `Done` | `Rejected`
+  - `Pending`: issue exists in `DEV_MAP`, but no persisted issue-plan block exists in `dev/FEATURE_PLANS.md`.
+  - `Planned`: canonical issue-plan block exists in `dev/FEATURE_PLANS.md`.
+  - `Done` and `Rejected` are terminal statuses.
+- `gh_issue_number`: mapped issue-level GitHub issue number or `null`
+- `gh_issue_url`: mapped issue-level GitHub issue URL or `null`
+
 ## Example A: Current minimal state (milestones only)
 
 ```json
 {
   "schema_version": "1.4",
-  "statuses": ["Planned", "Approved", "Done"],
+  "statuses": ["Pending", "Planned", "Approved", "Rejected", "Done"],
   "updated_at": "2026-02-23T23:45:00+02:00",
   "task_count": 58,
   "milestones": [
@@ -95,7 +109,7 @@ Feature node in `DEV_MAP` must carry these fields:
 ```json
 {
   "schema_version": "1.4",
-  "statuses": ["Planned", "Approved", "Done"],
+  "statuses": ["Pending", "Planned", "Approved", "Rejected", "Done"],
   "updated_at": "YYYY-MM-DDTHH:MM:SS+TZ:TZ",
   "task_count": 59,
   "milestones": [
@@ -138,7 +152,7 @@ Feature node in `DEV_MAP` must carry these fields:
             {
               "id": "I1-F1-M1",
               "title": "Issue title",
-              "status": "Planned",
+              "status": "Pending",
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": [

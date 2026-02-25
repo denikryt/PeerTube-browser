@@ -48,6 +48,9 @@ REQUIRED_PLAN_HEADINGS = (
     "Decomposition",
     "Issue/Task Decomposition Assessment",
 )
+ISSUE_PLANNING_ACTIVE_STATUSES = {"Pending", "Planned"}
+ISSUE_TERMINAL_STATUSES = {"Done", "Rejected"}
+ISSUE_ALLOWED_PLANNING_STATUSES = ISSUE_PLANNING_ACTIVE_STATUSES | ISSUE_TERMINAL_STATUSES
 
 
 def register_feature_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -786,7 +789,7 @@ def _apply_issue_delta(
     issue_payloads: list[dict[str, Any]],
     existing_task_locations: dict[str, str],
 ) -> dict[str, Any]:
-    """Upsert issue/task nodes from sync payload into feature subtree."""
+    """Upsert issue/task nodes from decomposition payload into feature subtree."""
     issues = feature_node.setdefault("issues", [])
     issues_by_id = {str(issue.get("id", "")): issue for issue in issues}
     issue_upsert_count = 0
@@ -807,7 +810,7 @@ def _apply_issue_delta(
             issue_node = {
                 "id": issue_id,
                 "title": issue_payload.get("title", issue_id),
-                "status": "Planned",
+                "status": "Pending",
                 "gh_issue_number": None,
                 "gh_issue_url": None,
                 "tasks": [],
@@ -822,7 +825,14 @@ def _apply_issue_delta(
             issue_node["title"] = _required_string_field(issue_payload, "title", f"issues[{issue_index}]")
         if "status" in issue_payload:
             status_value = _required_string_field(issue_payload, "status", f"issues[{issue_index}]")
-            _validate_status_value(status_value, statuses, f"issues[{issue_index}].status")
+            _validate_issue_planning_status_transition(
+                issue_id=issue_id,
+                status_before=str(issue_node.get("status", "")).strip() or None,
+                status_after=status_value,
+                location=f"issues[{issue_index}].status",
+            )
+            _validate_issue_planning_status_value(status_value, f"issues[{issue_index}].status")
+            _validate_status_value(status_value, statuses | ISSUE_ALLOWED_PLANNING_STATUSES, f"issues[{issue_index}].status")
             issue_node["status"] = status_value
 
         task_payloads = issue_payload.get("tasks", [])
@@ -874,6 +884,36 @@ def _apply_issue_delta(
         "issues_upserted": issue_upsert_count,
         "tasks_upserted": task_upsert_count,
     }
+
+
+def _validate_issue_planning_status_value(status: str, location: str) -> None:
+    """Validate issue planning status against canonical Pending/Planned contract."""
+    if status in ISSUE_ALLOWED_PLANNING_STATUSES:
+        return
+    allowed = ", ".join(sorted(ISSUE_ALLOWED_PLANNING_STATUSES))
+    raise WorkflowCommandError(
+        f"Invalid planning status at {location}: {status!r}. Allowed planning statuses: {allowed}.",
+        exit_code=4,
+    )
+
+
+def _validate_issue_planning_status_transition(
+    issue_id: str,
+    status_before: str | None,
+    status_after: str,
+    location: str,
+) -> None:
+    """Reject decomposition-driven transitions that mutate terminal issue statuses."""
+    if status_before not in ISSUE_TERMINAL_STATUSES:
+        return
+    if status_after == status_before:
+        return
+    raise WorkflowCommandError(
+        "Invalid planning-status transition at "
+        f"{location} for {issue_id}: {status_before!r} -> {status_after!r}. "
+        "Terminal issue statuses ('Done', 'Rejected') cannot be changed by decomposition updates.",
+        exit_code=4,
+    )
 
 
 def _assert_issue_belongs_to_feature(

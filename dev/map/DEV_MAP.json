@@ -1,6 +1,7 @@
 {
   "schema_version": "1.4",
   "statuses": [
+    "Pending",
     "Planned",
     "Approved",
     "Rejected",
