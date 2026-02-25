@@ -48,6 +48,10 @@
     {
       "tasks": ["94", "95"],
       "description": "feature checklist sync and issue approved gate"
+    },
+    {
+      "tasks": ["96", "97", "98"],
+      "description": "feature-plan issue sequencing source and execution guidance"
     }
   ],
   "functional_blocks": [
@@ -104,6 +108,12 @@
       "tasks": ["94", "95"],
       "scope": "explicit materialize modes, scoped issue materialization, create-only behavior, feature checklist sync, and issue-level approval gate enforcement.",
       "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
+    },
+    {
+      "title": "Block K: Issue-level execution sequencing from feature plans",
+      "tasks": ["96", "97", "98"],
+      "scope": "canonical issue order block format in FEATURE_PLANS, lint synchronization with DEV_MAP, and execution-plan visibility of next issue.",
+      "outcome": "each feature plan exposes one deterministic issue execution order, lint blocks drift from DEV_MAP active issues, and execution-plan output reports the next issue to run."
     }
   ],
   "overlaps": [

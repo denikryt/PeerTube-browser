@@ -567,6 +567,42 @@
         "Return clear gate error messages with required status.",
         "Add regression checks for blocked non-approved issue paths."
       ]
+    },
+    {
+      "id": "96",
+      "marker": "[M1][F4]",
+      "title": "Define issue execution order block contract in feature plans",
+      "problem": "Issue execution order is currently implicit and scattered, so it is hard to determine the next issue to execute.",
+      "solution_option": "Use one canonical Issue Execution Order block in FEATURE_PLANS as the readable source of issue sequencing.",
+      "concrete_steps": [
+        "Define canonical section name and row format for issue ordering inside one feature plan section.",
+        "Document inclusion rule: include all active issues from DEV_MAP (exclude Done and Rejected).",
+        "Document row payload: issue ID, title, current status, and plan availability flag."
+      ]
+    },
+    {
+      "id": "97",
+      "marker": "[M1][F4]",
+      "title": "Enforce order-block consistency in feature plan lint",
+      "problem": "Without strict validation, issue order blocks can drift from DEV_MAP and become unreliable for execution sequencing.",
+      "solution_option": "Add deterministic lint checks for order-block syntax, uniqueness, and DEV_MAP consistency.",
+      "concrete_steps": [
+        "Add lint parser logic to find and validate Issue Execution Order rows in one feature section.",
+        "Validate unique issue IDs, valid ID format, and membership in the same feature scope.",
+        "Validate that all active DEV_MAP issues are represented and stale IDs are rejected with clear error messages."
+      ]
+    },
+    {
+      "id": "98",
+      "marker": "[M1][F4]",
+      "title": "Expose next issue from plan order in execution guidance",
+      "problem": "Even with an order block, workflow output does not yet show which issue should be executed next.",
+      "solution_option": "Integrate Issue Execution Order into feature execution-plan output and add smoke/docs coverage.",
+      "concrete_steps": [
+        "Update feature execution-plan to compute next eligible issue from Issue Execution Order.",
+        "Include next issue metadata in output JSON without changing task-level dependency logic.",
+        "Add smoke/docs updates for happy path and mismatch validation behavior."
+      ]
     }
   ]
 }
