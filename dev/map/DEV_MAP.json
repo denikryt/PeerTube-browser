@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T00:51:04+02:00",
+  "updated_at": "2026-02-26T01:32:53+02:00",
   "task_count": 140,
   "milestones": [
     {
@@ -27,6 +27,7 @@
             {
               "id": "I1-F1-M1",
               "title": "Boundary contract freeze",
+              "description": "Ownership boundaries between Engine and Client are ambiguous and lead to inconsistent implementation decisions. Freeze a single explicit boundary contract so responsibilities are clear and enforceable.",
               "status": "Done",
               "gh_issue_number": 78,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/78",
@@ -39,12 +40,12 @@
                   "status": "Done",
                   "summary": "Audit and normalize Engine/Client ownership wording and endpoint responsibilities in canonical documentation to remove ambiguity."
                 }
-              ],
-              "description": "Boundary contract freeze. Planned work covers: Freeze Engine/Client ownership contract in canonical docs (Audit and normalize Engine/Client ownership wording and endpoint responsibilities in canonical documentation to remove ambiguity.)."
+              ]
             },
             {
               "id": "I2-F1-M1",
               "title": "Boundary enforcement and regression guards",
+              "description": "Boundary violations can silently reappear after refactors. Add enforceable checks and regression guards so forbidden coupling is detected early and consistently.",
               "status": "Done",
               "gh_issue_number": 76,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/76",
@@ -57,12 +58,12 @@
                   "status": "Done",
                   "summary": "Adjust boundary guard scripts to catch forbidden imports/DB coupling and ensure they stay integrated into split smoke checks."
                 }
-              ],
-              "description": "Boundary enforcement and regression guards. Planned work covers: Harden boundary checks for forbidden coupling and direct frontend Engine reads (Adjust boundary guard scripts to catch forbidden imports/DB coupling and ensure they stay integrated into split smoke checks.)."
+              ]
             },
             {
               "id": "I3-F1-M1",
               "title": "Baseline contour validation",
+              "description": "The current split contour lacks a reproducible validation baseline. Define and run explicit contour validation with clear pass/fail semantics.",
               "status": "Done",
               "gh_issue_number": 79,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/79",
@@ -75,12 +76,11 @@
                   "status": "Done",
                   "summary": "Run split startup/health/bridge/boundary checks and document pass/fail expectations for reproducible Milestone 1 baseline validation."
                 }
-              ],
-              "description": "Baseline contour validation. Planned work covers: Validate local/dev split contour and document failure semantics (Run split startup/health/bridge/boundary checks and document pass/fail expectations for reproducible Milestone 1 baseline validation.)."
+              ]
             }
           ],
-          "branch_name": null,
-          "branch_url": null
+          "branch_name": "feature/F1-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F1-M1"
         },
         {
           "id": "F2-M1",
@@ -115,6 +115,7 @@
             {
               "id": "I1-F4-M1",
               "title": "CLI and base workflow commands",
+              "description": "The workflow needs a stable CLI foundation for core feature operations. Implement base command surfaces with deterministic behavior and output contracts.",
               "status": "Done",
               "gh_issue_number": 81,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/81",
@@ -135,12 +136,12 @@
                   "status": "Done",
                   "summary": "Implement base feature commands (`create`, `plan-init`, `plan-lint`, `approve`, `execution-plan`) with approved-state gates and deterministic output contracts."
                 }
-              ],
-              "description": "CLI and base workflow commands. Planned work covers: Add `dev/workflow` CLI entrypoint and command router (Create the workflow CLI entrypoint with routing for feature/task/confirm/validate command groups used by the process flow.); Implement feature base commands for create/plan/approve/execution-plan (Implement base feature commands (`create`, `plan-init`, `plan-lint`, `approve`, `execution-plan`) with approved-state gates and deterministic output contracts.)."
+              ]
             },
             {
               "id": "I2-F4-M1",
               "title": "Tracking sync and validations",
+              "description": "Tracking state can drift between local artifacts and break execution flow. Synchronize DEV_MAP, TASK_LIST, and pipeline updates as one consistent operation.",
               "status": "Done",
               "gh_issue_number": 83,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/83",
@@ -161,12 +162,12 @@
                   "status": "Done",
                   "summary": "Enforce task ID allocation only via `task_count`, verify ownership markers and parent chains, and provide `validate --scope tracking|repo` checks."
                 }
-              ],
-              "description": "Tracking sync and validations. Planned work covers: Implement `plan tasks for feature --write` for DEV_MAP/TASK_LIST/PIPELINE (Implement sync command that applies approved manual decomposition delta to the three local trackers in one change set.); Add task_count-based allocation, ownership checks, and tracking/repo validation (Enforce task ID allocation only via `task_count`, verify ownership markers and parent chains, and provide `validate --scope tracking|repo` checks.)."
+              ]
             },
             {
               "id": "I3-F4-M1",
               "title": "Materialize/Confirm integration and protocol contract",
+              "description": "Materialize and confirm flows can diverge between local and remote state. Align both flows to one protocol contract with deterministic update behavior.",
               "status": "Done",
               "gh_issue_number": 82,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/82",
@@ -195,12 +196,12 @@
                   "status": "Done",
                   "summary": "Eliminate concrete process conflicts and duplication across AGENTS.md, TASK_EXECUTION_PROTOCOL.md, FEATURE_PLANNING_PROTOCOL.md, and FEATURE_WORKFLOW.md by fixing one canonical command order (sync before materialize), assigning one owner per concern, and replacing repeated normative blocks with explicit cross-references."
                 }
-              ],
-              "description": "Materialize/Confirm integration and protocol contract. Planned work covers: Implement `feature materialize` with canonical branch policy and milestone assignment (Implement feature materialization from local issue nodes to GitHub with milestone resolution and canonical branch linkage persistence.); Implement `confirm task|issue|feature|standalone-issue` cascade with GitHub close (Implement confirmation commands that cascade local status updates, cleanup pending-only pipeline entries, and close mapped GitHub issues in the same run.); Refactor process docs to split responsibilities and remove duplicated rules (Eliminate concrete process conflicts and duplication across AGENTS.md, TASK_EXECUTION_PROTOCOL.md, FEATURE_PLANNING_PROTOCOL.md, and FEATURE_WORKFLOW.md by fixing one canonical command order (sync before materialize), assigning one owner per concern, and replacing repeated normative blocks with explicit cross-references.)."
+              ]
             },
             {
               "id": "I4-F4-M1",
               "title": "Workflow CLI hardening and missing contracts completion",
+              "description": "Several CLI paths still have weak validation and incomplete edge-case handling. Harden command contracts so failures are explicit, predictable, and actionable.",
               "status": "Done",
               "gh_issue_number": 84,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/84",
@@ -245,12 +246,12 @@
                   "date": "2026-02-24",
                   "time": "21:16:28"
                 }
-              ],
-              "description": "Workflow CLI hardening and missing contracts completion. Planned work covers: Make `dev/workflow` executable and align smoke entrypoint (Set executable mode for `dev/workflow` and update smoke checks to run canonical `./dev/workflow` command.); Implement `task preflight|validate` command contracts (Replace placeholder handlers with deterministic preflight/validate checks and stable JSON output contracts.); Complete `feature create --github` feature-issue wiring (Implement feature-level GitHub issue create/update with milestone mapping and persist `gh_issue_number/gh_issue_url` in DEV_MAP during `--write`.); plus 2 more task(s)."
+              ]
             },
             {
               "id": "I5-F4-M1",
               "title": "JSON-only tracker storage for task list and execution pipeline",
+              "description": "Mixed tracker formats increase parsing complexity and state drift risk. Move runtime tracking to JSON-only contracts for consistent behavior.",
               "status": "Done",
               "gh_issue_number": 85,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/85",
@@ -287,12 +288,12 @@
                   "date": "2026-02-24",
                   "time": "22:38:06"
                 }
-              ],
-              "description": "JSON-only tracker storage for task list and execution pipeline. Planned work covers: Define canonical JSON contracts for task list and pipeline (Introduce strict JSON structures for TASK_LIST and TASK_EXECUTION_PIPELINE and lock Markdown out of runtime source role.); Switch workflow readers/writers from Markdown trackers to JSON (Migrate feature/task/confirm/validate command data paths to JSON tracker files while preserving command semantics.); Migrate existing tracker data to JSON with deterministic conversion (Add and run one-time conversion for current TASK_LIST and pipeline data into canonical JSON files.); plus 1 more task(s)."
+              ]
             },
             {
               "id": "I6-F4-M1",
               "title": "Scoped materialization for one child issue (`--issue-id`)",
+              "description": "Materialize currently applies too broadly when only one issue needs synchronization. Add explicit single-issue targeting with ownership validation via --issue-id.",
               "status": "Done",
               "gh_issue_number": 86,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/86",
@@ -313,21 +314,21 @@
                   "date": "2026-02-25",
                   "time": "01:17:05"
                 }
-              ],
-              "description": "Scoped materialization for one child issue (`--issue-id`). Planned work covers: Add --issue-id selector for materialize issue modes (Extend feature materialize arguments to accept a specific child issue ID in issues-create and issues-sync modes.); Enforce issue ownership and scoped execution (Validate that issue-id belongs to target feature and materialize only that issue node.)."
+              ]
             },
             {
               "id": "I7-F4-M1",
               "title": "Issue creation command for feature/standalone with optional plan init",
+              "description": "There is no unified command to register new feature and standalone issues. Add a creation flow that initializes required local tracking context.",
               "status": "Pending",
               "gh_issue_number": 87,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/87",
-              "tasks": [],
-              "description": "Issue creation command for feature/standalone with optional plan init. Context is tracked in workflow issue planning and will be expanded during execution."
+              "tasks": []
             },
             {
               "id": "I8-F4-M1",
               "title": "Create-only child issue materialization without edits for mapped issues",
+              "description": "Create mode can unintentionally edit already mapped GitHub issues. Restrict issues-create to create-only behavior and skip mapped issues.",
               "status": "Done",
               "gh_issue_number": 88,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/88",
@@ -348,21 +349,21 @@
                   "date": "2026-02-25",
                   "time": "01:17:05"
                 }
-              ],
-              "description": "Create-only child issue materialization without edits for mapped issues. Planned work covers: Implement create-only materialize behavior for child issues (In issues-create mode create only unmapped child issues and skip mapped issues without gh issue edit calls.); Add smoke coverage for create-only no-edit path (Add regression checks that mapped child issues are not edited in issues-create mode.)."
+              ]
             },
             {
               "id": "I9-F4-M1",
               "title": "Add workflow CLI show/status commands for feature/issue/task",
+              "description": "Operators lack quick CLI visibility into feature and issue state. Add show/status commands for faster inspection and debugging.",
               "status": "Pending",
               "gh_issue_number": 89,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/89",
-              "tasks": [],
-              "description": "Add workflow CLI show/status commands for feature/issue/task. Context is tracked in workflow issue planning and will be expanded during execution."
+              "tasks": []
             },
             {
               "id": "I10-F4-M1",
               "title": "Sync feature-issue checklist on child issue materialize and confirm",
+              "description": "Feature-level checklist state becomes stale after child issue changes. Keep checklist markers synchronized during materialize and confirm flows.",
               "status": "Done",
               "gh_issue_number": 90,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/90",
@@ -383,12 +384,12 @@
                   "date": "2026-02-25",
                   "time": "01:17:05"
                 }
-              ],
-              "description": "Sync feature-issue checklist on child issue materialize and confirm. Planned work covers: Append missing child-issue checkboxes in feature issue during materialize (When child issues are materialized ensure feature-level issue body contains checklist lines for missing child issues.); Update feature-issue checklist state on confirm issue done (When confirming issue done update corresponding checkbox to checked state in feature-level GitHub issue.)."
+              ]
             },
             {
               "id": "I11-F4-M1",
               "title": "Require explicit materialize mode (`bootstrap|issues-create|issues-sync`)",
+              "description": "Materialize behavior is ambiguous without an explicit mode selector. Require bootstrap/create/sync mode and enforce mode-specific semantics.",
               "status": "Done",
               "gh_issue_number": 91,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/91",
@@ -417,12 +418,12 @@
                   "date": "2026-02-25",
                   "time": "01:17:05"
                 }
-              ],
-              "description": "Require explicit materialize mode (`bootstrap|issues-create|issues-sync`). Planned work covers: Require --mode for feature materialize and validate enum (Update CLI parser so feature materialize fails without mode and accepts only bootstrap, issues-create, issues-sync.); Split materialize flow into explicit mode handlers (Implement separate code paths for bootstrap, issues-create, and issues-sync with deterministic output action labels.); Align protocol and workflow docs with required mode contract (Update protocol/workflow docs and smoke expectations to reflect required mode and mode-specific behavior.)."
+              ]
             },
             {
               "id": "I12-F4-M1",
               "title": "Add issue-level Approved gate before execution/materialization",
+              "description": "Execution can start before issue readiness is explicitly approved. Enforce an issue-level Approved gate before execution and materialization.",
               "status": "Rejected",
               "gh_issue_number": 92,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/92",
@@ -443,21 +444,21 @@
                   "date": "2026-02-25",
                   "time": "01:17:05"
                 }
-              ],
-              "description": "Add issue-level Approved gate before execution/materialization. Planned work covers: Add issue-level Approved transition in confirm contract (Support explicit confirm issue approved and persist issue status lifecycle Planned -> Approved -> Done.); Gate execute/materialize issue paths by issue Approved status (Block execute issue and materialize issues modes when issue status is not Approved and add clear gate error messages.)."
+              ]
             },
             {
               "id": "I13-F4-M1",
               "title": "Auto-delete sync delta file after successful decomposition write",
+              "description": "Processed sync delta files can accumulate and be reused accidentally. Remove delta artifacts automatically after successful decomposition writes.",
               "status": "Pending",
               "gh_issue_number": 93,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/93",
-              "tasks": [],
-              "description": "Auto-delete sync delta file after successful decomposition write. Context is tracked in workflow issue planning and will be expanded during execution."
+              "tasks": []
             },
             {
               "id": "I14-F4-M1",
               "title": "Replace checkbox-based GitHub issue body with description-driven readable content",
+              "description": "Checkbox-heavy issue bodies are noisy and difficult to read. Replace them with concise narrative descriptions that explain intent and problem clearly.",
               "status": "Tasked",
               "gh_issue_number": 104,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/104",
@@ -502,12 +503,12 @@
                   "date": "2026-02-26",
                   "time": "00:19:19"
                 }
-              ],
-              "description": "Replace checkbox-based GitHub issue body with description-driven readable content. Planned work covers: Add issue description field contract to DEV_MAP and sync path (Extend issue-node contract and decomposition sync handling so issue description can be persisted and used as canonical human-readable issue context.); Implement deterministic description generation and backfill (Generate default issue descriptions from title and mapped tasks, and backfill missing descriptions for existing local issue nodes.); Rewrite child issue body renderer to description-driven format (Replace checkbox transport in child issue body rendering with concise readable sections sourced from issue descriptions.); plus 2 more task(s)."
+              ]
             },
             {
               "id": "I15-F4-M1",
               "title": "Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set",
+              "description": "Parent feature sub-issues can drift from mapped local issue state. Reconcile GitHub sub-issues from DEV_MAP mappings to keep hierarchy consistent.",
               "status": "Tasked",
               "gh_issue_number": 105,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/105",
@@ -536,12 +537,12 @@
                   "date": "2026-02-26",
                   "time": "00:19:19"
                 }
-              ],
-              "description": "Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set. Planned work covers: Add GitHub adapter helpers for feature sub-issues operations (Implement deterministic list/add sub-issue API helpers with explicit error handling for unsupported responses and permission failures.); Reconcile parent feature sub-issues during materialize (Update materialize issues-create and issues-sync flows to reconcile parent sub-issues from current mapped DEV_MAP issues and return deterministic sync payload fields.); Cover reconcile idempotency and partial mapping behavior (Add smoke scenarios and docs updates for first-run add, second-run no-op, and explicit reporting of skipped unmapped issues.)."
+              ]
             },
             {
               "id": "I16-F4-M1",
               "title": "Issue planning status split: Pending (no plan) vs Planned (has plan)",
+              "description": "Pending and Planned states are currently blurred and hard to trust. Split them by issue-plan presence so status reflects real planning progress.",
               "status": "Done",
               "gh_issue_number": 95,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/95",
@@ -570,12 +571,12 @@
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 }
-              ],
-              "description": "Issue planning status split: Pending (no plan) vs Planned (has plan). Planned work covers: Define Pending vs Planned issue-planning status contract (Extend issue status contract so Pending means no issue plan block and Planned means issue plan block exists.); Implement issue-plan presence detection and status reconciliation (Add parser/reconciliation logic that maps issue-plan block presence in FEATURE_PLANS to Pending/Planned status for active issues.); Add lint and smoke coverage for Pending/Planned split (Add regression checks for Pending defaults, Pending->Planned transition, and deterministic mismatch errors.)."
+              ]
             },
             {
               "id": "I17-F4-M1",
               "title": "Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker",
+              "description": "Rejected issues need a clear and auditable lifecycle path. Add explicit reject flow that updates local status and closes mapped GitHub issue with reason.",
               "status": "Tasked",
               "gh_issue_number": 106,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/106",
@@ -604,12 +605,12 @@
                   "date": "2026-02-26",
                   "time": "00:19:19"
                 }
-              ],
-              "description": "Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker. Planned work covers: Add reject issue command and local Rejected transition (Extend confirm/issue flow with explicit reject issue command that validates ownership and updates local issue status to Rejected.); Close mapped GitHub issue with rejection marker (Implement reject handling that closes mapped GitHub issue with explicit rejection marker while remaining successful when mapping is missing.); Add reject-flow regression coverage and protocol updates (Add smoke tests for success, missing mapping, and repeated reject idempotency; align protocol/workflow docs with rejected-state semantics.)."
+              ]
             },
             {
               "id": "I18-F4-M1",
               "title": "Standardize per-issue plan block format in FEATURE_PLANS and enforce strict heading lint",
+              "description": "Issue plan blocks in FEATURE_PLANS are inconsistent and fragile to parse. Standardize block structure and enforce strict heading lint.",
               "status": "Done",
               "gh_issue_number": 96,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/96",
@@ -638,12 +639,12 @@
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 }
-              ],
-              "description": "Standardize per-issue plan block format in FEATURE_PLANS and enforce strict heading lint. Planned work covers: Define canonical per-issue plan block format (Specify one canonical issue-plan heading/section structure for FEATURE_PLANS and document required sections.); Enforce strict lint for issue-plan block hierarchy (Extend feature plan lint to validate issue block headings, uniqueness, and required section content.); Normalize existing issue-plan blocks and add regression checks (Migrate existing issue-plan entries to canonical format and add smoke checks for parser/lint stability.)."
+              ]
             },
             {
               "id": "I19-F4-M1",
               "title": "Feature plan issue execution order block as the source of issue sequencing",
+              "description": "Issue sequencing is not anchored to one canonical source. Make Issue Execution Order block authoritative for execution order decisions.",
               "status": "Done",
               "gh_issue_number": 94,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/94",
@@ -672,12 +673,12 @@
                   "date": "2026-02-25",
                   "time": "16:03:49"
                 }
-              ],
-              "description": "Feature plan issue execution order block as the source of issue sequencing. Planned work covers: Define issue execution order block contract in feature plans (Specify a canonical Issue Execution Order block format inside FEATURE_PLANS and enforce inclusion rules for active issues.); Enforce order-block consistency in feature plan lint (Extend feature plan lint to validate issue order block structure, uniqueness, and consistency against DEV_MAP active issue set.); Expose next issue from plan order in execution guidance (Update feature execution-plan output to surface the next eligible issue from Issue Execution Order and add smoke/docs coverage.)."
+              ]
             },
             {
               "id": "I20-F4-M1",
               "title": "Rename decomposition commands from sync to plan tasks for issue/feature",
+              "description": "Legacy sync naming no longer matches current decomposition semantics. Rename commands to canonical issue/feature planning names for clear intent.",
               "status": "Done",
               "gh_issue_number": 97,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/97",
@@ -706,12 +707,12 @@
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 }
-              ],
-              "description": "Rename decomposition commands from sync to plan tasks for issue/feature. Planned work covers: Implement canonical plan-tasks command names in CLI (Add first-class command handlers for plan tasks for issue/feature and remove decomposition naming drift in CLI entrypoints.); Update protocol/workflow docs to plan-tasks terminology (Replace decomposition-step command wording from sync to plan tasks for issue/feature in canonical docs.); Add regression coverage for hard command rename (Add smoke tests for new plan-tasks commands and explicit rejection of removed legacy sync command path.)."
+              ]
             },
             {
               "id": "I21-F4-M1",
               "title": "Confirm issue done: script-driven cleanup of issue plan block and linked issue/task tracker nodes",
+              "description": "Confirming issue completion can leave stale plan and tracker artifacts. Add scripted cleanup so done issues are removed consistently from related structures.",
               "status": "Done",
               "gh_issue_number": 98,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/98",
@@ -740,12 +741,12 @@
                   "date": "2026-02-25",
                   "time": "19:12:45"
                 }
-              ],
-              "description": "Confirm issue done: script-driven cleanup of issue plan block and linked issue/task tracker nodes. Planned work covers: Define confirm-issue cleanup contract for plans and trackers (Define write-mode cleanup semantics for confirm issue so linked plan/tracker artifacts are removed in one scripted flow.); Implement FEATURE_PLANS and DEV_MAP issue-node cleanup in confirm flow (Remove issue plan block/order row and remove confirmed issue node with child tasks during confirm issue write path.); Add smoke and idempotency checks for confirm cleanup behavior (Cover cleanup behavior across FEATURE_PLANS/DEV_MAP/TASK_LIST/PIPELINE and repeated confirm no-op stability.)."
+              ]
             },
             {
               "id": "I22-F4-M1",
               "title": "Feature materialize: support multi-issue queue in one command run",
+              "description": "Materializing multiple issues currently requires repetitive one-by-one commands. Support ordered multi-issue queue execution in a single run.",
               "status": "Done",
               "gh_issue_number": 101,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/101",
@@ -774,12 +775,12 @@
                   "date": "2026-02-25",
                   "time": "21:40:22"
                 }
-              ],
-              "description": "Feature materialize: support multi-issue queue in one command run. Planned work covers: Extend materialize CLI with ordered multi-issue queue input (Replace single issue selector with repeatable queue parsing that preserves order and keeps bootstrap mode incompatible with issue selectors.); Implement queue validation and queue-ordered materialize flow (Resolve and validate queued issue IDs, reject duplicates and missing ownership, then process create or sync actions in stable queue order.); Add queue-mode regression checks and command docs (Add smoke scenarios for multi-issue queue success and failure paths, and update protocol/workflow examples for queue usage.)."
+              ]
             },
             {
               "id": "I23-F4-M1",
               "title": "Issue lifecycle status contract: Pending -> Planned -> Tasked with planning/materialize gates",
+              "description": "Issue lifecycle transitions are not enforced consistently across planning steps. Enforce Pending -> Planned -> Tasked progression with clear gates.",
               "status": "Done",
               "gh_issue_number": 100,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/100",
@@ -816,12 +817,12 @@
                   "date": "2026-02-25",
                   "time": "21:40:22"
                 }
-              ],
-              "description": "Issue lifecycle status contract: Pending -> Planned -> Tasked with planning/materialize gates. Planned work covers: Implement issue status transition contract Pending-Planned-Tasked (Define and wire deterministic issue lifecycle transitions so task decomposition advances issue status to Tasked after planning prerequisites.); Enforce decomposition gate for Pending issues (Reject plan-tasks commands for issue nodes that remain Pending and return deterministic guidance to run plan issue first.); Gate materialize by Tasked issue status (Require Tasked status on selected issue nodes before issues-create or issues-sync materialization proceeds.); plus 1 more task(s)."
+              ]
             },
             {
               "id": "I24-F4-M1",
               "title": "Remove approve feature plan command and approval gate from workflow lifecycle",
+              "description": "Feature approval command introduces redundant gating and workflow friction. Remove approve feature plan path and simplify lifecycle flow.",
               "status": "Done",
               "gh_issue_number": 99,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/99",
@@ -858,12 +859,12 @@
                   "date": "2026-02-25",
                   "time": "21:40:22"
                 }
-              ],
-              "description": "Remove approve feature plan command and approval gate from workflow lifecycle. Planned work covers: Remove feature approve command from CLI surface (Delete feature approve parser registration and handler wiring so the command is no longer available in workflow CLI usage/help output.); Remove Approved status gates from feature command paths (Remove runtime checks that require feature status Approved before plan-tasks, materialize, execution-plan, and validation command paths.); Audit and remove residual Approved-only dependencies (Run a repository workflow audit to remove remaining mandatory Approved-state dependencies and keep status for reporting only.); plus 1 more task(s)."
+              ]
             },
             {
               "id": "I25-F4-M1",
               "title": "Automate plan issue command with canonical issue-plan block upsert and scoped lint",
+              "description": "Manual issue-plan block editing is error-prone and inconsistent. Automate canonical block upsert with scoped lint and deterministic output.",
               "status": "Done",
               "gh_issue_number": 102,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/102",
@@ -908,12 +909,12 @@
                   "date": "2026-02-25",
                   "time": "21:40:22"
                 }
-              ],
-              "description": "Automate plan issue command with canonical issue-plan block upsert and scoped lint. Planned work covers: Add feature plan-issue CLI command and output contract (Register feature plan-issue subcommand with required inputs and deterministic JSON output fields for write and dry-run paths.); Implement issue resolver and ownership assertion contract (Resolve issue owner feature from DEV_MAP and return deterministic errors for malformed, missing, duplicate, and mismatched ownership cases.); Implement canonical issue-plan block upsert in feature plans (Create or update one target issue plan block with canonical dependencies, decomposition, and assessment sections without mutating other issue blocks.); plus 2 more task(s)."
+              ]
             },
             {
               "id": "I26-F4-M1",
               "title": "Add plan tasks for issues command for batch issue decomposition in one run",
+              "description": "Batch issue decomposition currently needs multiple separate command runs. Add one-pass multi-issue planning command with ordered queue support.",
               "status": "Done",
               "gh_issue_number": 103,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/103",
@@ -942,8 +943,7 @@
                   "date": "2026-02-26",
                   "time": "00:03:28"
                 }
-              ],
-              "description": "Add plan tasks for issues command for batch issue decomposition in one run. Planned work covers: Add CLI command surface for plan tasks for issues (Register plan tasks for issues command with repeatable --issue-id and deterministic output contract for multi-issue scope.); Implement multi-issue queue filter and one-pass decomposition application (Validate issue queue ownership/duplicates and apply one-pass task allocation and delta filtering for selected issue IDs.); Add smoke coverage and docs for multi-issue plan tasks command (Extend workflow smoke and protocol/workflow docs with success and failure contracts for plan tasks for issues.)."
+              ]
             }
           ],
           "branch_name": "feature/F4-M1",
