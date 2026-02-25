@@ -115,7 +115,9 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     )
     materialize_parser.add_argument(
         "--issue-id",
-        help="Optional child issue ID filter to materialize only one issue node.",
+        action="append",
+        default=[],
+        help="Optional repeatable child issue selector (queue order is preserved).",
     )
     materialize_parser.add_argument("--write", action="store_true", help="Persist tracker updates and side effects.")
     materialize_parser.add_argument(
@@ -538,10 +540,11 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             f"Feature {feature_id} has invalid issue list in DEV_MAP.",
             exit_code=4,
         )
-    issue_id_filter = _resolve_materialize_issue_filter(args.issue_id)
+    issue_id_queue = _resolve_materialize_issue_queue(args.issue_id)
+    issue_id_filter = issue_id_queue[0] if len(issue_id_queue) == 1 else None
     issue_nodes: list[dict[str, Any]] = []
     if materialize_mode == "bootstrap":
-        if issue_id_filter is not None:
+        if issue_id_queue:
             raise WorkflowCommandError(
                 "--issue-id is not allowed with --mode bootstrap.",
                 exit_code=4,
@@ -553,23 +556,27 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                 exit_code=4,
             )
         issue_nodes = all_issue_nodes
-        if issue_id_filter is not None:
-            _assert_issue_belongs_to_feature(
-                issue_id=issue_id_filter,
-                feature_id=feature_id,
-                feature_milestone_num=feature_milestone_num,
-                feature_local_num=feature_local_num,
-            )
-            issue_nodes = [
-                issue_node
+        if issue_id_queue:
+            issue_nodes_by_id = {
+                _normalize_id(str(issue_node.get("id", ""))): issue_node
                 for issue_node in issue_nodes
-                if _normalize_id(str(issue_node.get("id", ""))) == issue_id_filter
-            ]
-            if not issue_nodes:
-                raise WorkflowCommandError(
-                    f"Issue {issue_id_filter} was not found in feature {feature_id}.",
-                    exit_code=4,
+            }
+            queued_issue_nodes: list[dict[str, Any]] = []
+            for queued_issue_id in issue_id_queue:
+                _assert_issue_belongs_to_feature(
+                    issue_id=queued_issue_id,
+                    feature_id=feature_id,
+                    feature_milestone_num=feature_milestone_num,
+                    feature_local_num=feature_local_num,
                 )
+                matched_issue_node = issue_nodes_by_id.get(queued_issue_id)
+                if matched_issue_node is None:
+                    raise WorkflowCommandError(
+                        f"Issue {queued_issue_id} was not found in feature {feature_id}.",
+                        exit_code=4,
+                    )
+                queued_issue_nodes.append(matched_issue_node)
+            issue_nodes = queued_issue_nodes
         _enforce_materialize_issue_status_gate(issue_nodes)
 
     branch_name = f"feature/{feature_id}"
@@ -670,6 +677,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             "feature_status": feature_status,
             "github_enabled": bool(args.github),
             "issue_id_filter": issue_id_filter,
+            "issue_id_queue": issue_id_queue,
             "mode": materialize_mode,
             "mode_action": mode_action,
             "issues_materialized": materialized_issues,
@@ -766,17 +774,22 @@ def _parse_feature_local_num(feature_id: str) -> int:
     return int(match.group("feature_num"))
 
 
-def _resolve_materialize_issue_filter(raw_issue_id: Any) -> str | None:
-    """Normalize optional issue filter for feature materialize command."""
-    if raw_issue_id is None:
-        return None
-    issue_id = _normalize_id(str(raw_issue_id))
-    if ISSUE_ID_PATTERN.fullmatch(issue_id) is None:
-        raise WorkflowCommandError(
-            f"Invalid --issue-id value {raw_issue_id!r}; expected I<local>-F<feature_local>-M<milestone>.",
-            exit_code=4,
-        )
-    return issue_id
+def _resolve_materialize_issue_queue(raw_issue_ids: Any) -> list[str]:
+    """Normalize optional materialize issue-id queue in user-provided order."""
+    if raw_issue_ids is None:
+        return []
+    if not isinstance(raw_issue_ids, list):
+        raw_issue_ids = [raw_issue_ids]
+    issue_id_queue: list[str] = []
+    for raw_issue_id in raw_issue_ids:
+        issue_id = _normalize_id(str(raw_issue_id))
+        if ISSUE_ID_PATTERN.fullmatch(issue_id) is None:
+            raise WorkflowCommandError(
+                f"Invalid --issue-id value {raw_issue_id!r}; expected I<local>-F<feature_local>-M<milestone>.",
+                exit_code=4,
+            )
+        issue_id_queue.append(issue_id)
+    return issue_id_queue
 
 
 def _resolve_materialize_mode_action(materialize_mode: str) -> str:
