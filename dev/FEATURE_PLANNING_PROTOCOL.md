@@ -36,13 +36,14 @@ Required output in `dev/FEATURE_PLANS.md`:
 - draft decomposition (`Feature -> Issue(s) -> Task(s)`) only if splitting is actually needed.
 
 Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
+- output must be persisted through `feature plan-issue --id <issue_id>` (no chat-only issue plan updates),
 - exactly one canonical issue-plan block under the parent feature section for the target issue id,
   - heading format: `### <issue_id> - <issue_title>` (one issue per block),
   - only `####` headings are allowed inside that block.
 - mandatory issue-specific `#### Dependencies`,
 - mandatory issue-specific `#### Decomposition` with strict step flow,
 - mandatory issue-specific `#### Issue/Task Decomposition Assessment`,
-- keep `Issue Execution Order` aligned for active issues.
+- `Issue Execution Order` is read-only for `plan-issue`; active issue row for the target issue must already exist.
 
 ## 2) Decomposition Rules
 

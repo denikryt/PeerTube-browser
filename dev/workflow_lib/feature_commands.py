@@ -403,6 +403,7 @@ def _handle_feature_plan_issue(args: Namespace, context: WorkflowContext) -> int
     section_start, section_end = section_bounds
     feature_plans_lines = feature_plans_text.splitlines()
     section_lines = feature_plans_lines[section_start:section_end]
+    _lint_existing_issue_plan_block_if_present(section_lines=section_lines, issue_id=issue_id)
     updated_section_lines, block_action = _upsert_issue_plan_block_in_section(
         section_lines=section_lines,
         issue_id=issue_id,
@@ -1659,7 +1660,10 @@ def _upsert_issue_plan_block_in_section(
         return updated_section_lines, "updated"
 
     insert_index = _resolve_issue_plan_block_insert_index(updated_section_lines)
-    updated_section_lines[insert_index:insert_index] = block_lines
+    insert_lines = list(block_lines)
+    if insert_index > 0 and updated_section_lines[insert_index - 1].strip():
+        insert_lines = [""] + insert_lines
+    updated_section_lines[insert_index:insert_index] = insert_lines
     return updated_section_lines, "created"
 
 
@@ -1679,7 +1683,6 @@ def _build_issue_plan_block_lines(*, issue_id: str, issue_title: str, issue_node
         decomposition_steps = ["1. Implement issue scope and produce executable task updates."]
     task_ids_line = ", ".join(task_ids) if task_ids else "none"
     return [
-        "",
         f"### {issue_id} - {normalized_title}",
         "",
         "#### Dependencies",
@@ -1741,6 +1744,15 @@ def _resolve_issue_plan_block_insert_index(section_lines: list[str]) -> int:
         if line.strip() == "### Issue/Task Decomposition Assessment":
             return index
     return len(section_lines)
+
+
+def _lint_existing_issue_plan_block_if_present(section_lines: list[str], issue_id: str) -> None:
+    """Validate existing target issue block before upsert when block already exists."""
+    block_bounds = _find_issue_plan_block_bounds(section_lines, issue_id)
+    if block_bounds is None:
+        return
+    start_index, end_index = block_bounds
+    _lint_one_issue_plan_block(lines=section_lines, start_index=start_index, end_index=end_index, issue_id=issue_id)
 
 
 def _lint_plan_issue_block_scoped(section_lines: list[str], issue_id: str, strict: bool) -> None:

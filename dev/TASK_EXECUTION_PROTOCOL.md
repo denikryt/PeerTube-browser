@@ -145,11 +145,12 @@ Use this procedure before executing tasks for a new feature.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
    - Registration-only boundary: do not auto-run `plan`, `plan issue`, `plan tasks for`, `materialize`, or `execute` after `create feature`.
 2. `plan feature <id>`: produce/update `dependencies`, `decomposition` (strict step-by-step command flow), `Issue Execution Order` (ordered active feature issues), and `Issue/Task Decomposition Assessment` in `dev/FEATURE_PLANS.md`.
-3. `plan issue <issue_id>`: produce/update one issue-level plan block in `dev/FEATURE_PLANS.md` under the owning feature section.
+3. `plan issue <issue_id>` (CLI: `feature plan-issue --id <issue_id>`): produce/update one issue-level plan block in `dev/FEATURE_PLANS.md` under the owning feature section.
    - Resolve `<issue_id>` in `dev/map/DEV_MAP.json` and bind to exactly one parent feature.
    - If issue is missing in `DEV_MAP`, stop and request issue creation/decomposition first.
    - Update only issue-plan content for the target issue (do not auto-create feature/issue mapping nodes from this command).
-   - Keep `Issue Execution Order` consistent: include the target issue if it is active (`status != Done` and `status != Rejected`).
+   - Run scoped lint for the target issue block only (`Dependencies`/`Decomposition`/`Issue/Task Decomposition Assessment`), not full-section mutation.
+   - `Issue Execution Order` is read-only for `plan-issue`; active issue row for the target issue must already exist.
    - Persist plan content to `dev/FEATURE_PLANS.md` in the same run (no chat-only plan output).
 4. `plan tasks for feature <id>`: create/update local `Issue -> Task` decomposition and persist it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.json`, and `dev/TASK_EXECUTION_PIPELINE.json`.
    - Optional issue scope: `plan tasks for issue <issue_id>` for one issue-targeted decomposition run.

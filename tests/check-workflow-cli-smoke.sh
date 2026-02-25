@@ -975,6 +975,278 @@ assert_jq_file_value \
   '.milestones[0].features[0].issues[0].tasks[0].status' \
   "Done"
 
+# plan-issue command: create/update/dry-run/failure/idempotency behavior.
+PLAN_ISSUE_REPO="${TMP_DIR}/plan-issue-fixture"
+create_workflow_fixture_repo "${PLAN_ISSUE_REPO}"
+cat >"${PLAN_ISSUE_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+{
+  "schema_version": "1.4",
+  "updated_at": "2026-02-24T00:00:00+00:00",
+  "task_count": 1,
+  "statuses": ["Pending", "Planned", "Tasked", "Approved", "Rejected", "Done"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Milestone 1",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Feature F1-M1",
+          "status": "Planned",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "branch_name": null,
+          "branch_url": null,
+          "issues": [
+            {
+              "id": "I1-F1-M1",
+              "title": "Issue One",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": [
+                {
+                  "id": "1",
+                  "title": "Task One",
+                  "summary": "Summary",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
+            },
+            {
+              "id": "I2-F1-M1",
+              "title": "Issue Two",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ]
+        }
+      ],
+      "standalone_issues": [],
+      "non_feature_items": []
+    }
+  ]
+}
+EOF
+cat >"${PLAN_ISSUE_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F1-M1
+### Dependencies
+- smoke
+
+### Decomposition
+1. smoke
+
+### Issue Execution Order
+1. `I1-F1-M1` - Issue One
+2. `I2-F1-M1` - Issue Two
+
+### I1-F1-M1 - Issue One
+
+#### Dependencies
+- legacy dependency
+
+#### Decomposition
+1. legacy decomposition
+
+#### Issue/Task Decomposition Assessment
+- legacy assessment
+
+### Issue/Task Decomposition Assessment
+- smoke
+EOF
+cat >"${PLAN_ISSUE_REPO}/dev/TASK_LIST.json" <<'EOF'
+{"schema_version":"1.0","tasks":[]}
+EOF
+cat >"${PLAN_ISSUE_REPO}/dev/TASK_EXECUTION_PIPELINE.json" <<'EOF'
+{"schema_version":"1.0","execution_sequence":[],"functional_blocks":[],"overlaps":[]}
+EOF
+run_expect_success \
+  "plan-issue-dry-run-update" \
+  "${PLAN_ISSUE_REPO}/dev/workflow" feature plan-issue --id I1-F1-M1
+assert_json_value "plan-issue-dry-run-update" "action" "would-update"
+assert_json_value "plan-issue-dry-run-update" "plan_block_updated" "true"
+assert_json_value "plan-issue-dry-run-update" "issue_order_checked" "true"
+assert_file_contains "plan-issue-dry-run-no-write" "${PLAN_ISSUE_REPO}/dev/FEATURE_PLANS.md" "legacy dependency"
+run_expect_success \
+  "plan-issue-create-write" \
+  "${PLAN_ISSUE_REPO}/dev/workflow" feature plan-issue --id I2-F1-M1 --write
+assert_json_value "plan-issue-create-write" "action" "created"
+assert_file_contains "plan-issue-create-block" "${PLAN_ISSUE_REPO}/dev/FEATURE_PLANS.md" "### I2-F1-M1 - Issue Two"
+run_expect_success \
+  "plan-issue-update-write" \
+  "${PLAN_ISSUE_REPO}/dev/workflow" feature plan-issue --id I1-F1-M1 --write
+assert_json_value "plan-issue-update-write" "action" "updated"
+assert_file_not_contains "plan-issue-update-clears-legacy" "${PLAN_ISSUE_REPO}/dev/FEATURE_PLANS.md" "legacy dependency"
+run_expect_success \
+  "plan-issue-idempotent-write" \
+  "${PLAN_ISSUE_REPO}/dev/workflow" feature plan-issue --id I1-F1-M1 --write
+assert_json_value "plan-issue-idempotent-write" "action" "unchanged"
+assert_json_value "plan-issue-idempotent-write" "plan_block_updated" "false"
+run_expect_failure_contains \
+  "plan-issue-unknown-issue" \
+  "Issue I9-F1-M1 not found in DEV_MAP." \
+  "${PLAN_ISSUE_REPO}/dev/workflow" feature plan-issue --id I9-F1-M1
+run_expect_failure_contains \
+  "plan-issue-malformed-id" \
+  "Invalid issue ID" \
+  "${PLAN_ISSUE_REPO}/dev/workflow" feature plan-issue --id bad-id
+run_expect_failure_contains \
+  "plan-issue-feature-mismatch" \
+  "plan-issue feature assertion mismatch" \
+  "${PLAN_ISSUE_REPO}/dev/workflow" feature plan-issue --id I1-F1-M1 --feature-id F2-M1
+
+PLAN_ISSUE_MISSING_ROW_REPO="${TMP_DIR}/plan-issue-missing-row-fixture"
+create_workflow_fixture_repo "${PLAN_ISSUE_MISSING_ROW_REPO}"
+cat >"${PLAN_ISSUE_MISSING_ROW_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+{
+  "schema_version": "1.4",
+  "updated_at": "2026-02-24T00:00:00+00:00",
+  "task_count": 0,
+  "statuses": ["Pending", "Planned", "Tasked", "Approved", "Rejected", "Done"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Milestone 1",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Feature F1-M1",
+          "status": "Planned",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "branch_name": null,
+          "branch_url": null,
+          "issues": [
+            {
+              "id": "I1-F1-M1",
+              "title": "Issue One",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ]
+        }
+      ],
+      "standalone_issues": [],
+      "non_feature_items": []
+    }
+  ]
+}
+EOF
+cat >"${PLAN_ISSUE_MISSING_ROW_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F1-M1
+### Dependencies
+- smoke
+
+### Decomposition
+1. smoke
+
+### Issue Execution Order
+1. `I9-F1-M1` - Other issue
+
+### Issue/Task Decomposition Assessment
+- smoke
+EOF
+cat >"${PLAN_ISSUE_MISSING_ROW_REPO}/dev/TASK_LIST.json" <<'EOF'
+{"schema_version":"1.0","tasks":[]}
+EOF
+cat >"${PLAN_ISSUE_MISSING_ROW_REPO}/dev/TASK_EXECUTION_PIPELINE.json" <<'EOF'
+{"schema_version":"1.0","execution_sequence":[],"functional_blocks":[],"overlaps":[]}
+EOF
+run_expect_failure_contains \
+  "plan-issue-missing-active-row" \
+  "plan-issue requires active issue row" \
+  "${PLAN_ISSUE_MISSING_ROW_REPO}/dev/workflow" feature plan-issue --id I1-F1-M1 --write
+
+PLAN_ISSUE_INVALID_HEADING_REPO="${TMP_DIR}/plan-issue-invalid-heading-fixture"
+create_workflow_fixture_repo "${PLAN_ISSUE_INVALID_HEADING_REPO}"
+cat >"${PLAN_ISSUE_INVALID_HEADING_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+{
+  "schema_version": "1.4",
+  "updated_at": "2026-02-24T00:00:00+00:00",
+  "task_count": 0,
+  "statuses": ["Pending", "Planned", "Tasked", "Approved", "Rejected", "Done"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Milestone 1",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Feature F1-M1",
+          "status": "Planned",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "branch_name": null,
+          "branch_url": null,
+          "issues": [
+            {
+              "id": "I1-F1-M1",
+              "title": "Issue One",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ]
+        }
+      ],
+      "standalone_issues": [],
+      "non_feature_items": []
+    }
+  ]
+}
+EOF
+cat >"${PLAN_ISSUE_INVALID_HEADING_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F1-M1
+### Dependencies
+- smoke
+
+### Decomposition
+1. smoke
+
+### Issue Execution Order
+1. `I1-F1-M1` - Issue One
+
+### I1-F1-M1 - Issue One
+
+#### Dependencies
+- smoke
+
+##### Custom heading
+- invalid
+
+#### Decomposition
+1. smoke
+
+#### Issue/Task Decomposition Assessment
+- smoke
+
+### Issue/Task Decomposition Assessment
+- smoke
+EOF
+cat >"${PLAN_ISSUE_INVALID_HEADING_REPO}/dev/TASK_LIST.json" <<'EOF'
+{"schema_version":"1.0","tasks":[]}
+EOF
+cat >"${PLAN_ISSUE_INVALID_HEADING_REPO}/dev/TASK_EXECUTION_PIPELINE.json" <<'EOF'
+{"schema_version":"1.0","execution_sequence":[],"functional_blocks":[],"overlaps":[]}
+EOF
+run_expect_failure_contains \
+  "plan-issue-invalid-custom-heading" \
+  "invalid heading hierarchy" \
+  "${PLAN_ISSUE_INVALID_HEADING_REPO}/dev/workflow" feature plan-issue --id I1-F1-M1 --write
+
 # Gate-fail: task preflight blocked for missing materialization metadata.
 GATE_PREFLIGHT_REPO="${TMP_DIR}/gate-preflight-fixture"
 create_workflow_fixture_repo "${GATE_PREFLIGHT_REPO}"

@@ -42,7 +42,8 @@ Compact command index for milestone/feature operations.
   - Purpose: produce feature plan artifacts in `dev/FEATURE_PLANS.md`.
   - Canonical planning requirements: `dev/FEATURE_PLANNING_PROTOCOL.md` -> `Planning Input Contract` + `Planning Quality Gates`.
 - `plan issue <issue_id>`
-  - Purpose: produce/update one issue-level plan block in `dev/FEATURE_PLANS.md` under the owning feature section.
+  - Purpose: produce/update one issue-level plan block in `dev/FEATURE_PLANS.md` under the owning feature section via `feature plan-issue --id <issue_id>`.
+  - Scope: target issue block only; `Issue Execution Order` is checked as read-only and is not mutated by this command.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
   - Canonical planning requirements: `dev/FEATURE_PLANNING_PROTOCOL.md` -> `Planning Input Contract` + `Planning Quality Gates`.
 - `plan tasks for feature <id>` / `plan tasks for issue <issue_id>`
