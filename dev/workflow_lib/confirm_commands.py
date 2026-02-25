@@ -13,8 +13,7 @@ from typing import Any
 
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
-from .github_adapter import close_github_issue, gh_issue_edit_body, gh_issue_view_body, resolve_github_repository
-from .issue_checklist import mark_issue_checklist_row_done
+from .github_adapter import close_github_issue
 from .output import emit_json
 from .tracker_store import (
     load_pipeline_payload,
@@ -216,13 +215,8 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
         "attempted": False,
         "updated": False,
         "row_found": False,
+        "reason": "description-driven-body-no-checklist-sync",
     }
-    if bool(args.write) and bool(args.close_github):
-        feature_issue_checklist_sync = _sync_feature_issue_checklist_on_issue_done(
-            context=context,
-            feature_node=feature_node,
-            issue_id=issue_id,
-        )
     if bool(args.write) and bool(args.close_github):
         close_github_issue(int(github_issue_number))
         github_closed = True
@@ -244,39 +238,6 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
         }
     )
     return 0
-
-
-def _sync_feature_issue_checklist_on_issue_done(
-    context: WorkflowContext,
-    feature_node: dict[str, Any],
-    issue_id: str,
-) -> dict[str, Any]:
-    """Mark one child-issue checklist row as done in mapped feature GitHub issue."""
-    feature_issue_number = _coerce_issue_number(feature_node.get("gh_issue_number"))
-    feature_issue_url = str(feature_node.get("gh_issue_url", "")).strip()
-    if feature_issue_number is None or not feature_issue_url:
-        return {
-            "attempted": False,
-            "updated": False,
-            "row_found": False,
-            "feature_issue_number": None,
-            "reason": "feature-issue-not-mapped",
-        }
-
-    github_repo = resolve_github_repository(context.root_dir)
-    repo_name_with_owner = github_repo["name_with_owner"]
-    current_body = gh_issue_view_body(repo_name_with_owner, feature_issue_number)
-    updated_body, row_found, row_updated = mark_issue_checklist_row_done(current_body, issue_id)
-    if row_updated:
-        gh_issue_edit_body(repo_name_with_owner, feature_issue_number, updated_body)
-
-    return {
-        "attempted": True,
-        "updated": row_updated,
-        "row_found": row_found,
-        "feature_issue_number": feature_issue_number,
-    }
-
 
 def _handle_confirm_feature_done(args: Namespace, context: WorkflowContext) -> int:
     """Confirm full feature subtree completion and close mapped GitHub issues."""

@@ -18,11 +18,8 @@ from .github_adapter import (
     ensure_github_milestone_exists,
     gh_issue_create,
     gh_issue_edit,
-    gh_issue_edit_body,
-    gh_issue_view_body,
     resolve_github_repository,
 )
-from .issue_checklist import append_missing_issue_checklist_rows
 from .output import emit_json
 from .sync_delta import load_sync_delta, resolve_sync_delta_references
 from .tracker_store import load_pipeline_payload, load_task_list_payload, write_pipeline_payload, write_task_list_payload
@@ -737,6 +734,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
         "attempted": False,
         "updated": False,
         "added_issue_ids": [],
+        "reason": "description-driven-body-no-checklist-sync",
     }
     github_repo_name_with_owner: str | None = None
     if materialize_mode != "bootstrap":
@@ -799,13 +797,6 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                     }
                 )
 
-    if bool(args.write) and bool(args.github) and github_repo_name_with_owner is not None and issue_nodes:
-        feature_issue_checklist_sync = _sync_feature_issue_checklist_after_materialize(
-            feature_node=feature_node,
-            issue_nodes=issue_nodes,
-            repo_name_with_owner=github_repo_name_with_owner,
-        )
-
     if bool(args.write):
         feature_node["branch_name"] = branch_name
         feature_node["branch_url"] = branch_url
@@ -837,45 +828,6 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
         }
     )
     return 0
-
-
-def _sync_feature_issue_checklist_after_materialize(
-    feature_node: dict[str, Any],
-    issue_nodes: list[dict[str, Any]],
-    repo_name_with_owner: str,
-) -> dict[str, Any]:
-    """Append missing child-issue checklist rows in mapped feature-level GitHub issue."""
-    feature_issue_number = _coerce_issue_number(
-        feature_node.get("gh_issue_number"),
-        feature_node.get("gh_issue_url"),
-    )
-    feature_issue_url = str(feature_node.get("gh_issue_url", "")).strip()
-    if feature_issue_number is None or not feature_issue_url:
-        return {
-            "attempted": False,
-            "updated": False,
-            "added_issue_ids": [],
-            "feature_issue_number": None,
-            "reason": "feature-issue-not-mapped",
-        }
-
-    current_body = gh_issue_view_body(repo_name_with_owner, feature_issue_number)
-    updated_body, added_issue_ids = append_missing_issue_checklist_rows(current_body, issue_nodes)
-    if not added_issue_ids:
-        return {
-            "attempted": True,
-            "updated": False,
-            "added_issue_ids": [],
-            "feature_issue_number": feature_issue_number,
-        }
-
-    gh_issue_edit_body(repo_name_with_owner, feature_issue_number, updated_body)
-    return {
-        "attempted": True,
-        "updated": True,
-        "added_issue_ids": added_issue_ids,
-        "feature_issue_number": feature_issue_number,
-    }
 
 
 def _handle_feature_execution_plan(args: Namespace, context: WorkflowContext) -> int:
