@@ -119,6 +119,50 @@ def gh_issue_edit(
     run_checked_command(command, cwd=None, error_prefix=f"Failed to update GitHub issue #{issue_number}")
 
 
+def gh_issue_view_body(
+    repo_name_with_owner: str,
+    issue_number: int,
+) -> str:
+    """Read one GitHub issue body text via gh CLI."""
+    command = [
+        "gh",
+        "issue",
+        "view",
+        str(issue_number),
+        "--repo",
+        repo_name_with_owner,
+        "--json",
+        "body",
+    ]
+    output = run_checked_command(command, cwd=None, error_prefix=f"Failed to read GitHub issue #{issue_number}")
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise WorkflowCommandError(f"Invalid JSON from gh issue view #{issue_number}: {error}", exit_code=5) from error
+    if not isinstance(payload, dict):
+        raise WorkflowCommandError(f"Unexpected gh issue view payload for #{issue_number}.", exit_code=5)
+    return str(payload.get("body", ""))
+
+
+def gh_issue_edit_body(
+    repo_name_with_owner: str,
+    issue_number: int,
+    body: str,
+) -> None:
+    """Update only issue body text for one GitHub issue."""
+    command = [
+        "gh",
+        "issue",
+        "edit",
+        str(issue_number),
+        "--repo",
+        repo_name_with_owner,
+        "--body",
+        body,
+    ]
+    run_checked_command(command, cwd=None, error_prefix=f"Failed to update GitHub issue body #{issue_number}")
+
+
 def close_github_issue(issue_number: int) -> None:
     """Close a mapped GitHub issue through gh CLI."""
     command = ["gh", "issue", "close", str(issue_number)]

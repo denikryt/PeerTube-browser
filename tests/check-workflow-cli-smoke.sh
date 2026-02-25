@@ -88,7 +88,7 @@ assert_file_contains() {
   local name="$1"
   local file_path="$2"
   local expected_fragment="$3"
-  if grep -Fq "${expected_fragment}" "${file_path}"; then
+  if grep -Fq -- "${expected_fragment}" "${file_path}"; then
     echo "ok-file-match:${name}"
   else
     echo "fail-file-missing-fragment:${name}"
@@ -102,7 +102,7 @@ assert_file_not_contains() {
   local name="$1"
   local file_path="$2"
   local forbidden_fragment="$3"
-  if grep -Fq "${forbidden_fragment}" "${file_path}"; then
+  if grep -Fq -- "${forbidden_fragment}" "${file_path}"; then
     echo "fail-file-unexpected-fragment:${name}"
     echo "forbidden fragment: ${forbidden_fragment}"
     cat "${file_path}"
@@ -432,6 +432,149 @@ assert_json_value "create-only-no-edit" "issues_materialized.1.issue_id" "I2-F1-
 assert_json_value "create-only-no-edit" "issues_materialized.1.action" "created"
 assert_file_contains "create-only-gh-create-called" "${FAKE_GH_LOG}" "issue create"
 assert_file_not_contains "create-only-gh-edit-not-called" "${FAKE_GH_LOG}" "issue edit"
+
+# Materialize/confirm: keep feature-level checklist in sync for child issue rows.
+CHECKLIST_SYNC_REPO="${TMP_DIR}/checklist-sync-fixture"
+create_workflow_fixture_repo "${CHECKLIST_SYNC_REPO}"
+cat >"${CHECKLIST_SYNC_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+{
+  "version": "1.0",
+  "updated_at": "2026-02-24T00:00:00+00:00",
+  "task_count": 2,
+  "statuses": ["Planned", "InProgress", "Done", "Approved"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Milestone 1",
+      "status": "Planned",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Feature F1-M1",
+          "status": "Approved",
+          "track": "System/Test",
+          "gh_issue_number": 500,
+          "gh_issue_url": "https://github.com/owner/repo/issues/500",
+          "issues": [
+            {
+              "id": "I1-F1-M1",
+              "title": "First issue",
+              "status": "Done",
+              "gh_issue_number": 401,
+              "gh_issue_url": "https://github.com/owner/repo/issues/401",
+              "tasks": [
+                {
+                  "id": "1",
+                  "title": "Task 1",
+                  "summary": "Summary",
+                  "status": "Done",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
+            },
+            {
+              "id": "I2-F1-M1",
+              "title": "Second issue",
+              "status": "Planned",
+              "gh_issue_number": 402,
+              "gh_issue_url": "https://github.com/owner/repo/issues/402",
+              "tasks": [
+                {
+                  "id": "2",
+                  "title": "Task 2",
+                  "summary": "Summary",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
+        }
+      ],
+      "standalone_issues": []
+    }
+  ]
+}
+EOF
+CHECKLIST_BODY_FILE="${TMP_DIR}/feature-issue-body.md"
+cat >"${CHECKLIST_BODY_FILE}" <<'EOF'
+## Scope
+Feature F1-M1
+
+## Planned work/issues
+- [x] I1-F1-M1: First issue
+EOF
+CHECKLIST_FAKE_GH_DIR="${TMP_DIR}/checklist-fake-gh-bin"
+CHECKLIST_FAKE_GH_LOG="${TMP_DIR}/checklist-fake-gh.log"
+mkdir -p "${CHECKLIST_FAKE_GH_DIR}"
+cat >"${CHECKLIST_FAKE_GH_DIR}/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "$*" >> "${CHECKLIST_FAKE_GH_LOG}"
+if [[ "$1" == "repo" && "$2" == "view" ]]; then
+  echo '{"nameWithOwner":"owner/repo","url":"https://github.com/owner/repo"}'
+  exit 0
+fi
+if [[ "$1" == "api" ]]; then
+  echo '[{"title":"Milestone 1"}]'
+  exit 0
+fi
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  python3 - "${CHECKLIST_BODY_FILE}" <<'PY'
+import json
+import pathlib
+import sys
+
+body_path = pathlib.Path(sys.argv[1])
+print(json.dumps({"body": body_path.read_text(encoding="utf-8")}))
+PY
+  exit 0
+fi
+if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  issue_number="$3"
+  shift 3
+  body_value=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --body)
+        body_value="$2"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  if [[ "$issue_number" == "500" ]]; then
+    printf "%s" "${body_value}" > "${CHECKLIST_BODY_FILE}"
+  fi
+  exit 0
+fi
+if [[ "$1" == "issue" && "$2" == "close" ]]; then
+  exit 0
+fi
+echo "unsupported gh call: $*" >&2
+exit 1
+EOF
+chmod +x "${CHECKLIST_FAKE_GH_DIR}/gh"
+run_expect_success \
+  "checklist-sync-materialize" \
+  env PATH="${CHECKLIST_FAKE_GH_DIR}:${PATH}" CHECKLIST_FAKE_GH_LOG="${CHECKLIST_FAKE_GH_LOG}" CHECKLIST_BODY_FILE="${CHECKLIST_BODY_FILE}" \
+  "${CHECKLIST_SYNC_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync --issue-id I2-F1-M1 --write --github
+assert_json_value "checklist-sync-materialize" "feature_issue_checklist_sync.updated" "true"
+assert_json_value "checklist-sync-materialize" "feature_issue_checklist_sync.added_issue_ids.0" "I2-F1-M1"
+assert_file_contains "checklist-sync-materialize-body" "${CHECKLIST_BODY_FILE}" "- [ ] I2-F1-M1: Second issue"
+run_expect_success \
+  "checklist-sync-confirm-issue-done" \
+  env PATH="${CHECKLIST_FAKE_GH_DIR}:${PATH}" CHECKLIST_FAKE_GH_LOG="${CHECKLIST_FAKE_GH_LOG}" CHECKLIST_BODY_FILE="${CHECKLIST_BODY_FILE}" \
+  "${CHECKLIST_SYNC_REPO}/dev/workflow" confirm issue --id I2-F1-M1 done --write --force
+assert_json_value "checklist-sync-confirm-issue-done" "feature_issue_checklist_sync.row_found" "true"
+assert_json_value "checklist-sync-confirm-issue-done" "feature_issue_checklist_sync.updated" "true"
+assert_file_contains "checklist-sync-confirm-body" "${CHECKLIST_BODY_FILE}" "- [x] I2-F1-M1: Second issue"
 
 # Gate-fail: task preflight blocked for missing materialization metadata.
 GATE_PREFLIGHT_REPO="${TMP_DIR}/gate-preflight-fixture"

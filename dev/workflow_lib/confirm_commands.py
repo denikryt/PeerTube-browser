@@ -13,7 +13,8 @@ from typing import Any
 
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
-from .github_adapter import close_github_issue
+from .github_adapter import close_github_issue, gh_issue_edit_body, gh_issue_view_body, resolve_github_repository
+from .issue_checklist import mark_issue_checklist_row_done
 from .output import emit_json
 from .tracker_store import (
     load_pipeline_payload,
@@ -191,6 +192,17 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
         cleanup_result = cleanup_preview
 
     github_closed = False
+    feature_issue_checklist_sync: dict[str, Any] = {
+        "attempted": False,
+        "updated": False,
+        "row_found": False,
+    }
+    if bool(args.write) and bool(args.close_github):
+        feature_issue_checklist_sync = _sync_feature_issue_checklist_on_issue_done(
+            context=context,
+            feature_node=issue_ref["feature"],
+            issue_id=issue_id,
+        )
     if bool(args.write) and bool(args.close_github):
         close_github_issue(int(github_issue_number))
         github_closed = True
@@ -203,6 +215,7 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
             "command": "confirm.issue",
             "extra_confirmation_required": needs_extra_confirmation,
             "feature_id": str(issue_ref["feature"].get("id", "")),
+            "feature_issue_checklist_sync": feature_issue_checklist_sync,
             "github_closed": github_closed,
             "issue_id": issue_id,
             "issue_status_after": "Done" if bool(args.write) else str(issue_node.get("status", "")),
@@ -211,6 +224,38 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
         }
     )
     return 0
+
+
+def _sync_feature_issue_checklist_on_issue_done(
+    context: WorkflowContext,
+    feature_node: dict[str, Any],
+    issue_id: str,
+) -> dict[str, Any]:
+    """Mark one child-issue checklist row as done in mapped feature GitHub issue."""
+    feature_issue_number = _coerce_issue_number(feature_node.get("gh_issue_number"))
+    feature_issue_url = str(feature_node.get("gh_issue_url", "")).strip()
+    if feature_issue_number is None or not feature_issue_url:
+        return {
+            "attempted": False,
+            "updated": False,
+            "row_found": False,
+            "feature_issue_number": None,
+            "reason": "feature-issue-not-mapped",
+        }
+
+    github_repo = resolve_github_repository(context.root_dir)
+    repo_name_with_owner = github_repo["name_with_owner"]
+    current_body = gh_issue_view_body(repo_name_with_owner, feature_issue_number)
+    updated_body, row_found, row_updated = mark_issue_checklist_row_done(current_body, issue_id)
+    if row_updated:
+        gh_issue_edit_body(repo_name_with_owner, feature_issue_number, updated_body)
+
+    return {
+        "attempted": True,
+        "updated": row_updated,
+        "row_found": row_found,
+        "feature_issue_number": feature_issue_number,
+    }
 
 
 def _handle_confirm_feature_done(args: Namespace, context: WorkflowContext) -> int:
@@ -555,6 +600,19 @@ def _require_issue_github_mapping(issue_number: Any, issue_url: Any, label: str)
             f"{label} has no mapped GitHub issue metadata (gh_issue_number/gh_issue_url).",
             exit_code=4,
         )
+
+
+def _coerce_issue_number(raw_issue_number: Any) -> int | None:
+    """Normalize optional GitHub issue number to positive integer."""
+    if raw_issue_number is None:
+        return None
+    try:
+        issue_number = int(raw_issue_number)
+    except (TypeError, ValueError) as error:
+        raise WorkflowCommandError(f"Invalid GitHub issue number value: {raw_issue_number!r}", exit_code=4) from error
+    if issue_number <= 0:
+        raise WorkflowCommandError(f"Invalid GitHub issue number value: {raw_issue_number!r}", exit_code=4)
+    return issue_number
 
 
 def _ask_pending_tasks_confirmation(issue_id: str, pending_child_ids: list[str]) -> bool:
