@@ -53,6 +53,32 @@ def register_confirm_router(subparsers: argparse._SubParsersAction[argparse.Argu
     )
 
 
+def register_reject_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register reject command routing for explicit issue rejection flow."""
+    reject_parser = subparsers.add_parser(
+        "reject",
+        help="Issue rejection workflow commands.",
+    )
+    reject_subparsers = reject_parser.add_subparsers(dest="reject_target", required=True)
+    issue_parser = reject_subparsers.add_parser("issue", help="Reject one feature issue.")
+    issue_parser.add_argument("--id", required=True, help="Issue identifier.")
+    issue_parser.add_argument("--write", action="store_true", help="Persist rejection transition.")
+    issue_parser.add_argument(
+        "--close-github",
+        dest="close_github",
+        action="store_true",
+        default=True,
+        help="Reserved flag for mapped GitHub reject side effects.",
+    )
+    issue_parser.add_argument(
+        "--no-close-github",
+        dest="close_github",
+        action="store_false",
+        help="Skip mapped GitHub reject side effects.",
+    )
+    issue_parser.set_defaults(handler=_handle_reject_issue)
+
+
 def _register_confirm_target(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
     target: str,
@@ -95,6 +121,53 @@ def _handle_confirm(args: Namespace, context: WorkflowContext) -> int:
     if args.confirm_target == "standalone-issue":
         return _handle_confirm_standalone_issue_done(args, context)
     raise WorkflowCommandError(f"Unsupported confirm target: {args.confirm_target}", exit_code=4)
+
+
+def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
+    """Reject one feature issue in local tracker state."""
+    issue_id = _normalize_identifier(args.id)
+    if ISSUE_ID_PATTERN.fullmatch(issue_id) is None:
+        raise WorkflowCommandError(
+            f"Invalid issue ID {args.id!r}; expected I<local>-F<feature_local>-M<milestone>.",
+            exit_code=4,
+        )
+
+    dev_map = _load_json(context.dev_map_path)
+    issue_ref = _find_issue(dev_map, issue_id)
+    if issue_ref is None:
+        raise WorkflowCommandError(f"Issue {issue_id} not found in DEV_MAP.", exit_code=4)
+
+    issue_node = issue_ref["issue"]
+    feature_node = issue_ref["feature"]
+    status_before = str(issue_node.get("status", "")).strip() or "Pending"
+    if status_before == "Done":
+        raise WorkflowCommandError(
+            f"Issue {issue_id} is already Done and cannot transition to Rejected.",
+            exit_code=4,
+        )
+    if bool(args.write) and status_before != "Rejected":
+        issue_node["status"] = "Rejected"
+        _touch_updated_at(dev_map)
+        _write_json(context.dev_map_path, dev_map)
+
+    emit_json(
+        {
+            "close_github": bool(args.close_github),
+            "command": "reject.issue",
+            "feature_id": str(feature_node.get("id", "")).strip(),
+            "github_rejection": {
+                "attempted": False,
+                "closed": False,
+                "marker_added": False,
+                "reason": "github-reject-flow-not-enabled",
+            },
+            "issue_id": issue_id,
+            "status_after": str(issue_node.get("status", "")).strip() if bool(args.write) else status_before,
+            "status_before": status_before,
+            "write": bool(args.write),
+        }
+    )
+    return 0
 
 
 def _handle_confirm_task_done(args: Namespace, context: WorkflowContext) -> int:
