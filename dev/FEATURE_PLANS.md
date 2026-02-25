@@ -30,13 +30,14 @@ Canonical per-issue plan block format inside a feature section:
 ## F4-M1
 
 ### Issue Execution Order
-1. `I22-F4-M1` - Feature materialize: support multi-issue queue in one command run
-2. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
-3. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
-4. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
-5. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
-6. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
-7. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
+1. `I23-F4-M1` - Issue lifecycle status contract: Pending -> Planned -> Tasked with planning/materialize gates
+2. `I22-F4-M1` - Feature materialize: support multi-issue queue in one command run
+3. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
+4. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
+5. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
+6. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
+7. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
+8. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
 ### Dependencies
 - See issue-level dependency blocks below.
 
@@ -46,6 +47,44 @@ Canonical per-issue plan block format inside a feature section:
 
 ### Issue/Task Decomposition Assessment
 - Decomposition is maintained per issue block; no extra feature-level split is required.
+
+### I23-F4-M1 - Issue lifecycle status contract: Pending -> Planned -> Tasked with planning/materialize gates
+
+#### Dependencies
+- `dev/map/DEV_MAP.json`
+- `dev/map/DEV_MAP_SCHEMA.md`
+- `dev/workflow_lib/feature_commands.py`
+- `dev/workflow_lib/task_commands.py`
+- `dev/TASK_EXECUTION_PROTOCOL.md`
+- `dev/FEATURE_WORKFLOW.md`
+- `tests/check-workflow-cli-smoke.sh`
+
+#### Decomposition
+1. Define canonical issue lifecycle statuses and transitions in workflow logic/docs.
+   - `Pending` is assigned at issue creation.
+   - `Planned` is assigned when issue-plan block is created/recognized.
+   - `Tasked` is assigned after successful task decomposition (`plan tasks for issue` / `plan tasks for feature` for that issue).
+2. Enforce planning gate for task decomposition.
+   - Reject `plan tasks for issue` / `plan tasks for feature` attempts for issue nodes with status `Pending`.
+   - Return deterministic error with required next action (`plan issue <issue_id>`).
+3. Enforce materialization gate by issue status.
+   - Allow issue materialization only for issue nodes with status `Tasked`.
+   - Reject materialize run when selected issue set contains non-`Tasked` issue status.
+4. Keep execution materialization gate explicit.
+   - Preserve explicit check that execution is blocked when issue `gh_issue_number` / `gh_issue_url` are missing.
+   - Align protocol/workflow wording with this gate.
+5. Add regression coverage and protocol updates.
+   - Add smoke checks for status transitions/gates (`Pending -> Planned -> Tasked` and blocked paths).
+   - Update protocol/workflow docs to use the same status contract and gate wording.
+
+#### Issue/Task Decomposition Assessment
+1. Recommended split: `task_count = 4`.
+   - Task 1: status contract + transition hooks (`Pending/Planned/Tasked`) in planning flow.
+   - Task 2: decomposition gate (reject task planning from `Pending` issues).
+   - Task 3: materialize gate (require `Tasked` for materialized issue nodes).
+   - Task 4: smoke/docs alignment for new lifecycle and gate behavior.
+2. Why `4`:
+   - status transitions, decomposition gate, materialize gate, and regression/docs are separate change domains.
 
 ### I14-F4-M1 - Replace checkbox-based GitHub issue body with description-driven readable content
 
@@ -120,4 +159,3 @@ Canonical per-issue plan block format inside a feature section:
    - Task 3: smoke/docs alignment and idempotency verification.
 2. Why `3`:
    - integration layer, materialize reconcile logic, and regression coverage are separate risk domains and should be validated independently.
-

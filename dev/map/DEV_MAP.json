@@ -634,6 +634,14 @@
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []
+            },
+            {
+              "id": "I23-F4-M1",
+              "title": "Issue lifecycle status contract: Pending -> Planned -> Tasked with planning/materialize gates",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F4-M1",
