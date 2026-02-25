@@ -6,7 +6,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-25T19:12:45+02:00",
+  "updated_at": "2026-02-25T19:19:44+02:00",
   "task_count": 110,
   "milestones": [
     {
@@ -457,8 +457,8 @@
               "id": "I16-F4-M1",
               "title": "Issue planning status split: Pending (no plan) vs Planned (has plan)",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 95,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/95",
               "tasks": [
                 {
                   "id": "99",
@@ -498,8 +498,8 @@
               "id": "I18-F4-M1",
               "title": "Standardize per-issue plan block format in FEATURE_PLANS and enforce strict heading lint",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 96,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/96",
               "tasks": [
                 {
                   "id": "108",
@@ -564,8 +564,8 @@
               "id": "I20-F4-M1",
               "title": "Rename decomposition commands from sync to plan tasks for issue/feature",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 97,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/97",
               "tasks": [
                 {
                   "id": "102",
@@ -597,8 +597,8 @@
               "id": "I21-F4-M1",
               "title": "Confirm issue done: script-driven cleanup of issue plan block and linked issue/task tracker nodes",
               "status": "Planned",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 98,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/98",
               "tasks": [
                 {
                   "id": "105",
@@ -625,6 +625,14 @@
                   "time": "19:12:45"
                 }
               ]
+            },
+            {
+              "id": "I22-F4-M1",
+              "title": "Feature materialize: support multi-issue queue in one command run",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F4-M1",

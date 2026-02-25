@@ -28,14 +28,15 @@ Each feature plan section must use the feature ID as a heading and include:
 1. `I16-F4-M1` - Issue planning status split: Pending (no plan) vs Planned (has plan)
 2. `I20-F4-M1` - Rename decomposition commands from sync to plan tasks for issue/feature
 3. `I21-F4-M1` - Confirm issue done: script-driven cleanup of issue plan block and linked issue/task tracker nodes
-4. `I18-F4-M1` - Standardize per-issue plan block format in FEATURE_PLANS and enforce strict heading lint
-5. `I19-F4-M1` - Feature plan issue execution order block as the source of issue sequencing
-6. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
-7. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
-8. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
-9. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
-10. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
-11. `I13-F4-M1` - Auto-delete sync delta file after successful feature sync write
+4. `I22-F4-M1` - Feature materialize: support multi-issue queue in one command run
+5. `I18-F4-M1` - Standardize per-issue plan block format in FEATURE_PLANS and enforce strict heading lint
+6. `I19-F4-M1` - Feature plan issue execution order block as the source of issue sequencing
+7. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
+8. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
+9. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
+10. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
+11. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
+12. `I13-F4-M1` - Auto-delete sync delta file after successful feature sync write
 
 ### Follow-up issue: I16-F4-M1
 
