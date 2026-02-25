@@ -111,9 +111,10 @@ Apply the corresponding completion update in one edit run:
    - If additional confirmation is not given, stop without applying completion updates.
    - If additional confirmation is given:
      - update child task statuses to `Done` in `dev/map/DEV_MAP.json`.
-   - In write mode, cleanup issue plan artifacts in `dev/FEATURE_PLANS.md`:
+  - In write mode, cleanup issue plan artifacts in `dev/FEATURE_PLANS.md`:
      - remove issue row from `Issue Execution Order`,
      - remove issue plan block under owning feature section.
+  - `confirm issue` does not mutate feature-issue GitHub checklist rows; completion is tracked by local status + issue close flow only.
    - Update local issue status to `Done` in `dev/map/DEV_MAP.json`.
    - Close mapped GitHub issue in the same completion update run.
 3. `confirm feature <feature_id> done`
@@ -174,6 +175,7 @@ Use this procedure before executing tasks for a new feature.
      - `branch_url = <repo_url>/tree/feature/<feature_id>` (or `null` if repository URL cannot be resolved).
    - Include branch context in result message: `Canonical feature branch: feature/<feature_id>`.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
+   - Keep GitHub issue body strictly issue-focused; use description-driven readable text (no markdown checkbox transport).
    - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
    - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
 7. Only then run `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`.

@@ -894,10 +894,10 @@ run_expect_failure_contains \
   "Duplicate --issue-id value I1-F1-M1" \
   "${CREATE_ONLY_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync --issue-id I1-F1-M1 --issue-id I1-F1-M1 --no-github
 
-# Materialize/confirm: keep feature-level checklist in sync for child issue rows.
-CHECKLIST_SYNC_REPO="${TMP_DIR}/checklist-sync-fixture"
-create_workflow_fixture_repo "${CHECKLIST_SYNC_REPO}"
-cat >"${CHECKLIST_SYNC_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+# Materialize/confirm: issue bodies are description-driven (no checkbox sync side-effects).
+DESCRIPTION_BODY_REPO="${TMP_DIR}/description-body-fixture"
+create_workflow_fixture_repo "${DESCRIPTION_BODY_REPO}"
+cat >"${DESCRIPTION_BODY_REPO}/dev/map/DEV_MAP.json" <<'EOF'
 {
   "version": "1.0",
   "updated_at": "2026-02-24T00:00:00+00:00",
@@ -920,6 +920,7 @@ cat >"${CHECKLIST_SYNC_REPO}/dev/map/DEV_MAP.json" <<'EOF'
             {
               "id": "I1-F1-M1",
               "title": "First issue",
+              "description": "Existing done issue.",
               "status": "Done",
               "gh_issue_number": 401,
               "gh_issue_url": "https://github.com/owner/repo/issues/401",
@@ -937,6 +938,7 @@ cat >"${CHECKLIST_SYNC_REPO}/dev/map/DEV_MAP.json" <<'EOF'
             {
               "id": "I2-F1-M1",
               "title": "Second issue",
+              "description": "Materialize should rewrite this body using readable description-driven sections.",
               "status": "Tasked",
               "gh_issue_number": 402,
               "gh_issue_url": "https://github.com/owner/repo/issues/402",
@@ -961,38 +963,27 @@ cat >"${CHECKLIST_SYNC_REPO}/dev/map/DEV_MAP.json" <<'EOF'
   ]
 }
 EOF
-CHECKLIST_BODY_FILE="${TMP_DIR}/feature-issue-body.md"
-cat >"${CHECKLIST_BODY_FILE}" <<'EOF'
+DESCRIPTION_BODY_FILE="${TMP_DIR}/materialized-issue-body.md"
+cat >"${DESCRIPTION_BODY_FILE}" <<'EOF'
 ## Scope
-Feature F1-M1
+Legacy checkbox body
 
-## Planned work/issues
-- [x] I1-F1-M1: First issue
+## Planned work/tasks
+- [ ] Legacy checkbox row
 EOF
-CHECKLIST_FAKE_GH_DIR="${TMP_DIR}/checklist-fake-gh-bin"
-CHECKLIST_FAKE_GH_LOG="${TMP_DIR}/checklist-fake-gh.log"
-mkdir -p "${CHECKLIST_FAKE_GH_DIR}"
-cat >"${CHECKLIST_FAKE_GH_DIR}/gh" <<'EOF'
+DESCRIPTION_FAKE_GH_DIR="${TMP_DIR}/description-fake-gh-bin"
+DESCRIPTION_FAKE_GH_LOG="${TMP_DIR}/description-fake-gh.log"
+mkdir -p "${DESCRIPTION_FAKE_GH_DIR}"
+cat >"${DESCRIPTION_FAKE_GH_DIR}/gh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-echo "$*" >> "${CHECKLIST_FAKE_GH_LOG}"
+echo "$*" >> "${DESCRIPTION_FAKE_GH_LOG}"
 if [[ "$1" == "repo" && "$2" == "view" ]]; then
   echo '{"nameWithOwner":"owner/repo","url":"https://github.com/owner/repo"}'
   exit 0
 fi
 if [[ "$1" == "api" ]]; then
   echo '[{"title":"Milestone 1"}]'
-  exit 0
-fi
-if [[ "$1" == "issue" && "$2" == "view" ]]; then
-  python3 - "${CHECKLIST_BODY_FILE}" <<'PY'
-import json
-import pathlib
-import sys
-
-body_path = pathlib.Path(sys.argv[1])
-print(json.dumps({"body": body_path.read_text(encoding="utf-8")}))
-PY
   exit 0
 fi
 if [[ "$1" == "issue" && "$2" == "edit" ]]; then
@@ -1010,8 +1001,8 @@ if [[ "$1" == "issue" && "$2" == "edit" ]]; then
         ;;
     esac
   done
-  if [[ "$issue_number" == "500" ]]; then
-    printf "%s" "${body_value}" > "${CHECKLIST_BODY_FILE}"
+  if [[ "$issue_number" == "402" ]]; then
+    printf "%s" "${body_value}" > "${DESCRIPTION_BODY_FILE}"
   fi
   exit 0
 fi
@@ -1021,21 +1012,21 @@ fi
 echo "unsupported gh call: $*" >&2
 exit 1
 EOF
-chmod +x "${CHECKLIST_FAKE_GH_DIR}/gh"
+chmod +x "${DESCRIPTION_FAKE_GH_DIR}/gh"
 run_expect_success \
-  "checklist-sync-materialize" \
-  env PATH="${CHECKLIST_FAKE_GH_DIR}:${PATH}" CHECKLIST_FAKE_GH_LOG="${CHECKLIST_FAKE_GH_LOG}" CHECKLIST_BODY_FILE="${CHECKLIST_BODY_FILE}" \
-  "${CHECKLIST_SYNC_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync --issue-id I2-F1-M1 --write --github
-assert_json_value "checklist-sync-materialize" "feature_issue_checklist_sync.updated" "true"
-assert_json_value "checklist-sync-materialize" "feature_issue_checklist_sync.added_issue_ids.0" "I2-F1-M1"
-assert_file_contains "checklist-sync-materialize-body" "${CHECKLIST_BODY_FILE}" "- [ ] I2-F1-M1: Second issue"
+  "description-body-materialize-sync" \
+  env PATH="${DESCRIPTION_FAKE_GH_DIR}:${PATH}" DESCRIPTION_FAKE_GH_LOG="${DESCRIPTION_FAKE_GH_LOG}" DESCRIPTION_BODY_FILE="${DESCRIPTION_BODY_FILE}" \
+  "${DESCRIPTION_BODY_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync --issue-id I2-F1-M1 --write --github
+assert_json_value "description-body-materialize-sync" "issues_materialized.0.action" "updated"
+assert_json_value "description-body-materialize-sync" "feature_issue_checklist_sync.attempted" "false"
+assert_file_contains "description-body-materialize-section" "${DESCRIPTION_BODY_FILE}" "## Why this issue exists"
+assert_file_not_contains "description-body-materialize-no-checkbox" "${DESCRIPTION_BODY_FILE}" "- [ ]"
 run_expect_success \
-  "checklist-sync-confirm-issue-done" \
-  env PATH="${CHECKLIST_FAKE_GH_DIR}:${PATH}" CHECKLIST_FAKE_GH_LOG="${CHECKLIST_FAKE_GH_LOG}" CHECKLIST_BODY_FILE="${CHECKLIST_BODY_FILE}" \
-  "${CHECKLIST_SYNC_REPO}/dev/workflow" confirm issue --id I2-F1-M1 done --write --force
-assert_json_value "checklist-sync-confirm-issue-done" "feature_issue_checklist_sync.row_found" "true"
-assert_json_value "checklist-sync-confirm-issue-done" "feature_issue_checklist_sync.updated" "true"
-assert_file_contains "checklist-sync-confirm-body" "${CHECKLIST_BODY_FILE}" "- [x] I2-F1-M1: Second issue"
+  "description-body-confirm-issue-done" \
+  env PATH="${DESCRIPTION_FAKE_GH_DIR}:${PATH}" DESCRIPTION_FAKE_GH_LOG="${DESCRIPTION_FAKE_GH_LOG}" DESCRIPTION_BODY_FILE="${DESCRIPTION_BODY_FILE}" \
+  "${DESCRIPTION_BODY_REPO}/dev/workflow" confirm issue --id I2-F1-M1 done --write --force
+assert_json_value "description-body-confirm-issue-done" "feature_issue_checklist_sync.attempted" "false"
+assert_json_value "description-body-confirm-issue-done" "feature_issue_checklist_sync.updated" "false"
 
 # Confirm issue keeps DEV_MAP issue/task nodes, but removes issue plan artifacts from FEATURE_PLANS.
 CONFIRM_PLAN_CLEANUP_REPO="${TMP_DIR}/confirm-plan-cleanup-fixture"
