@@ -41,12 +41,19 @@ MILESTONE_ID_PATTERN = re.compile(r"^M(?P<milestone_num>\d+)$")
 TASK_ID_PATTERN = re.compile(r"^[0-9]+[a-z]?$")
 SECTION_H2_PATTERN = re.compile(r"^##\s+([^#].*?)\s*$")
 SECTION_H3_PATTERN = re.compile(r"^###\s+([^#].*?)\s*$")
+SECTION_H4_PATTERN = re.compile(r"^####\s+([^#].*?)\s*$")
 ISSUE_EXECUTION_ORDER_HEADING = "### Issue Execution Order"
 ISSUE_ORDER_ROW_PATTERN = re.compile(r"^\d+\.\s+`(?P<issue_id>I\d+-F\d+-M\d+)`\s+-\s+(?P<issue_title>.+\S)\s*$")
 ISSUE_PLAN_BLOCK_HEADING_PATTERN = re.compile(
     r"^###\s+(?:Follow-up issue:\s*)?`?(?P<issue_id>I\d+-F\d+-M\d+)`?(?:\s*(?:-|—|:)\s*.+)?\s*$"
 )
+CANONICAL_ISSUE_PLAN_BLOCK_HEADING_PATTERN = re.compile(r"^###\s+(?P<issue_id>I\d+-F\d+-M\d+)\s+-\s+(?P<issue_title>.+\S)\s*$")
 REQUIRED_PLAN_HEADINGS = (
+    "Dependencies",
+    "Decomposition",
+    "Issue/Task Decomposition Assessment",
+)
+REQUIRED_ISSUE_PLAN_SUBHEADINGS = (
     "Dependencies",
     "Decomposition",
     "Issue/Task Decomposition Assessment",
@@ -1546,6 +1553,12 @@ def _lint_plan_section(
         messages.append(f"{heading}:ok")
 
     if feature_id is not None and feature_node is not None:
+        _lint_issue_plan_blocks(
+            section_text=section_text,
+            feature_id=feature_id,
+            feature_node=feature_node,
+        )
+        messages.append("Issue Plan Blocks:ok")
         issue_order_state = _resolve_issue_execution_order_state(
             section_text=section_text,
             feature_id=feature_id,
@@ -1887,6 +1900,124 @@ def _extract_issue_plan_block_ids(section_text: str) -> set[str]:
             continue
         issue_ids.add(match.group("issue_id").strip())
     return issue_ids
+
+
+def _lint_issue_plan_blocks(
+    *,
+    section_text: str,
+    feature_id: str,
+    feature_node: dict[str, Any],
+) -> None:
+    """Validate canonical per-issue plan block headings/sections within one feature plan section."""
+    lines = section_text.splitlines()
+    issue_ids_in_feature = {
+        str(issue.get("id", "")).strip()
+        for issue in feature_node.get("issues", [])
+        if isinstance(issue, dict) and str(issue.get("id", "")).strip()
+    }
+    _, feature_milestone_num = _parse_feature_id(feature_id)
+    feature_local_num = _parse_feature_local_num(feature_id)
+
+    issue_heading_indexes: list[tuple[int, str]] = []
+    seen_issue_ids: set[str] = set()
+    for index, line in enumerate(lines):
+        match = SECTION_H3_PATTERN.match(line)
+        if match is None:
+            continue
+        heading = match.group(1).strip()
+        if heading in REQUIRED_PLAN_HEADINGS:
+            continue
+        if line.strip() == ISSUE_EXECUTION_ORDER_HEADING:
+            continue
+        canonical_match = CANONICAL_ISSUE_PLAN_BLOCK_HEADING_PATTERN.fullmatch(line.strip())
+        if canonical_match is None:
+            raise WorkflowCommandError(
+                f"Invalid issue plan heading {line.strip()!r}. Use canonical format: "
+                "'### <issue_id> - <issue_title>'.",
+                exit_code=4,
+            )
+        issue_id = canonical_match.group("issue_id").strip()
+        _assert_issue_belongs_to_feature(
+            issue_id=issue_id,
+            feature_id=feature_id,
+            feature_milestone_num=feature_milestone_num,
+            feature_local_num=feature_local_num,
+        )
+        if issue_id not in issue_ids_in_feature:
+            raise WorkflowCommandError(
+                f"Issue plan block references unknown issue {issue_id} for feature {feature_id}.",
+                exit_code=4,
+            )
+        if issue_id in seen_issue_ids:
+            raise WorkflowCommandError(
+                f"Duplicate issue plan block for issue {issue_id}.",
+                exit_code=4,
+            )
+        seen_issue_ids.add(issue_id)
+        issue_heading_indexes.append((index, issue_id))
+
+    for heading_index, (start_index, issue_id) in enumerate(issue_heading_indexes):
+        end_index = len(lines)
+        if heading_index + 1 < len(issue_heading_indexes):
+            end_index = issue_heading_indexes[heading_index + 1][0]
+        for probe_index in range(start_index + 1, end_index):
+            stripped = lines[probe_index].strip()
+            if stripped.startswith("## ") or stripped.startswith("### "):
+                end_index = probe_index
+                break
+        _lint_one_issue_plan_block(lines=lines, start_index=start_index, end_index=end_index, issue_id=issue_id)
+
+
+def _lint_one_issue_plan_block(lines: list[str], start_index: int, end_index: int, issue_id: str) -> None:
+    """Validate required subheading hierarchy/content inside one canonical issue-plan block."""
+    subheading_positions: list[tuple[str, int]] = []
+    seen_subheadings: set[str] = set()
+    for index in range(start_index + 1, end_index):
+        stripped = lines[index].strip()
+        if not stripped:
+            continue
+        if stripped.startswith("<!--"):
+            continue
+        if stripped.startswith("#") and not stripped.startswith("#### "):
+            raise WorkflowCommandError(
+                f"Issue plan block {issue_id} contains invalid heading hierarchy: {stripped!r}.",
+                exit_code=4,
+            )
+        match = SECTION_H4_PATTERN.match(lines[index])
+        if match is None:
+            continue
+        heading = match.group(1).strip()
+        if heading not in REQUIRED_ISSUE_PLAN_SUBHEADINGS:
+            raise WorkflowCommandError(
+                f"Issue plan block {issue_id} has unsupported section heading {heading!r}.",
+                exit_code=4,
+            )
+        if heading in seen_subheadings:
+            raise WorkflowCommandError(
+                f"Issue plan block {issue_id} contains duplicate section heading {heading!r}.",
+                exit_code=4,
+            )
+        seen_subheadings.add(heading)
+        subheading_positions.append((heading, index))
+
+    for required_heading in REQUIRED_ISSUE_PLAN_SUBHEADINGS:
+        if required_heading not in seen_subheadings:
+            raise WorkflowCommandError(
+                f"Issue plan block {issue_id} is missing required section {required_heading!r}.",
+                exit_code=4,
+            )
+
+    for position_index, (heading, heading_line_index) in enumerate(subheading_positions):
+        content_start = heading_line_index + 1
+        content_end = end_index
+        if position_index + 1 < len(subheading_positions):
+            content_end = subheading_positions[position_index + 1][1]
+        content_lines = _filter_section_content(lines[content_start:content_end])
+        if not content_lines:
+            raise WorkflowCommandError(
+                f"Issue plan block {issue_id} section {heading!r} must contain non-empty content.",
+                exit_code=4,
+            )
 
 
 def _collect_issue_planning_status_mismatches(
