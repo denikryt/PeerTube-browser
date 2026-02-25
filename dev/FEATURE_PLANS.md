@@ -35,6 +35,46 @@ Each feature plan section must use the feature ID as a heading and include:
 8. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
 9. `I13-F4-M1` - Auto-delete sync delta file after successful feature sync write
 
+### Follow-up issue: I16-F4-M1
+
+**Title**
+- `I16-F4-M1`: Issue planning status split: Pending (no plan) vs Planned (has plan)
+
+### Dependencies
+- `dev/map/DEV_MAP.json`
+- `dev/map/DEV_MAP_SCHEMA.md`
+- `dev/FEATURE_PLANS.md`
+- `dev/workflow_lib/feature_commands.py` (`feature plan-lint`, `feature sync`, issue-order parsing helpers)
+- `tests/check-workflow-cli-smoke.sh`
+- `dev/TASK_EXECUTION_PROTOCOL.md`
+- `dev/FEATURE_PLANNING_PROTOCOL.md`
+- `dev/FEATURE_WORKFLOW.md`
+
+### Decomposition
+1. Introduce issue planning status contract for feature issues.
+   - Add/lock explicit semantics: `Pending` means issue exists in `DEV_MAP` but has no issue-plan block in `FEATURE_PLANS`; `Planned` means issue-plan block exists.
+   - Keep `Done` and `Rejected` as terminal statuses and out of pending planning set.
+2. Align issue creation/sync default status with planning state.
+   - For newly created issue nodes in sync paths, default status to `Pending` unless explicit status is provided.
+   - Preserve existing status when issue already exists and no status override is passed.
+3. Add deterministic issue-plan coverage detection.
+   - Parse issue-plan blocks inside feature sections and determine whether each active issue has plan content.
+   - Reconcile status for active issues: with plan block -> `Planned`, without plan block -> `Pending`.
+4. Enforce split in lint/output contracts.
+   - Extend `feature plan-lint` to report status/plan presence mismatches with deterministic error messages.
+   - Keep lint non-mutating; status correction should happen only in write paths.
+5. Cover with smoke tests and doc updates.
+   - Add smoke scenarios for `Pending` default, `Pending -> Planned` transition after plan block creation, and mismatch lint failures.
+   - Update protocol/workflow text so `plan issue <issue_id>` clearly implies persisted issue-plan block and status semantics.
+
+### Issue/Task Decomposition Assessment
+1. Recommended split: `task_count = 3`.
+   - Task 1: status contract + schema/status enum alignment + `Pending` default for new issues.
+   - Task 2: issue-plan block detection and status reconciliation/lint consistency.
+   - Task 3: smoke coverage and protocol/workflow documentation updates.
+2. Why `3`:
+   - model contract, reconciliation logic, and regression/documentation are separate risk domains and can be validated independently.
+
 ### Follow-up issue: I14-F4-M1
 
 **Title**
