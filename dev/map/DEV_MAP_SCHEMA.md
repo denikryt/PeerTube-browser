@@ -77,6 +77,7 @@ Feature node in `DEV_MAP` must carry these fields:
 Issue node in `DEV_MAP` must carry these fields:
 - `id`: issue id (`I<local>-F<feature_local>-M<milestone>`)
 - `title`: issue title
+- `description`: short readable issue description (why this issue exists and what it covers)
 - `status`: `Pending` | `Planned` | `Tasked` | `Done` | `Rejected`
   - `Pending`: issue exists in `DEV_MAP`, but no persisted issue-plan block exists in `dev/FEATURE_PLANS.md`.
   - `Planned`: canonical issue-plan block exists in `dev/FEATURE_PLANS.md`.
@@ -154,6 +155,7 @@ Issue node in `DEV_MAP` must carry these fields:
             {
               "id": "I1-F1-M1",
               "title": "Issue title",
+              "description": "Short readable issue description.",
               "status": "Pending",
               "gh_issue_number": null,
               "gh_issue_url": null,

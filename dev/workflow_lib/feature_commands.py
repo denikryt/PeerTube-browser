@@ -1185,6 +1185,9 @@ def _apply_issue_delta(
             issue_node = {
                 "id": issue_id,
                 "title": issue_payload.get("title", issue_id),
+                "description": str(issue_payload.get("description", "")).strip()
+                or str(issue_payload.get("title", issue_id)).strip()
+                or issue_id,
                 "status": "Pending",
                 "gh_issue_number": None,
                 "gh_issue_url": None,
@@ -1198,6 +1201,12 @@ def _apply_issue_delta(
 
         if "title" in issue_payload:
             issue_node["title"] = _required_string_field(issue_payload, "title", f"issues[{issue_index}]")
+        if "description" in issue_payload:
+            issue_node["description"] = _required_string_field(
+                issue_payload,
+                "description",
+                f"issues[{issue_index}]",
+            )
         if "status" in issue_payload:
             status_value = _required_string_field(issue_payload, "status", f"issues[{issue_index}]")
             _validate_issue_planning_status_transition(
