@@ -7,8 +7,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-25T21:18:57+02:00",
-  "task_count": 110,
+  "updated_at": "2026-02-25T21:40:22+02:00",
+  "task_count": 126,
   "milestones": [
     {
       "id": "M1",
@@ -309,7 +309,7 @@
             {
               "id": "I7-F4-M1",
               "title": "Issue creation command for feature/standalone with optional plan init",
-              "status": "Planned",
+              "status": "Pending",
               "gh_issue_number": 87,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/87",
               "tasks": []
@@ -342,7 +342,7 @@
             {
               "id": "I9-F4-M1",
               "title": "Add workflow CLI show/status commands for feature/issue/task",
-              "status": "Planned",
+              "status": "Pending",
               "gh_issue_number": 89,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/89",
               "tasks": []
@@ -433,7 +433,7 @@
             {
               "id": "I13-F4-M1",
               "title": "Auto-delete sync delta file after successful decomposition write",
-              "status": "Planned",
+              "status": "Pending",
               "gh_issue_number": 93,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/93",
               "tasks": []
@@ -633,7 +633,32 @@
               "status": "Planned",
               "gh_issue_number": 101,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/101",
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "119",
+                  "title": "Extend materialize CLI with ordered multi-issue queue input",
+                  "summary": "Replace single issue selector with repeatable queue parsing that preserves order and keeps bootstrap mode incompatible with issue selectors.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "120",
+                  "title": "Implement queue validation and queue-ordered materialize flow",
+                  "summary": "Resolve and validate queued issue IDs, reject duplicates and missing ownership, then process create or sync actions in stable queue order.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "121",
+                  "title": "Add queue-mode regression checks and command docs",
+                  "summary": "Add smoke scenarios for multi-issue queue success and failure paths, and update protocol/workflow examples for queue usage.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                }
+              ]
             },
             {
               "id": "I23-F4-M1",
@@ -641,7 +666,40 @@
               "status": "Planned",
               "gh_issue_number": 100,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/100",
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "115",
+                  "title": "Implement issue status transition contract Pending-Planned-Tasked",
+                  "summary": "Define and wire deterministic issue lifecycle transitions so task decomposition advances issue status to Tasked after planning prerequisites.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "116",
+                  "title": "Enforce decomposition gate for Pending issues",
+                  "summary": "Reject plan-tasks commands for issue nodes that remain Pending and return deterministic guidance to run plan issue first.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "117",
+                  "title": "Gate materialize by Tasked issue status",
+                  "summary": "Require Tasked status on selected issue nodes before issues-create or issues-sync materialization proceeds.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "118",
+                  "title": "Add lifecycle gate regression coverage and doc alignment",
+                  "summary": "Extend smoke checks and canonical docs for Pending-Planned-Tasked transitions, decomposition gating, and materialize gate behavior.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                }
+              ]
             },
             {
               "id": "I24-F4-M1",
@@ -649,15 +707,89 @@
               "status": "Planned",
               "gh_issue_number": 99,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/99",
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "111",
+                  "title": "Remove feature approve command from CLI surface",
+                  "summary": "Delete feature approve parser registration and handler wiring so the command is no longer available in workflow CLI usage/help output.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "112",
+                  "title": "Remove Approved status gates from feature command paths",
+                  "summary": "Remove runtime checks that require feature status Approved before plan-tasks, materialize, execution-plan, and validation command paths.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "113",
+                  "title": "Audit and remove residual Approved-only dependencies",
+                  "summary": "Run a repository workflow audit to remove remaining mandatory Approved-state dependencies and keep status for reporting only.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "114",
+                  "title": "Align docs and smoke tests with no-approve lifecycle",
+                  "summary": "Update canonical protocol/workflow docs and smoke coverage to reflect approve-command removal and no Approved-gate workflow behavior.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                }
+              ]
             },
             {
               "id": "I25-F4-M1",
-              "title": "Automate `plan issue` command with canonical issue-plan block upsert and scoped lint",
+              "title": "Automate plan issue command with canonical issue-plan block upsert and scoped lint",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "122",
+                  "title": "Add feature plan-issue CLI command and output contract",
+                  "summary": "Register feature plan-issue subcommand with required inputs and deterministic JSON output fields for write and dry-run paths.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "123",
+                  "title": "Implement issue resolver and ownership assertion contract",
+                  "summary": "Resolve issue owner feature from DEV_MAP and return deterministic errors for malformed, missing, duplicate, and mismatched ownership cases.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "124",
+                  "title": "Implement canonical issue-plan block upsert in feature plans",
+                  "summary": "Create or update one target issue plan block with canonical dependencies, decomposition, and assessment sections without mutating other issue blocks.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "125",
+                  "title": "Add scoped issue-plan lint and issue-order guard",
+                  "summary": "Validate only the target issue plan block and enforce read-only issue execution order presence checks for active issues.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                },
+                {
+                  "id": "126",
+                  "title": "Add plan-issue smoke coverage and protocol updates",
+                  "summary": "Cover success, failure, and idempotency paths for plan-issue and align workflow planning docs with command boundaries.",
+                  "status": "Planned",
+                  "date": "2026-02-25",
+                  "time": "21:40:22"
+                }
+              ]
             }
           ],
           "branch_name": "feature/F4-M1",
