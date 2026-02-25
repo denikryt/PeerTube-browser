@@ -111,17 +111,6 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     approve_parser.add_argument("--strict", action="store_true", help="Require strict plan lint pass.")
     approve_parser.set_defaults(handler=_handle_feature_approve)
 
-    sync_parser = feature_subparsers.add_parser(
-        "sync",
-        help="Removed legacy decomposition command (kept only to provide explicit migration error).",
-    )
-    sync_parser.add_argument("--id", help="Legacy feature ID argument.")
-    sync_parser.add_argument("--delta-file", help="Legacy delta-file argument.")
-    sync_parser.add_argument("--write", action="store_true", help="Legacy write flag.")
-    sync_parser.add_argument("--allocate-task-ids", action="store_true", help="Legacy allocation flag.")
-    sync_parser.add_argument("--update-pipeline", action="store_true", help="Legacy pipeline flag.")
-    sync_parser.set_defaults(handler=_handle_feature_sync_removed)
-
     materialize_parser = feature_subparsers.add_parser(
         "materialize",
         help="Materialize local feature issues to GitHub and apply canonical branch policy.",
@@ -435,15 +424,6 @@ def _handle_plan_tasks_for_feature(args: Namespace, context: WorkflowContext) ->
     setattr(args, "command_label", "plan tasks for feature")
     setattr(args, "command_output", "plan.tasks.for.feature")
     return _handle_feature_sync(args, context)
-
-
-def _handle_feature_sync_removed(args: Namespace, context: WorkflowContext) -> int:
-    """Fail deterministically for removed `feature sync` command path."""
-    raise WorkflowCommandError(
-        "Command 'feature sync' was removed. "
-        "Use 'plan tasks for feature <feature_id>' or 'plan tasks for issue <issue_id>'.",
-        exit_code=4,
-    )
 
 
 def _handle_plan_tasks_for_issue(args: Namespace, context: WorkflowContext) -> int:

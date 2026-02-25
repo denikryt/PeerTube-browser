@@ -481,7 +481,7 @@
 ### 72) [M1][F4] Tracking sync command for DEV_MAP/TASK_LIST/PIPELINE
 **Problem:** local decomposition sync across trackers is manual and error-prone.
 
-**Solution option:** implement `feature sync --write` for one-change-set updates of all tracking files.
+**Solution option:** implement `plan tasks for feature --write` for one-change-set updates of all tracking files.
 
 #### **Concrete steps:**
 1. Implement sync input model for manual decomposition delta (`Issue -> Task`, markers, pipeline order/overlaps/outcome).

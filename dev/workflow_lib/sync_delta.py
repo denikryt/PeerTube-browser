@@ -15,7 +15,7 @@ TASK_REFERENCE_PATTERN = re.compile(r"^(?:[0-9]+[a-z]?|\$[A-Za-z][A-Za-z0-9_-]*)
 
 
 def load_sync_delta(delta_path: Path) -> dict[str, Any]:
-    """Load and validate the top-level shape of a feature sync delta file."""
+    """Load and validate the top-level shape of a decomposition delta file."""
     try:
         payload = json.loads(delta_path.read_text(encoding="utf-8"))
     except FileNotFoundError as error:

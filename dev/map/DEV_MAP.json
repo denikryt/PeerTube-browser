@@ -144,7 +144,7 @@
                   "id": "72",
                   "date": "2026-02-24",
                   "time": "19:17:55",
-                  "title": "Implement `feature sync --write` for DEV_MAP/TASK_LIST/PIPELINE",
+                  "title": "Implement `plan tasks for feature --write` for DEV_MAP/TASK_LIST/PIPELINE",
                   "status": "Done",
                   "summary": "Implement sync command that applies approved manual decomposition delta to the three local trackers in one change set."
                 },
@@ -432,7 +432,7 @@
             },
             {
               "id": "I13-F4-M1",
-              "title": "Auto-delete sync delta file after successful feature sync write",
+              "title": "Auto-delete sync delta file after successful decomposition write",
               "status": "Planned",
               "gh_issue_number": 93,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/93",

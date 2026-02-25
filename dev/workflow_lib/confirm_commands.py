@@ -156,44 +156,7 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
     dev_map = _load_json(context.dev_map_path)
     issue_ref = _find_issue(dev_map, issue_id)
     if issue_ref is None:
-        _, feature_local_num, feature_milestone_num = _parse_feature_chain_from_issue_id(issue_id)
-        feature_id = f"F{feature_local_num}-M{feature_milestone_num}"
-        feature_plan_cleanup = _cleanup_feature_plan_issue_artifacts(
-            feature_plans_path=context.feature_plans_path,
-            feature_id=feature_id,
-            issue_id=issue_id,
-            write=bool(args.write),
-        )
-        cleanup_result = _compute_tracker_cleanup_preview(context, set())
-        cleanup_result["feature_plans"] = feature_plan_cleanup
-        cleanup_result["dev_map"] = {
-            "already_absent": True,
-            "issue_id": issue_id,
-            "removed": False,
-        }
-        emit_json(
-            {
-                "child_tasks_marked_done": 0,
-                "cleanup": cleanup_result,
-                "close_github": bool(args.close_github),
-                "command": "confirm.issue",
-                "extra_confirmation_required": False,
-                "feature_id": feature_id,
-                "feature_issue_checklist_sync": {
-                    "attempted": False,
-                    "reason": "issue-node-not-found",
-                    "row_found": False,
-                    "updated": False,
-                },
-                "github_closed": False,
-                "issue_id": issue_id,
-                "issue_status_after": "Absent",
-                "noop": True,
-                "pending_child_tasks": [],
-                "write": bool(args.write),
-            }
-        )
-        return 0
+        raise WorkflowCommandError(f"Issue {issue_id} not found in DEV_MAP.", exit_code=4)
 
     issue_node = issue_ref["issue"]
     feature_node = issue_ref["feature"]
@@ -228,13 +191,7 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
         issue_id=issue_id,
         write=False,
     )
-    issue_node_cleanup_preview = {
-        "issue_id": issue_id,
-        "removed": False,
-        "would_remove": True,
-    }
     cleanup_preview["feature_plans"] = feature_plan_cleanup_preview
-    cleanup_preview["dev_map"] = issue_node_cleanup_preview
     if bool(args.write):
         for task in child_tasks:
             task["status"] = "Done"
@@ -245,17 +202,12 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
             issue_id=issue_id,
             write=True,
         )
-        issue_node_removed = _remove_issue_node_from_feature(feature_node=feature_node, issue_id=issue_id)
         cleanup_result = _apply_tracker_cleanup(
             context=context,
             dev_map=dev_map,
             task_ids_to_remove=set(child_task_ids),
         )
         cleanup_result["feature_plans"] = feature_plan_cleanup_result
-        cleanup_result["dev_map"] = {
-            "issue_id": issue_id,
-            "removed": issue_node_removed,
-        }
     else:
         cleanup_result = cleanup_preview
 
@@ -702,17 +654,6 @@ def _normalize_identifier(raw_identifier: str) -> str:
     return str(raw_identifier).strip().upper()
 
 
-def _parse_feature_chain_from_issue_id(issue_id: str) -> tuple[int, int, int]:
-    """Parse issue ID into local issue/feature/milestone numeric chain."""
-    match = re.fullmatch(r"^I(?P<issue>\d+)-F(?P<feature>\d+)-M(?P<milestone>\d+)$", issue_id)
-    if match is None:
-        raise WorkflowCommandError(
-            f"Invalid issue ID {issue_id!r}; expected I<local>-F<feature_local>-M<milestone>.",
-            exit_code=4,
-        )
-    return int(match.group("issue")), int(match.group("feature")), int(match.group("milestone"))
-
-
 def _load_json(path: Path) -> dict[str, Any]:
     """Read JSON document from path."""
     try:
@@ -787,27 +728,13 @@ def _find_feature(dev_map: dict[str, Any], feature_id: str) -> dict[str, Any] | 
     return None
 
 
-def _remove_issue_node_from_feature(feature_node: dict[str, Any], issue_id: str) -> bool:
-    """Remove one issue node from owning feature while preserving other issues."""
-    issues = feature_node.get("issues", [])
-    if not isinstance(issues, list):
-        raise WorkflowCommandError("Feature issue list must be a list for confirm issue cleanup.", exit_code=4)
-    original_count = len(issues)
-    feature_node["issues"] = [
-        issue
-        for issue in issues
-        if not isinstance(issue, dict) or str(issue.get("id", "")).strip().upper() != issue_id
-    ]
-    return len(feature_node["issues"]) < original_count
-
-
 def _cleanup_feature_plan_issue_artifacts(
     feature_plans_path: Path,
     feature_id: str,
     issue_id: str,
     write: bool,
 ) -> dict[str, Any]:
-    """Remove one issue order row + issue plan block from FEATURE_PLANS feature section."""
+    """Remove one issue order row and issue plan block from FEATURE_PLANS feature section."""
     text = feature_plans_path.read_text(encoding="utf-8")
     bounds = _find_h2_section_bounds(text, feature_id)
     if bounds is None:
@@ -875,7 +802,7 @@ def _remove_issue_from_issue_execution_order_block(section_lines: list[str], iss
                 "issue_title": match.group("issue_title").strip(),
             }
         )
-    remaining_rows = [row for row in parsed_rows if row["issue_id"] != issue_id]
+    remaining_rows = [row for row in parsed_rows if row["issue_id"].upper() != issue_id]
     issue_removed = len(remaining_rows) != len(parsed_rows)
     if not issue_removed:
         return False, False
@@ -913,7 +840,7 @@ def _remove_issue_plan_block(section_lines: list[str], issue_id: str) -> tuple[b
 
 
 def _find_issue_execution_order_heading(section_lines: list[str]) -> int | None:
-    """Find Issue Execution Order heading line index inside one feature section."""
+    """Find Issue Execution Order heading index inside one feature section."""
     for index, line in enumerate(section_lines):
         if line.strip() == ISSUE_EXECUTION_ORDER_HEADING:
             return index
@@ -921,7 +848,7 @@ def _find_issue_execution_order_heading(section_lines: list[str]) -> int | None:
 
 
 def _is_issue_plan_block_heading_for_issue(line: str, issue_id: str) -> bool:
-    """Check if one markdown heading line is an issue-plan block heading for issue_id."""
+    """Check if one markdown line is an issue-plan heading for target issue."""
     match = ISSUE_PLAN_BLOCK_HEADING_PATTERN.fullmatch(line.strip())
     if match is None:
         return False
@@ -929,7 +856,7 @@ def _is_issue_plan_block_heading_for_issue(line: str, issue_id: str) -> bool:
 
 
 def _find_h2_section_bounds(text: str, heading: str) -> tuple[int, int] | None:
-    """Locate a level-2 markdown section by exact heading title."""
+    """Locate level-2 markdown section by exact heading title."""
     lines = text.splitlines()
     starts: list[tuple[str, int]] = []
     for index, line in enumerate(lines):

@@ -41,7 +41,7 @@ Canonical per-issue plan block format inside a feature section:
 9. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
 10. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
 11. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
-12. `I13-F4-M1` - Auto-delete sync delta file after successful feature sync write
+12. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
 
 ### Dependencies
 - See issue-level dependency blocks below.
@@ -59,7 +59,7 @@ Canonical per-issue plan block format inside a feature section:
 - `dev/map/DEV_MAP.json`
 - `dev/map/DEV_MAP_SCHEMA.md`
 - `dev/FEATURE_PLANS.md`
-- `dev/workflow_lib/feature_commands.py` (`feature plan-lint`, `feature sync`, issue-order parsing helpers)
+- `dev/workflow_lib/feature_commands.py` (`feature plan-lint`, issue-order parsing helpers)
 - `tests/check-workflow-cli-smoke.sh`
 - `dev/TASK_EXECUTION_PROTOCOL.md`
 - `dev/FEATURE_PLANNING_PROTOCOL.md`

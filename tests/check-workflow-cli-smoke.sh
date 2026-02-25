@@ -456,10 +456,6 @@ run_expect_failure_contains \
   "gate-sync-non-approved" \
   "requires status Approved" \
   "${GATE_SYNC_REPO}/dev/workflow" plan tasks for feature --id F1-M1 --delta-file "${GATE_SYNC_REPO}/dev/empty_delta.json" --write
-run_expect_failure_contains \
-  "legacy-feature-sync-rejected" \
-  "Command 'feature sync' was removed." \
-  "${GATE_SYNC_REPO}/dev/workflow" feature sync --id F1-M1 --delta-file "${GATE_SYNC_REPO}/dev/empty_delta.json" --write
 
 # Gate-fail: materialize blocked when milestone-to-title mapping is missing.
 GATE_MATERIALIZE_REPO="${TMP_DIR}/gate-materialize-fixture"
@@ -765,10 +761,10 @@ assert_json_value "checklist-sync-confirm-issue-done" "feature_issue_checklist_s
 assert_json_value "checklist-sync-confirm-issue-done" "feature_issue_checklist_sync.updated" "true"
 assert_file_contains "checklist-sync-confirm-body" "${CHECKLIST_BODY_FILE}" "- [x] I2-F1-M1: Second issue"
 
-# Confirm issue cleanup: remove FEATURE_PLANS issue artifacts + DEV_MAP issue node + task/pipeline entries, then stay idempotent.
-CONFIRM_CLEANUP_REPO="${TMP_DIR}/confirm-cleanup-fixture"
-create_workflow_fixture_repo "${CONFIRM_CLEANUP_REPO}"
-cat >"${CONFIRM_CLEANUP_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+# Confirm issue keeps DEV_MAP issue/task nodes, but removes issue plan artifacts from FEATURE_PLANS.
+CONFIRM_PLAN_CLEANUP_REPO="${TMP_DIR}/confirm-plan-cleanup-fixture"
+create_workflow_fixture_repo "${CONFIRM_PLAN_CLEANUP_REPO}"
+cat >"${CONFIRM_PLAN_CLEANUP_REPO}/dev/map/DEV_MAP.json" <<'EOF'
 {
   "version": "1.0",
   "updated_at": "2026-02-24T00:00:00+00:00",
@@ -790,14 +786,14 @@ cat >"${CONFIRM_CLEANUP_REPO}/dev/map/DEV_MAP.json" <<'EOF'
           "issues": [
             {
               "id": "I3-F1-M1",
-              "title": "Cleanup issue",
+              "title": "Plan cleanup issue",
               "status": "Planned",
-              "gh_issue_number": 503,
-              "gh_issue_url": "https://github.com/owner/repo/issues/503",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
               "tasks": [
                 {
                   "id": "1",
-                  "title": "Cleanup task",
+                  "title": "Plan cleanup task",
                   "summary": "Summary",
                   "status": "Planned",
                   "date": "2026-02-24",
@@ -815,7 +811,7 @@ cat >"${CONFIRM_CLEANUP_REPO}/dev/map/DEV_MAP.json" <<'EOF'
   ]
 }
 EOF
-cat >"${CONFIRM_CLEANUP_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+cat >"${CONFIRM_PLAN_CLEANUP_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
 # Feature Plans
 
 ## F1-M1
@@ -826,9 +822,9 @@ cat >"${CONFIRM_CLEANUP_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
 1. smoke
 
 ### Issue Execution Order
-1. `I3-F1-M1` - Cleanup issue
+1. `I3-F1-M1` - Plan cleanup issue
 
-### I3-F1-M1 - Cleanup issue
+### I3-F1-M1 - Plan cleanup issue
 
 #### Dependencies
 - smoke
@@ -842,24 +838,24 @@ cat >"${CONFIRM_CLEANUP_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
 ### Issue/Task Decomposition Assessment
 - smoke
 EOF
-cat >"${CONFIRM_CLEANUP_REPO}/dev/TASK_LIST.json" <<'EOF'
+cat >"${CONFIRM_PLAN_CLEANUP_REPO}/dev/TASK_LIST.json" <<'EOF'
 {
   "schema_version": "1.0",
   "tasks": [
     {
       "id": "1",
       "marker": "[M1][F1]",
-      "title": "Cleanup task",
+      "title": "Plan cleanup task",
       "problem": "Need cleanup check.",
       "solution_option": "Run confirm issue cleanup flow.",
       "concrete_steps": [
-        "Run confirm issue and verify all artifacts are removed."
+        "Run confirm issue and verify artifacts."
       ]
     }
   ]
 }
 EOF
-cat >"${CONFIRM_CLEANUP_REPO}/dev/TASK_EXECUTION_PIPELINE.json" <<'EOF'
+cat >"${CONFIRM_PLAN_CLEANUP_REPO}/dev/TASK_EXECUTION_PIPELINE.json" <<'EOF'
 {
   "schema_version": "1.0",
   "execution_sequence": [
@@ -885,48 +881,27 @@ cat >"${CONFIRM_CLEANUP_REPO}/dev/TASK_EXECUTION_PIPELINE.json" <<'EOF'
 }
 EOF
 run_expect_success \
-  "confirm-cleanup-first-run" \
-  "${CONFIRM_CLEANUP_REPO}/dev/workflow" confirm issue --id I3-F1-M1 done --write --force --no-close-github
-assert_json_value "confirm-cleanup-first-run" "cleanup.feature_plans.issue_order_row_removed" "true"
-assert_json_value "confirm-cleanup-first-run" "cleanup.feature_plans.issue_block_removed" "true"
-assert_json_value "confirm-cleanup-first-run" "cleanup.dev_map.removed" "true"
-assert_json_value "confirm-cleanup-first-run" "cleanup.task_list_entries_removed" "1"
-assert_json_value "confirm-cleanup-first-run" "cleanup.pipeline.execution_rows_removed" "1"
-assert_json_value "confirm-cleanup-first-run" "cleanup.pipeline.blocks_removed" "1"
-assert_json_value "confirm-cleanup-first-run" "cleanup.pipeline.overlap_rows_removed" "1"
-assert_file_not_contains 'confirm-cleanup-plan-row-removed' "${CONFIRM_CLEANUP_REPO}/dev/FEATURE_PLANS.md" '`I3-F1-M1` - Cleanup issue'
-assert_file_not_contains "confirm-cleanup-plan-block-removed" "${CONFIRM_CLEANUP_REPO}/dev/FEATURE_PLANS.md" "### I3-F1-M1 - Cleanup issue"
+  "confirm-plan-cleanup-run" \
+  "${CONFIRM_PLAN_CLEANUP_REPO}/dev/workflow" confirm issue --id I3-F1-M1 done --write --force --no-close-github
+assert_json_value "confirm-plan-cleanup-run" "cleanup.feature_plans.issue_order_row_removed" "true"
+assert_json_value "confirm-plan-cleanup-run" "cleanup.feature_plans.issue_block_removed" "true"
+assert_file_not_contains 'confirm-plan-cleanup-row-removed' "${CONFIRM_PLAN_CLEANUP_REPO}/dev/FEATURE_PLANS.md" '`I3-F1-M1` - Plan cleanup issue'
+assert_file_not_contains "confirm-plan-cleanup-block-removed" "${CONFIRM_PLAN_CLEANUP_REPO}/dev/FEATURE_PLANS.md" "### I3-F1-M1 - Plan cleanup issue"
 assert_jq_file_value \
-  "confirm-cleanup-dev-map-issue-removed" \
-  "${CONFIRM_CLEANUP_REPO}/dev/map/DEV_MAP.json" \
+  "confirm-plan-cleanup-dev-map-issue-kept" \
+  "${CONFIRM_PLAN_CLEANUP_REPO}/dev/map/DEV_MAP.json" \
   '.milestones[0].features[0].issues | length' \
-  "0"
+  "1"
 assert_jq_file_value \
-  "confirm-cleanup-task-list-removed" \
-  "${CONFIRM_CLEANUP_REPO}/dev/TASK_LIST.json" \
-  '.tasks | length' \
-  "0"
+  "confirm-plan-cleanup-dev-map-issue-done" \
+  "${CONFIRM_PLAN_CLEANUP_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues[0].status' \
+  "Done"
 assert_jq_file_value \
-  "confirm-cleanup-pipeline-seq-removed" \
-  "${CONFIRM_CLEANUP_REPO}/dev/TASK_EXECUTION_PIPELINE.json" \
-  '.execution_sequence | length' \
-  "0"
-assert_jq_file_value \
-  "confirm-cleanup-pipeline-blocks-removed" \
-  "${CONFIRM_CLEANUP_REPO}/dev/TASK_EXECUTION_PIPELINE.json" \
-  '.functional_blocks | length' \
-  "0"
-assert_jq_file_value \
-  "confirm-cleanup-pipeline-overlaps-removed" \
-  "${CONFIRM_CLEANUP_REPO}/dev/TASK_EXECUTION_PIPELINE.json" \
-  '.overlaps | length' \
-  "0"
-run_expect_success \
-  "confirm-cleanup-repeat-noop" \
-  "${CONFIRM_CLEANUP_REPO}/dev/workflow" confirm issue --id I3-F1-M1 done --write --force --no-close-github
-assert_json_value "confirm-cleanup-repeat-noop" "noop" "true"
-assert_json_value "confirm-cleanup-repeat-noop" "cleanup.dev_map.already_absent" "true"
-assert_json_value "confirm-cleanup-repeat-noop" "issue_status_after" "Absent"
+  "confirm-plan-cleanup-dev-map-task-done" \
+  "${CONFIRM_PLAN_CLEANUP_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues[0].tasks[0].status' \
+  "Done"
 
 # Gate-fail: task preflight blocked for missing materialization metadata.
 GATE_PREFLIGHT_REPO="${TMP_DIR}/gate-preflight-fixture"
