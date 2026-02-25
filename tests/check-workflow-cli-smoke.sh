@@ -244,16 +244,6 @@ run_expect_success "chain-plan-init" "${CHAIN_REPO}/dev/workflow" feature plan-i
 assert_json_value "chain-plan-init" "action" "created"
 run_expect_success "chain-plan-lint" "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 assert_json_value "chain-plan-lint" "valid" "true"
-python3 - "${CHAIN_REPO}/dev/map/DEV_MAP.json" <<'PY'
-import json
-import pathlib
-import sys
-
-path = pathlib.Path(sys.argv[1])
-payload = json.loads(path.read_text(encoding="utf-8"))
-payload["milestones"][0]["features"][0]["status"] = "Approved"
-path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-PY
 run_expect_success "chain-sync" "${CHAIN_REPO}/dev/workflow" plan tasks for feature --id F9-M1 --delta-file "${CHAIN_REPO}/dev/sync_delta.json" --write --allocate-task-ids --update-pipeline
 assert_json_value "chain-sync" "action" "planned-tasks"
 assert_json_value "chain-sync" "task_count_after" "1"
@@ -266,6 +256,7 @@ assert_jq_file_value \
   '.milestones[0].features[0].issues[0].status' \
   "Pending"
 run_expect_success "chain-execution-plan" "${CHAIN_REPO}/dev/workflow" feature execution-plan --id F9-M1
+assert_json_value "chain-execution-plan" "feature_status" "Planned"
 assert_json_value "chain-execution-plan" "task_count" "1"
 assert_json_value "chain-execution-plan" "tasks.0.id" "1"
 assert_json_value "chain-execution-plan" "tasks.0.issue_id" "I1-F9-M1"
@@ -463,6 +454,19 @@ cat >"${GATE_SYNC_REPO}/dev/map/DEV_MAP.json" <<'EOF'
   ]
 }
 EOF
+cat >"${GATE_SYNC_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F1-M1
+### Dependencies
+- smoke
+
+### Decomposition
+1. smoke
+
+### Issue/Task Decomposition Assessment
+- smoke
+EOF
 cat >"${GATE_SYNC_REPO}/dev/empty_delta.json" <<'EOF'
 {}
 EOF
@@ -473,6 +477,14 @@ assert_json_value "gate-sync-no-approve-gate" "action" "planned-tasks"
 assert_file_not_contains \
   "gate-sync-no-approve-error-text" \
   "${TMP_DIR}/gate-sync-no-approve-gate.log" \
+  "Approved"
+run_expect_success \
+  "gate-validate-no-approve-gate" \
+  "${GATE_SYNC_REPO}/dev/workflow" validate --scope tracking --feature F1-M1
+assert_json_value "gate-validate-no-approve-gate" "valid" "true"
+assert_file_not_contains \
+  "gate-validate-no-approve-error-text" \
+  "${TMP_DIR}/gate-validate-no-approve-gate.log" \
   "Approved"
 
 # Gate-fail: materialize blocked when milestone-to-title mapping is missing.
@@ -493,7 +505,7 @@ cat >"${GATE_MATERIALIZE_REPO}/dev/map/DEV_MAP.json" <<'EOF'
         {
           "id": "F1-M1",
           "title": "Feature F1-M1",
-          "status": "Approved",
+          "status": "Planned",
           "track": "System/Test",
           "gh_issue_number": null,
           "gh_issue_url": null,
@@ -529,6 +541,10 @@ run_expect_failure_contains \
   "gate-materialize-missing-milestone" \
   "has empty title in DEV_MAP" \
   "${GATE_MATERIALIZE_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync
+assert_file_not_contains \
+  "gate-materialize-no-approve-error-text" \
+  "${TMP_DIR}/gate-materialize-missing-milestone.log" \
+  "Approved"
 
 # Materialize issues-create: mapped issues must be skipped (no gh issue edit); only unmapped issues are created.
 CREATE_ONLY_REPO="${TMP_DIR}/create-only-fixture"

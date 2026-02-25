@@ -7,7 +7,7 @@ Canonical structure and ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md`.
 ## Scope ownership
 
 - This file owns planning artifacts and planning quality gates only.
-- Command semantics/order (`create/plan/approve/plan tasks for/materialize/execute/confirm`) are owned by `dev/TASK_EXECUTION_PROTOCOL.md`.
+- Command semantics/order (`create/plan/plan issue/plan tasks for/materialize/execute/confirm`) are owned by `dev/TASK_EXECUTION_PROTOCOL.md`.
 - Hard constraints are owned by `AGENTS.md`.
 
 ## 1) Planning Input Contract
@@ -73,7 +73,7 @@ Checklist:
   - acceptance checks per task.
 - Avoid generic wording (`improve`, `enhance`, `refine`) without concrete mechanism, files, or validation criteria.
 
-### Gate A: Pre-approve
+### Gate A: Pre-decomposition review
 
 Checklist:
 - strict step flow exists and is executable,
@@ -84,7 +84,7 @@ Checklist:
 ### Gate B: Pre-sync (local decomposition)
 
 Checklist:
-- target feature plan is explicitly approved,
+- target feature plan is lint-clean and reviewed,
 - decomposition is represented as local `Issue -> Task` structure,
 - planned task markers/ownership are consistent with `DEV_MAP` parent chain,
 - decomposition scope is minimal and executable.
