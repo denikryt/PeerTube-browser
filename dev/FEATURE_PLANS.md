@@ -31,13 +31,12 @@ Canonical per-issue plan block format inside a feature section:
 
 ### Issue Execution Order
 1. `I22-F4-M1` - Feature materialize: support multi-issue queue in one command run
-2. `I19-F4-M1` - Feature plan issue execution order block as the source of issue sequencing
-3. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
-4. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
-5. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
-6. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
-7. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
-8. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
+2. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
+3. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
+4. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
+5. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
+6. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
+7. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
 ### Dependencies
 - See issue-level dependency blocks below.
 
@@ -122,36 +121,3 @@ Canonical per-issue plan block format inside a feature section:
 2. Why `3`:
    - integration layer, materialize reconcile logic, and regression coverage are separate risk domains and should be validated independently.
 
-### I19-F4-M1 - Feature plan issue execution order block as the source of issue sequencing
-
-#### Dependencies
-- `dev/FEATURE_PLANS.md`
-- `dev/map/DEV_MAP.json`
-- `dev/workflow_lib/feature_commands.py` (`feature execution-plan`, `feature plan-lint`)
-- `dev/TASK_EXECUTION_PROTOCOL.md`
-- `dev/FEATURE_WORKFLOW.md`
-
-#### Decomposition
-1. Define one canonical issue ordering block inside each feature plan section.
-   - Add `### Issue Execution Order` under `## F*-M*` plan sections.
-   - Store order as a numbered list by position (no extra numeric `order` field).
-2. Set inclusion rule for items in the order block.
-   - Include all active issues from `DEV_MAP` for that feature (`status != Done` and `status != Rejected`), even when detailed per-issue plan text is missing.
-   - Use one uniform row shape with issue ID and title: ``<issue_id>`` - `<issue_title>`.
-3. Add validation for order block consistency.
-   - Extend `feature plan-lint` with checks: unique issue IDs in the order block, valid ID format, and no unknown issues outside feature scope.
-   - Validate against `DEV_MAP`: no missing active issues and no stale IDs in order list.
-4. Integrate order block into execution guidance.
-   - Update `feature execution-plan` output to include the next eligible issue from the order block.
-   - Keep task-level pipeline logic unchanged; issue ordering is read from `FEATURE_PLANS`.
-5. Cover with smoke/docs updates.
-   - Add smoke cases for valid order block and mismatch errors.
-   - Update protocol/workflow docs with the new source-of-truth rule for issue sequence.
-
-#### Issue/Task Decomposition Assessment
-1. Recommended split: `task_count = 3`.
-   - Task 1: format contract + lint checks for issue order block.
-   - Task 2: `execution-plan` integration to surface next issue from plan order.
-   - Task 3: smoke/docs alignment and regression coverage.
-2. Why `3`:
-   - data contract, execution integration, and validation coverage are independent risk areas and should be delivered separately.
