@@ -102,6 +102,16 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     plan_lint_parser.add_argument("--strict", action="store_true", help="Enable strict lint checks.")
     plan_lint_parser.set_defaults(handler=_handle_feature_plan_lint)
 
+    plan_issue_parser = feature_subparsers.add_parser(
+        "plan-issue",
+        help="Create or update one canonical issue-plan block in FEATURE_PLANS.",
+    )
+    plan_issue_parser.add_argument("--id", required=True, help="Issue ID.")
+    plan_issue_parser.add_argument("--feature-id", help="Optional owner feature assertion.")
+    plan_issue_parser.add_argument("--write", action="store_true", help="Persist plan block update to file.")
+    plan_issue_parser.add_argument("--strict", action="store_true", help="Enable strict scoped lint checks.")
+    plan_issue_parser.set_defaults(handler=_handle_feature_plan_issue)
+
     materialize_parser = feature_subparsers.add_parser(
         "materialize",
         help="Materialize local feature issues to GitHub and apply canonical branch policy.",
@@ -361,6 +371,35 @@ def _handle_feature_plan_lint(args: Namespace, context: WorkflowContext) -> int:
             "messages": lint_result["messages"],
             "strict": bool(args.strict),
             "valid": True,
+        }
+    )
+    return 0
+
+
+def _handle_feature_plan_issue(args: Namespace, context: WorkflowContext) -> int:
+    """Handle issue-plan command with deterministic output contract fields."""
+    issue_id, feature_local_num, feature_milestone_num = _parse_issue_id(args.id)
+    feature_id = f"F{feature_local_num}-M{feature_milestone_num}"
+    feature_assertion = str(getattr(args, "feature_id", "")).strip()
+    if feature_assertion:
+        normalized_feature_assertion, _ = _parse_feature_id(feature_assertion)
+        if normalized_feature_assertion != feature_id:
+            raise WorkflowCommandError(
+                f"plan-issue feature assertion mismatch: issue {issue_id} belongs to {feature_id}, got {normalized_feature_assertion}.",
+                exit_code=4,
+            )
+
+    emit_json(
+        {
+            "action": "would-update",
+            "command": "feature.plan-issue",
+            "feature_id": feature_id,
+            "issue_id": issue_id,
+            "issue_order_checked": False,
+            "issue_order_mutated": False,
+            "plan_block_updated": False,
+            "strict": bool(args.strict),
+            "write": bool(args.write),
         }
     )
     return 0
