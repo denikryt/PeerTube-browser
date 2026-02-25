@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T00:19:19+02:00",
+  "updated_at": "2026-02-26T00:24:25+02:00",
   "task_count": 140,
   "milestones": [
     {
@@ -443,8 +443,8 @@
               "id": "I14-F4-M1",
               "title": "Replace checkbox-based GitHub issue body with description-driven readable content",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 104,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/104",
               "tasks": [
                 {
                   "id": "130",
@@ -492,8 +492,8 @@
               "id": "I15-F4-M1",
               "title": "Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 105,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/105",
               "tasks": [
                 {
                   "id": "135",
@@ -558,8 +558,8 @@
               "id": "I17-F4-M1",
               "title": "Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 106,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/106",
               "tasks": [
                 {
                   "id": "138",
