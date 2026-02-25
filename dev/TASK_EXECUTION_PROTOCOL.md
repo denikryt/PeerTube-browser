@@ -98,6 +98,7 @@ Use explicit completion commands:
 - `confirm issue <issue_id> done`
 - `confirm feature <feature_id> done`
 - `confirm standalone-issue <si_id> done`
+- `reject issue <issue_id>`
 
 Apply the corresponding completion update in one edit run:
 
@@ -133,7 +134,14 @@ Apply the corresponding completion update in one edit run:
    - Verify all mapped child tasks are already confirmed done.
    - Update local standalone issue status to `Done` in `dev/map/DEV_MAP.json`.
    - Close mapped GitHub standalone issue in the same completion update run.
-5. If process rules changed, update this file in the same edit run.
+5. `reject issue <issue_id>`
+   - Resolve target feature issue node by ID and validate ownership chain.
+   - Persist local issue status to `Rejected` (idempotent if already `Rejected`).
+   - If mapped GitHub issue exists and close is enabled:
+     - append deterministic rejection marker in issue body,
+     - close mapped issue in the same reject run.
+   - If GitHub mapping is missing, keep reject command successful with local-only transition and explicit `missing_fields` output.
+6. If process rules changed, update this file in the same edit run.
 
 ## Feature planning/materialization flow
 

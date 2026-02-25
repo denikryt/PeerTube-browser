@@ -156,6 +156,7 @@ run_expect_success "help-root" "${WORKFLOW[@]}" --help
 run_expect_success "help-feature" "${WORKFLOW[@]}" feature --help
 run_expect_success "help-task" "${WORKFLOW[@]}" task --help
 run_expect_success "help-confirm" "${WORKFLOW[@]}" confirm --help
+run_expect_success "help-reject" "${WORKFLOW[@]}" reject --help
 run_expect_success "help-validate" "${WORKFLOW[@]}" validate --help
 
 run_expect_failure "invalid-group" "${WORKFLOW[@]}" invalid
@@ -1183,6 +1184,129 @@ run_expect_success \
   "${DESCRIPTION_BODY_REPO}/dev/workflow" confirm issue --id I2-F1-M1 done --write --force
 assert_json_value "description-body-confirm-issue-done" "feature_issue_checklist_sync.attempted" "false"
 assert_json_value "description-body-confirm-issue-done" "feature_issue_checklist_sync.updated" "false"
+
+# Reject flow: mapped close+marker, missing mapping local-only, repeated reject idempotency.
+REJECT_FLOW_REPO="${TMP_DIR}/reject-flow-fixture"
+create_workflow_fixture_repo "${REJECT_FLOW_REPO}"
+cat >"${REJECT_FLOW_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+{
+  "version": "1.0",
+  "updated_at": "2026-02-24T00:00:00+00:00",
+  "task_count": 0,
+  "statuses": ["Pending", "Planned", "Tasked", "Done", "Approved", "Rejected"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Milestone 1",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Feature F1-M1",
+          "status": "Approved",
+          "gh_issue_number": 500,
+          "gh_issue_url": "https://github.com/owner/repo/issues/500",
+          "issues": [
+            {
+              "id": "I1-F1-M1",
+              "title": "Mapped reject issue",
+              "status": "Tasked",
+              "gh_issue_number": 401,
+              "gh_issue_url": "https://github.com/owner/repo/issues/401",
+              "tasks": []
+            },
+            {
+              "id": "I2-F1-M1",
+              "title": "Unmapped reject issue",
+              "status": "Tasked",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
+        }
+      ],
+      "standalone_issues": [],
+      "non_feature_items": []
+    }
+  ]
+}
+EOF
+REJECT_MAPPED_BODY_FILE="${TMP_DIR}/reject-mapped-body.md"
+cat >"${REJECT_MAPPED_BODY_FILE}" <<'EOF'
+## Scope
+Mapped reject issue
+EOF
+REJECT_FAKE_GH_DIR="${TMP_DIR}/reject-fake-gh-bin"
+REJECT_FAKE_GH_LOG="${TMP_DIR}/reject-fake-gh.log"
+mkdir -p "${REJECT_FAKE_GH_DIR}"
+cat >"${REJECT_FAKE_GH_DIR}/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "$*" >> "${REJECT_FAKE_GH_LOG}"
+if [[ "$1" == "repo" && "$2" == "view" ]]; then
+  echo '{"nameWithOwner":"owner/repo","url":"https://github.com/owner/repo"}'
+  exit 0
+fi
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  python3 - "${REJECT_MAPPED_BODY_FILE}" <<'PY'
+import json
+import pathlib
+import sys
+body_path = pathlib.Path(sys.argv[1])
+print(json.dumps({"body": body_path.read_text(encoding="utf-8")}))
+PY
+  exit 0
+fi
+if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  issue_number="$3"
+  shift 3
+  body_value=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --body)
+        body_value="$2"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  if [[ "$issue_number" == "401" ]]; then
+    printf "%s" "${body_value}" > "${REJECT_MAPPED_BODY_FILE}"
+  fi
+  exit 0
+fi
+if [[ "$1" == "issue" && "$2" == "close" ]]; then
+  exit 0
+fi
+echo "unsupported gh call: $*" >&2
+exit 1
+EOF
+chmod +x "${REJECT_FAKE_GH_DIR}/gh"
+run_expect_success \
+  "reject-flow-mapped-write" \
+  env PATH="${REJECT_FAKE_GH_DIR}:${PATH}" REJECT_FAKE_GH_LOG="${REJECT_FAKE_GH_LOG}" REJECT_MAPPED_BODY_FILE="${REJECT_MAPPED_BODY_FILE}" \
+  "${REJECT_FLOW_REPO}/dev/workflow" reject issue --id I1-F1-M1 --write
+assert_json_value "reject-flow-mapped-write" "status_after" "Rejected"
+assert_json_value "reject-flow-mapped-write" "github_rejection.attempted" "true"
+assert_json_value "reject-flow-mapped-write" "github_rejection.closed" "true"
+assert_json_value "reject-flow-mapped-write" "github_rejection.marker_added" "true"
+assert_file_contains "reject-flow-mapped-marker" "${REJECT_MAPPED_BODY_FILE}" "<!-- workflow:issue-rejected:I1-F1-M1 -->"
+run_expect_success \
+  "reject-flow-repeated-write" \
+  env PATH="${REJECT_FAKE_GH_DIR}:${PATH}" REJECT_FAKE_GH_LOG="${REJECT_FAKE_GH_LOG}" REJECT_MAPPED_BODY_FILE="${REJECT_MAPPED_BODY_FILE}" \
+  "${REJECT_FLOW_REPO}/dev/workflow" reject issue --id I1-F1-M1 --write
+assert_json_value "reject-flow-repeated-write" "status_before" "Rejected"
+assert_json_value "reject-flow-repeated-write" "github_rejection.reason" "already-rejected-no-op"
+run_expect_success \
+  "reject-flow-unmapped-write" \
+  env PATH="${REJECT_FAKE_GH_DIR}:${PATH}" REJECT_FAKE_GH_LOG="${REJECT_FAKE_GH_LOG}" REJECT_MAPPED_BODY_FILE="${REJECT_MAPPED_BODY_FILE}" \
+  "${REJECT_FLOW_REPO}/dev/workflow" reject issue --id I2-F1-M1 --write
+assert_json_value "reject-flow-unmapped-write" "status_after" "Rejected"
+assert_json_value "reject-flow-unmapped-write" "github_rejection.reason" "issue-not-mapped"
 
 # Confirm issue keeps DEV_MAP issue/task nodes, but removes issue plan artifacts from FEATURE_PLANS.
 CONFIRM_PLAN_CLEANUP_REPO="${TMP_DIR}/confirm-plan-cleanup-fixture"

@@ -67,5 +67,8 @@ Compact command index for milestone/feature operations.
 - `confirm ... done`
   - Purpose: apply completion updates after explicit user confirmation.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Completion flow`.
+- `reject issue <issue_id>`
+  - Purpose: explicitly transition feature issue to `Rejected` and close mapped GitHub issue with deterministic rejection marker when mapping exists.
+  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Completion flow`.
 
 This file must not contain duplicated normative procedure text owned by canonical protocol files.
