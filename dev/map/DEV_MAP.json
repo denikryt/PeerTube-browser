@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T00:03:28+02:00",
+  "updated_at": "2026-02-26T00:05:02+02:00",
   "task_count": 129,
   "milestones": [
     {
@@ -796,8 +796,8 @@
               "id": "I26-F4-M1",
               "title": "Add plan tasks for issues command for batch issue decomposition in one run",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 103,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/103",
               "tasks": [
                 {
                   "id": "127",
