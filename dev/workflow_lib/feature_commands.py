@@ -378,8 +378,10 @@ def _handle_feature_plan_lint(args: Namespace, context: WorkflowContext) -> int:
 
 def _handle_feature_plan_issue(args: Namespace, context: WorkflowContext) -> int:
     """Handle issue-plan command with deterministic output contract fields."""
-    issue_id, feature_local_num, feature_milestone_num = _parse_issue_id(args.id)
-    feature_id = f"F{feature_local_num}-M{feature_milestone_num}"
+    issue_id, _, _ = _parse_issue_id(args.id)
+    dev_map = _load_json(context.dev_map_path)
+    issue_resolution = _resolve_issue_owner_feature(dev_map=dev_map, issue_id=issue_id)
+    feature_id = issue_resolution["feature_id"]
     feature_assertion = str(getattr(args, "feature_id", "")).strip()
     if feature_assertion:
         normalized_feature_assertion, _ = _parse_feature_id(feature_assertion)
@@ -1493,6 +1495,38 @@ def _find_feature(dev_map: dict[str, Any], feature_id: str) -> dict[str, Any] | 
             if feature.get("id") == feature_id:
                 return {"feature": feature, "milestone": milestone}
     return None
+
+
+def _resolve_issue_owner_feature(dev_map: dict[str, Any], issue_id: str) -> dict[str, Any]:
+    """Resolve issue node and owning feature from DEV_MAP with uniqueness checks."""
+    matches: list[dict[str, Any]] = []
+    for milestone in dev_map.get("milestones", []):
+        for feature in milestone.get("features", []):
+            feature_id = str(feature.get("id", "")).strip()
+            issues = feature.get("issues", [])
+            if not isinstance(issues, list):
+                continue
+            for issue in issues:
+                candidate_issue_id = str(issue.get("id", "")).strip()
+                if candidate_issue_id != issue_id:
+                    continue
+                matches.append(
+                    {
+                        "feature": feature,
+                        "feature_id": feature_id,
+                        "issue": issue,
+                        "milestone": milestone,
+                    }
+                )
+    if not matches:
+        raise WorkflowCommandError(f"Issue {issue_id} not found in DEV_MAP.", exit_code=4)
+    if len(matches) > 1:
+        owner_ids = ", ".join(sorted({str(match["feature_id"]) for match in matches}))
+        raise WorkflowCommandError(
+            f"Issue {issue_id} has multiple owner matches in DEV_MAP: {owner_ids}.",
+            exit_code=4,
+        )
+    return matches[0]
 
 
 def _build_feature_node(feature_id: str, title: str, track: str) -> dict[str, Any]:
