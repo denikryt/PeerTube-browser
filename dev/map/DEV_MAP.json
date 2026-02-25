@@ -3,9 +3,10 @@
   "statuses": [
     "Planned",
     "Approved",
+    "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-25T03:56:53+02:00",
+  "updated_at": "2026-02-25T03:59:25+02:00",
   "task_count": 95,
   "milestones": [
     {
@@ -406,7 +407,7 @@
             {
               "id": "I12-F4-M1",
               "title": "Add issue-level Approved gate before execution/materialization",
-              "status": "Planned",
+              "status": "Rejected",
               "gh_issue_number": 92,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/92",
               "tasks": [

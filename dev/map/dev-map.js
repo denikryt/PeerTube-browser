@@ -45,18 +45,23 @@ function statusVisible(status) {
   if (typeof status !== "string" || status.length === 0) {
     return true;
   }
+  const normalizedStatus = status.trim().toLowerCase();
   const planned = document.getElementById("filter-planned").checked;
   const done = document.getElementById("filter-done").checked;
-  if (status === "Planned") {
+  if (normalizedStatus === "planned") {
     return planned;
   }
-  if (status === "Approved") {
+  if (normalizedStatus === "approved") {
     return planned;
   }
-  if (status === "Done") {
+  if (normalizedStatus === "rejected") {
+    return planned;
+  }
+  if (normalizedStatus === "done") {
     return done;
   }
-  return false;
+  // Keep unknown statuses visible under the non-done filter to avoid accidental node disappearance.
+  return planned;
 }
 
 /**
@@ -66,7 +71,11 @@ function statusVisible(status) {
  */
 function createStatusBadge(status) {
   const badge = document.createElement("span");
-  const statusClass = status === "Done" ? "status-done" : "status-planned";
+  const normalizedStatus = String(status || "").trim().toLowerCase();
+  const statusClass =
+    normalizedStatus === "done" ? "status-done" :
+    normalizedStatus === "rejected" ? "status-rejected" :
+    "status-planned";
   badge.className = `status ${statusClass}`;
   badge.textContent = status;
   return badge;
