@@ -17,7 +17,7 @@ Required input for `plan feature <id>`:
 - `feature_title`: short title.
 - `milestone_id`: target milestone (`M1..Mn`).
 - `dependencies`: task/feature/issue dependencies.
-- `overlaps`: affected tasks in `dev/TASK_EXECUTION_PIPELINE.md`.
+- `overlaps`: affected tasks in `dev/TASK_EXECUTION_PIPELINE.json`.
 - `step_flow`: strict command sequence with per-step actions (`what to run`, `what script does`, `what executor does`, `step result`).
 - `issue_task_decomposition_assessment`: explicit assessment whether to split or not split; if split, minimal logical issues/tasks.
 
@@ -32,11 +32,11 @@ Required output in `dev/FEATURE_PLANS.md`:
 
 - One feature maps to one primary feature issue (`type:feature`) on GitHub.
 - Additional work issues (`type:work`) are allowed when scope is too large for one implementation thread.
-- Tasks stay in `dev/TASK_LIST.md` and are not forced into 1-task-1-issue mapping.
+- Tasks stay in `dev/TASK_LIST.json` and are not forced into 1-task-1-issue mapping.
 - Every task must be attached to a parent chain in `dev/map/DEV_MAP.json`:
   `Milestone -> Feature -> Issue -> Task`.
   If parent nodes do not exist yet, create them first using `dev/map/DEV_MAP_SCHEMA.md`.
-- Every task in `dev/TASK_LIST.md` must carry markers `[M*][F*]` that match `dev/map/DEV_MAP.json`.
+- Every task in `dev/TASK_LIST.json` must carry markers `[M*][F*]` that match `dev/map/DEV_MAP.json`.
 
 ## 3) Planning Quality Gates
 

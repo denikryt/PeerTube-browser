@@ -53,16 +53,16 @@ Canonical rule map (to prevent duplication drift):
    - Completion command semantics (including cascade behavior such as `confirm feature <id> done`) are defined in `dev/TASK_EXECUTION_PROTOCOL.md` (`Completion flow` section).
 2. Keep implemented tasks in their current state (not completed) while awaiting user verification.
 3. `dev/map/DEV_MAP.json` is the planning source of truth for hierarchy (`Milestone -> Feature -> Issue -> Task` and `Milestone -> StandaloneIssue -> Task`) and for non-milestone status fields.
-4. `dev/TASK_LIST.md`, `dev/TASK_EXECUTION_PIPELINE.md`, and `dev/map/DEV_MAP.json` must stay synchronized when adding/updating tasks/features/standalone issues.
-5. Each task entry in `dev/TASK_LIST.md` must include ownership markers:
+4. `dev/TASK_LIST.json`, `dev/TASK_EXECUTION_PIPELINE.json`, and `dev/map/DEV_MAP.json` must stay synchronized when adding/updating tasks/features/standalone issues.
+5. Each task entry in `dev/TASK_LIST.json` must include ownership markers:
    - product path: `[M*][F*]`
    - standalone path: `[M*][SI*]`
    If the task node exists in `dev/map/DEV_MAP.json`, markers must match that parent chain.
 6. Before reporting a task as implemented, perform a mandatory final check that all requirements from the exact task text are covered; explicitly list any unmet requirement.
-7. New tasks in `dev/TASK_LIST.md` must be added only at the end of the file as a single linear list entry; do not place new tasks into category sections and do not regroup existing tasks by categories.
+7. New tasks in `dev/TASK_LIST.json` must be appended only at the end of the `tasks` array as a linear list; do not regroup existing tasks.
 8. New numeric task IDs must be allocated only from `task_count` in `dev/map/DEV_MAP.json` using `new_id = task_count + 1`; then set `task_count = new_id` in the same change set.
-9. Do not derive new task IDs by scanning `dev/TASK_LIST.md` or by relying on visible "last task" entries.
-10. Every new or rewritten task entry in `dev/TASK_LIST.md` must include a `#### **Concrete steps:**` section with explicit numbered implementation steps (actionable commands/edits/checks), not only conceptual wording.
+9. Do not derive new task IDs by scanning `dev/TASK_LIST.json` or by relying on visible "last task" entries.
+10. Every new or rewritten task entry in `dev/TASK_LIST.json` must include a `concrete_steps` field with explicit numbered implementation steps (actionable commands/edits/checks), not only conceptual wording.
 11. When creating or rewriting tasks, include only minimally sufficient actions/changes required to satisfy the stated requirement and make the result work; do not add optional improvements, extra hardening, refactors, or other non-required work unless explicitly requested by the user.
 
 ## Feature planning and materialization constraints
@@ -90,15 +90,15 @@ Canonical rule map (to prevent duplication drift):
 7. If the approved feature section in `dev/FEATURE_PLANS.md` is changed later, continue only after a new explicit `approve feature plan` and status re-set to `Approved` in `dev/map/DEV_MAP.json`.
 8. `sync issues to task list for <id>` must run only when the target feature status in `dev/map/DEV_MAP.json` is `Approved`, and it must create/update local `Issue -> Task` decomposition in the same change set across:
    - `dev/map/DEV_MAP.json` (attach under selected parent chain: `Milestone -> Feature -> Issue` or `Milestone -> StandaloneIssue`),
-   - `dev/TASK_LIST.md` (with `[M*][F*]` or `[M*][SI*]` markers),
-   - `dev/TASK_EXECUTION_PIPELINE.md` (overlaps/dependencies).
+   - `dev/TASK_LIST.json` (with `[M*][F*]` or `[M*][SI*]` markers),
+   - `dev/TASK_EXECUTION_PIPELINE.json` (overlaps/dependencies).
 9. Do not materialize GitHub work issues before explicit plan approval and before local decomposition is synced/reviewed.
    - Exception: feature-level GitHub issue creation/update is allowed during `create feature <id>`.
 10. During `materialize feature` and `materialize standalone-issue`, create/update GitHub issues strictly from already-defined local issue nodes; do not invent additional decomposition only on GitHub.
 11. During `create feature`, `materialize feature`, and `materialize standalone-issue`, every created/updated GitHub issue must be assigned to the corresponding GitHub milestone (not label-only assignment).
 12. If the target GitHub milestone does not exist or cannot be resolved, stop `create feature`/materialization and ask the user to create/select the milestone first.
 13. `sync issues to task list` is mandatory before any related `execute task X` / `execute issue <issue_id>`.
-14. ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md` and must be used as-is (`F<local>-M<milestone>`, `I<local>-F<feature_local>-M<milestone>`, `SI<local>-M<milestone>`, global task IDs from `dev/TASK_LIST.md`).
+14. ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md` and must be used as-is (`F<local>-M<milestone>`, `I<local>-F<feature_local>-M<milestone>`, `SI<local>-M<milestone>`, global task IDs from `dev/TASK_LIST.json`).
 15. Before creating any new task/issue mapping, always analyze existing features in `dev/map/DEV_MAP.json` and propose candidate bindings to the user (one or more matching feature IDs, or standalone if no suitable feature exists).
 16. Immediately after candidate bindings are prepared, request user binding choice first; do not run extra preparatory checks unrelated to candidate binding before that question.
 17. Binding confirmation is mandatory: do not create/update task, issue, feature, or standalone mapping nodes until the user explicitly chooses the target binding.
@@ -133,9 +133,9 @@ Canonical rule map (to prevent duplication drift):
 
 ## Pipeline constraints
 
-1. `dev/TASK_EXECUTION_PIPELINE.md` must contain only pending (not completed) tasks/blocks; do not keep completed entries there with markers like `(completed)`.
-2. In `dev/TASK_EXECUTION_PIPELINE.md` Functional blocks, always include an explicit `Outcome` line for each block.
-3. Each block `Outcome` must be concrete and feature-level: describe what exact behaviors/features/API modes/operational flows will exist after the block is done.
+1. `dev/TASK_EXECUTION_PIPELINE.json` must contain only pending (not completed) tasks/blocks; do not keep completed entries there with markers like `(completed)`.
+2. In `dev/TASK_EXECUTION_PIPELINE.json` `functional_blocks`, always include an explicit `outcome` field for each block.
+3. Each block `outcome` must be concrete and feature-level: describe what exact behaviors/features/API modes/operational flows will exist after the block is done.
 4. Avoid generic wording in block outcomes (for example "better", "improved", "more stable") unless tied to specific mechanisms or user-visible changes.
 
 ## Code docstring constraints
