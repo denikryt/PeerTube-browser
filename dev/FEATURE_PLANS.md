@@ -30,14 +30,15 @@ Canonical per-issue plan block format inside a feature section:
 ## F4-M1
 
 ### Issue Execution Order
-1. `I23-F4-M1` - Issue lifecycle status contract: Pending -> Planned -> Tasked with planning/materialize gates
-2. `I22-F4-M1` - Feature materialize: support multi-issue queue in one command run
-3. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
-4. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
-5. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
-6. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
-7. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
-8. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
+1. `I24-F4-M1` - Remove approve feature plan command and approval gate from workflow lifecycle
+2. `I23-F4-M1` - Issue lifecycle status contract: Pending -> Planned -> Tasked with planning/materialize gates
+3. `I22-F4-M1` - Feature materialize: support multi-issue queue in one command run
+4. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
+5. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
+6. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
+7. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
+8. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
+9. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
 ### Dependencies
 - See issue-level dependency blocks below.
 
@@ -47,6 +48,46 @@ Canonical per-issue plan block format inside a feature section:
 
 ### Issue/Task Decomposition Assessment
 - Decomposition is maintained per issue block; no extra feature-level split is required.
+
+### I24-F4-M1 - Remove approve feature plan command and approval gate from workflow lifecycle
+
+#### Dependencies
+- `dev/workflow_lib/feature_commands.py`
+- `dev/workflow_lib/cli.py`
+- `dev/workflow_lib/validate_commands.py`
+- `dev/TASK_EXECUTION_PROTOCOL.md`
+- `dev/FEATURE_WORKFLOW.md`
+- `dev/FEATURE_PLANNING_PROTOCOL.md`
+- `tests/check-workflow-cli-smoke.sh`
+
+#### Decomposition
+1. Remove `feature approve` command from CLI surface.
+   - Delete command registration/handler wiring for `feature approve`.
+   - Ensure help/usage output no longer advertises this command.
+2. Remove approval status gate from all feature workflow command paths.
+   - Remove checks that require feature status `Approved` before `plan tasks for ...`.
+   - Remove checks that require feature status `Approved` before `feature materialize`.
+   - Remove checks that require feature status `Approved` for `feature execution-plan`.
+   - Remove checks in validation commands that expect feature status `Approved` / `Done` as a precondition.
+3. Run full `Approved`-dependency audit and remove remaining gates.
+   - Search all workflow commands/protocol validators/docs for `Approved` as mandatory status gate.
+   - Remove every mandatory dependency on `Approved` status (runtime, validation, and command-contract text).
+4. Normalize process contract to no-approve lifecycle.
+   - Update canonical protocol/workflow docs to remove `approve feature plan` step and references.
+   - Keep feature status for lifecycle/reporting only, without any execution/planning/materialize gating role.
+5. Add regression coverage.
+   - Add smoke assertions that `feature approve` is unsupported.
+   - Add smoke assertions that `plan tasks for ...`, `feature materialize`, `feature execution-plan`, and `validate --feature` are not blocked by missing `Approved` feature status.
+   - Add guard assertion that no workflow command fails with error text expecting `Approved` status.
+
+#### Issue/Task Decomposition Assessment
+1. Recommended split: `task_count = 4`.
+   - Task 1: CLI command removal + routing cleanup (`feature approve`).
+   - Task 2: remove `Approved` gates from all feature command handlers (`plan tasks`, `materialize`, `execution-plan`) and validators.
+   - Task 3: run/encode full `Approved`-dependency audit so no remaining mandatory gate exists.
+   - Task 4: protocol/docs/smoke updates for no-approve lifecycle.
+2. Why `4`:
+   - CLI surface removal, runtime gate cleanup, repo-wide dependency audit, and regression/docs are separate risk domains.
 
 ### I23-F4-M1 - Issue lifecycle status contract: Pending -> Planned -> Tasked with planning/materialize gates
 
