@@ -47,6 +47,9 @@ Compact command index for milestone/feature operations.
 - `sync issues to task list for <id>`
   - Purpose: sync local `Issue -> Task` decomposition across `DEV_MAP`/`TASK_LIST`/`PIPELINE`.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
+- `feature execution-plan --id <feature_id>`
+  - Purpose: return pending task order and include the next issue from `Issue Execution Order` in `FEATURE_PLANS`.
+  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
 - `materialize feature <id> --mode <bootstrap|issues-create|issues-sync>`
   - Purpose: run explicit materialization mode (bootstrap branch context, create flow, or sync flow) for already-synced local issue nodes.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.

@@ -41,6 +41,8 @@ MILESTONE_ID_PATTERN = re.compile(r"^M(?P<milestone_num>\d+)$")
 TASK_ID_PATTERN = re.compile(r"^[0-9]+[a-z]?$")
 SECTION_H2_PATTERN = re.compile(r"^##\s+([^#].*?)\s*$")
 SECTION_H3_PATTERN = re.compile(r"^###\s+([^#].*?)\s*$")
+ISSUE_EXECUTION_ORDER_HEADING = "### Issue Execution Order"
+ISSUE_ORDER_ROW_PATTERN = re.compile(r"^\d+\.\s+`(?P<issue_id>I\d+-F\d+-M\d+)`\s+-\s+(?P<issue_title>.+\S)\s*$")
 REQUIRED_PLAN_HEADINGS = (
     "Dependencies",
     "Decomposition",
@@ -293,7 +295,17 @@ def _handle_feature_plan_lint(args: Namespace, context: WorkflowContext) -> int:
     """Lint feature plan section shape and required headings/content."""
     feature_id, _ = _parse_feature_id(args.id)
     section_text = _extract_feature_plan_section(context.feature_plans_path, feature_id)
-    lint_result = _lint_plan_section(section_text, strict=bool(args.strict))
+    dev_map = _load_json(context.dev_map_path)
+    feature_ref = _find_feature(dev_map, feature_id)
+    if feature_ref is None:
+        raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
+    lint_result = _lint_plan_section(
+        section_text,
+        strict=bool(args.strict),
+        feature_id=feature_id,
+        feature_node=feature_ref["feature"],
+        require_issue_order_for_active=True,
+    )
     emit_json(
         {
             "command": "feature.plan-lint",
@@ -310,11 +322,17 @@ def _handle_feature_approve(args: Namespace, context: WorkflowContext) -> int:
     """Approve a feature plan after lint checks and update DEV_MAP status."""
     feature_id, _ = _parse_feature_id(args.id)
     section_text = _extract_feature_plan_section(context.feature_plans_path, feature_id)
-    _lint_plan_section(section_text, strict=bool(args.strict))
     dev_map = _load_json(context.dev_map_path)
     feature_ref = _find_feature(dev_map, feature_id)
     if feature_ref is None:
         raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
+    _lint_plan_section(
+        section_text,
+        strict=bool(args.strict),
+        feature_id=feature_id,
+        feature_node=feature_ref["feature"],
+        require_issue_order_for_active=True,
+    )
 
     feature_node = feature_ref["feature"]
     previous_status = str(feature_node.get("status", ""))
@@ -376,6 +394,18 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         issue_payloads=resolved_delta.get("issues", []),
         existing_task_locations=existing_task_locations,
     )
+    issue_title_by_id = {
+        str(issue.get("id", "")).strip(): str(issue.get("title", "")).strip()
+        for issue in feature_node.get("issues", [])
+        if isinstance(issue, dict) and str(issue.get("id", "")).strip()
+    }
+    issue_execution_order_sync = _sync_issue_execution_order_for_new_issues(
+        feature_plans_path=context.feature_plans_path,
+        feature_id=feature_id,
+        created_issue_ids=issue_counts["created_issue_ids"],
+        issue_title_by_id=issue_title_by_id,
+        write=bool(args.write),
+    )
 
     expected_marker = f"[M{feature_milestone_num}][F{feature_local_num}]"
     task_list_contract_payload = build_task_list_contract_payload(
@@ -425,6 +455,7 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
             "dev_map_issues_upserted": issue_counts["issues_upserted"],
             "dev_map_tasks_upserted": issue_counts["tasks_upserted"],
             "feature_id": feature_id,
+            "issue_execution_order_sync": issue_execution_order_sync,
             "pipeline_blocks_added": pipeline_counts["blocks_added"],
             "pipeline_execution_rows_added": pipeline_counts["sequence_rows_added"],
             "pipeline_overlaps_added": pipeline_counts["overlaps_added"],
@@ -668,6 +699,13 @@ def _handle_feature_execution_plan(args: Namespace, context: WorkflowContext) ->
     if bool(args.from_pipeline):
         pipeline_order = _parse_pipeline_execution_order(load_pipeline_payload(context))
         ordered_tasks = _apply_pipeline_order(ordered_tasks, pipeline_order)
+    section_text = _extract_feature_plan_section(context.feature_plans_path, feature_id)
+    issue_order_state = _resolve_issue_execution_order_state(
+        section_text=section_text,
+        feature_id=feature_id,
+        feature_node=feature_node,
+        require_issue_order_for_active=False,
+    )
 
     emit_json(
         {
@@ -675,6 +713,8 @@ def _handle_feature_execution_plan(args: Namespace, context: WorkflowContext) ->
             "feature_id": feature_id,
             "feature_status": feature_status,
             "from_pipeline": bool(args.from_pipeline),
+            "issue_execution_order": issue_order_state["rows"],
+            "next_issue_from_plan_order": issue_order_state["next_issue"],
             "only_pending": bool(args.only_pending),
             "task_count": len(ordered_tasks),
             "tasks": ordered_tasks,
@@ -745,12 +785,13 @@ def _apply_issue_delta(
     statuses: set[str],
     issue_payloads: list[dict[str, Any]],
     existing_task_locations: dict[str, str],
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """Upsert issue/task nodes from sync payload into feature subtree."""
     issues = feature_node.setdefault("issues", [])
     issues_by_id = {str(issue.get("id", "")): issue for issue in issues}
     issue_upsert_count = 0
     task_upsert_count = 0
+    created_issue_ids: list[str] = []
     now_date, now_time = _now_date_and_time()
     for issue_index, issue_payload in enumerate(issue_payloads):
         issue_id = _required_string_field(issue_payload, "id", f"issues[{issue_index}]")
@@ -774,6 +815,7 @@ def _apply_issue_delta(
             issues.append(issue_node)
             issues_by_id[issue_id] = issue_node
             issue_created = True
+            created_issue_ids.append(issue_id)
         issue_upsert_count += 1 if issue_created else 0
 
         if "title" in issue_payload:
@@ -827,7 +869,11 @@ def _apply_issue_delta(
             task_node["date"] = str(task_payload.get("date", task_node.get("date", now_date))).strip() or now_date
             task_node["time"] = str(task_payload.get("time", task_node.get("time", now_time))).strip() or now_time
             task_upsert_count += 1
-    return {"issues_upserted": issue_upsert_count, "tasks_upserted": task_upsert_count}
+    return {
+        "created_issue_ids": created_issue_ids,
+        "issues_upserted": issue_upsert_count,
+        "tasks_upserted": task_upsert_count,
+    }
 
 
 def _assert_issue_belongs_to_feature(
@@ -1267,7 +1313,14 @@ def _extract_feature_plan_section(feature_plans_path: Path, feature_id: str) -> 
     return "\n".join(lines[start_line:end_line]) + "\n"
 
 
-def _lint_plan_section(section_text: str, strict: bool) -> dict[str, list[str]]:
+def _lint_plan_section(
+    section_text: str,
+    strict: bool,
+    *,
+    feature_id: str | None = None,
+    feature_node: dict[str, Any] | None = None,
+    require_issue_order_for_active: bool = False,
+) -> dict[str, list[str]]:
     """Lint required plan headings and content under one feature section."""
     lines = section_text.splitlines()
     heading_indexes: dict[str, int] = {}
@@ -1296,7 +1349,273 @@ def _lint_plan_section(section_text: str, strict: bool) -> dict[str, list[str]]:
             )
         messages.append(f"{heading}:ok")
 
+    if feature_id is not None and feature_node is not None:
+        issue_order_state = _resolve_issue_execution_order_state(
+            section_text=section_text,
+            feature_id=feature_id,
+            feature_node=feature_node,
+            require_issue_order_for_active=require_issue_order_for_active,
+        )
+        if issue_order_state["rows"]:
+            messages.append("Issue Execution Order:ok")
+        elif issue_order_state["active_issue_count"] == 0:
+            messages.append("Issue Execution Order:skipped(no-active-issues)")
+
     return {"messages": messages}
+
+
+def _resolve_issue_execution_order_state(
+    section_text: str,
+    feature_id: str,
+    feature_node: dict[str, Any],
+    *,
+    require_issue_order_for_active: bool,
+) -> dict[str, Any]:
+    """Parse and validate issue execution order rows against active DEV_MAP issues."""
+    issue_nodes = feature_node.get("issues", [])
+    issue_by_id: dict[str, dict[str, Any]] = {}
+    active_issue_ids: set[str] = set()
+    for issue in issue_nodes:
+        if not isinstance(issue, dict):
+            continue
+        issue_id = str(issue.get("id", "")).strip()
+        if not issue_id:
+            continue
+        issue_by_id[issue_id] = issue
+        issue_status = str(issue.get("status", "")).strip()
+        if issue_status not in {"Done", "Rejected"}:
+            active_issue_ids.add(issue_id)
+
+    order_block_found, parsed_rows = _parse_issue_execution_order_rows(section_text)
+    if require_issue_order_for_active and active_issue_ids and not order_block_found:
+        raise WorkflowCommandError(
+            f"Feature {feature_id} plan is missing {ISSUE_EXECUTION_ORDER_HEADING} with ordered active issues.",
+            exit_code=4,
+        )
+    if not order_block_found:
+        return {
+            "active_issue_count": len(active_issue_ids),
+            "next_issue": None,
+            "rows": [],
+        }
+
+    feature_local_num = _parse_feature_local_num(feature_id)
+    _, feature_milestone_num = _parse_feature_id(feature_id)
+    order_issue_ids: list[str] = []
+    seen_issue_ids: set[str] = set()
+    for row in parsed_rows:
+        issue_id = row["id"]
+        _assert_issue_belongs_to_feature(
+            issue_id=issue_id,
+            feature_id=feature_id,
+            feature_milestone_num=feature_milestone_num,
+            feature_local_num=feature_local_num,
+        )
+        if issue_id in seen_issue_ids:
+            raise WorkflowCommandError(
+                f"Issue Execution Order contains duplicate issue ID {issue_id}.",
+                exit_code=4,
+            )
+        seen_issue_ids.add(issue_id)
+        order_issue_ids.append(issue_id)
+        issue_node = issue_by_id.get(issue_id)
+        if issue_node is None:
+            raise WorkflowCommandError(
+                f"Issue Execution Order references unknown issue {issue_id} for feature {feature_id}.",
+                exit_code=4,
+            )
+
+    stale_issue_ids = sorted(issue_id for issue_id in order_issue_ids if issue_id not in active_issue_ids)
+    if stale_issue_ids:
+        raise WorkflowCommandError(
+            "Issue Execution Order contains stale issue IDs (not active): "
+            + ", ".join(stale_issue_ids)
+            + ".",
+            exit_code=4,
+        )
+
+    missing_issue_ids = sorted(active_issue_ids - set(order_issue_ids))
+    if missing_issue_ids:
+        raise WorkflowCommandError(
+            "Issue Execution Order is missing active issues from DEV_MAP: "
+            + ", ".join(missing_issue_ids)
+            + ".",
+            exit_code=4,
+        )
+
+    normalized_rows: list[dict[str, str]] = []
+    for issue_id in order_issue_ids:
+        issue_title = str(issue_by_id[issue_id].get("title", "")).strip()
+        issue_status = str(issue_by_id[issue_id].get("status", "")).strip()
+        normalized_rows.append(
+            {
+                "id": issue_id,
+                "title": issue_title,
+                "status": issue_status,
+            }
+        )
+
+    next_issue = normalized_rows[0] if normalized_rows else None
+    return {
+        "active_issue_count": len(active_issue_ids),
+        "next_issue": next_issue,
+        "rows": normalized_rows,
+    }
+
+
+def _parse_issue_execution_order_rows(section_text: str) -> tuple[bool, list[dict[str, str]]]:
+    """Parse `Issue Execution Order` rows from one feature plan section."""
+    lines = section_text.splitlines()
+    heading_index: int | None = None
+    for index, line in enumerate(lines):
+        if line.strip() == ISSUE_EXECUTION_ORDER_HEADING:
+            heading_index = index
+            break
+    if heading_index is None:
+        return False, []
+
+    rows: list[dict[str, str]] = []
+    for raw_line in lines[heading_index + 1 :]:
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("<!--"):
+            continue
+        if stripped.startswith("### ") or stripped.startswith("## "):
+            break
+        match = ISSUE_ORDER_ROW_PATTERN.fullmatch(stripped)
+        if match is None:
+            raise WorkflowCommandError(
+                f"Invalid Issue Execution Order row format: {stripped!r}.",
+                exit_code=4,
+            )
+        issue_id = match.group("issue_id").strip()
+        issue_title = match.group("issue_title").strip()
+        rows.append(
+            {
+                "id": issue_id,
+                "title": issue_title,
+            }
+        )
+    if not rows:
+        raise WorkflowCommandError(
+            f"{ISSUE_EXECUTION_ORDER_HEADING} must contain at least one ordered issue row.",
+            exit_code=4,
+        )
+    return True, rows
+
+
+def _sync_issue_execution_order_for_new_issues(
+    feature_plans_path: Path,
+    feature_id: str,
+    created_issue_ids: list[str],
+    issue_title_by_id: dict[str, str],
+    write: bool,
+) -> dict[str, Any]:
+    """Append newly created issue IDs to feature plan `Issue Execution Order` block."""
+    if not created_issue_ids:
+        return {
+            "added_issue_ids": [],
+            "attempted": False,
+            "block_created": False,
+            "updated": False,
+        }
+
+    text = feature_plans_path.read_text(encoding="utf-8")
+    bounds = _find_h2_section_bounds(text, feature_id)
+    if bounds is None:
+        raise WorkflowCommandError(
+            f"Feature plan section ## {feature_id} not found in {feature_plans_path}.",
+            exit_code=4,
+        )
+    lines = text.splitlines()
+    start_line, end_line = bounds
+
+    heading_index: int | None = None
+    for index in range(start_line + 1, end_line):
+        if lines[index].strip() == ISSUE_EXECUTION_ORDER_HEADING:
+            heading_index = index
+            break
+
+    if heading_index is None:
+        if not write:
+            return {
+                "added_issue_ids": list(created_issue_ids),
+                "attempted": True,
+                "block_created": True,
+                "updated": True,
+            }
+        insert_at = start_line + 1
+        new_block = ["", ISSUE_EXECUTION_ORDER_HEADING]
+        for index, issue_id in enumerate(created_issue_ids, start=1):
+            issue_title = issue_title_by_id.get(issue_id, "").strip() or issue_id
+            new_block.append(_format_issue_execution_order_row(index, issue_id, issue_title))
+        new_block.append("")
+        lines[insert_at:insert_at] = new_block
+        feature_plans_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return {
+            "added_issue_ids": list(created_issue_ids),
+            "attempted": True,
+            "block_created": True,
+            "updated": True,
+        }
+
+    rows_start = heading_index + 1
+    rows_end = rows_start
+    while rows_end < end_line:
+        stripped = lines[rows_end].strip()
+        if stripped.startswith("### ") or stripped.startswith("## "):
+            break
+        rows_end += 1
+
+    existing_issue_ids: list[str] = []
+    existing_issue_titles: dict[str, str] = {}
+    for raw_line in lines[rows_start:rows_end]:
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("<!--"):
+            continue
+        match = ISSUE_ORDER_ROW_PATTERN.fullmatch(stripped)
+        if match is None:
+            raise WorkflowCommandError(
+                f"Invalid Issue Execution Order row format while syncing new issues: {stripped!r}.",
+                exit_code=4,
+            )
+        issue_id = match.group("issue_id").strip()
+        issue_title = match.group("issue_title").strip()
+        existing_issue_ids.append(issue_id)
+        existing_issue_titles[issue_id] = issue_title
+
+    added_issue_ids = [issue_id for issue_id in created_issue_ids if issue_id not in existing_issue_ids]
+    if not added_issue_ids:
+        return {
+            "added_issue_ids": [],
+            "attempted": True,
+            "block_created": False,
+            "updated": False,
+        }
+    if not write:
+        return {
+            "added_issue_ids": added_issue_ids,
+            "attempted": True,
+            "block_created": False,
+            "updated": True,
+        }
+
+    ordered_issue_ids = existing_issue_ids + added_issue_ids
+    replacement_rows: list[str] = []
+    for index, issue_id in enumerate(ordered_issue_ids, start=1):
+        issue_title = issue_title_by_id.get(issue_id, "").strip() or existing_issue_titles.get(issue_id, "").strip() or issue_id
+        replacement_rows.append(_format_issue_execution_order_row(index, issue_id, issue_title))
+    lines[rows_start:rows_end] = replacement_rows
+    feature_plans_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {
+        "added_issue_ids": added_issue_ids,
+        "attempted": True,
+        "block_created": False,
+        "updated": True,
+    }
 
 
 def _filter_section_content(lines: list[str]) -> list[str]:
@@ -1310,6 +1629,12 @@ def _filter_section_content(lines: list[str]) -> list[str]:
             continue
         result.append(stripped)
     return result
+
+
+def _format_issue_execution_order_row(position: int, issue_id: str, issue_title: str) -> str:
+    """Build canonical markdown row for one issue execution order item."""
+    normalized_title = issue_title.strip() or issue_id
+    return f"{position}. `{issue_id}` - {normalized_title}"
 
 
 def _collect_feature_tasks(feature_node: dict[str, Any], only_pending: bool) -> list[dict[str, str]]:

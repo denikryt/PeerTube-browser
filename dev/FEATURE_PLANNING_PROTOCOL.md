@@ -24,6 +24,7 @@ Required input for `plan feature <id>`:
 Required output in `dev/FEATURE_PLANS.md`:
 - dependencies section for the feature,
 - decomposition section with strict step-by-step flow,
+- `Issue Execution Order` block with ordered active issue rows (``<issue_id>`` - `<issue_title>`),
 - `Issue/Task Decomposition Assessment`,
 - draft decomposition (`Feature -> Issue(s) -> Task(s)`) only if splitting is actually needed.
 

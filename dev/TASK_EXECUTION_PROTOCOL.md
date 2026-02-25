@@ -141,7 +141,7 @@ Use this procedure before executing tasks for a new feature.
    - Persist feature `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json` in the same change set.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
    - Registration-only boundary: do not auto-run `plan`, `approve`, `sync`, `materialize`, or `execute` after `create feature`.
-2. `plan feature <id>`: produce/update `dependencies`, `decomposition` (strict step-by-step command flow), and `Issue/Task Decomposition Assessment` in `dev/FEATURE_PLANS.md`.
+2. `plan feature <id>`: produce/update `dependencies`, `decomposition` (strict step-by-step command flow), `Issue Execution Order` (ordered active feature issues), and `Issue/Task Decomposition Assessment` in `dev/FEATURE_PLANS.md`.
 3. `approve feature plan`: freeze boundaries from the corresponding section in `dev/FEATURE_PLANS.md`, then set the target feature status to `Approved` in `dev/map/DEV_MAP.json`.
    - Feature status in `dev/map/DEV_MAP.json` is the source of truth for approval gates.
    - If that approved section is edited later, require a new explicit `approve feature plan` and re-set status to `Approved` before continuing.

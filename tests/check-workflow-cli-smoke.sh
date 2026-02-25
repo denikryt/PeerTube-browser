@@ -231,6 +231,52 @@ run_expect_success "chain-execution-plan" "${CHAIN_REPO}/dev/workflow" feature e
 assert_json_value "chain-execution-plan" "task_count" "1"
 assert_json_value "chain-execution-plan" "tasks.0.id" "1"
 assert_json_value "chain-execution-plan" "tasks.0.issue_id" "I1-F9-M1"
+assert_json_value "chain-execution-plan" "next_issue_from_plan_order.id" "I1-F9-M1"
+
+cat >"${CHAIN_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F9-M1
+### Dependencies
+- smoke
+
+### Decomposition
+1. smoke
+
+### Issue Execution Order
+1. `I1-F9-M1` - Smoke issue
+
+### Issue/Task Decomposition Assessment
+- smoke
+EOF
+
+run_expect_success "chain-plan-lint-order-ok" "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
+assert_json_value "chain-plan-lint-order-ok" "valid" "true"
+assert_json_value "chain-plan-lint-order-ok" "messages.3" "Issue Execution Order:ok"
+run_expect_success "chain-execution-plan-order-ok" "${CHAIN_REPO}/dev/workflow" feature execution-plan --id F9-M1
+assert_json_value "chain-execution-plan-order-ok" "issue_execution_order.0.id" "I1-F9-M1"
+assert_json_value "chain-execution-plan-order-ok" "next_issue_from_plan_order.id" "I1-F9-M1"
+
+cat >"${CHAIN_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F9-M1
+### Dependencies
+- smoke
+
+### Decomposition
+1. smoke
+
+### Issue Execution Order
+1. `I9-F9-M1` - Unknown issue
+
+### Issue/Task Decomposition Assessment
+- smoke
+EOF
+run_expect_failure_contains \
+  "chain-plan-lint-order-unknown-issue" \
+  "Issue Execution Order references unknown issue" \
+  "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 
 # Gate-fail: sync --write blocked for non-approved feature status.
 GATE_SYNC_REPO="${TMP_DIR}/gate-sync-fixture"
