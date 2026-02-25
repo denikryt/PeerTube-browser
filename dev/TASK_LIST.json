@@ -545,42 +545,6 @@
       ]
     },
     {
-      "id": "85",
-      "marker": "[M1][F4]",
-      "title": "Require --mode for feature materialize",
-      "problem": "feature materialize currently has implicit behavior and runs without explicit mode selection.",
-      "solution_option": "make mode mandatory and validate enum values in CLI parser.",
-      "concrete_steps": [
-        "Add required --mode argument with bootstrap issues-create issues-sync choices.",
-        "Return deterministic gate error when mode is missing or invalid.",
-        "Keep JSON output contract stable for mode validation failures."
-      ]
-    },
-    {
-      "id": "86",
-      "marker": "[M1][F4]",
-      "title": "Split materialize into explicit mode handlers",
-      "problem": "one mixed materialize flow makes it hard to reason about side effects for branch and issue updates.",
-      "solution_option": "separate bootstrap issues-create and issues-sync code paths.",
-      "concrete_steps": [
-        "Extract mode-specific handler functions.",
-        "Ensure each mode reports explicit action fields in output JSON.",
-        "Preserve canonical branch metadata write only in intended modes."
-      ]
-    },
-    {
-      "id": "87",
-      "marker": "[M1][F4]",
-      "title": "Align docs with required mode materialize contract",
-      "problem": "protocol and workflow docs do not describe a mandatory mode split for materialize behavior.",
-      "solution_option": "update protocol workflow docs and smoke references to new mode contract.",
-      "concrete_steps": [
-        "Update TASK_EXECUTION_PROTOCOL materialize command semantics.",
-        "Update FEATURE_WORKFLOW command index examples.",
-        "Adjust smoke assertions for mode-required path."
-      ]
-    },
-    {
       "id": "88",
       "marker": "[M1][F4]",
       "title": "Implement create-only child issue materialization",
