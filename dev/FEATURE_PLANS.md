@@ -43,12 +43,19 @@ Canonical per-issue plan block format inside a feature section:
 11. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
 12. `I13-F4-M1` - Auto-delete sync delta file after successful feature sync write
 
-### Follow-up issue: I16-F4-M1
-
-**Title**
-- `I16-F4-M1`: Issue planning status split: Pending (no plan) vs Planned (has plan)
-
 ### Dependencies
+- See issue-level dependency blocks below.
+
+### Decomposition
+1. Execute follow-up issues in `Issue Execution Order`.
+2. Keep per-issue implementation details inside canonical issue-plan blocks.
+
+### Issue/Task Decomposition Assessment
+- Decomposition is maintained per issue block; no extra feature-level split is required.
+
+### I16-F4-M1 - Issue planning status split: Pending (no plan) vs Planned (has plan)
+
+#### Dependencies
 - `dev/map/DEV_MAP.json`
 - `dev/map/DEV_MAP_SCHEMA.md`
 - `dev/FEATURE_PLANS.md`
@@ -58,7 +65,7 @@ Canonical per-issue plan block format inside a feature section:
 - `dev/FEATURE_PLANNING_PROTOCOL.md`
 - `dev/FEATURE_WORKFLOW.md`
 
-### Decomposition
+#### Decomposition
 1. Introduce issue planning status contract for feature issues.
    - Add/lock explicit semantics: `Pending` means issue exists in `DEV_MAP` but has no issue-plan block in `FEATURE_PLANS`; `Planned` means issue-plan block exists.
    - Keep `Done` and `Rejected` as terminal statuses and out of pending planning set.
@@ -75,7 +82,7 @@ Canonical per-issue plan block format inside a feature section:
    - Add smoke scenarios for `Pending` default, `Pending -> Planned` transition after plan block creation, and mismatch lint failures.
    - Update protocol/workflow text so `plan issue <issue_id>` clearly implies persisted issue-plan block and status semantics.
 
-### Issue/Task Decomposition Assessment
+#### Issue/Task Decomposition Assessment
 1. Recommended split: `task_count = 3`.
    - Task 1: status contract + schema/status enum alignment + `Pending` default for new issues.
    - Task 2: issue-plan block detection and status reconciliation/lint consistency.
@@ -83,12 +90,9 @@ Canonical per-issue plan block format inside a feature section:
 2. Why `3`:
    - model contract, reconciliation logic, and regression/documentation are separate risk domains and can be validated independently.
 
-### Follow-up issue: I20-F4-M1
+### I20-F4-M1 - Rename decomposition commands from sync to plan tasks for issue/feature
 
-**Title**
-- `I20-F4-M1`: Rename decomposition commands from sync to plan tasks for issue/feature
-
-### Dependencies
+#### Dependencies
 - `dev/workflow_lib/feature_commands.py`
 - `dev/workflow_lib/cli.py`
 - `tests/check-workflow-cli-smoke.sh`
@@ -97,7 +101,7 @@ Canonical per-issue plan block format inside a feature section:
 - `dev/FEATURE_PLANNING_PROTOCOL.md`
 - `AGENTS.md`
 
-### Decomposition
+#### Decomposition
 1. Define canonical decomposition command naming.
    - Set canonical commands: `plan tasks for issue <issue_id>` and `plan tasks for feature <feature_id>`.
    - Reserve `sync` naming only for state reconciliation operations that do not create new tasks/decomposition.
@@ -114,7 +118,7 @@ Canonical per-issue plan block format inside a feature section:
    - Add positive smoke for new canonical command names.
    - Add negative smoke that legacy `sync issues to task list ...` command is rejected with explicit error.
 
-### Issue/Task Decomposition Assessment
+#### Issue/Task Decomposition Assessment
 1. Recommended split: `task_count = 3`.
    - Task 1: canonical command naming contract + docs/protocol updates.
    - Task 2: CLI implementation for `plan tasks for issue|feature` without alias paths.
@@ -122,12 +126,9 @@ Canonical per-issue plan block format inside a feature section:
 2. Why `3`:
    - naming contract, command implementation, and regression coverage are separate risk domains and should be validated independently.
 
-### Follow-up issue: I21-F4-M1
+### I21-F4-M1 - Confirm issue done: script-driven cleanup of issue plan block and linked issue/task tracker nodes
 
-**Title**
-- `I21-F4-M1`: Confirm issue done: script-driven cleanup of issue plan block and linked issue/task tracker nodes
-
-### Dependencies
+#### Dependencies
 - `dev/workflow_lib/confirm_commands.py`
 - `dev/workflow_lib/feature_commands.py` (helpers for `FEATURE_PLANS` section parsing and order rows)
 - `dev/FEATURE_PLANS.md`
@@ -138,7 +139,7 @@ Canonical per-issue plan block format inside a feature section:
 - `dev/TASK_EXECUTION_PROTOCOL.md`
 - `dev/FEATURE_WORKFLOW.md`
 
-### Decomposition
+#### Decomposition
 1. Define cleanup contract for `confirm issue <issue_id> done`.
    - When confirm issue completion is applied with write mode, perform script-driven cleanup for all artifacts linked to the target issue.
    - Cleanup scope must include both tracker cleanup and plan-document cleanup in one run.
@@ -157,7 +158,7 @@ Canonical per-issue plan block format inside a feature section:
    - Smoke idempotency: repeated confirm on already-cleaned issue returns deterministic no-op cleanup details.
    - Update execution protocol/workflow docs with explicit cleanup semantics for confirm-issue flow.
 
-### Issue/Task Decomposition Assessment
+#### Issue/Task Decomposition Assessment
 1. Recommended split: `task_count = 3`.
    - Task 1: cleanup contract + protocol/docs updates.
    - Task 2: confirm command implementation for `FEATURE_PLANS` and `DEV_MAP` issue-node removal.
@@ -165,12 +166,9 @@ Canonical per-issue plan block format inside a feature section:
 2. Why `3`:
    - behavior contract, write-path implementation, and regression/idempotency coverage are separate risk domains and should be validated independently.
 
-### Follow-up issue: I14-F4-M1
+### I14-F4-M1 - Replace checkbox-based GitHub issue body with description-driven readable content
 
-**Title**
-- `I14-F4-M1`: Replace checkbox-based GitHub issue body with description-driven readable content
-
-### Dependencies
+#### Dependencies
 - `dev/map/DEV_MAP.json`
 - `dev/map/DEV_MAP_SCHEMA.md`
 - `dev/workflow_lib/feature_commands.py`
@@ -181,7 +179,7 @@ Canonical per-issue plan block format inside a feature section:
 - `dev/TASK_EXECUTION_PROTOCOL.md`
 - `dev/FEATURE_WORKFLOW.md`
 
-### Decomposition
+#### Decomposition
 1. Add issue-level human-readable description field to local model.
    - Extend issue node contract in `DEV_MAP` and schema docs with `description` (non-empty text explaining problem/context of issue).
    - Extend sync write path so issue `description` is accepted from delta payload and persisted in issue nodes.
@@ -198,7 +196,7 @@ Canonical per-issue plan block format inside a feature section:
    - Add/adjust smoke assertions for description-based issue body (checkbox-free).
    - Update protocol/workflow docs to describe `description`-driven issue body contract.
 
-### Issue/Task Decomposition Assessment
+#### Issue/Task Decomposition Assessment
 1. Recommended split: `task_count = 4`.
    - Task 1: model/schema/sync support for issue `description`.
    - Task 2: child issue body rewrite (checkbox-free, readable explanation).
@@ -207,12 +205,9 @@ Canonical per-issue plan block format inside a feature section:
 2. Why `4`:
    - model contract, renderer changes, and confirmation decoupling are the minimal set for checkbox-free readable issue bodies.
 
-### Follow-up issue: I15-F4-M1
+### I15-F4-M1 - Feature materialize sub-issues reconcile for parent feature issue
 
-**Title**
-- `I15-F4-M1`: Feature materialize sub-issues reconcile for parent feature issue
-
-### Dependencies
+#### Dependencies
 - `dev/map/DEV_MAP.json`
 - `dev/workflow_lib/feature_commands.py`
 - `dev/workflow_lib/github_adapter.py`
@@ -220,7 +215,7 @@ Canonical per-issue plan block format inside a feature section:
 - `dev/TASK_EXECUTION_PROTOCOL.md`
 - `dev/FEATURE_WORKFLOW.md`
 
-### Decomposition
+#### Decomposition
 1. Add GitHub adapter for sub-issues API operations.
    - Implement list/add helpers for parent issue sub-items via `gh api` (or explicit GraphQL call).
    - Return deterministic errors for unsupported API response or permission failures.
@@ -237,7 +232,7 @@ Canonical per-issue plan block format inside a feature section:
    - Add fake-gh smoke scenario validating: first run adds missing sub-issue links, second run adds zero (idempotent).
    - Update protocol/workflow docs with sub-issues ownership and sync semantics.
 
-### Issue/Task Decomposition Assessment
+#### Issue/Task Decomposition Assessment
 1. Recommended split: `task_count = 3`.
    - Task 1: GitHub adapter support for sub-issues API + error contract.
    - Task 2: `feature materialize` reconcile logic and output contract.
@@ -245,18 +240,15 @@ Canonical per-issue plan block format inside a feature section:
 2. Why `3`:
    - integration layer, materialize reconcile logic, and regression coverage are separate risk domains and should be validated independently.
 
-### Follow-up issue: I18-F4-M1
+### I18-F4-M1 - Standardize per-issue plan blocks in `FEATURE_PLANS` (`### issue` + `####` sections) and enforce strict lint
 
-**Title**
-- `I18-F4-M1`: Standardize per-issue plan blocks in `FEATURE_PLANS` (`### issue` + `####` sections) and enforce strict lint
-
-### Dependencies
+#### Dependencies
 - `dev/FEATURE_PLANS.md`
 - `dev/FEATURE_PLANNING_PROTOCOL.md`
 - `dev/workflow_lib/feature_commands.py` (`feature plan-lint`)
 - `tests/check-workflow-cli-smoke.sh`
 
-### Decomposition
+#### Decomposition
 1. Define canonical issue-plan block shape in docs.
    - Set one issue = one `###` block with heading format: `### I<local>-F<feature>-M<milestone> — <title>`.
    - Reserve `####` headings for sections inside the issue block (for example `#### Context`, `#### Steps`, `#### Notes`).
@@ -271,7 +263,7 @@ Canonical per-issue plan block format inside a feature section:
    - Add positive case for canonical format and negative cases for malformed/duplicate headings.
    - Ensure deterministic lint errors include offending heading/issue ID.
 
-### Issue/Task Decomposition Assessment
+#### Issue/Task Decomposition Assessment
 1. Recommended split: `task_count = 3`.
    - Task 1: docs + canonical format contract.
    - Task 2: strict lint implementation for `###`/`####` hierarchy and uniqueness.
@@ -279,19 +271,16 @@ Canonical per-issue plan block format inside a feature section:
 2. Why `3`:
    - contract definition, validator enforcement, and migration/regression coverage are separate risk domains and should be implemented independently.
 
-### Follow-up issue: I19-F4-M1
+### I19-F4-M1 - Feature plan issue execution order block as the source of issue sequencing
 
-**Title**
-- `I19-F4-M1`: Feature plan issue execution order block as the source of issue sequencing
-
-### Dependencies
+#### Dependencies
 - `dev/FEATURE_PLANS.md`
 - `dev/map/DEV_MAP.json`
 - `dev/workflow_lib/feature_commands.py` (`feature execution-plan`, `feature plan-lint`)
 - `dev/TASK_EXECUTION_PROTOCOL.md`
 - `dev/FEATURE_WORKFLOW.md`
 
-### Decomposition
+#### Decomposition
 1. Define one canonical issue ordering block inside each feature plan section.
    - Add `### Issue Execution Order` under `## F*-M*` plan sections.
    - Store order as a numbered list by position (no extra numeric `order` field).
@@ -308,7 +297,7 @@ Canonical per-issue plan block format inside a feature section:
    - Add smoke cases for valid order block and mismatch errors.
    - Update protocol/workflow docs with the new source-of-truth rule for issue sequence.
 
-### Issue/Task Decomposition Assessment
+#### Issue/Task Decomposition Assessment
 1. Recommended split: `task_count = 3`.
    - Task 1: format contract + lint checks for issue order block.
    - Task 2: `execution-plan` integration to surface next issue from plan order.

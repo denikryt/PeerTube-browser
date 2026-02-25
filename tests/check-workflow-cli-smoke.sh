@@ -270,7 +270,7 @@ cat >"${CHAIN_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
 ### Issue Execution Order
 1. `I1-F9-M1` - Smoke issue
 
-### Follow-up issue: I1-F9-M1
+### I1-F9-M1 - Smoke issue
 
 #### Dependencies
 - smoke
@@ -299,8 +299,9 @@ assert_jq_file_value \
   "Planned"
 run_expect_success "chain-plan-lint-order-ok" "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 assert_json_value "chain-plan-lint-order-ok" "valid" "true"
-assert_json_value "chain-plan-lint-order-ok" "messages.3" "Issue Planning Status:ok"
-assert_json_value "chain-plan-lint-order-ok" "messages.4" "Issue Execution Order:ok"
+assert_json_value "chain-plan-lint-order-ok" "messages.3" "Issue Plan Blocks:ok"
+assert_json_value "chain-plan-lint-order-ok" "messages.4" "Issue Planning Status:ok"
+assert_json_value "chain-plan-lint-order-ok" "messages.5" "Issue Execution Order:ok"
 run_expect_success "chain-execution-plan-order-ok" "${CHAIN_REPO}/dev/workflow" feature execution-plan --id F9-M1
 assert_json_value "chain-execution-plan-order-ok" "issue_execution_order.0.id" "I1-F9-M1"
 assert_json_value "chain-execution-plan-order-ok" "next_issue_from_plan_order.id" "I1-F9-M1"
@@ -318,6 +319,81 @@ PY
 run_expect_failure_contains \
   "chain-plan-lint-status-mismatch" \
   "Issue planning status mismatch: I1-F9-M1(status='Pending', expected='Planned', has_plan_block=True)." \
+  "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
+
+cat >"${CHAIN_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F9-M1
+### Dependencies
+- smoke
+
+### Decomposition
+1. smoke
+
+### Issue Execution Order
+1. `I1-F9-M1` - Smoke issue
+
+### Follow-up issue: I1-F9-M1
+
+#### Dependencies
+- smoke
+
+#### Decomposition
+1. smoke
+
+#### Issue/Task Decomposition Assessment
+- smoke
+
+### Issue/Task Decomposition Assessment
+- smoke
+EOF
+run_expect_failure_contains \
+  "chain-plan-lint-issue-heading-malformed" \
+  "Invalid issue plan heading" \
+  "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
+
+cat >"${CHAIN_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F9-M1
+### Dependencies
+- smoke
+
+### Decomposition
+1. smoke
+
+### Issue Execution Order
+1. `I1-F9-M1` - Smoke issue
+
+### I1-F9-M1 - Smoke issue
+
+#### Dependencies
+- smoke
+
+#### Decomposition
+1. smoke
+
+#### Issue/Task Decomposition Assessment
+- smoke
+
+### I1-F9-M1 - Smoke issue duplicate
+
+#### Dependencies
+- smoke
+
+#### Decomposition
+1. smoke
+
+#### Issue/Task Decomposition Assessment
+- smoke
+
+### Issue/Task Decomposition Assessment
+- smoke
+EOF
+run_expect_failure_contains \
+  "chain-plan-lint-issue-heading-duplicate" \
+  "Duplicate issue plan block for issue I1-F9-M1." \
   "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 
 cat >"${CHAIN_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
@@ -752,7 +828,7 @@ cat >"${CONFIRM_CLEANUP_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
 ### Issue Execution Order
 1. `I3-F1-M1` - Cleanup issue
 
-### Follow-up issue: I3-F1-M1
+### I3-F1-M1 - Cleanup issue
 
 #### Dependencies
 - smoke
@@ -819,7 +895,7 @@ assert_json_value "confirm-cleanup-first-run" "cleanup.pipeline.execution_rows_r
 assert_json_value "confirm-cleanup-first-run" "cleanup.pipeline.blocks_removed" "1"
 assert_json_value "confirm-cleanup-first-run" "cleanup.pipeline.overlap_rows_removed" "1"
 assert_file_not_contains 'confirm-cleanup-plan-row-removed' "${CONFIRM_CLEANUP_REPO}/dev/FEATURE_PLANS.md" '`I3-F1-M1` - Cleanup issue'
-assert_file_not_contains "confirm-cleanup-plan-block-removed" "${CONFIRM_CLEANUP_REPO}/dev/FEATURE_PLANS.md" "### Follow-up issue: I3-F1-M1"
+assert_file_not_contains "confirm-cleanup-plan-block-removed" "${CONFIRM_CLEANUP_REPO}/dev/FEATURE_PLANS.md" "### I3-F1-M1 - Cleanup issue"
 assert_jq_file_value \
   "confirm-cleanup-dev-map-issue-removed" \
   "${CONFIRM_CLEANUP_REPO}/dev/map/DEV_MAP.json" \
