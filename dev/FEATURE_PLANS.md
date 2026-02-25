@@ -15,6 +15,11 @@ Each feature plan section must use the feature ID as a heading and include:
 - Decomposition
 - Issue/Task Decomposition Assessment
 
+Canonical per-issue plan block format inside a feature section:
+- Heading: `### <issue_id> - <issue_title>` (one block per issue ID).
+- Allowed inner headings: only `#### Dependencies`, `#### Decomposition`, `#### Issue/Task Decomposition Assessment`.
+- All three inner headings are mandatory for each issue block.
+
 ## Planned Features
 
 <!-- Add or update feature plan sections below, for example: -->
