@@ -4,25 +4,91 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
 from .errors import WorkflowCommandError
 
 
-def run_checked_command(command: list[str], cwd: Path | None, error_prefix: str) -> str:
-    """Run one subprocess command and return stdout or raise a workflow error."""
-    result = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        cwd=str(cwd) if cwd is not None else None,
-    )
-    if result.returncode != 0:
-        details = (result.stderr or result.stdout).strip() or "unknown command error"
-        raise WorkflowCommandError(f"{error_prefix}: {details}", exit_code=5)
-    return result.stdout.strip()
+TRANSIENT_ERROR_PATTERNS = (
+    "error connecting to api.github.com",
+    "timed out",
+    "timeout",
+    "connection reset",
+    "temporary failure",
+    "service unavailable",
+    "bad gateway",
+    "gateway timeout",
+    "tls handshake",
+    "api rate limit exceeded",
+    "secondary rate limit",
+)
+
+
+def run_checked_command(
+    command: list[str],
+    cwd: Path | None,
+    error_prefix: str,
+    *,
+    max_retries: int = 0,
+    retry_pause_seconds: float = 0.0,
+    timeout_seconds: float | None = None,
+) -> str:
+    """Run one subprocess command with optional retry policy and return stdout."""
+    if max_retries < 0:
+        raise WorkflowCommandError(
+            f"{error_prefix}: invalid retry policy max_retries={max_retries}; expected >= 0.",
+            exit_code=4,
+        )
+    if retry_pause_seconds < 0:
+        raise WorkflowCommandError(
+            f"{error_prefix}: invalid retry policy retry_pause_seconds={retry_pause_seconds}; expected >= 0.",
+            exit_code=4,
+        )
+    if timeout_seconds is not None and timeout_seconds <= 0:
+        raise WorkflowCommandError(
+            f"{error_prefix}: invalid timeout_seconds={timeout_seconds}; expected > 0.",
+            exit_code=4,
+        )
+
+    attempt = 0
+    while True:
+        timed_out = False
+        timeout_details = ""
+        try:
+            result = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                cwd=str(cwd) if cwd is not None else None,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            timeout_details = (
+                f"command timed out after {timeout_seconds:.1f}s"
+                if timeout_seconds is not None
+                else "command timed out"
+            )
+            result = None
+
+        if not timed_out and result is not None and result.returncode == 0:
+            return result.stdout.strip()
+
+        if timed_out or result is None:
+            details = timeout_details
+        else:
+            details = (result.stderr or result.stdout).strip() or "unknown command error"
+
+        is_transient = timed_out or _is_transient_command_error(details)
+        if attempt >= max_retries or not is_transient:
+            raise WorkflowCommandError(f"{error_prefix}: {details}", exit_code=5)
+
+        attempt += 1
+        if retry_pause_seconds > 0:
+            time.sleep(retry_pause_seconds)
 
 
 def resolve_github_repository(root_dir: Path) -> dict[str, str]:
@@ -44,6 +110,10 @@ def ensure_github_milestone_exists(
     repo_name_with_owner: str,
     milestone_title: str,
     milestone_id: str,
+    *,
+    max_retries: int = 0,
+    retry_pause_seconds: float = 0.0,
+    timeout_seconds: float | None = None,
 ) -> None:
     """Require that the mapped GitHub milestone title exists before write operations."""
     command = ["gh", "api", f"repos/{repo_name_with_owner}/milestones?state=all&per_page=100"]
@@ -51,6 +121,9 @@ def ensure_github_milestone_exists(
         command,
         cwd=None,
         error_prefix=f"Failed to resolve GitHub milestones for {repo_name_with_owner}",
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=timeout_seconds,
     )
     try:
         milestones = json.loads(output)
@@ -73,6 +146,10 @@ def gh_issue_create(
     title: str,
     body: str,
     milestone_title: str,
+    *,
+    max_retries: int = 0,
+    retry_pause_seconds: float = 0.0,
+    timeout_seconds: float | None = None,
 ) -> str:
     """Create a GitHub issue and return the created issue URL."""
     command = [
@@ -88,7 +165,14 @@ def gh_issue_create(
         "--milestone",
         milestone_title,
     ]
-    output = run_checked_command(command, cwd=None, error_prefix="Failed to create GitHub issue")
+    output = run_checked_command(
+        command,
+        cwd=None,
+        error_prefix="Failed to create GitHub issue",
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=timeout_seconds,
+    )
     created_url = output.strip().splitlines()[-1].strip() if output.strip() else ""
     if not created_url:
         raise WorkflowCommandError("gh issue create returned empty output.", exit_code=5)
@@ -101,6 +185,10 @@ def gh_issue_edit(
     title: str,
     body: str,
     milestone_title: str,
+    *,
+    max_retries: int = 0,
+    retry_pause_seconds: float = 0.0,
+    timeout_seconds: float | None = None,
 ) -> None:
     """Update an existing GitHub issue title/body/milestone."""
     command = [
@@ -117,12 +205,23 @@ def gh_issue_edit(
         "--milestone",
         milestone_title,
     ]
-    run_checked_command(command, cwd=None, error_prefix=f"Failed to update GitHub issue #{issue_number}")
+    run_checked_command(
+        command,
+        cwd=None,
+        error_prefix=f"Failed to update GitHub issue #{issue_number}",
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def gh_issue_view_body(
     repo_name_with_owner: str,
     issue_number: int,
+    *,
+    max_retries: int = 0,
+    retry_pause_seconds: float = 0.0,
+    timeout_seconds: float | None = None,
 ) -> str:
     """Read one GitHub issue body text via gh CLI."""
     command = [
@@ -135,7 +234,14 @@ def gh_issue_view_body(
         "--json",
         "body",
     ]
-    output = run_checked_command(command, cwd=None, error_prefix=f"Failed to read GitHub issue #{issue_number}")
+    output = run_checked_command(
+        command,
+        cwd=None,
+        error_prefix=f"Failed to read GitHub issue #{issue_number}",
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=timeout_seconds,
+    )
     try:
         payload = json.loads(output)
     except json.JSONDecodeError as error:
@@ -149,6 +255,10 @@ def gh_issue_edit_body(
     repo_name_with_owner: str,
     issue_number: int,
     body: str,
+    *,
+    max_retries: int = 0,
+    retry_pause_seconds: float = 0.0,
+    timeout_seconds: float | None = None,
 ) -> None:
     """Update only issue body text for one GitHub issue."""
     command = [
@@ -161,18 +271,42 @@ def gh_issue_edit_body(
         "--body",
         body,
     ]
-    run_checked_command(command, cwd=None, error_prefix=f"Failed to update GitHub issue body #{issue_number}")
+    run_checked_command(
+        command,
+        cwd=None,
+        error_prefix=f"Failed to update GitHub issue body #{issue_number}",
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=timeout_seconds,
+    )
 
 
-def close_github_issue(issue_number: int) -> None:
+def close_github_issue(
+    issue_number: int,
+    *,
+    max_retries: int = 0,
+    retry_pause_seconds: float = 0.0,
+    timeout_seconds: float | None = None,
+) -> None:
     """Close a mapped GitHub issue through gh CLI."""
     command = ["gh", "issue", "close", str(issue_number)]
-    run_checked_command(command, cwd=None, error_prefix=f"Failed to close GitHub issue #{issue_number}")
+    run_checked_command(
+        command,
+        cwd=None,
+        error_prefix=f"Failed to close GitHub issue #{issue_number}",
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def gh_issue_list_sub_issue_numbers(
     repo_name_with_owner: str,
     parent_issue_number: int,
+    *,
+    max_retries: int = 0,
+    retry_pause_seconds: float = 0.0,
+    timeout_seconds: float | None = None,
 ) -> list[int]:
     """List child sub-issue numbers for one parent issue via gh api."""
     command = [
@@ -184,6 +318,9 @@ def gh_issue_list_sub_issue_numbers(
         command,
         cwd=None,
         error_prefix=f"Failed to list sub-issues for GitHub issue #{parent_issue_number}",
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=timeout_seconds,
     )
     try:
         payload = json.loads(output)
@@ -199,6 +336,10 @@ def gh_issue_add_sub_issue(
     repo_name_with_owner: str,
     parent_issue_number: int,
     sub_issue_number: int,
+    *,
+    max_retries: int = 0,
+    retry_pause_seconds: float = 0.0,
+    timeout_seconds: float | None = None,
 ) -> None:
     """Add one child sub-issue link to a parent issue via gh api."""
     command = [
@@ -216,7 +357,16 @@ def gh_issue_add_sub_issue(
         error_prefix=(
             f"Failed to add sub-issue #{sub_issue_number} to GitHub issue #{parent_issue_number}"
         ),
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=timeout_seconds,
     )
+
+
+def _is_transient_command_error(message: str) -> bool:
+    """Return whether gh CLI error text matches transient network/rate-limit classes."""
+    normalized = message.lower()
+    return any(pattern in normalized for pattern in TRANSIENT_ERROR_PATTERNS)
 
 
 def _extract_sub_issue_numbers(payload: Any, parent_issue_number: int) -> list[int]:

@@ -1176,7 +1176,9 @@ run_expect_success \
   "${DESCRIPTION_BODY_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync --issue-id I2-F1-M1 --write --github
 assert_json_value "description-body-materialize-sync" "issues_materialized.0.action" "updated"
 assert_json_value "description-body-materialize-sync" "feature_issue_checklist_sync.attempted" "false"
-assert_file_contains "description-body-materialize-section" "${DESCRIPTION_BODY_FILE}" "## Why this issue exists"
+assert_file_contains "description-body-materialize-description" "${DESCRIPTION_BODY_FILE}" "Materialize should rewrite this body using readable description-driven sections."
+assert_file_not_contains "description-body-materialize-no-scope" "${DESCRIPTION_BODY_FILE}" "## Scope"
+assert_file_not_contains "description-body-materialize-no-tasks-section" "${DESCRIPTION_BODY_FILE}" "## Planned work/tasks"
 assert_file_not_contains "description-body-materialize-no-checkbox" "${DESCRIPTION_BODY_FILE}" "- [ ]"
 run_expect_success \
   "description-body-confirm-issue-done" \

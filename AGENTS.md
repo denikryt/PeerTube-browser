@@ -16,6 +16,7 @@ Conflict handling:
 - For command semantics/order conflicts, `dev/TASK_EXECUTION_PROTOCOL.md` is canonical.
 - For policy gate conflicts (`allowed/forbidden`), `AGENTS.md` is canonical.
 - Process change rule: when updating rules/protocol/workflow docs, change normative text only in the canonical owner file; in non-owner files keep only short references. Do not duplicate the same rule across multiple files.
+- Hard anti-duplication rule: never spread one normative rule across multiple process docs; if duplication is found, consolidate to one canonical owner in the same change set.
 
 Canonical rule map (to prevent duplication drift):
 - Feature and standalone command order/step contracts:
@@ -28,6 +29,9 @@ Canonical rule map (to prevent duplication drift):
   policy constraints remain in `AGENTS.md`.
 - Planning input/decomposition quality gates:
   owner = `dev/FEATURE_PLANNING_PROTOCOL.md`.
+- Issue `description` rules (content format, brevity, forbidden content, and field placement under `title`):
+  owner = `dev/map/DEV_MAP_SCHEMA.md`;
+  all other docs must reference this owner only and must not restate or duplicate those rules.
 
 ## Execution trigger (strict)
 

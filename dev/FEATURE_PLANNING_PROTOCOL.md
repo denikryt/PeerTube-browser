@@ -96,7 +96,7 @@ Checklist:
 
 Checklist:
 - local decomposition has been synced and reviewed,
-- selected issue nodes for `issues-create`/`issues-sync` have status `Tasked`,
+- selected unmapped issue nodes for `issues-create`/`issues-sync` have status `Tasked` (mapped issues may be updated in `issues-sync` regardless of status),
 - GitHub materialization uses only already-defined local issue nodes,
 - every created/updated GitHub issue is assigned to the target milestone,
 - milestone resolution is confirmed before issuing materialization actions.

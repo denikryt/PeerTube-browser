@@ -175,7 +175,7 @@ Use this procedure before executing tasks for a new feature.
    - Queue mode example: `materialize feature <id> --mode issues-sync --issue-id <issue_a> --issue-id <issue_b>`.
    - Reconcile parent feature sub-issues from mapped local child issues after create/sync pass; reconciliation must be idempotent on repeated runs.
    - Return deterministic reconcile output in materialize response: `sub_issues_sync` (`attempted/added/skipped/errors`) and `missing_issue_mappings` (always present, can be empty).
-   - Status gate (`issues-create`/`issues-sync`): selected issue nodes must have status `Tasked`.
+   - Status gate (`issues-create`/`issues-sync`): selected unmapped issue nodes must have status `Tasked`; already-mapped issue nodes may be updated in `issues-sync` mode regardless of status.
    - Feature-level GitHub issue is managed at `create feature <id>` step; during materialization, update it only if metadata/body sync is explicitly required, without creating duplicates.
    - Branch policy (mandatory): resolve canonical feature branch `feature/<feature_id>` and persist branch linkage metadata; do not auto-checkout/switch branches during `materialize`.
    - Never create duplicate branches for the same feature id (for example `feature/F1-M1-2`).
@@ -185,7 +185,6 @@ Use this procedure before executing tasks for a new feature.
      - `branch_url = <repo_url>/tree/feature/<feature_id>` (or `null` if repository URL cannot be resolved).
    - Include branch context in result message: `Canonical feature branch: feature/<feature_id>`.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
-   - Keep GitHub issue body strictly issue-focused; use description-driven readable text (no markdown checkbox transport).
    - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
    - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
 7. Only then run `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`.

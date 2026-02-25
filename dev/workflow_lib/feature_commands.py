@@ -6,6 +6,7 @@ import argparse
 import json
 import re
 import subprocess
+import time
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
@@ -141,6 +142,24 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
         dest="github",
         action="store_false",
         help="Skip GitHub issue create/update calls.",
+    )
+    materialize_parser.add_argument(
+        "--pause-seconds",
+        type=float,
+        default=1.0,
+        help="Pause between GitHub materialize requests in write+github mode.",
+    )
+    materialize_parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=4,
+        help="Max retry attempts for transient GitHub request failures.",
+    )
+    materialize_parser.add_argument(
+        "--request-timeout",
+        type=float,
+        default=20.0,
+        help="Per-request GitHub CLI timeout in seconds for materialize write mode.",
     )
     materialize_parser.set_defaults(handler=_handle_feature_materialize)
 
@@ -588,6 +607,7 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         feature_node=feature_node,
         write=bool(args.write),
     )
+    _normalize_feature_issue_nodes_layout(feature_node)
 
     expected_marker = f"[M{feature_milestone_num}][F{feature_local_num}]"
     task_list_contract_payload = build_task_list_contract_payload(
@@ -660,6 +680,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
     feature_id, feature_milestone_num = _parse_feature_id(args.id)
     materialize_mode = str(args.mode).strip()
     mode_action = _resolve_materialize_mode_action(materialize_mode)
+    materialize_request_policy = _resolve_materialize_request_policy(args)
     feature_local_num = _parse_feature_local_num(feature_id)
     milestone_id = f"M{feature_milestone_num}"
     dev_map = _load_json(context.dev_map_path)
@@ -674,6 +695,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
     feature_node = feature_ref["feature"]
     feature_status = str(feature_node.get("status", ""))
     issue_description_backfill = _backfill_missing_issue_descriptions_for_feature(feature_node)
+    _normalize_feature_issue_nodes_layout(feature_node)
 
     all_issue_nodes = feature_node.get("issues", [])
     if not isinstance(all_issue_nodes, list):
@@ -724,7 +746,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             for issue_node in issue_nodes
             if _normalize_id(str(issue_node.get("id", "")))
         ]
-        _enforce_materialize_issue_status_gate(issue_nodes)
+        _enforce_materialize_issue_status_gate(issue_nodes, materialize_mode=materialize_mode)
 
     branch_name = f"feature/{feature_id}"
     repo_url = _resolve_repository_url(context.root_dir, feature_node)
@@ -758,8 +780,11 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                 repo_name_with_owner=github_repo_name_with_owner,
                 milestone_title=milestone_title,
                 milestone_id=milestone_id,
+                max_retries=materialize_request_policy["max_retries"],
+                retry_pause_seconds=materialize_request_policy["pause_seconds"],
+                timeout_seconds=materialize_request_policy["request_timeout"],
             )
-            for issue_node in issue_nodes:
+            for issue_index, issue_node in enumerate(issue_nodes):
                 issue_id = str(issue_node.get("id", "")).strip()
                 issue_number = _coerce_issue_number(
                     issue_node.get("gh_issue_number"),
@@ -784,9 +809,17 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                     milestone_title=milestone_title,
                     repo_name_with_owner=github_repo_name_with_owner,
                     repo_url=_normalize_repository_url(str(github_repo.get("url", ""))),
+                    max_retries=materialize_request_policy["max_retries"],
+                    retry_pause_seconds=materialize_request_policy["pause_seconds"],
+                    request_timeout=materialize_request_policy["request_timeout"],
                 )
                 materialized["mode_action"] = mode_action
                 materialized_issues.append(materialized)
+                if (
+                    materialize_request_policy["pause_seconds"] > 0
+                    and issue_index < len(issue_nodes) - 1
+                ):
+                    time.sleep(materialize_request_policy["pause_seconds"])
             if materialize_mode in {"issues-create", "issues-sync"}:
                 missing_issue_mappings = _collect_missing_issue_mappings(all_issue_nodes)
         else:
@@ -820,6 +853,9 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                 feature_node=feature_node,
                 issue_nodes=all_issue_nodes,
                 repo_name_with_owner=github_repo_name_with_owner,
+                max_retries=materialize_request_policy["max_retries"],
+                retry_pause_seconds=materialize_request_policy["pause_seconds"],
+                request_timeout=materialize_request_policy["request_timeout"],
             )
         else:
             sub_issues_sync = {
@@ -862,6 +898,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
             "mode_action": mode_action,
             "issues_materialized": materialized_issues,
             "missing_issue_mappings": missing_issue_mappings,
+            "request_policy": materialize_request_policy,
             "sub_issues_sync": sub_issues_sync,
             "github_milestone_title": milestone_title,
             "milestone_id": milestone_id,
@@ -942,6 +979,33 @@ def _resolve_materialize_issue_queue(raw_issue_ids: Any) -> list[str]:
     return issue_id_queue
 
 
+def _resolve_materialize_request_policy(args: Namespace) -> dict[str, Any]:
+    """Normalize and validate materialize request retry/throttle policy options."""
+    pause_seconds = float(getattr(args, "pause_seconds", 1.0))
+    if pause_seconds < 0:
+        raise WorkflowCommandError(
+            f"Invalid --pause-seconds {pause_seconds}; expected a value >= 0.",
+            exit_code=4,
+        )
+    max_retries = int(getattr(args, "max_retries", 4))
+    if max_retries < 0:
+        raise WorkflowCommandError(
+            f"Invalid --max-retries {max_retries}; expected a value >= 0.",
+            exit_code=4,
+        )
+    request_timeout = float(getattr(args, "request_timeout", 20.0))
+    if request_timeout <= 0:
+        raise WorkflowCommandError(
+            f"Invalid --request-timeout {request_timeout}; expected a value > 0.",
+            exit_code=4,
+        )
+    return {
+        "pause_seconds": pause_seconds,
+        "max_retries": max_retries,
+        "request_timeout": request_timeout,
+    }
+
+
 def _resolve_materialize_mode_action(materialize_mode: str) -> str:
     """Return explicit mode-action label for materialize command output."""
     if materialize_mode == "bootstrap":
@@ -953,20 +1017,30 @@ def _resolve_materialize_mode_action(materialize_mode: str) -> str:
     raise WorkflowCommandError(f"Unsupported materialize mode: {materialize_mode!r}.", exit_code=4)
 
 
-def _enforce_materialize_issue_status_gate(issue_nodes: list[dict[str, Any]]) -> None:
-    """Require Tasked status for issues selected for materialize create/sync modes."""
-    non_tasked_statuses: list[str] = []
+def _enforce_materialize_issue_status_gate(
+    issue_nodes: list[dict[str, Any]],
+    *,
+    materialize_mode: str,
+) -> None:
+    """Require Tasked status only for issue nodes that still need GitHub creation."""
+    non_tasked_unmapped: list[str] = []
     for issue_node in issue_nodes:
         issue_id = str(issue_node.get("id", "")).strip() or "<unknown-issue>"
         issue_status = str(issue_node.get("status", "")).strip() or "Pending"
+        is_mapped = (
+            _coerce_issue_number(issue_node.get("gh_issue_number"), issue_node.get("gh_issue_url")) is not None
+            and bool(str(issue_node.get("gh_issue_url", "")).strip())
+        )
+        if is_mapped and materialize_mode == "issues-sync":
+            continue
         if issue_status != "Tasked":
-            non_tasked_statuses.append(f"{issue_id}(status={issue_status!r})")
-    if non_tasked_statuses:
+            non_tasked_unmapped.append(f"{issue_id}(status={issue_status!r})")
+    if non_tasked_unmapped:
         raise WorkflowCommandError(
-            "feature materialize requires status 'Tasked' for selected issue nodes; "
+            "feature materialize requires status 'Tasked' for selected unmapped issue nodes; "
             "run plan tasks for issue/feature first for: "
-            + ", ".join(non_tasked_statuses)
-            + ".",
+            + ", ".join(non_tasked_unmapped)
+            + ". Mapped issues can be synced in issues-sync mode without Tasked status.",
             exit_code=4,
         )
 
@@ -1179,12 +1253,11 @@ def _apply_issue_delta(
         issue_node = issues_by_id.get(issue_id)
         issue_created = False
         if issue_node is None:
+            issue_title = str(issue_payload.get("title", issue_id)).strip() or issue_id
             issue_node = {
                 "id": issue_id,
-                "title": issue_payload.get("title", issue_id),
-                "description": str(issue_payload.get("description", "")).strip()
-                or str(issue_payload.get("title", issue_id)).strip()
-                or issue_id,
+                "title": issue_title,
+                "description": _build_default_issue_description({"id": issue_id, "title": issue_title}),
                 "status": "Pending",
                 "gh_issue_number": None,
                 "gh_issue_url": None,
@@ -1262,6 +1335,7 @@ def _apply_issue_delta(
             task_node["time"] = str(task_payload.get("time", task_node.get("time", now_time))).strip() or now_time
             task_upsert_count += 1
             issue_task_upsert_count += 1
+        _normalize_issue_node_layout(issue_node)
         if issue_task_upsert_count > 0 and str(issue_node.get("status", "")).strip() not in ISSUE_TERMINAL_STATUSES:
             issue_node["status"] = "Tasked"
     return {
@@ -1363,8 +1437,12 @@ def _materialize_feature_issue_node(
     milestone_title: str,
     repo_name_with_owner: str,
     repo_url: str | None,
+    *,
+    max_retries: int,
+    retry_pause_seconds: float,
+    request_timeout: float,
 ) -> dict[str, Any]:
-    """Create or update one GitHub issue from a local DEV_MAP issue node."""
+    """Create or update one GitHub issue from a local DEV_MAP issue node with retries."""
     issue_id = str(issue_node.get("id", "")).strip()
     if not issue_id:
         raise WorkflowCommandError("Feature issue node is missing required id during materialize.", exit_code=4)
@@ -1379,6 +1457,9 @@ def _materialize_feature_issue_node(
             title=title,
             body=body,
             milestone_title=milestone_title,
+            max_retries=max_retries,
+            retry_pause_seconds=retry_pause_seconds,
+            timeout_seconds=request_timeout,
         )
         parsed_number = _parse_issue_number_from_url(created_url)
         if parsed_number is None:
@@ -1395,6 +1476,9 @@ def _materialize_feature_issue_node(
             title=title,
             body=body,
             milestone_title=milestone_title,
+            max_retries=max_retries,
+            retry_pause_seconds=retry_pause_seconds,
+            timeout_seconds=request_timeout,
         )
         issue_url = _build_issue_url(repo_url, issue_number) or str(issue_node.get("gh_issue_url", "")).strip() or None
 
@@ -1409,35 +1493,9 @@ def _materialize_feature_issue_node(
 
 
 def _build_materialized_issue_body(issue_node: dict[str, Any]) -> str:
-    """Build issue-focused GitHub body from local issue title and mapped tasks."""
-    issue_title = str(issue_node.get("title", "")).strip() or str(issue_node.get("id", "")).strip()
-    issue_id = str(issue_node.get("id", "")).strip()
+    """Build concise GitHub body from one issue description."""
     issue_description = _resolve_issue_description(issue_node)
-    tasks = issue_node.get("tasks", [])
-    lines = [
-        "## Scope",
-        issue_title,
-        f"Issue ID: {issue_id}" if issue_id else "",
-        "",
-        "## Why this issue exists",
-        issue_description,
-        "",
-        "## Planned work/tasks",
-    ]
-    if isinstance(tasks, list) and tasks:
-        for task in tasks:
-            if not isinstance(task, dict):
-                continue
-            task_id = str(task.get("id", "")).strip()
-            task_title = str(task.get("title", "")).strip()
-            task_summary = str(task.get("summary", "")).strip()
-            task_label = f"Task {task_id}: {task_title}" if task_id else task_title
-            if task_summary:
-                task_label = f"{task_label} - {task_summary}" if task_label else task_summary
-            lines.append(f"- {task_label or 'Task details pending local sync.'}")
-    else:
-        lines.append("- No mapped tasks yet in DEV_MAP.")
-    return "\n".join(lines).strip() + "\n"
+    return issue_description.strip() + "\n"
 
 
 def _collect_missing_issue_mappings(issue_nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1463,8 +1521,11 @@ def _reconcile_feature_sub_issues(
     feature_node: dict[str, Any],
     issue_nodes: list[dict[str, Any]],
     repo_name_with_owner: str,
+    max_retries: int,
+    retry_pause_seconds: float,
+    request_timeout: float,
 ) -> dict[str, Any]:
-    """Reconcile feature parent sub-issues against mapped local child issue set."""
+    """Reconcile parent/child sub-issues with retry-aware GitHub API calls."""
     parent_issue_number = _coerce_issue_number(feature_node.get("gh_issue_number"), feature_node.get("gh_issue_url"))
     if parent_issue_number is None:
         return {
@@ -1495,6 +1556,9 @@ def _reconcile_feature_sub_issues(
         existing_numbers = gh_issue_list_sub_issue_numbers(
             repo_name_with_owner=repo_name_with_owner,
             parent_issue_number=parent_issue_number,
+            max_retries=max_retries,
+            retry_pause_seconds=retry_pause_seconds,
+            timeout_seconds=request_timeout,
         )
     except WorkflowCommandError as error:
         return {
@@ -1510,7 +1574,7 @@ def _reconcile_feature_sub_issues(
     existing_set = set(existing_numbers)
     added: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-    for issue_id, child_number in mapped_children:
+    for child_index, (issue_id, child_number) in enumerate(mapped_children):
         if child_number == parent_issue_number:
             skipped.append(
                 {
@@ -1534,6 +1598,9 @@ def _reconcile_feature_sub_issues(
                 repo_name_with_owner=repo_name_with_owner,
                 parent_issue_number=parent_issue_number,
                 sub_issue_number=child_number,
+                max_retries=max_retries,
+                retry_pause_seconds=retry_pause_seconds,
+                timeout_seconds=request_timeout,
             )
         except WorkflowCommandError as error:
             errors.append(
@@ -1542,6 +1609,8 @@ def _reconcile_feature_sub_issues(
             continue
         existing_set.add(child_number)
         added.append({"issue_id": issue_id, "gh_issue_number": child_number})
+        if retry_pause_seconds > 0 and child_index < len(mapped_children) - 1:
+            time.sleep(retry_pause_seconds)
 
     return {
         "attempted": True,
@@ -1606,28 +1675,24 @@ def _materialize_feature_registration_issue(
 
 
 def _build_feature_registration_issue_body(feature_node: dict[str, Any]) -> str:
-    """Build issue-focused body for feature-level GitHub issue registration/update."""
+    """Build concise feature-level body with related issue summaries."""
     feature_title = str(feature_node.get("title", "")).strip() or str(feature_node.get("id", "")).strip()
-    lines = [
-        "## Scope",
-        feature_title,
-        "",
-        "## Planned work/issues",
-    ]
+    lines = [feature_title]
     issues = feature_node.get("issues", [])
     if isinstance(issues, list) and issues:
+        lines.extend(["", "Related issues:"])
         for issue in issues:
             if not isinstance(issue, dict):
                 continue
             issue_id = str(issue.get("id", "")).strip()
             issue_title = str(issue.get("title", "")).strip()
             issue_description = _resolve_issue_description(issue)
-            issue_label = f"{issue_id}: {issue_title}" if issue_id else issue_title
+            issue_label = f"{issue_id}: {issue_title}" if issue_id and issue_title else issue_id or issue_title
             lines.append(f"- {issue_label or 'Issue details pending local sync.'}")
             if issue_description:
                 lines.append(f"  - {issue_description}")
     else:
-        lines.append("- Local feature has no mapped issues yet.")
+        lines.extend(["", "Related issues are not mapped yet."])
     return "\n".join(lines).strip() + "\n"
 
 
@@ -1642,15 +1707,17 @@ def _backfill_missing_issue_descriptions_for_feature(feature_node: dict[str, Any
             continue
         issue_id = str(issue.get("id", "")).strip()
         if str(issue.get("description", "")).strip():
+            _normalize_issue_node_layout(issue)
             continue
         issue["description"] = _build_default_issue_description(issue)
+        _normalize_issue_node_layout(issue)
         if issue_id:
             backfilled_issue_ids.append(issue_id)
     return {"count": len(backfilled_issue_ids), "issue_ids": backfilled_issue_ids}
 
 
 def _resolve_issue_description(issue_node: dict[str, Any]) -> str:
-    """Return issue description from node or deterministic fallback from title/tasks."""
+    """Return issue description from node or deterministic fallback from title."""
     description = str(issue_node.get("description", "")).strip()
     if description:
         return description
@@ -1658,35 +1725,50 @@ def _resolve_issue_description(issue_node: dict[str, Any]) -> str:
 
 
 def _build_default_issue_description(issue_node: dict[str, Any]) -> str:
-    """Build deterministic issue description from issue title and mapped task context."""
+    """Build concise default issue description with problem/change context."""
     issue_title = str(issue_node.get("title", "")).strip() or str(issue_node.get("id", "")).strip() or "Issue"
-    tasks = issue_node.get("tasks", [])
-    if not isinstance(tasks, list) or not tasks:
-        return f"{issue_title}. No mapped tasks yet; details will be added during decomposition."
+    compact_title = " ".join(issue_title.split()).strip().rstrip(".")
+    if not compact_title:
+        return "Resolve the issue."
+    title_text = compact_title[0].lower() + compact_title[1:] if len(compact_title) > 1 else compact_title.lower()
+    return (
+        f"This issue addresses {title_text} by defining the required change and "
+        "the problem it resolves."
+    )
 
-    task_fragments: list[str] = []
-    for task in tasks:
-        if not isinstance(task, dict):
-            continue
-        task_title = str(task.get("title", "")).strip()
-        task_summary = str(task.get("summary", "")).strip()
-        if task_title and task_summary:
-            task_fragments.append(f"{task_title} ({task_summary})")
-            continue
-        if task_title:
-            task_fragments.append(task_title)
-            continue
-        if task_summary:
-            task_fragments.append(task_summary)
-    if not task_fragments:
-        return f"{issue_title}. Mapped tasks exist but are missing readable details."
 
-    selected = task_fragments[:3]
-    remainder = len(task_fragments) - len(selected)
-    fragments_text = "; ".join(selected)
-    if remainder > 0:
-        fragments_text = f"{fragments_text}; plus {remainder} more task(s)"
-    return f"{issue_title}. Planned work: {fragments_text}."
+def _normalize_feature_issue_nodes_layout(feature_node: dict[str, Any]) -> None:
+    """Normalize issue-node field order for one feature subtree."""
+    issues = feature_node.get("issues", [])
+    if not isinstance(issues, list):
+        return
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        _normalize_issue_node_layout(issue)
+
+
+def _normalize_issue_node_layout(issue_node: dict[str, Any]) -> None:
+    """Place description directly under title while preserving all existing fields."""
+    ordered_keys = (
+        "id",
+        "title",
+        "description",
+        "status",
+        "gh_issue_number",
+        "gh_issue_url",
+        "tasks",
+    )
+    reordered: dict[str, Any] = {}
+    for key in ordered_keys:
+        if key in issue_node:
+            reordered[key] = issue_node[key]
+    for key, value in issue_node.items():
+        if key in reordered:
+            continue
+        reordered[key] = value
+    issue_node.clear()
+    issue_node.update(reordered)
 
 
 def _resolve_repository_url(root_dir: Path, feature_node: dict[str, Any]) -> str | None:
