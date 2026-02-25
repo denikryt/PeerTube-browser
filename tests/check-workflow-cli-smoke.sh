@@ -165,6 +165,12 @@ run_expect_failure_contains \
   "the following arguments are required: --mode" \
   "${WORKFLOW[@]}" feature materialize --id F1-M1
 run_expect_failure "feature-approve-unsupported" "${WORKFLOW[@]}" feature approve --id F1-M1
+if rg -n "expected Approved|requires status Approved" "${WORKFLOW_ROOT}/dev/workflow_lib" >"${TMP_DIR}/approved-gate-audit.log"; then
+  echo "fail-approved-gate-audit"
+  cat "${TMP_DIR}/approved-gate-audit.log"
+  exit 1
+fi
+echo "ok-approved-gate-audit"
 
 # Success-chain smoke (create -> plan-init/lint -> plan tasks -> execution-plan).
 CHAIN_REPO="${TMP_DIR}/chain-fixture"
@@ -425,7 +431,7 @@ run_expect_failure_contains \
   "Issue Execution Order references unknown issue" \
   "${CHAIN_REPO}/dev/workflow" feature plan-lint --id F9-M1
 
-# Gate-fail: plan tasks --write blocked for non-approved feature status.
+# No-approve gate: plan tasks --write must not require feature Approved status.
 GATE_SYNC_REPO="${TMP_DIR}/gate-sync-fixture"
 create_workflow_fixture_repo "${GATE_SYNC_REPO}"
 cat >"${GATE_SYNC_REPO}/dev/map/DEV_MAP.json" <<'EOF'
@@ -460,10 +466,14 @@ EOF
 cat >"${GATE_SYNC_REPO}/dev/empty_delta.json" <<'EOF'
 {}
 EOF
-run_expect_failure_contains \
-  "gate-sync-non-approved" \
-  "requires status Approved" \
+run_expect_success \
+  "gate-sync-no-approve-gate" \
   "${GATE_SYNC_REPO}/dev/workflow" plan tasks for feature --id F1-M1 --delta-file "${GATE_SYNC_REPO}/dev/empty_delta.json" --write
+assert_json_value "gate-sync-no-approve-gate" "action" "planned-tasks"
+assert_file_not_contains \
+  "gate-sync-no-approve-error-text" \
+  "${TMP_DIR}/gate-sync-no-approve-gate.log" \
+  "Approved"
 
 # Gate-fail: materialize blocked when milestone-to-title mapping is missing.
 GATE_MATERIALIZE_REPO="${TMP_DIR}/gate-materialize-fixture"
