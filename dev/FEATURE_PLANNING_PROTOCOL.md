@@ -56,6 +56,23 @@ Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
 
 ## 3) Planning Quality Gates
 
+### Gate 0: Plan Detail and Formatting Standard (mandatory for all new/updated plans)
+
+Checklist:
+- `#### Decomposition` uses numbered top-level steps (`1.`, `2.`, ...) and each step has concrete sub-points with implementation actions.
+- Every decomposition step states expected result/output (not only action wording).
+- For CLI/automation changes, decomposition explicitly includes:
+  - input contract,
+  - output contract,
+  - failure-path behavior,
+  - idempotency/stability behavior.
+- `#### Issue/Task Decomposition Assessment` includes:
+  - explicit `task_count`,
+  - per-task scope,
+  - concrete file/module targets,
+  - acceptance checks per task.
+- Avoid generic wording (`improve`, `enhance`, `refine`) without concrete mechanism, files, or validation criteria.
+
 ### Gate A: Pre-approve
 
 Checklist:
