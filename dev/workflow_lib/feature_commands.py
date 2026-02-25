@@ -104,29 +104,6 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     approve_parser.add_argument("--strict", action="store_true", help="Require strict plan lint pass.")
     approve_parser.set_defaults(handler=_handle_feature_approve)
 
-    sync_parser = feature_subparsers.add_parser(
-        "sync",
-        help="Sync manual decomposition delta to DEV_MAP/TASK_LIST/PIPELINE.",
-    )
-    sync_parser.add_argument("--id", required=True, help="Feature ID.")
-    sync_parser.add_argument(
-        "--delta-file",
-        required=True,
-        help="Path to JSON delta describing issue/task and tracker updates.",
-    )
-    sync_parser.add_argument("--write", action="store_true", help="Persist tracker updates.")
-    sync_parser.add_argument(
-        "--allocate-task-ids",
-        action="store_true",
-        help="Allocate numeric IDs from DEV_MAP task_count for token IDs ($token).",
-    )
-    sync_parser.add_argument(
-        "--update-pipeline",
-        action="store_true",
-        help="Apply pipeline section updates from the delta payload.",
-    )
-    sync_parser.set_defaults(handler=_handle_feature_sync)
-
     materialize_parser = feature_subparsers.add_parser(
         "materialize",
         help="Materialize local feature issues to GitHub and apply canonical branch policy.",
@@ -175,6 +152,71 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     )
     execution_plan_parser.set_defaults(only_pending=True, from_pipeline=True)
     execution_plan_parser.set_defaults(handler=_handle_feature_execution_plan)
+
+
+def register_plan_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register canonical decomposition commands: `plan tasks for ...`."""
+    plan_parser = subparsers.add_parser(
+        "plan",
+        help="Plan and decompose workflow entities.",
+    )
+    plan_subparsers = plan_parser.add_subparsers(dest="plan_command", required=True)
+    tasks_parser = plan_subparsers.add_parser(
+        "tasks",
+        help="Task decomposition operations.",
+    )
+    tasks_subparsers = tasks_parser.add_subparsers(dest="plan_tasks_command", required=True)
+    for_parser = tasks_subparsers.add_parser(
+        "for",
+        help="Select decomposition target type.",
+    )
+    for_subparsers = for_parser.add_subparsers(dest="plan_tasks_target", required=True)
+
+    feature_parser = for_subparsers.add_parser(
+        "feature",
+        help="Plan tasks for one feature decomposition delta.",
+    )
+    feature_parser.add_argument("--id", required=True, help="Feature ID.")
+    feature_parser.add_argument(
+        "--delta-file",
+        required=True,
+        help="Path to JSON delta describing issue/task and tracker updates.",
+    )
+    feature_parser.add_argument("--write", action="store_true", help="Persist tracker updates.")
+    feature_parser.add_argument(
+        "--allocate-task-ids",
+        action="store_true",
+        help="Allocate numeric IDs from DEV_MAP task_count for token IDs ($token).",
+    )
+    feature_parser.add_argument(
+        "--update-pipeline",
+        action="store_true",
+        help="Apply pipeline section updates from the delta payload.",
+    )
+    feature_parser.set_defaults(handler=_handle_plan_tasks_for_feature)
+
+    issue_parser = for_subparsers.add_parser(
+        "issue",
+        help="Plan tasks for one issue decomposition delta.",
+    )
+    issue_parser.add_argument("--id", required=True, help="Issue ID.")
+    issue_parser.add_argument(
+        "--delta-file",
+        required=True,
+        help="Path to JSON delta describing issue/task and tracker updates.",
+    )
+    issue_parser.add_argument("--write", action="store_true", help="Persist tracker updates.")
+    issue_parser.add_argument(
+        "--allocate-task-ids",
+        action="store_true",
+        help="Allocate numeric IDs from DEV_MAP task_count for token IDs ($token).",
+    )
+    issue_parser.add_argument(
+        "--update-pipeline",
+        action="store_true",
+        help="Apply pipeline section updates from the delta payload.",
+    )
+    issue_parser.set_defaults(handler=_handle_plan_tasks_for_issue)
 
 
 def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
@@ -367,8 +409,30 @@ def _handle_feature_approve(args: Namespace, context: WorkflowContext) -> int:
     return 0
 
 
+def _handle_plan_tasks_for_feature(args: Namespace, context: WorkflowContext) -> int:
+    """Handle `plan tasks for feature` command by forwarding to decomposition engine."""
+    feature_id, _ = _parse_feature_id(args.id)
+    setattr(args, "id", feature_id)
+    setattr(args, "issue_id_filter", None)
+    setattr(args, "command_label", "plan tasks for feature")
+    setattr(args, "command_output", "plan.tasks.for.feature")
+    return _handle_feature_sync(args, context)
+
+
+def _handle_plan_tasks_for_issue(args: Namespace, context: WorkflowContext) -> int:
+    """Handle `plan tasks for issue` command by resolving owner feature and filtering delta."""
+    issue_id, feature_local_num, feature_milestone_num = _parse_issue_id(args.id)
+    setattr(args, "id", f"F{feature_local_num}-M{feature_milestone_num}")
+    setattr(args, "issue_id_filter", issue_id)
+    setattr(args, "command_label", "plan tasks for issue")
+    setattr(args, "command_output", "plan.tasks.for.issue")
+    return _handle_feature_sync(args, context)
+
+
 def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
-    """Apply a manual decomposition delta to all local tracker files."""
+    """Apply manual decomposition delta to local trackers via canonical plan-tasks commands."""
+    command_label = str(getattr(args, "command_label", "plan tasks for feature")).strip() or "plan tasks for feature"
+    command_output = str(getattr(args, "command_output", "plan.tasks.for.feature")).strip() or "plan.tasks.for.feature"
     feature_id, feature_milestone_num = _parse_feature_id(args.id)
     feature_local_num = _parse_feature_local_num(feature_id)
     dev_map = _load_json(context.dev_map_path)
@@ -379,10 +443,16 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
     feature_node = feature_ref["feature"]
     if bool(args.write) and str(feature_node.get("status", "")) != "Approved":
         raise WorkflowCommandError(
-            f"feature sync --write requires status Approved; got {feature_node.get('status')!r} for {feature_id}.",
+            f"{command_label} --write requires status Approved; got {feature_node.get('status')!r} for {feature_id}.",
             exit_code=4,
         )
 
+    issue_id_filter = _resolve_plan_tasks_issue_filter(
+        raw_issue_id=getattr(args, "issue_id_filter", None),
+        feature_id=feature_id,
+        feature_milestone_num=feature_milestone_num,
+        feature_local_num=feature_local_num,
+    )
     delta = load_sync_delta(Path(args.delta_file))
     existing_task_locations = _collect_task_locations(dev_map)
     resolved_delta, allocation = resolve_sync_delta_references(
@@ -391,13 +461,17 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         existing_task_locations=existing_task_locations,
         allocate_task_ids=bool(args.allocate_task_ids),
     )
+    issue_payloads = _filter_issue_payloads_for_plan_tasks(
+        issue_payloads=resolved_delta.get("issues", []),
+        issue_id_filter=issue_id_filter,
+    )
     issue_counts = _apply_issue_delta(
         feature_node=feature_node,
         feature_id=feature_id,
         feature_milestone_num=feature_milestone_num,
         feature_local_num=feature_local_num,
         statuses=set(dev_map.get("statuses", [])),
-        issue_payloads=resolved_delta.get("issues", []),
+        issue_payloads=issue_payloads,
         existing_task_locations=existing_task_locations,
     )
     issue_title_by_id = {
@@ -426,12 +500,12 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
     )
     validate_task_list_contract_payload(
         payload=task_list_contract_payload,
-        location="feature.sync.task_list_contract",
+        location="plan.tasks.for.task_list_contract",
     )
     pipeline_contract_payload = build_pipeline_contract_payload(resolved_delta.get("pipeline", {}))
     validate_pipeline_contract_payload(
         payload=pipeline_contract_payload,
-        location="feature.sync.pipeline_contract",
+        location="plan.tasks.for.pipeline_contract",
     )
 
     task_list_payload = load_task_list_payload(context)
@@ -459,14 +533,15 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
 
     emit_json(
         {
-            "action": "synced" if bool(args.write) else "would-sync",
+            "action": "planned-tasks" if bool(args.write) else "would-plan-tasks",
             "allocate_task_ids": bool(args.allocate_task_ids),
             "allocated_task_ids": allocation["allocated_ids"],
-            "command": "feature.sync",
+            "command": command_output,
             "delta_file": str(Path(args.delta_file)),
             "dev_map_issues_upserted": issue_counts["issues_upserted"],
             "dev_map_tasks_upserted": issue_counts["tasks_upserted"],
             "feature_id": feature_id,
+            "issue_id_filter": issue_id_filter,
             "issue_execution_order_sync": issue_execution_order_sync,
             "issue_planning_status_reconciliation": issue_planning_status_reconciliation,
             "pipeline_blocks_added": pipeline_counts["blocks_added"],
@@ -788,6 +863,45 @@ def _collect_task_locations(dev_map: dict[str, Any]) -> dict[str, str]:
                     continue
                 locations[task_id] = standalone_id
     return locations
+
+
+def _resolve_plan_tasks_issue_filter(
+    raw_issue_id: Any,
+    *,
+    feature_id: str,
+    feature_milestone_num: int,
+    feature_local_num: int,
+) -> str | None:
+    """Normalize and validate optional issue filter against selected feature."""
+    if raw_issue_id is None:
+        return None
+    issue_id, issue_feature_num, issue_milestone_num = _parse_issue_id(str(raw_issue_id))
+    if issue_feature_num != feature_local_num or issue_milestone_num != feature_milestone_num:
+        raise WorkflowCommandError(
+            f"Issue filter {issue_id} does not belong to feature {feature_id}.",
+            exit_code=4,
+        )
+    return issue_id
+
+
+def _filter_issue_payloads_for_plan_tasks(
+    issue_payloads: list[dict[str, Any]],
+    issue_id_filter: str | None,
+) -> list[dict[str, Any]]:
+    """Restrict delta issue payloads to one issue when issue-scoped decomposition is requested."""
+    if issue_id_filter is None:
+        return issue_payloads
+    filtered_payloads: list[dict[str, Any]] = []
+    for issue_index, issue_payload in enumerate(issue_payloads):
+        payload_issue_id = _required_string_field(issue_payload, "id", f"issues[{issue_index}]")
+        if payload_issue_id != issue_id_filter:
+            raise WorkflowCommandError(
+                "plan tasks for issue delta contains non-target issue "
+                f"{payload_issue_id}; expected only {issue_id_filter}.",
+                exit_code=4,
+            )
+        filtered_payloads.append(issue_payload)
+    return filtered_payloads
 
 
 def _apply_issue_delta(
@@ -1233,6 +1347,18 @@ def _parse_feature_id(raw_feature_id: str) -> tuple[str, int]:
             exit_code=4,
         )
     return feature_id, int(match.group("milestone_num"))
+
+
+def _parse_issue_id(raw_issue_id: str) -> tuple[str, int, int]:
+    """Validate issue ID and return normalized ID with feature/milestone numbers."""
+    issue_id = _normalize_id(raw_issue_id)
+    match = ISSUE_ID_PATTERN.fullmatch(issue_id)
+    if match is None:
+        raise WorkflowCommandError(
+            f"Invalid issue ID {raw_issue_id!r}; expected format I<local>-F<feature_local>-M<milestone>.",
+            exit_code=4,
+        )
+    return issue_id, int(match.group("feature_num")), int(match.group("milestone_num"))
 
 
 def _parse_milestone_id(raw_milestone_id: str) -> int:

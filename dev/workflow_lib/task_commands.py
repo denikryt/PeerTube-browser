@@ -72,7 +72,7 @@ def _handle_task_preflight(args: Namespace, context: WorkflowContext) -> int:
     task_list_present = _task_exists_in_task_list(context, task_id)
     if not task_list_present:
         raise WorkflowCommandError(
-            f"Task {task_id} is missing in TASK_LIST headings; sync issues to task list before execute.",
+            f"Task {task_id} is missing in TASK_LIST headings; run plan tasks for issue/feature before execute.",
             exit_code=4,
         )
 

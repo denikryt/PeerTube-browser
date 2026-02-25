@@ -9,7 +9,7 @@ from typing import Sequence
 from .confirm_commands import register_confirm_router
 from .context import WorkflowContext, build_default_context
 from .errors import WorkflowCommandError
-from .feature_commands import register_feature_router
+from .feature_commands import register_feature_router, register_plan_router
 from .task_commands import register_task_router
 from .validate_commands import register_validate_router
 
@@ -31,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command_group", required=True)
     register_feature_router(subparsers)
+    register_plan_router(subparsers)
     register_task_router(subparsers)
     register_confirm_router(subparsers)
     register_validate_router(subparsers)
@@ -47,4 +48,3 @@ def main(argv: Sequence[str] | None = None, context: WorkflowContext | None = No
     except WorkflowCommandError as error:
         print(f"workflow command error: {error}", file=sys.stderr)
         return int(error.exit_code)
-
