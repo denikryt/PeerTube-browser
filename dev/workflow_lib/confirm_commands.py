@@ -13,7 +13,7 @@ from typing import Any
 
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
-from .github_adapter import close_github_issue
+from .github_adapter import close_github_issue, gh_issue_edit_body, gh_issue_view_body, resolve_github_repository
 from .output import emit_json
 from .tracker_store import (
     load_pipeline_payload,
@@ -150,17 +150,73 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
         _touch_updated_at(dev_map)
         _write_json(context.dev_map_path, dev_map)
 
+    issue_number = _coerce_issue_number(issue_node.get("gh_issue_number"))
+    issue_url = str(issue_node.get("gh_issue_url", "")).strip()
+    github_rejection: dict[str, Any] = {
+        "attempted": False,
+        "closed": False,
+        "marker_added": False,
+        "reason": "reject-succeeded-local-only",
+    }
+    if not bool(args.close_github):
+        github_rejection = {
+            "attempted": False,
+            "closed": False,
+            "marker_added": False,
+            "reason": "close-github-disabled",
+        }
+    elif issue_number is None or not issue_url:
+        github_rejection = {
+            "attempted": False,
+            "closed": False,
+            "marker_added": False,
+            "reason": "issue-not-mapped",
+            "missing_fields": [
+                field
+                for field, missing in (
+                    ("gh_issue_number", issue_number is None),
+                    ("gh_issue_url", not issue_url),
+                )
+                if missing
+            ],
+        }
+    elif not bool(args.write):
+        github_rejection = {
+            "attempted": False,
+            "closed": False,
+            "marker_added": False,
+            "reason": "dry-run",
+            "issue_number": issue_number,
+        }
+    elif status_before == "Rejected":
+        github_rejection = {
+            "attempted": False,
+            "closed": False,
+            "marker_added": False,
+            "reason": "already-rejected-no-op",
+            "issue_number": issue_number,
+        }
+    else:
+        github_repo = resolve_github_repository(context.root_dir)
+        repo_name_with_owner = github_repo["name_with_owner"]
+        current_body = gh_issue_view_body(repo_name_with_owner, issue_number)
+        updated_body, marker_added = _append_issue_rejection_marker(current_body, issue_id)
+        if marker_added:
+            gh_issue_edit_body(repo_name_with_owner, issue_number, updated_body)
+        close_github_issue(issue_number)
+        github_rejection = {
+            "attempted": True,
+            "closed": True,
+            "marker_added": marker_added,
+            "issue_number": issue_number,
+        }
+
     emit_json(
         {
             "close_github": bool(args.close_github),
             "command": "reject.issue",
             "feature_id": str(feature_node.get("id", "")).strip(),
-            "github_rejection": {
-                "attempted": False,
-                "closed": False,
-                "marker_added": False,
-                "reason": "github-reject-flow-not-enabled",
-            },
+            "github_rejection": github_rejection,
             "issue_id": issue_id,
             "status_after": str(issue_node.get("status", "")).strip() if bool(args.write) else status_before,
             "status_before": status_before,
@@ -168,6 +224,24 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
         }
     )
     return 0
+
+
+def _append_issue_rejection_marker(issue_body: str, issue_id: str) -> tuple[str, bool]:
+    """Append deterministic rejection marker block to one GitHub issue body."""
+    marker_token = f"<!-- workflow:issue-rejected:{issue_id} -->"
+    if marker_token in issue_body:
+        return issue_body, False
+    marker_block = "\n".join(
+        [
+            marker_token,
+            "## Rejection",
+            f"Issue `{issue_id}` was rejected via workflow reject command.",
+        ]
+    )
+    base_body = issue_body.rstrip()
+    if base_body:
+        return f"{base_body}\n\n{marker_block}\n", True
+    return f"{marker_block}\n", True
 
 
 def _handle_confirm_task_done(args: Namespace, context: WorkflowContext) -> int:
