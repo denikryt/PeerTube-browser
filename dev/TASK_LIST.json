@@ -545,30 +545,6 @@
       ]
     },
     {
-      "id": "88",
-      "marker": "[M1][F4]",
-      "title": "Implement create-only child issue materialization",
-      "problem": "materialize currently edits mapped child issues even when only new issues should be pushed.",
-      "solution_option": "in issues-create mode create only unmapped child issues and skip mapped ones.",
-      "concrete_steps": [
-        "Detect mapped child issues by gh_issue_number and gh_issue_url.",
-        "Call gh issue create only for unmapped issue nodes.",
-        "Return skip actions for mapped issues without edit requests."
-      ]
-    },
-    {
-      "id": "89",
-      "marker": "[M1][F4]",
-      "title": "Cover create-only no-edit behavior with smoke tests",
-      "problem": "without regression coverage create-only mode may regress into editing existing mapped issues.",
-      "solution_option": "add smoke scenarios that assert no gh issue edit in create-only mode.",
-      "concrete_steps": [
-        "Add create-only scenario with mixed mapped and unmapped issues.",
-        "Assert mapped issue metadata remains unchanged.",
-        "Assert only new issues are materialized."
-      ]
-    },
-    {
       "id": "92",
       "marker": "[M1][F4]",
       "title": "Add missing child issue checkboxes in feature issue on materialize",
