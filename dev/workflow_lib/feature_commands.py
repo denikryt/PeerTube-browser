@@ -516,6 +516,25 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
                 milestone_id=milestone_id,
             )
             for issue_node in issue_nodes:
+                issue_id = str(issue_node.get("id", "")).strip()
+                issue_number = _coerce_issue_number(
+                    issue_node.get("gh_issue_number"),
+                    issue_node.get("gh_issue_url"),
+                )
+                issue_url = str(issue_node.get("gh_issue_url", "")).strip() or None
+                issue_is_mapped = issue_number is not None and issue_url is not None
+                if materialize_mode == "issues-create" and issue_is_mapped:
+                    materialized_issues.append(
+                        {
+                            "action": "skipped",
+                            "issue_id": issue_id,
+                            "gh_issue_number": issue_number,
+                            "gh_issue_url": issue_url,
+                            "mode_action": mode_action,
+                            "reason": "already-materialized-create-only",
+                        }
+                    )
+                    continue
                 materialized = _materialize_feature_issue_node(
                     issue_node=issue_node,
                     milestone_title=milestone_title,
@@ -527,11 +546,19 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
         else:
             for issue_node in issue_nodes:
                 issue_id = str(issue_node.get("id", ""))
-                issue_number = issue_node.get("gh_issue_number")
+                issue_number = _coerce_issue_number(
+                    issue_node.get("gh_issue_number"),
+                    issue_node.get("gh_issue_url"),
+                )
                 issue_url = str(issue_node.get("gh_issue_url", "")).strip() or None
+                issue_is_mapped = issue_number is not None and issue_url is not None
+                if materialize_mode == "issues-create" and issue_is_mapped:
+                    action = "would-skip"
+                else:
+                    action = "would-update" if issue_number else "would-create"
                 materialized_issues.append(
                     {
-                        "action": "would-update" if issue_number else "would-create",
+                        "action": action,
                         "issue_id": issue_id,
                         "gh_issue_number": issue_number,
                         "gh_issue_url": issue_url,
