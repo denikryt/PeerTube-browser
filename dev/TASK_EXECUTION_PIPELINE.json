@@ -48,22 +48,6 @@
     {
       "tasks": ["94", "95"],
       "description": "feature checklist sync and issue approved gate"
-    },
-    {
-      "tasks": ["111", "112", "113", "114"],
-      "description": "I24 no-approve lifecycle command and gate removal"
-    },
-    {
-      "tasks": ["115", "116", "117", "118"],
-      "description": "I23 issue lifecycle status contract and planning-materialize gates"
-    },
-    {
-      "tasks": ["119", "120", "121"],
-      "description": "I22 multi-issue materialize queue support"
-    },
-    {
-      "tasks": ["122", "123", "124", "125", "126"],
-      "description": "I25 plan-issue automation and scoped lint"
     }
   ],
   "functional_blocks": [
@@ -120,30 +104,6 @@
       "tasks": ["94", "95"],
       "scope": "explicit materialize modes, scoped issue materialization, create-only behavior, feature checklist sync, and issue-level approval gate enforcement.",
       "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
-    },
-    {
-      "title": "Block K: No-approve feature lifecycle contract",
-      "tasks": ["111", "112", "113", "114"],
-      "scope": "remove feature approve command, remove Approved gates, and align command contracts and docs.",
-      "outcome": "feature workflow runs without approve-command dependency, and plan tasks, materialize, execution-plan, and validate paths are not blocked by Approved status."
-    },
-    {
-      "title": "Block L: Issue planning to materialize lifecycle gates",
-      "tasks": ["115", "116", "117", "118"],
-      "scope": "define Pending-Planned-Tasked issue transitions and enforce decomposition and materialize gates.",
-      "outcome": "issues follow deterministic Pending to Planned to Tasked progression, plan-tasks rejects Pending issues, and materialize accepts only Tasked issues."
-    },
-    {
-      "title": "Block M: Queue-based issue materialization",
-      "tasks": ["119", "120", "121"],
-      "scope": "accept ordered multi-issue queue input and process materialize create or sync in stable order.",
-      "outcome": "one materialize run can process multiple selected issues in explicit queue order with deterministic validation, actions, and output metadata."
-    },
-    {
-      "title": "Block N: Automated plan-issue upsert and scoped lint",
-      "tasks": ["122", "123", "124", "125", "126"],
-      "scope": "introduce plan-issue command with deterministic resolver, canonical block upsert, and target-scoped lint behavior.",
-      "outcome": "workflow can upsert one canonical issue plan block via command, validate only the target issue block with order guards, and keep behavior stable through smoke coverage."
     }
   ],
   "overlaps": [
@@ -194,22 +154,6 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
-    },
-    {
-      "tasks": ["112", "117"],
-      "description": "both modify feature materialize gate logic and status preconditions."
-    },
-    {
-      "tasks": ["114", "118"],
-      "description": "both update canonical workflow/protocol docs and smoke command contracts."
-    },
-    {
-      "tasks": ["120", "117"],
-      "description": "queue-selected materialize processing and Tasked-status gate validation share issue selection path."
-    },
-    {
-      "tasks": ["111", "122"],
-      "description": "both adjust workflow CLI surface and feature command routing."
     }
   ]
 }
