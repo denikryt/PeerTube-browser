@@ -26,14 +26,15 @@ Each feature plan section must use the feature ID as a heading and include:
 
 ### Issue Execution Order
 1. `I16-F4-M1` - Issue planning status split: Pending (no plan) vs Planned (has plan)
-2. `I18-F4-M1` - Standardize per-issue plan block format in FEATURE_PLANS and enforce strict heading lint
-3. `I19-F4-M1` - Feature plan issue execution order block as the source of issue sequencing
-4. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
-5. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
-6. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
-7. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
-8. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
-9. `I13-F4-M1` - Auto-delete sync delta file after successful feature sync write
+2. `I20-F4-M1` - Rename decomposition commands from sync to plan tasks for issue/feature
+3. `I18-F4-M1` - Standardize per-issue plan block format in FEATURE_PLANS and enforce strict heading lint
+4. `I19-F4-M1` - Feature plan issue execution order block as the source of issue sequencing
+5. `I14-F4-M1` - Replace checkbox-based GitHub issue body with description-driven readable content
+6. `I15-F4-M1` - Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set
+7. `I17-F4-M1` - Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker
+8. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
+9. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
+10. `I13-F4-M1` - Auto-delete sync delta file after successful feature sync write
 
 ### Follow-up issue: I16-F4-M1
 
@@ -74,6 +75,45 @@ Each feature plan section must use the feature ID as a heading and include:
    - Task 3: smoke coverage and protocol/workflow documentation updates.
 2. Why `3`:
    - model contract, reconciliation logic, and regression/documentation are separate risk domains and can be validated independently.
+
+### Follow-up issue: I20-F4-M1
+
+**Title**
+- `I20-F4-M1`: Rename decomposition commands from sync to plan tasks for issue/feature
+
+### Dependencies
+- `dev/workflow_lib/feature_commands.py`
+- `dev/workflow_lib/cli.py`
+- `tests/check-workflow-cli-smoke.sh`
+- `dev/TASK_EXECUTION_PROTOCOL.md`
+- `dev/FEATURE_WORKFLOW.md`
+- `dev/FEATURE_PLANNING_PROTOCOL.md`
+- `AGENTS.md`
+
+### Decomposition
+1. Define canonical decomposition command naming.
+   - Set canonical commands: `plan tasks for issue <issue_id>` and `plan tasks for feature <feature_id>`.
+   - Reserve `sync` naming only for state reconciliation operations that do not create new tasks/decomposition.
+2. Implement direct CLI command rename without aliases.
+   - Add command handlers so canonical `plan tasks for ...` names are first-class CLI commands.
+   - Remove `sync issues to task list for <feature_id>` decomposition command path; do not keep aliases.
+3. Update protocol/workflow command semantics.
+   - Replace decomposition-step naming in canonical command sequence docs from `sync issues ...` to `plan tasks for ...`.
+   - Keep one source of truth for semantics in `TASK_EXECUTION_PROTOCOL`; in index/docs leave concise references only.
+4. Align output contract and operator guidance.
+   - Ensure command output and help text describe decomposition/planning action, not synchronization.
+   - Add deterministic wording for hard-rename errors and next-command guidance.
+5. Add regression smoke coverage.
+   - Add positive smoke for new canonical command names.
+   - Add negative smoke that legacy `sync issues to task list ...` command is rejected with explicit error.
+
+### Issue/Task Decomposition Assessment
+1. Recommended split: `task_count = 3`.
+   - Task 1: canonical command naming contract + docs/protocol updates.
+   - Task 2: CLI implementation for `plan tasks for issue|feature` without alias paths.
+   - Task 3: smoke tests and output contract verification for hard command rename.
+2. Why `3`:
+   - naming contract, command implementation, and regression coverage are separate risk domains and should be validated independently.
 
 ### Follow-up issue: I14-F4-M1
 
