@@ -7,7 +7,7 @@ Canonical structure and ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md`.
 ## Scope ownership
 
 - This file owns planning artifacts and planning quality gates only.
-- Command semantics/order (`create/plan/approve/sync/materialize/execute/confirm`) are owned by `dev/TASK_EXECUTION_PROTOCOL.md`.
+- Command semantics/order (`create/plan/approve/plan tasks for/materialize/execute/confirm`) are owned by `dev/TASK_EXECUTION_PROTOCOL.md`.
 - Hard constraints are owned by `AGENTS.md`.
 
 ## 1) Planning Input Contract

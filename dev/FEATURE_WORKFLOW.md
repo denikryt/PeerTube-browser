@@ -15,7 +15,7 @@ Compact command index for milestone/feature operations.
 2. `plan feature <id>`
 3. `plan issue <issue_id>` (repeat per issue as needed)
 4. `approve feature plan`
-5. `sync issues to task list for <id>`
+5. `plan tasks for feature <id>` or `plan tasks for issue <issue_id>`
 6. review/refine local decomposition with user
 7. `materialize feature <id> --mode bootstrap`
 8. `materialize feature <id> --mode issues-create` or `materialize feature <id> --mode issues-sync`
@@ -47,10 +47,10 @@ Compact command index for milestone/feature operations.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
   - Canonical planning requirements: `dev/FEATURE_PLANNING_PROTOCOL.md` -> `Planning Input Contract` + `Planning Quality Gates`.
 - `approve feature plan`
-  - Purpose: approve plan boundaries and unlock sync/materialize path.
+  - Purpose: approve plan boundaries and unlock decomposition/materialize path.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
-- `sync issues to task list for <id>`
-  - Purpose: sync local `Issue -> Task` decomposition across `DEV_MAP`/`TASK_LIST`/`PIPELINE`.
+- `plan tasks for feature <id>` / `plan tasks for issue <issue_id>`
+  - Purpose: persist local `Issue -> Task` decomposition across `DEV_MAP`/`TASK_LIST`/`PIPELINE`.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
 - `feature execution-plan --id <feature_id>`
   - Purpose: return pending task order and include the next issue from `Issue Execution Order` in `FEATURE_PLANS`.

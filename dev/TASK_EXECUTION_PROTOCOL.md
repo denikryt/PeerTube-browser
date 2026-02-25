@@ -140,18 +140,19 @@ Use this procedure before executing tasks for a new feature.
    - Create/update feature-level GitHub issue for this feature and assign it to the corresponding GitHub milestone.
    - Persist feature `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json` in the same change set.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
-   - Registration-only boundary: do not auto-run `plan`, `approve`, `sync`, `materialize`, or `execute` after `create feature`.
+   - Registration-only boundary: do not auto-run `plan`, `approve`, `plan tasks for`, `materialize`, or `execute` after `create feature`.
 2. `plan feature <id>`: produce/update `dependencies`, `decomposition` (strict step-by-step command flow), `Issue Execution Order` (ordered active feature issues), and `Issue/Task Decomposition Assessment` in `dev/FEATURE_PLANS.md`.
 3. `plan issue <issue_id>`: produce/update one issue-level plan block in `dev/FEATURE_PLANS.md` under the owning feature section.
    - Resolve `<issue_id>` in `dev/map/DEV_MAP.json` and bind to exactly one parent feature.
-   - If issue is missing in `DEV_MAP`, stop and request issue creation/sync first.
+   - If issue is missing in `DEV_MAP`, stop and request issue creation/decomposition first.
    - Update only issue-plan content for the target issue (do not auto-create feature/issue mapping nodes from this command).
    - Keep `Issue Execution Order` consistent: include the target issue if it is active (`status != Done` and `status != Rejected`).
    - Persist plan content to `dev/FEATURE_PLANS.md` in the same run (no chat-only plan output).
 4. `approve feature plan`: freeze boundaries from the corresponding section in `dev/FEATURE_PLANS.md`, then set the target feature status to `Approved` in `dev/map/DEV_MAP.json`.
    - Feature status in `dev/map/DEV_MAP.json` is the source of truth for approval gates.
    - If that approved section is edited later, require a new explicit `approve feature plan` and re-set status to `Approved` before continuing.
-5. `sync issues to task list for <id>`: run only if the target feature status in `dev/map/DEV_MAP.json` is `Approved`; then create/update local `Issue -> Task` decomposition and sync it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.json`, and `dev/TASK_EXECUTION_PIPELINE.json`.
+5. `plan tasks for feature <id>`: run only if the target feature status in `dev/map/DEV_MAP.json` is `Approved`; then create/update local `Issue -> Task` decomposition and persist it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.json`, and `dev/TASK_EXECUTION_PIPELINE.json`.
+   - Optional issue scope: `plan tasks for issue <issue_id>` for one issue-targeted decomposition run.
 6. Review/refine local issues/tasks with the user until decomposition is final.
 7. `materialize feature <id> --mode <bootstrap|issues-create|issues-sync>`: run explicit materialization mode for an already-synced feature.
    - `--mode bootstrap`: resolve/create canonical feature branch context and persist branch linkage metadata; do not materialize child issues.
