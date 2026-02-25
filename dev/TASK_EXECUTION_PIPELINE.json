@@ -48,6 +48,18 @@
     {
       "tasks": ["94", "95"],
       "description": "feature checklist sync and issue approved gate"
+    },
+    {
+      "tasks": ["130", "131", "132", "133", "134"],
+      "description": "description-driven GitHub issue body contract and checklist decoupling"
+    },
+    {
+      "tasks": ["135", "136", "137"],
+      "description": "feature materialize sub-issues reconcile and output contract"
+    },
+    {
+      "tasks": ["138", "139", "140"],
+      "description": "reject issue lifecycle with local and GitHub closure behavior"
     }
   ],
   "functional_blocks": [
@@ -104,6 +116,18 @@
       "tasks": ["94", "95"],
       "scope": "explicit materialize modes, scoped issue materialization, create-only behavior, feature checklist sync, and issue-level approval gate enforcement.",
       "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
+    },
+    {
+      "title": "Block K: Description-driven issue materialization",
+      "tasks": ["130", "131", "132", "133", "134"],
+      "scope": "Issue description data contract, default generation/backfill, and checkbox-free GitHub issue body renderers with confirm/materialize decoupling.",
+      "outcome": "Issue and feature GitHub bodies are rendered from readable descriptions without checkbox transport, and confirm/materialize no longer depend on checklist parsing."
+    },
+    {
+      "title": "Block L: Sub-issues reconcile and reject lifecycle",
+      "tasks": ["135", "136", "137", "138", "139", "140"],
+      "scope": "GitHub sub-issue adapter + materialize reconciliation logic, plus explicit reject issue command flow with mapped GitHub close behavior.",
+      "outcome": "Feature materialize keeps parent GitHub sub-issues synchronized with mapped local issue set, and reject issue reliably sets local Rejected status and closes mapped GitHub issues."
     }
   ],
   "overlaps": [
@@ -154,6 +178,22 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
+    },
+    {
+      "tasks": ["130", "131"],
+      "description": "description generation depends on the new issue description data contract and persistence path."
+    },
+    {
+      "tasks": ["132", "133"],
+      "description": "both tasks change GitHub body renderers and should keep one shared no-checkbox text format contract."
+    },
+    {
+      "tasks": ["135", "136"],
+      "description": "materialize reconcile logic depends on adapter list or add sub-issue primitives and deterministic error handling."
+    },
+    {
+      "tasks": ["138", "139"],
+      "description": "GitHub reject close flow depends on local reject command contract and ownership validation."
     }
   ]
 }

@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T00:14:16+02:00",
-  "task_count": 129,
+  "updated_at": "2026-02-26T00:19:19+02:00",
+  "task_count": 140,
   "milestones": [
     {
       "id": "M1",
@@ -442,18 +442,84 @@
             {
               "id": "I14-F4-M1",
               "title": "Replace checkbox-based GitHub issue body with description-driven readable content",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "130",
+                  "title": "Add issue description field contract to DEV_MAP and sync path",
+                  "summary": "Extend issue-node contract and decomposition sync handling so issue description can be persisted and used as canonical human-readable issue context.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "00:19:19"
+                },
+                {
+                  "id": "131",
+                  "title": "Implement deterministic description generation and backfill",
+                  "summary": "Generate default issue descriptions from title and mapped tasks, and backfill missing descriptions for existing local issue nodes.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "00:19:19"
+                },
+                {
+                  "id": "132",
+                  "title": "Rewrite child issue body renderer to description-driven format",
+                  "summary": "Replace checkbox transport in child issue body rendering with concise readable sections sourced from issue descriptions.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "00:19:19"
+                },
+                {
+                  "id": "133",
+                  "title": "Rewrite feature issue body and remove checklist coupling",
+                  "summary": "Render feature-level issue body as readable summary with child issue references and decouple confirm/materialize flows from checklist patching.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "00:19:19"
+                },
+                {
+                  "id": "134",
+                  "title": "Add smoke/docs coverage for description-based body sync",
+                  "summary": "Update smoke checks and workflow docs to enforce no-checkbox body policy and cover mapped GitHub body resync behavior.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "00:19:19"
+                }
+              ]
             },
             {
               "id": "I15-F4-M1",
               "title": "Feature materialize: reconcile GitHub sub-issues from DEV_MAP issue set",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "135",
+                  "title": "Add GitHub adapter helpers for feature sub-issues operations",
+                  "summary": "Implement deterministic list/add sub-issue API helpers with explicit error handling for unsupported responses and permission failures.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "00:19:19"
+                },
+                {
+                  "id": "136",
+                  "title": "Reconcile parent feature sub-issues during materialize",
+                  "summary": "Update materialize issues-create and issues-sync flows to reconcile parent sub-issues from current mapped DEV_MAP issues and return deterministic sync payload fields.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "00:19:19"
+                },
+                {
+                  "id": "137",
+                  "title": "Cover reconcile idempotency and partial mapping behavior",
+                  "summary": "Add smoke scenarios and docs updates for first-run add, second-run no-op, and explicit reporting of skipped unmapped issues.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "00:19:19"
+                }
+              ]
             },
             {
               "id": "I16-F4-M1",
@@ -491,10 +557,35 @@
             {
               "id": "I17-F4-M1",
               "title": "Reject issue flow: add Rejected status and close mapped GitHub issue with explicit rejection marker",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "138",
+                  "title": "Add reject issue command and local Rejected transition",
+                  "summary": "Extend confirm/issue flow with explicit reject issue command that validates ownership and updates local issue status to Rejected.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "00:19:19"
+                },
+                {
+                  "id": "139",
+                  "title": "Close mapped GitHub issue with rejection marker",
+                  "summary": "Implement reject handling that closes mapped GitHub issue with explicit rejection marker while remaining successful when mapping is missing.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "00:19:19"
+                },
+                {
+                  "id": "140",
+                  "title": "Add reject-flow regression coverage and protocol updates",
+                  "summary": "Add smoke tests for success, missing mapping, and repeated reject idempotency; align protocol/workflow docs with rejected-state semantics.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "00:19:19"
+                }
+              ]
             },
             {
               "id": "I18-F4-M1",
