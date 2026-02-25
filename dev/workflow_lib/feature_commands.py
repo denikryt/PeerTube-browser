@@ -415,6 +415,12 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         issue_payloads=resolved_delta.get("issues", []),
         issue_id_filter=issue_id_filter,
     )
+    _enforce_plan_tasks_issue_status_gate(
+        feature_node=feature_node,
+        issue_payloads=issue_payloads,
+        issue_id_filter=issue_id_filter,
+        command_label=command_label,
+    )
     issue_counts = _apply_issue_delta(
         feature_node=feature_node,
         feature_id=feature_id,
@@ -842,6 +848,44 @@ def _filter_issue_payloads_for_plan_tasks(
             )
         filtered_payloads.append(issue_payload)
     return filtered_payloads
+
+
+def _enforce_plan_tasks_issue_status_gate(
+    *,
+    feature_node: dict[str, Any],
+    issue_payloads: list[dict[str, Any]],
+    issue_id_filter: str | None,
+    command_label: str,
+) -> None:
+    """Reject decomposition updates for pending/missing issue nodes."""
+    issues = feature_node.get("issues", [])
+    if not isinstance(issues, list):
+        raise WorkflowCommandError("Feature issue list is invalid in DEV_MAP.", exit_code=4)
+    issue_status_by_id = {
+        str(issue.get("id", "")).strip(): str(issue.get("status", "")).strip() or "Pending"
+        for issue in issues
+        if isinstance(issue, dict) and str(issue.get("id", "")).strip()
+    }
+    target_issue_ids: list[str] = []
+    for issue_index, issue_payload in enumerate(issue_payloads):
+        payload_issue_id = _required_string_field(issue_payload, "id", f"issues[{issue_index}]")
+        if payload_issue_id not in target_issue_ids:
+            target_issue_ids.append(payload_issue_id)
+    if issue_id_filter is not None and issue_id_filter not in target_issue_ids:
+        target_issue_ids.append(issue_id_filter)
+
+    for issue_id in target_issue_ids:
+        issue_status = issue_status_by_id.get(issue_id)
+        if issue_status is None:
+            raise WorkflowCommandError(
+                f"{command_label} requires existing issue {issue_id}; run plan issue {issue_id} first.",
+                exit_code=4,
+            )
+        if issue_status == "Pending":
+            raise WorkflowCommandError(
+                f"{command_label} cannot run for issue {issue_id} with status 'Pending'; run plan issue {issue_id} first.",
+                exit_code=4,
+            )
 
 
 def _apply_issue_delta(
