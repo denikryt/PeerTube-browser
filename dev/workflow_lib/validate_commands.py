@@ -114,8 +114,6 @@ def _run_tracking_validation(context: WorkflowContext, feature_id: str | None) -
         if feature_status is None:
             errors.append(f"Feature {feature_id} not found in DEV_MAP.")
             return {"errors": errors, "warnings": warnings}
-        if feature_status not in {"Approved", "Done"}:
-            errors.append(f"Feature {feature_id} status is {feature_status}; expected Approved or Done.")
         scoped_tasks, _ = _collect_dev_map_task_ownership(dev_map, feature_id=feature_id)
 
     task_list_payload = load_task_list_payload(context)

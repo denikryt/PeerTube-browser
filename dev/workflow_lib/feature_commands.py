@@ -396,11 +396,6 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
 
     feature_node = feature_ref["feature"]
-    if bool(args.write) and str(feature_node.get("status", "")) != "Approved":
-        raise WorkflowCommandError(
-            f"{command_label} --write requires status Approved; got {feature_node.get('status')!r} for {feature_id}.",
-            exit_code=4,
-        )
 
     issue_id_filter = _resolve_plan_tasks_issue_filter(
         raw_issue_id=getattr(args, "issue_id_filter", None),
@@ -530,11 +525,6 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
 
     feature_node = feature_ref["feature"]
     feature_status = str(feature_node.get("status", ""))
-    if feature_status != "Approved":
-        raise WorkflowCommandError(
-            f"Feature {feature_id} has status {feature_status}; expected Approved before materialize.",
-            exit_code=4,
-        )
 
     all_issue_nodes = feature_node.get("issues", [])
     if not isinstance(all_issue_nodes, list):
@@ -732,11 +722,6 @@ def _handle_feature_execution_plan(args: Namespace, context: WorkflowContext) ->
         raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
     feature_node = feature_ref["feature"]
     feature_status = str(feature_node.get("status", ""))
-    if feature_status not in {"Approved", "Done"}:
-        raise WorkflowCommandError(
-            f"Feature {feature_id} has status {feature_status}; expected Approved before execution-plan.",
-            exit_code=4,
-        )
 
     ordered_tasks = _collect_feature_tasks(feature_node, only_pending=bool(args.only_pending))
     if bool(args.from_pipeline):
