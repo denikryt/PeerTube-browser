@@ -10,6 +10,13 @@ Canonical structure and ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md`.
 - Command semantics/order (`create/plan/plan issue/plan tasks for/materialize/execute/confirm`) are owned by `dev/TASK_EXECUTION_PROTOCOL.md`.
 - Hard constraints are owned by `AGENTS.md`.
 
+## 0) Issue Planning Order (mandatory)
+
+- For every issue, `plan issue <issue_id>` must be completed first.
+- `plan tasks for issue <issue_id>` is allowed only after a valid issue-plan block exists in `dev/FEATURE_PLANS.md`.
+- Existing tasks are not a prerequisite for `plan issue <issue_id>`.
+- `plan issue <issue_id>` defines issue scope and implementation direction; task decomposition is a separate next step.
+
 ## 1) Planning Input Contract
 
 Required input for `plan feature <id>`:
@@ -44,6 +51,10 @@ Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
 - mandatory issue-specific `#### Decomposition` with strict step flow,
 - mandatory issue-specific `#### Issue/Task Decomposition Assessment`,
 - `Issue Execution Order` is read-only for `plan-issue`; active issue row for the target issue must already exist.
+- content quality rule for `plan issue`: the plan block must be authored from the issue context (`title`, `description`, related workflow/code paths) and must not be left as a generic template/fallback stub.
+- forbidden for completed `plan issue` output:
+  - generic placeholder decomposition such as `Implement issue scope and produce executable task updates.`.
+- if the issue has no tasks yet, `plan issue` must still include concrete issue-specific dependencies/decomposition/assessment that explain what must be implemented before `plan tasks for issue <issue_id>`.
 
 ## 2) Decomposition Rules
 
@@ -68,11 +79,11 @@ Checklist:
   - failure-path behavior,
   - idempotency/stability behavior.
 - `#### Issue/Task Decomposition Assessment` includes:
-  - explicit `task_count`,
-  - per-task scope,
-  - concrete file/module targets,
-  - acceptance checks per task.
+  - explicit decomposition state (`pre-task` or `tasked`),
+  - for `pre-task`: what must be decomposed next and why,
+  - for `tasked`: explicit `task_count` and per-task scope.
 - Avoid generic wording (`improve`, `enhance`, `refine`) without concrete mechanism, files, or validation criteria.
+- For `plan issue`, generic fallback stubs are not acceptable completion: the block must be issue-specific and implementation-oriented on the first write.
 
 ### Gate A: Pre-decomposition review
 
