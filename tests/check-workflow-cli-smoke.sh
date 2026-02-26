@@ -1616,6 +1616,16 @@ run_expect_success \
   "${CONFIRM_PLAN_CLEANUP_REPO}/dev/workflow" confirm issue --id I3-F1-M1 done --write --force --no-close-github
 assert_json_value "confirm-plan-cleanup-run" "cleanup.feature_plans.issue_order_row_removed" "true"
 assert_json_value "confirm-plan-cleanup-run" "cleanup.feature_plans.issue_block_removed" "true"
+assert_json_value "confirm-plan-cleanup-run" "post_check.performed" "true"
+assert_json_value "confirm-plan-cleanup-run" "post_check.local.issue_status_done" "true"
+assert_json_value "confirm-plan-cleanup-run" "post_check.local.child_tasks_done" "true"
+assert_json_value "confirm-plan-cleanup-run" "post_check.local.task_list_entries_absent" "true"
+assert_json_value "confirm-plan-cleanup-run" "post_check.local.pipeline_refs_absent" "true"
+assert_json_value "confirm-plan-cleanup-run" "post_check.local.feature_plan_issue_block_absent" "true"
+assert_json_value "confirm-plan-cleanup-run" "post_check.local.feature_plan_issue_order_row_absent" "true"
+assert_json_value "confirm-plan-cleanup-run" "post_check.github.close_requested" "false"
+assert_json_value "confirm-plan-cleanup-run" "post_check.github.checked" "false"
+assert_json_value "confirm-plan-cleanup-run" "post_check.github.reason" "close-github-disabled"
 assert_file_not_contains 'confirm-plan-cleanup-row-removed' "${CONFIRM_PLAN_CLEANUP_REPO}/dev/FEATURE_PLANS.md" '`I3-F1-M1` - Plan cleanup issue'
 assert_file_not_contains "confirm-plan-cleanup-block-removed" "${CONFIRM_PLAN_CLEANUP_REPO}/dev/FEATURE_PLANS.md" "### I3-F1-M1 - Plan cleanup issue"
 assert_jq_file_value \

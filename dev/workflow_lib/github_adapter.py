@@ -346,6 +346,48 @@ def close_github_issue(
     )
 
 
+def gh_issue_view_state(
+    repo_name_with_owner: str,
+    issue_number: int,
+    *,
+    max_retries: int = 0,
+    retry_pause_seconds: float = 0.0,
+    timeout_seconds: float | None = None,
+) -> str:
+    """Read one GitHub issue state (`OPEN`/`CLOSED`) via gh CLI."""
+    command = [
+        "gh",
+        "issue",
+        "view",
+        str(issue_number),
+        "--repo",
+        repo_name_with_owner,
+        "--json",
+        "state",
+    ]
+    output = run_checked_command(
+        command,
+        cwd=None,
+        error_prefix=f"Failed to read GitHub issue state for issue #{issue_number}",
+        max_retries=max_retries,
+        retry_pause_seconds=retry_pause_seconds,
+        timeout_seconds=timeout_seconds,
+    )
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise WorkflowCommandError(f"Invalid JSON from gh issue view #{issue_number}: {error}", exit_code=5) from error
+    if not isinstance(payload, dict):
+        raise WorkflowCommandError(f"Unexpected gh issue view payload for #{issue_number}.", exit_code=5)
+    state = str(payload.get("state", "")).strip().upper()
+    if state not in {"OPEN", "CLOSED"}:
+        raise WorkflowCommandError(
+            f"Unexpected GitHub issue state for issue #{issue_number}: {state!r}.",
+            exit_code=5,
+        )
+    return state
+
+
 def gh_issue_list_sub_issue_numbers(
     repo_name_with_owner: str,
     parent_issue_number: int,

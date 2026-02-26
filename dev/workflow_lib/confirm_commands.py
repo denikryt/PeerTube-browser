@@ -13,7 +13,13 @@ from typing import Any
 
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
-from .github_adapter import close_github_issue, gh_issue_edit_body, gh_issue_view_body, resolve_github_repository
+from .github_adapter import (
+    close_github_issue,
+    gh_issue_edit_body,
+    gh_issue_view_body,
+    gh_issue_view_state,
+    resolve_github_repository,
+)
 from .output import emit_json
 from .tracker_store import (
     load_pipeline_payload,
@@ -550,6 +556,17 @@ def _confirm_one_issue_done(
         close_github_issue(int(github_issue_number))
         github_closed = True
 
+    post_check = _build_confirm_issue_post_check(
+        context=context,
+        issue_id=issue_id,
+        feature_id=feature_id,
+        child_task_ids=child_task_ids,
+        write=write,
+        close_github=close_github,
+        github_issue_number=github_issue_number,
+        github_closed=github_closed,
+    )
+
     return {
         "child_tasks_marked_done": len(pending_child_ids) if write else 0,
         "cleanup": cleanup_result,
@@ -561,8 +578,102 @@ def _confirm_one_issue_done(
         "issue_id": issue_id,
         "issue_status_after": "Done" if write else str(issue_node.get("status", "")),
         "pending_child_tasks": pending_child_ids,
+        "post_check": post_check,
         "write": write,
     }
+
+
+def _build_confirm_issue_post_check(
+    *,
+    context: WorkflowContext,
+    issue_id: str,
+    feature_id: str,
+    child_task_ids: list[str],
+    write: bool,
+    close_github: bool,
+    github_issue_number: Any,
+    github_closed: bool,
+) -> dict[str, Any]:
+    """Build post-check summary for confirm-issue execution."""
+    if not write:
+        return {
+            "performed": False,
+            "reason": "write-disabled",
+        }
+
+    post_check: dict[str, Any] = {
+        "performed": True,
+    }
+    dev_map = _load_json(context.dev_map_path)
+    issue_ref = _find_issue(dev_map, issue_id)
+    issue_status_done = False
+    child_tasks_done = False
+    if issue_ref is not None:
+        issue_node = issue_ref["issue"]
+        issue_status_done = str(issue_node.get("status", "")).strip() == "Done"
+        tasks = issue_node.get("tasks", [])
+        task_ids_set = {task_id for task_id in child_task_ids if task_id}
+        done_flags: list[bool] = []
+        for task in tasks:
+            task_id = str(task.get("id", "")).strip()
+            if task_id not in task_ids_set:
+                continue
+            done_flags.append(str(task.get("status", "")).strip() == "Done")
+        child_tasks_done = all(done_flags) if done_flags else not bool(child_task_ids)
+
+    task_ids_set = {task_id for task_id in child_task_ids if task_id}
+    task_cleanup_probe = _compute_tracker_cleanup_preview(context, task_ids_set)
+    feature_plan_probe = _cleanup_feature_plan_issue_artifacts(
+        feature_plans_path=context.feature_plans_path,
+        feature_id=feature_id,
+        issue_id=issue_id,
+        write=False,
+    )
+    post_check["local"] = {
+        "child_tasks_done": child_tasks_done,
+        "feature_plan_issue_block_absent": not bool(feature_plan_probe.get("issue_block_would_be_removed", False)),
+        "feature_plan_issue_order_row_absent": not bool(feature_plan_probe.get("issue_order_row_would_be_removed", False)),
+        "issue_found": issue_ref is not None,
+        "issue_status_done": issue_status_done,
+        "pipeline_refs_absent": (
+            int(task_cleanup_probe["pipeline"]["execution_rows_removed"]) == 0
+            and int(task_cleanup_probe["pipeline"]["blocks_removed"]) == 0
+            and int(task_cleanup_probe["pipeline"]["overlap_rows_removed"]) == 0
+        ),
+        "task_list_entries_absent": int(task_cleanup_probe["task_list_entries_removed"]) == 0,
+    }
+
+    github_post_check: dict[str, Any] = {
+        "checked": False,
+        "close_requested": bool(close_github),
+        "close_call_succeeded": bool(github_closed),
+        "expected_state": "CLOSED" if bool(close_github) else "SKIPPED",
+        "ok": (not bool(close_github)) or bool(github_closed),
+    }
+    if not close_github:
+        github_post_check["reason"] = "close-github-disabled"
+    elif github_issue_number is None:
+        github_post_check["reason"] = "issue-not-mapped"
+        github_post_check["ok"] = False
+    elif github_closed:
+        try:
+            github_repo = resolve_github_repository(context.root_dir)
+            state = gh_issue_view_state(
+                github_repo["name_with_owner"],
+                int(github_issue_number),
+            )
+            github_post_check["actual_state"] = state
+            github_post_check["checked"] = True
+            github_post_check["ok"] = state == "CLOSED"
+        except WorkflowCommandError as error:
+            github_post_check["error"] = str(error)
+            # Keep close-call status as fallback signal when state check is unavailable.
+            github_post_check["ok"] = bool(github_closed)
+    else:
+        github_post_check["reason"] = "close-call-not-run"
+        github_post_check["ok"] = False
+    post_check["github"] = github_post_check
+    return post_check
 
 def _handle_confirm_feature_done(args: Namespace, context: WorkflowContext) -> int:
     """Confirm full feature subtree completion and close mapped GitHub issues."""
