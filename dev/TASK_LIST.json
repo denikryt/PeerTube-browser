@@ -567,54 +567,6 @@
         "Return clear gate error messages with required status.",
         "Add regression checks for blocked non-approved issue paths."
       ]
-    },
-    {
-      "id": "149",
-      "marker": "[M1][F4]",
-      "title": "DevMap Viewer: map description fields for expanded rows",
-      "problem": "Expanded rows in DevMap Viewer do not expose description text for Feature and Issue nodes.",
-      "solution_option": "Add description field mapping in row data builders for expanded Feature and Issue rendering paths.",
-      "concrete_steps": [
-        "Locate Feature and Issue expanded-row render/data builders in DevMap Viewer code.",
-        "Map description values from DEV_MAP nodes into expanded-row view data.",
-        "Keep collapsed-row rendering unchanged."
-      ]
-    },
-    {
-      "id": "150",
-      "marker": "[M1][F4]",
-      "title": "DevMap Viewer: show Issue description in expanded rows",
-      "problem": "Expanded Issue rows show GitHub number but miss human-readable issue context.",
-      "solution_option": "Render issue description text in expanded Issue rows next to existing metadata.",
-      "concrete_steps": [
-        "Add issue description text block in expanded Issue row template.",
-        "Keep GitHub issue number/url metadata visible.",
-        "Handle empty descriptions with deterministic fallback display behavior."
-      ]
-    },
-    {
-      "id": "151",
-      "marker": "[M1][F4]",
-      "title": "DevMap Viewer: show Feature description and remove task timestamp",
-      "problem": "Feature expanded rows miss description context and task rows include noisy timestamp output.",
-      "solution_option": "Render feature description in expanded Feature rows and remove task timestamp field from task row rendering.",
-      "concrete_steps": [
-        "Add feature description block in expanded Feature row UI.",
-        "Remove task timestamp/date-time text from task row rendering.",
-        "Preserve task title and status visibility after timestamp removal."
-      ]
-    },
-    {
-      "id": "152",
-      "marker": "[M1][F4]",
-      "title": "DevMap Viewer: regression checks for expanded descriptions",
-      "problem": "Viewer behavior can regress without checks for expanded description visibility and timestamp removal.",
-      "solution_option": "Add smoke/manual checks that verify Feature/Issue description visibility and absence of task timestamps.",
-      "concrete_steps": [
-        "Add check scenario for expanded Issue row description visibility.",
-        "Add check scenario for expanded Feature row description visibility.",
-        "Add check scenario that task rows do not render timestamp text."
-      ]
     }
   ]
 }

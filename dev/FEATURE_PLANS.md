@@ -33,7 +33,6 @@ Canonical per-issue plan block format inside a feature section:
 1. `I7-F4-M1` - Issue creation command for feature/standalone with optional plan init
 2. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
 3. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
-4. `I29-F4-M1` - DevMap Viewer: show feature/issue descriptions in expanded rows and hide task timestamps
 ### Dependencies
 - See issue-level dependency blocks below.
 
@@ -43,18 +42,4 @@ Canonical per-issue plan block format inside a feature section:
 
 ### Issue/Task Decomposition Assessment
 - Decomposition is maintained per issue block; no extra feature-level split is required.
-
-### I29-F4-M1 - DevMap Viewer: show feature/issue descriptions in expanded rows and hide task timestamps
-#### Dependencies
-- Existing DevMap Viewer expand/collapse rendering for Feature/Issue/Task rows.
-- Current issue metadata rendering that shows GitHub issue number in expanded issue view.
-
-#### Decomposition
-1. Update DevMap Viewer rendering for expanded Issue rows to show `description` text next to existing issue metadata.
-2. Update DevMap Viewer rendering for expanded Feature rows to show feature `description`.
-3. Remove task timestamp rendering from task rows in DevMap Viewer while preserving task title/status visibility.
-4. Add/update viewer smoke/manual validation notes for expand/collapse behavior and description visibility.
-
-#### Issue/Task Decomposition Assessment
-- UI rendering changes span three separate surfaces (Feature expand, Issue expand, Task row fields), so decomposition should split them into isolated implementation tasks.
 

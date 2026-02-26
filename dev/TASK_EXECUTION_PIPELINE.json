@@ -48,14 +48,6 @@
     {
       "tasks": ["94", "95"],
       "description": "feature checklist sync and issue approved gate"
-    },
-    {
-      "tasks": ["149", "150"],
-      "description": "viewer issue/feature description mapping and issue-row rendering"
-    },
-    {
-      "tasks": ["151", "152"],
-      "description": "task timestamp removal and viewer regression checks"
     }
   ],
   "functional_blocks": [
@@ -112,12 +104,6 @@
       "tasks": ["94", "95"],
       "scope": "explicit materialize modes, scoped issue materialization, create-only behavior, feature checklist sync, and issue-level approval gate enforcement.",
       "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
-    },
-    {
-      "title": "Block L: DevMap Viewer description visibility and issue creation materialization rule",
-      "tasks": ["149", "150", "151", "152"],
-      "scope": "DevMap Viewer expanded-row metadata rendering and protocol rule updates for immediate issue materialization.",
-      "outcome": "Expanded Feature and Issue rows show description text, task rows stop rendering timestamps, and canonical workflow guidance requires immediate materialization after new issue creation."
     }
   ],
   "overlaps": [
@@ -168,14 +154,6 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
-    },
-    {
-      "tasks": ["149", "150"],
-      "description": "both touch issue/feature expanded-row rendering paths in DevMap Viewer"
-    },
-    {
-      "tasks": ["151", "152"],
-      "description": "UI field removal and regression checks must stay consistent"
     }
   ]
 }
