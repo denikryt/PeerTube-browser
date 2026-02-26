@@ -45,6 +45,34 @@ def register_confirm_router(subparsers: argparse._SubParsersAction[argparse.Argu
 
     _register_confirm_target(confirm_subparsers, "task", "Confirm one task completion.")
     _register_confirm_target(confirm_subparsers, "issue", "Confirm one issue completion.")
+    issues_parser = confirm_subparsers.add_parser("issues", help="Confirm multiple issue completions in one command.")
+    issues_parser.add_argument(
+        "--issue-id",
+        action="append",
+        required=True,
+        help="Repeatable issue identifier queue; order is preserved.",
+    )
+    issues_parser.add_argument("state", choices=["done"], help="Confirmation state keyword.")
+    issues_parser.add_argument("--write", action="store_true", help="Persist completion updates.")
+    issues_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Skip interactive extra confirmation for pending child tasks.",
+    )
+    issues_parser.add_argument(
+        "--close-github",
+        dest="close_github",
+        action="store_true",
+        default=True,
+        help="Close mapped GitHub issue in the same run where applicable.",
+    )
+    issues_parser.add_argument(
+        "--no-close-github",
+        dest="close_github",
+        action="store_false",
+        help="Skip GitHub issue closing.",
+    )
+    issues_parser.set_defaults(handler=_handle_confirm)
     _register_confirm_target(confirm_subparsers, "feature", "Confirm one feature completion.")
     _register_confirm_target(
         confirm_subparsers,
@@ -116,6 +144,8 @@ def _handle_confirm(args: Namespace, context: WorkflowContext) -> int:
         return _handle_confirm_task_done(args, context)
     if args.confirm_target == "issue":
         return _handle_confirm_issue_done(args, context)
+    if args.confirm_target == "issues":
+        return _handle_confirm_issues_done(args, context)
     if args.confirm_target == "feature":
         return _handle_confirm_feature_done(args, context)
     if args.confirm_target == "standalone-issue":
@@ -220,6 +250,22 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
             "issue_id": issue_id,
             "status_after": str(issue_node.get("status", "")).strip() if bool(args.write) else status_before,
             "status_before": status_before,
+            "write": bool(args.write),
+        }
+    )
+    return 0
+
+
+def _handle_confirm_issues_done(args: Namespace, context: WorkflowContext) -> int:
+    """Emit deterministic payload for plural issue-confirm command surface."""
+    issue_id_queue = [str(issue_id).strip() for issue_id in getattr(args, "issue_id", [])]
+    emit_json(
+        {
+            "close_github": bool(args.close_github),
+            "command": "confirm.issues",
+            "issue_id_queue": issue_id_queue,
+            "issue_count": len(issue_id_queue),
+            "strategy": "batch-surface-only",
             "write": bool(args.write),
         }
     )
