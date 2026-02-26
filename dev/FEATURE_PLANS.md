@@ -35,6 +35,7 @@ Canonical per-issue plan block format inside a feature section:
 3. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
 4. `I29-F4-M1` - DevMap Viewer: show feature/issue descriptions in expanded rows and hide task timestamps
 5. `I30-F4-M1` - Issue creation protocol: require immediate materialization after creating a new issue
+6. `I31-F4-M1` - Reject issue flow: cleanup issue plan/tasks and delete unmapped issue nodes
 ### Dependencies
 - See issue-level dependency blocks below.
 

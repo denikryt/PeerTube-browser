@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T02:45:15+02:00",
+  "updated_at": "2026-02-26T02:51:20+02:00",
   "task_count": 156,
   "milestones": [
     {
@@ -1116,6 +1116,15 @@
                   "time": "02:45:15"
                 }
               ]
+            },
+            {
+              "id": "I31-F4-M1",
+              "title": "Reject issue flow: cleanup issue plan/tasks and delete unmapped issue nodes",
+              "description": "Current reject issue behavior updates status but does not fully clean issue artifacts. Extend reject flow so mapped issues close on GitHub and clean local plan/task artifacts, while unmapped issues are removed from local DEV_MAP issue list instead of only changing status.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F4-M1",
