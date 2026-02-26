@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T04:53:21+02:00",
+  "updated_at": "2026-02-26T19:37:29+02:00",
   "task_count": 160,
   "milestones": [
     {
@@ -1147,6 +1147,91 @@
           ],
           "branch_name": "feature/F4-M1",
           "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F4-M1"
+        },
+        {
+          "id": "F5-M1",
+          "title": "Decouple DEV_MAP ownership from ID format and support feature moves between milestones.",
+          "description": "This feature introduces explicit ownership links in DEV_MAP and enables moving features between milestones without rewriting child issue/task identity.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F5-M1",
+              "title": "DEV_MAP schema: decouple ownership from IDs",
+              "description": "Add explicit ownership fields so milestone/feature relationships are stored as data fields instead of being derived from ID parsing.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F5-M1",
+              "title": "Data migration/backfill for milestone and feature links",
+              "description": "Backfill explicit ownership fields for existing DEV_MAP nodes so current hierarchy remains intact after schema evolution.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F5-M1",
+              "title": "Workflow ID resolution layer without parent-chain regex dependence",
+              "description": "Refactor workflow resolution logic to use explicit ownership fields and stop deriving hierarchy from ID regex patterns.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I4-F5-M1",
+              "title": "Command refactor for explicit-parent ownership model",
+              "description": "Update create/plan/materialize/confirm/sync command paths to validate and resolve parent ownership via explicit fields.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I5-F5-M1",
+              "title": "Feature move command with child issue/task preservation",
+              "description": "Implement a dedicated move command to relocate a feature between milestones while preserving child issues, tasks, and mappings.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I6-F5-M1",
+              "title": "DEV_MAP Viewer drag-and-drop for moving features across milestones",
+              "description": "Add drag-and-drop interactions in the viewer to move feature nodes between milestones using the canonical move flow.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I7-F5-M1",
+              "title": "Validation, tests, and docs update for the new ownership model",
+              "description": "Align tracking validation rules, regression coverage, and protocol docs with explicit ownership fields and move semantics.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I8-F5-M1",
+              "title": "Optional canonical ID simplification after ownership decoupling",
+              "description": "Optionally simplify feature/issue canonical IDs after ownership is fully field-driven and no longer encoded in IDs.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
         }
       ],
       "non_feature_items": [
