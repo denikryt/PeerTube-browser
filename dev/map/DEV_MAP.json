@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T02:51:20+02:00",
-  "task_count": 156,
+  "updated_at": "2026-02-26T03:05:08+02:00",
+  "task_count": 160,
   "milestones": [
     {
       "id": "M1",
@@ -1121,10 +1121,43 @@
               "id": "I31-F4-M1",
               "title": "Reject issue flow: cleanup issue plan/tasks and delete unmapped issue nodes",
               "description": "Current reject issue behavior updates status but does not fully clean issue artifacts. Extend reject flow so mapped issues close on GitHub and clean local plan/task artifacts, while unmapped issues are removed from local DEV_MAP issue list instead of only changing status.",
-              "status": "Pending",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
-              "tasks": []
+              "status": "Tasked",
+              "gh_issue_number": 109,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/109",
+              "tasks": [
+                {
+                  "id": "157",
+                  "title": "Reject issue: branch by materialization state and delete unmapped issue nodes",
+                  "summary": "Extend reject issue flow so unmapped issues (no gh_issue mapping) are removed from local DEV_MAP issue list instead of only setting status.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:56:55"
+                },
+                {
+                  "id": "158",
+                  "title": "Reject issue: cleanup issue plan and task artifacts when present",
+                  "summary": "When rejecting an issue with plan/tasks, remove issue plan block/order row and cleanup tracker task artifacts similarly to confirm issue cleanup behavior.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:56:55"
+                },
+                {
+                  "id": "159",
+                  "title": "Reject issue: keep mapped close/status flow and no-op when artifacts missing",
+                  "summary": "For mapped issues, keep close-remote-and-set-status flow; when plan/tasks are absent, continue without failures and return deterministic cleanup payload.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:56:55"
+                },
+                {
+                  "id": "160",
+                  "title": "Add reject-flow regression coverage for mapped/unmapped cleanup scenarios",
+                  "summary": "Add smoke/docs coverage for unmapped delete, mapped close with cleanup, and no-plan/no-task pass-through behavior.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:56:55"
+                }
+              ]
             }
           ],
           "branch_name": "feature/F4-M1",
