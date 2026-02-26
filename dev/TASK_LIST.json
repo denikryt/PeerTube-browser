@@ -567,6 +567,102 @@
         "Return clear gate error messages with required status.",
         "Add regression checks for blocked non-approved issue paths."
       ]
+    },
+    {
+      "id": "141",
+      "marker": "[M1][F4]",
+      "title": "Workflow: add sync feature command surface",
+      "problem": "Feature synchronization currently reuses issue-sync flow, so command intent is mixed and feature-only remote sync cannot be run directly.",
+      "solution_option": "Introduce dedicated sync feature command with explicit selector contract for one feature, one milestone, or all features.",
+      "concrete_steps": [
+        "Register new command routing for sync feature in workflow CLI.",
+        "Add arguments: --feature-id, --milestone-id, and --all with clear help and deterministic output command label.",
+        "Keep command logic separated from existing sync issues path."
+      ]
+    },
+    {
+      "id": "142",
+      "marker": "[M1][F4]",
+      "title": "Workflow: validate sync feature selector modes",
+      "problem": "Without strict selector validation, sync runs can target ambiguous feature sets and produce unsafe updates.",
+      "solution_option": "Implement one-selector-per-run validation and deterministic target resolution for feature-id, milestone-id, and all-features modes.",
+      "concrete_steps": [
+        "Implement normalization and validation so exactly one selector mode is accepted.",
+        "Resolve selected feature set deterministically and reject empty or ambiguous target sets.",
+        "Return clear error payload for invalid selector combinations."
+      ]
+    },
+    {
+      "id": "143",
+      "marker": "[M1][F4]",
+      "title": "Workflow: implement feature-only remote body sync",
+      "problem": "Feature issue body updates are currently coupled to issue materialization, which can unintentionally change child issues during feature sync.",
+      "solution_option": "Add a dedicated executor that updates only mapped feature issue title/body from DEV_MAP feature metadata.",
+      "concrete_steps": [
+        "Implement feature-only GitHub sync helper that reads feature title and description from DEV_MAP.",
+        "Update only mapped feature issue body/title and do not invoke child issue create/update/sub-issue reconciliation.",
+        "Return deterministic summary fields: attempted, updated, skipped, errors."
+      ]
+    },
+    {
+      "id": "144",
+      "marker": "[M1][F4]",
+      "title": "Workflow: add coverage and docs for sync feature",
+      "problem": "New sync command behavior can drift without regression checks and explicit protocol/docs coverage.",
+      "solution_option": "Add tests and protocol/workflow doc updates for selector modes and failure contracts.",
+      "concrete_steps": [
+        "Add smoke tests for --feature-id, --milestone-id, and --all successful runs.",
+        "Add negative tests for invalid selector combinations and deterministic error messages.",
+        "Update workflow/protocol docs to include sync feature command contract."
+      ]
+    },
+    {
+      "id": "145",
+      "marker": "[M1][F4]",
+      "title": "Workflow: add confirm issues batch command surface",
+      "problem": "Confirming several issues currently requires repetitive single-command runs and increases operator error risk.",
+      "solution_option": "Add plural confirm issues command with queue input while preserving existing single issue confirmation path.",
+      "concrete_steps": [
+        "Register confirm issues command parser with repeatable --issue-id argument.",
+        "Keep current confirm issue --id <issue> done behavior unchanged for single-issue use.",
+        "Expose deterministic command output name for batch mode."
+      ]
+    },
+    {
+      "id": "146",
+      "marker": "[M1][F4]",
+      "title": "Workflow: enforce batch gate for multi-issue confirm",
+      "problem": "Current interface does not enforce a clear batch mode when confirming many issues, leading to inconsistent operator flows.",
+      "solution_option": "Require plural command path when issue count is greater than two and enforce queue validation rules.",
+      "concrete_steps": [
+        "Implement gate that rejects multi-issue confirm attempts through single-issue command path when count > 2.",
+        "Validate issue-id queue format and reject duplicates deterministically.",
+        "Validate queue ownership/availability constraints before execution."
+      ]
+    },
+    {
+      "id": "147",
+      "marker": "[M1][F4]",
+      "title": "Workflow: execute batch confirm with deterministic summaries",
+      "problem": "There is no aggregate execution contract for confirming multiple issues in one run, especially with partial failures.",
+      "solution_option": "Reuse single-issue completion semantics per queue item and aggregate deterministic per-item and global outcome fields.",
+      "concrete_steps": [
+        "Implement batch executor that iterates issue queue in provided order and runs single-issue confirm logic.",
+        "Define and return per-item status fields and aggregate counters for done, skipped, and failed items.",
+        "Define partial-failure strategy and keep output stable for automation consumers."
+      ]
+    },
+    {
+      "id": "148",
+      "marker": "[M1][F4]",
+      "title": "Workflow: add coverage and docs for confirm issues",
+      "problem": "Batch completion flow can regress without explicit tests for queue validation and partial-failure behavior.",
+      "solution_option": "Add smoke/docs coverage for new command contract and edge-case handling.",
+      "concrete_steps": [
+        "Add smoke coverage for successful multi-issue confirm in queue order.",
+        "Add negative tests for duplicate issue ids and invalid queue items.",
+        "Update protocol/workflow docs with confirm issues command semantics and batch gate behavior."
+      ]
     }
   ]
 }

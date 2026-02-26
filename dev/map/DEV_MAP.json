@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T02:01:15+02:00",
-  "task_count": 140,
+  "updated_at": "2026-02-26T02:09:07+02:00",
+  "task_count": 148,
   "milestones": [
     {
       "id": "M1",
@@ -953,19 +953,85 @@
               "id": "I27-F4-M1",
               "title": "Add dedicated sync feature command for feature-only remote sync",
               "description": "Feature synchronization currently goes through issues-sync flow, which mixes issue updates with feature updates and blurs command intent. Add a dedicated sync feature command that updates only feature-level remote metadata/body for one feature id, one milestone id, or all features.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "141",
+                  "title": "Add `sync feature` CLI surface with selectors",
+                  "summary": "Register dedicated `sync feature` command with `--feature-id`, `--milestone-id`, and `--all` selectors and keep argument contract isolated from `sync issues`.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:09:07"
+                },
+                {
+                  "id": "142",
+                  "title": "Implement feature-target resolution and selector validation",
+                  "summary": "Enforce exactly one selector mode per run, resolve deterministic feature target set, and return explicit validation errors for invalid selector combinations.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:09:07"
+                },
+                {
+                  "id": "143",
+                  "title": "Implement feature-only GitHub sync executor",
+                  "summary": "Update mapped feature issue title/body from `feature.title` and `feature.description` without touching child issue nodes or running issue materialization logic.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:09:07"
+                },
+                {
+                  "id": "144",
+                  "title": "Add regression coverage and docs for `sync feature`",
+                  "summary": "Cover selector modes (`--feature-id`, `--milestone-id`, `--all`), validation failures, and deterministic summary output in smoke/docs updates.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:09:07"
+                }
+              ]
             },
             {
               "id": "I28-F4-M1",
               "title": "Add confirm issues batch command for multi-issue completion",
               "description": "Confirming multiple issues currently requires repetitive one-by-one command runs and increases operator error risk. Add confirm issues batch mode so multiple issue ids can be confirmed done in one command, especially when confirming more than two issues.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "145",
+                  "title": "Add `confirm issues` CLI command surface",
+                  "summary": "Register plural confirm command with repeatable `--issue-id` queue input and keep existing single `confirm issue` command behavior intact.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:09:07"
+                },
+                {
+                  "id": "146",
+                  "title": "Enforce batch gate and issue-queue validation",
+                  "summary": "Require plural command path when confirming more than two issues and validate queue integrity (format, duplicates, ownership constraints).",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:09:07"
+                },
+                {
+                  "id": "147",
+                  "title": "Implement batch confirm executor with aggregate result contract",
+                  "summary": "Execute existing single-issue completion semantics per queued issue and return deterministic per-item plus aggregate summary fields for partial failures.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:09:07"
+                },
+                {
+                  "id": "148",
+                  "title": "Add regression coverage and docs for `confirm issues` batch mode",
+                  "summary": "Add smoke/docs coverage for successful batch confirm, duplicate ids rejection, and partial-failure reporting semantics.",
+                  "status": "Planned",
+                  "date": "2026-02-26",
+                  "time": "02:09:07"
+                }
+              ]
             }
           ],
           "branch_name": "feature/F4-M1",

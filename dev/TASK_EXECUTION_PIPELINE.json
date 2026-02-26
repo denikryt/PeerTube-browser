@@ -48,6 +48,22 @@
     {
       "tasks": ["94", "95"],
       "description": "feature checklist sync and issue approved gate"
+    },
+    {
+      "tasks": ["141", "142"],
+      "description": "sync feature command surface and selector gate"
+    },
+    {
+      "tasks": ["143", "144"],
+      "description": "feature-only remote sync executor and coverage"
+    },
+    {
+      "tasks": ["145", "146"],
+      "description": "confirm issues parser and batch gate"
+    },
+    {
+      "tasks": ["147", "148"],
+      "description": "batch execution contract and regression coverage"
     }
   ],
   "functional_blocks": [
@@ -104,6 +120,12 @@
       "tasks": ["94", "95"],
       "scope": "explicit materialize modes, scoped issue materialization, create-only behavior, feature checklist sync, and issue-level approval gate enforcement.",
       "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
+    },
+    {
+      "title": "Block K: Feature sync and issue-confirm batch operations",
+      "tasks": ["141", "142", "143", "144", "145", "146", "147", "148"],
+      "scope": "Dedicated feature-only remote sync command and batch issue confirmation command contracts.",
+      "outcome": "Workflow CLI supports `sync feature` (feature-id/milestone-id/all) without child issue mutations and supports `confirm issues` batch completion with deterministic per-item and aggregate results."
     }
   ],
   "overlaps": [
@@ -154,6 +176,18 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
+    },
+    {
+      "tasks": ["141", "145"],
+      "description": "both add new CLI command surfaces and parser routing contracts"
+    },
+    {
+      "tasks": ["142", "146"],
+      "description": "both implement queue/selector validation and deterministic input gating"
+    },
+    {
+      "tasks": ["143", "147"],
+      "description": "both reuse existing command helpers and define stable aggregate result payloads"
     }
   ]
 }
