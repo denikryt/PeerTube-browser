@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T04:30:06+02:00",
+  "updated_at": "2026-02-26T04:48:43+02:00",
   "task_count": 160,
   "milestones": [
     {
@@ -1121,6 +1121,15 @@
               "id": "I32-F4-M1",
               "title": "Allow materialize for Pending issues without mandatory issue plan/tasks",
               "description": "Materialization of new issue nodes is currently blocked until issue plan and task decomposition are created. Allow materialize for Pending issues so GitHub issue mapping can be created earlier.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I33-F4-M1",
+              "title": "Split DEV_MAP schema ownership into JSON schema and rules doc only",
+              "description": "Replace the Markdown schema owner with two canonical files only: `DEV_MAP_JSON_SCHEMA.json` for structure and `DEV_MAP_RULES.md` for lifecycle/process semantics, then rewrite all dependencies to these owners without backward compatibility.",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
