@@ -155,6 +155,7 @@ EOF
 run_expect_success "help-root" "${WORKFLOW[@]}" --help
 run_expect_success "help-feature" "${WORKFLOW[@]}" feature --help
 run_expect_success "help-task" "${WORKFLOW[@]}" task --help
+run_expect_success "help-sync" "${WORKFLOW[@]}" sync --help
 run_expect_success "help-confirm" "${WORKFLOW[@]}" confirm --help
 run_expect_success "help-reject" "${WORKFLOW[@]}" reject --help
 run_expect_success "help-validate" "${WORKFLOW[@]}" validate --help
@@ -1738,6 +1739,168 @@ run_expect_failure_contains \
   "plan-issue-invalid-custom-heading" \
   "invalid heading hierarchy" \
   "${PLAN_ISSUE_INVALID_HEADING_REPO}/dev/workflow" feature plan-issue --id I1-F1-M1 --write
+
+# sync feature command: selector modes, deterministic summary, and validation failures.
+SYNC_FEATURE_REPO="${TMP_DIR}/sync-feature-fixture"
+create_workflow_fixture_repo "${SYNC_FEATURE_REPO}"
+cat >"${SYNC_FEATURE_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+{
+  "schema_version": "1.4",
+  "updated_at": "2026-02-24T00:00:00+00:00",
+  "task_count": 0,
+  "statuses": ["Pending", "Planned", "Tasked", "Approved", "Rejected", "Done"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Milestone 1",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Feature One",
+          "description": "Feature one description.",
+          "status": "Approved",
+          "gh_issue_number": 501,
+          "gh_issue_url": "https://github.com/owner/repo/issues/501",
+          "issues": [],
+          "branch_name": null,
+          "branch_url": null
+        },
+        {
+          "id": "F2-M1",
+          "title": "Feature Two",
+          "description": "Feature two description.",
+          "status": "Approved",
+          "gh_issue_number": 502,
+          "gh_issue_url": "https://github.com/owner/repo/issues/502",
+          "issues": [],
+          "branch_name": null,
+          "branch_url": null
+        }
+      ],
+      "standalone_issues": [],
+      "non_feature_items": []
+    },
+    {
+      "id": "M2",
+      "title": "Milestone 2",
+      "features": [
+        {
+          "id": "F1-M2",
+          "title": "Feature Three",
+          "description": "Feature three description.",
+          "status": "Approved",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [],
+          "branch_name": null,
+          "branch_url": null
+        }
+      ],
+      "standalone_issues": [],
+      "non_feature_items": []
+    }
+  ]
+}
+EOF
+cat >"${SYNC_FEATURE_REPO}/dev/TASK_LIST.json" <<'EOF'
+{"schema_version":"1.0","tasks":[]}
+EOF
+cat >"${SYNC_FEATURE_REPO}/dev/TASK_EXECUTION_PIPELINE.json" <<'EOF'
+{"schema_version":"1.0","execution_sequence":[],"functional_blocks":[],"overlaps":[]}
+EOF
+SYNC_FEATURE_FAKE_GH_DIR="${TMP_DIR}/sync-feature-fake-gh-bin"
+SYNC_FEATURE_FAKE_GH_LOG="${TMP_DIR}/sync-feature-fake-gh.log"
+SYNC_FEATURE_BODY_501="${TMP_DIR}/sync-feature-body-501.md"
+SYNC_FEATURE_BODY_502="${TMP_DIR}/sync-feature-body-502.md"
+mkdir -p "${SYNC_FEATURE_FAKE_GH_DIR}"
+cat >"${SYNC_FEATURE_FAKE_GH_DIR}/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "$*" >> "${SYNC_FEATURE_FAKE_GH_LOG}"
+if [[ "$1" == "repo" && "$2" == "view" ]]; then
+  echo '{"nameWithOwner":"owner/repo","url":"https://github.com/owner/repo"}'
+  exit 0
+fi
+if [[ "$1" == "api" ]]; then
+  echo '[{"title":"Milestone 1"},{"title":"Milestone 2"}]'
+  exit 0
+fi
+if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  issue_number="$3"
+  shift 3
+  body_value=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --body)
+        body_value="$2"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  if [[ "$issue_number" == "501" ]]; then
+    printf "%s" "${body_value}" > "${SYNC_FEATURE_BODY_501}"
+  fi
+  if [[ "$issue_number" == "502" ]]; then
+    printf "%s" "${body_value}" > "${SYNC_FEATURE_BODY_502}"
+  fi
+  exit 0
+fi
+echo "unsupported gh call: $*" >&2
+exit 1
+EOF
+chmod +x "${SYNC_FEATURE_FAKE_GH_DIR}/gh"
+run_expect_success \
+  "sync-feature-feature-id" \
+  env PATH="${SYNC_FEATURE_FAKE_GH_DIR}:${PATH}" SYNC_FEATURE_FAKE_GH_LOG="${SYNC_FEATURE_FAKE_GH_LOG}" SYNC_FEATURE_BODY_501="${SYNC_FEATURE_BODY_501}" SYNC_FEATURE_BODY_502="${SYNC_FEATURE_BODY_502}" \
+  "${SYNC_FEATURE_REPO}/dev/workflow" sync feature --feature-id F1-M1 --write --github
+assert_json_value "sync-feature-feature-id" "command" "sync.feature"
+assert_json_value "sync-feature-feature-id" "selector_mode" "feature-id"
+assert_json_value "sync-feature-feature-id" "sync_summary.attempted" "1"
+assert_json_value "sync-feature-feature-id" "sync_summary.updated" "1"
+assert_json_value "sync-feature-feature-id" "sync_summary.skipped" "0"
+assert_json_value "sync-feature-feature-id" "sync_summary.errors" "[]"
+assert_json_value "sync-feature-feature-id" "sync_results.0.action" "updated"
+assert_file_contains "sync-feature-feature-id-body" "${SYNC_FEATURE_BODY_501}" "Feature one description."
+
+run_expect_success \
+  "sync-feature-milestone-id" \
+  env PATH="${SYNC_FEATURE_FAKE_GH_DIR}:${PATH}" SYNC_FEATURE_FAKE_GH_LOG="${SYNC_FEATURE_FAKE_GH_LOG}" SYNC_FEATURE_BODY_501="${SYNC_FEATURE_BODY_501}" SYNC_FEATURE_BODY_502="${SYNC_FEATURE_BODY_502}" \
+  "${SYNC_FEATURE_REPO}/dev/workflow" sync feature --milestone-id M1 --write --github
+assert_json_value "sync-feature-milestone-id" "selector_mode" "milestone-id"
+assert_json_value "sync-feature-milestone-id" "target_count" "2"
+assert_json_value "sync-feature-milestone-id" "sync_summary.attempted" "2"
+assert_json_value "sync-feature-milestone-id" "sync_summary.updated" "2"
+assert_json_value "sync-feature-milestone-id" "sync_summary.skipped" "0"
+assert_file_contains "sync-feature-milestone-id-body-501" "${SYNC_FEATURE_BODY_501}" "Feature one description."
+assert_file_contains "sync-feature-milestone-id-body-502" "${SYNC_FEATURE_BODY_502}" "Feature two description."
+
+run_expect_success \
+  "sync-feature-all" \
+  env PATH="${SYNC_FEATURE_FAKE_GH_DIR}:${PATH}" SYNC_FEATURE_FAKE_GH_LOG="${SYNC_FEATURE_FAKE_GH_LOG}" SYNC_FEATURE_BODY_501="${SYNC_FEATURE_BODY_501}" SYNC_FEATURE_BODY_502="${SYNC_FEATURE_BODY_502}" \
+  "${SYNC_FEATURE_REPO}/dev/workflow" sync feature --all --write --github
+assert_json_value "sync-feature-all" "selector_mode" "all"
+assert_json_value "sync-feature-all" "target_count" "3"
+assert_json_value "sync-feature-all" "sync_summary.attempted" "3"
+assert_json_value "sync-feature-all" "sync_summary.updated" "2"
+assert_json_value "sync-feature-all" "sync_summary.skipped" "1"
+assert_json_value "sync-feature-all" "sync_results.2.action" "skipped"
+assert_json_value "sync-feature-all" "sync_results.2.reason" "feature-issue-not-mapped"
+
+run_expect_failure_contains \
+  "sync-feature-invalid-selector-combo" \
+  "requires exactly one selector mode" \
+  "${SYNC_FEATURE_REPO}/dev/workflow" sync feature --feature-id F1-M1 --all
+run_expect_failure_contains \
+  "sync-feature-invalid-milestone-id" \
+  "Invalid milestone ID" \
+  "${SYNC_FEATURE_REPO}/dev/workflow" sync feature --milestone-id bad
+run_expect_failure_contains \
+  "sync-feature-unknown-feature-id" \
+  "Feature F9-M1 not found in DEV_MAP." \
+  "${SYNC_FEATURE_REPO}/dev/workflow" sync feature --feature-id F9-M1
 
 # Gate-fail: task preflight blocked for missing materialization metadata.
 GATE_PREFLIGHT_REPO="${TMP_DIR}/gate-preflight-fixture"

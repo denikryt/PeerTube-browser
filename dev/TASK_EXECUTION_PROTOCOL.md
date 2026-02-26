@@ -187,6 +187,11 @@ Use this procedure before executing tasks for a new feature.
    - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
    - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
    - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
+6.1 `sync feature --feature-id <feature_id>` / `sync feature --milestone-id <milestone_id>` / `sync feature --all`: sync mapped feature-level GitHub issue metadata/body only.
+   - Selector contract: exactly one selector mode per run.
+   - Target resolution must be deterministic for all selector modes.
+   - Sync scope is feature-only: update mapped feature issue title/body from local feature metadata; do not materialize child issues in this command.
+   - Return deterministic summary fields: `attempted`, `updated`, `skipped`, `errors`.
 7. Only then run `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`.
    - Execution gate: every parent `Issue` for the target task set must have non-null `gh_issue_number` and `gh_issue_url` in `dev/map/DEV_MAP.json`.
 

@@ -60,6 +60,9 @@ Compact command index for milestone/feature operations.
   - Queue usage: repeat `--issue-id` to preserve explicit issue order (for example, `--issue-id I2-F1-M1 --issue-id I1-F1-M1`).
   - Reconcile behavior: parent feature issue sub-issues are synced from mapped local child issues; response includes `sub_issues_sync` and `missing_issue_mappings`.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
+- `sync feature --feature-id <feature_id>` / `sync feature --milestone-id <milestone_id>` / `sync feature --all`
+  - Purpose: sync mapped feature-level GitHub issue title/body from local feature metadata without child issue materialization.
+  - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Feature planning/materialization flow`.
 - `execute task X` / `execute issue <issue_id>` / `execute feature <feature_id>`
   - Purpose: run implementation flow for one task, one issue chain, or full feature chain.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Standard execution flow` + `Issue chain execution flow` + `Feature chain execution flow`.
