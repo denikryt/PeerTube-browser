@@ -211,6 +211,7 @@ function renderFeature(feature) {
   const refParts = [track, optional, ghText].filter(Boolean);
   ref.textContent = refParts.join(" | ");
   details.appendChild(ref);
+  appendDescriptionMeta(details, feature.description);
 
   if (typeof feature.note === "string" && feature.note.trim().length > 0) {
     const note = document.createElement("div");
@@ -378,6 +379,7 @@ function renderIssue(issue) {
   ref.className = "muted";
   ref.textContent = issue.gh_issue_number ? `GH #${issue.gh_issue_number}` : "GH issue: not materialized";
   details.appendChild(ref);
+  appendDescriptionMeta(details, issue.description);
 
   const tasks = Array.isArray(issue.tasks) ? issue.tasks : [];
   const visibleTasks = tasks.filter((task) => statusVisible(task.status));
@@ -418,15 +420,6 @@ function renderTask(task) {
   wrap.appendChild(title);
   registerId(task.id, title);
 
-  const hasDate = typeof task.date === "string" && task.date.trim().length > 0;
-  const hasTime = typeof task.time === "string" && task.time.trim().length > 0;
-  if (hasDate || hasTime) {
-    const dt = document.createElement("div");
-    dt.className = "muted";
-    dt.textContent = `Timestamp: ${[task.date, task.time].filter(Boolean).join(" ")}`;
-    wrap.appendChild(dt);
-  }
-
   if (typeof task.summary === "string" && task.summary.trim().length > 0) {
     const summary = document.createElement("div");
     summary.className = "muted";
@@ -435,6 +428,22 @@ function renderTask(task) {
   }
 
   return wrap;
+}
+
+/**
+ * Append human-readable description metadata for expanded feature/issue rows.
+ * @param {HTMLElement} parent
+ * @param {unknown} description
+ */
+function appendDescriptionMeta(parent, description) {
+  const line = document.createElement("div");
+  line.className = "muted";
+  if (typeof description === "string" && description.trim().length > 0) {
+    line.textContent = description.trim();
+  } else {
+    line.textContent = "Not provided";
+  }
+  parent.appendChild(line);
 }
 
 /**
