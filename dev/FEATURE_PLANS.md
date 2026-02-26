@@ -34,7 +34,6 @@ Canonical per-issue plan block format inside a feature section:
 2. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
 3. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
 4. `I29-F4-M1` - DevMap Viewer: show feature/issue descriptions in expanded rows and hide task timestamps
-5. `I31-F4-M1` - Reject issue flow: cleanup issue plan/tasks and delete unmapped issue nodes
 ### Dependencies
 - See issue-level dependency blocks below.
 
@@ -59,25 +58,3 @@ Canonical per-issue plan block format inside a feature section:
 #### Issue/Task Decomposition Assessment
 - UI rendering changes span three separate surfaces (Feature expand, Issue expand, Task row fields), so decomposition should split them into isolated implementation tasks.
 
-### I31-F4-M1 - Reject issue flow: cleanup issue plan/tasks and delete unmapped issue nodes
-
-#### Dependencies
-- Reject command routing and handler in `dev/workflow_lib/confirm_commands.py` (`register_reject_router`, `_handle_reject_issue`).
-- Existing confirm cleanup primitives in `dev/workflow_lib/confirm_commands.py` (`_cleanup_feature_plan_issue_artifacts`, `_compute_tracker_cleanup_preview`, `_apply_tracker_cleanup`).
-- Local tracking artifacts affected by reject cleanup: `dev/map/DEV_MAP.json`, `dev/TASK_LIST.json`, `dev/TASK_EXECUTION_PIPELINE.json`, and issue block/order rows in `dev/FEATURE_PLANS.md`.
-- GitHub mapping fields (`gh_issue_number`, `gh_issue_url`) as the branch selector between mapped and unmapped reject behavior.
-
-#### Decomposition
-1. Define explicit reject branch matrix and selector contract in `_handle_reject_issue`: input contract stays `reject issue --id <issue_id> [--write] [--close-github|--no-close-github]`, and the handler must deterministically resolve one branch (`unmapped-delete` or `mapped-reject`) from `gh_issue_number/gh_issue_url`; expected result is stable payload fields describing selected branch and status transition.
-2. Implement unmapped issue branch as deletion (not local status flip): with `--write`, remove unmapped issue node from owning feature issue list in `DEV_MAP`; failure-path behavior remains explicit for real not-found/invalid-id errors, while repeated calls against already removed nodes must be idempotent no-op without touching unrelated nodes.
-3. Implement mapped issue branch with cleanup extension: keep current mapped behavior (append rejection marker, close remote issue, set local `Rejected`) and add cleanup of issue plan artifacts + linked task artifacts (feature plan block/order row, `TASK_LIST`, `TASK_EXECUTION_PIPELINE`) reusing confirm-style cleanup helpers; expected result payload includes GitHub close details and cleanup counters/removed IDs.
-4. Implement no-artifact pass-through and regression coverage: when plan block or tasks are absent, reject still succeeds with zero-removal cleanup output; add regression scenarios for mapped cleanup, unmapped deletion, and missing-artifact pass-through with deterministic output/failure contracts.
-
-#### Issue/Task Decomposition Assessment
-- decomposition_state = tasked
-- task_count = 4
-- task_ids = 157, 158, 159, 160
-- task 157 scope: materialization-state selector and unmapped issue-node deletion semantics in `DEV_MAP`.
-- task 158 scope: cleanup of issue plan block/order row and linked tracker task artifacts via shared cleanup path.
-- task 159 scope: preserve mapped close/status behavior and make missing plan/tasks a non-failing no-op cleanup branch.
-- task 160 scope: regression coverage for mapped/unmapped/no-artifact branches and deterministic reject payload contract.

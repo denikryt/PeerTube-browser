@@ -56,14 +56,6 @@
     {
       "tasks": ["151", "152"],
       "description": "task timestamp removal and viewer regression checks"
-    },
-    {
-      "tasks": ["157", "158"],
-      "description": "reject unmapped delete path and local cleanup"
-    },
-    {
-      "tasks": ["159", "160"],
-      "description": "mapped reject semantics and regression coverage"
     }
   ],
   "functional_blocks": [
@@ -126,12 +118,6 @@
       "tasks": ["149", "150", "151", "152"],
       "scope": "DevMap Viewer expanded-row metadata rendering and protocol rule updates for immediate issue materialization.",
       "outcome": "Expanded Feature and Issue rows show description text, task rows stop rendering timestamps, and canonical workflow guidance requires immediate materialization after new issue creation."
-    },
-    {
-      "title": "Block M: Reject issue cleanup and unmapped deletion flow",
-      "tasks": ["157", "158", "159", "160"],
-      "scope": "Reject command lifecycle branches for mapped/unmapped issues and cleanup propagation to plans and trackers.",
-      "outcome": "Reject issue removes unmapped local issues, preserves mapped close+status behavior, and consistently cleans related plan/task artifacts when they exist."
     }
   ],
   "overlaps": [
@@ -190,14 +176,6 @@
     {
       "tasks": ["151", "152"],
       "description": "UI field removal and regression checks must stay consistent"
-    },
-    {
-      "tasks": ["158", "147"],
-      "description": "reject cleanup and confirm batch cleanup share tracker artifact removal semantics"
-    },
-    {
-      "tasks": ["159", "138"],
-      "description": "mapped reject branch extends existing reject command and status transition behavior"
     }
   ]
 }

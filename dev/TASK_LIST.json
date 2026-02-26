@@ -615,54 +615,6 @@
         "Add check scenario for expanded Feature row description visibility.",
         "Add check scenario that task rows do not render timestamp text."
       ]
-    },
-    {
-      "id": "157",
-      "marker": "[M1][F4]",
-      "title": "Reject flow: delete unmapped issue nodes",
-      "problem": "Reject command keeps unmapped issues in local map even when they were never materialized.",
-      "solution_option": "When issue has no GitHub mapping, reject flow should remove the issue node from DEV_MAP instead of only changing status.",
-      "concrete_steps": [
-        "Detect unmapped issue state by gh_issue_number and gh_issue_url fields.",
-        "Implement local issue-node deletion path for unmapped reject flow.",
-        "Return deterministic output describing delete action and removed issue id."
-      ]
-    },
-    {
-      "id": "158",
-      "marker": "[M1][F4]",
-      "title": "Reject flow: cleanup plan and task artifacts",
-      "problem": "Reject command does not currently remove related plan/task artifacts when they exist.",
-      "solution_option": "Reuse confirm-style cleanup to remove issue plan block/order row and task artifacts from trackers on reject.",
-      "concrete_steps": [
-        "Reuse or extract cleanup helpers used by confirm issue flow.",
-        "Remove issue block and Issue Execution Order row for rejected issue when present.",
-        "Cleanup linked task entries from TASK_LIST and TASK_EXECUTION_PIPELINE."
-      ]
-    },
-    {
-      "id": "159",
-      "marker": "[M1][F4]",
-      "title": "Reject flow: preserve mapped close/status semantics",
-      "problem": "Mapped reject behavior must remain stable while new cleanup/deletion branches are introduced.",
-      "solution_option": "Keep mapped path closing remote issue and setting local status, while treating missing plan/tasks as non-blocking.",
-      "concrete_steps": [
-        "Keep mapped branch with rejection marker and remote close side effects.",
-        "Apply cleanup only when plan/tasks artifacts exist.",
-        "Ensure no-op behavior when cleanup targets are absent."
-      ]
-    },
-    {
-      "id": "160",
-      "marker": "[M1][F4]",
-      "title": "Reject flow: regression coverage for cleanup branches",
-      "problem": "Reject behavior can regress across mapped/unmapped cleanup branches without explicit tests.",
-      "solution_option": "Add smoke and docs coverage for all reject cleanup branches and output contracts.",
-      "concrete_steps": [
-        "Add smoke case for unmapped issue reject leading to local node deletion.",
-        "Add smoke case for mapped reject with remote close and cleanup artifacts.",
-        "Add smoke case for reject where plan/tasks are missing and command remains successful."
-      ]
     }
   ]
 }
