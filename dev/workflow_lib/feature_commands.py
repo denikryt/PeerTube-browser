@@ -165,6 +165,11 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
         default=20.0,
         help="Per-request GitHub CLI timeout in seconds for materialize write mode.",
     )
+    materialize_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Emit full materialize diagnostics (large per-item lists); default output is compact.",
+    )
     materialize_parser.set_defaults(handler=_handle_feature_materialize)
 
     execution_plan_parser = feature_subparsers.add_parser(
@@ -926,32 +931,36 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
         _write_json(context.dev_map_path, dev_map)
 
     active_branch_message = f"Canonical feature branch: {branch_name}"
+    full_payload = {
+        "active_feature_branch": branch_name,
+        "active_feature_branch_message": active_branch_message,
+        "branch_action": branch_action,
+        "branch_url": branch_url,
+        "command": "feature.materialize",
+        "feature_id": feature_id,
+        "feature_issue_checklist_sync": feature_issue_checklist_sync,
+        "feature_issue_body_sync": feature_issue_body_sync,
+        "feature_status": feature_status,
+        "github_enabled": bool(args.github),
+        "issue_description_backfill": issue_description_backfill,
+        "issue_id_filter": issue_id_filter,
+        "issue_id_queue": issue_id_queue,
+        "selected_issue_ids": selected_issue_ids,
+        "mode": materialize_mode,
+        "mode_action": mode_action,
+        "issues_materialized": materialized_issues,
+        "missing_issue_mappings": missing_issue_mappings,
+        "request_policy": materialize_request_policy,
+        "sub_issues_sync": sub_issues_sync,
+        "github_milestone_title": milestone_title,
+        "milestone_id": milestone_id,
+        "write": bool(args.write),
+    }
     emit_json(
-        {
-            "active_feature_branch": branch_name,
-            "active_feature_branch_message": active_branch_message,
-            "branch_action": branch_action,
-            "branch_url": branch_url,
-            "command": "feature.materialize",
-            "feature_id": feature_id,
-            "feature_issue_checklist_sync": feature_issue_checklist_sync,
-            "feature_issue_body_sync": feature_issue_body_sync,
-            "feature_status": feature_status,
-            "github_enabled": bool(args.github),
-            "issue_description_backfill": issue_description_backfill,
-            "issue_id_filter": issue_id_filter,
-            "issue_id_queue": issue_id_queue,
-            "selected_issue_ids": selected_issue_ids,
-            "mode": materialize_mode,
-            "mode_action": mode_action,
-            "issues_materialized": materialized_issues,
-            "missing_issue_mappings": missing_issue_mappings,
-            "request_policy": materialize_request_policy,
-            "sub_issues_sync": sub_issues_sync,
-            "github_milestone_title": milestone_title,
-            "milestone_id": milestone_id,
-            "write": bool(args.write),
-        }
+        _build_feature_materialize_output_payload(
+            full_payload=full_payload,
+            verbose=bool(getattr(args, "verbose", False)),
+        )
     )
     return 0
 
@@ -1063,6 +1072,146 @@ def _resolve_materialize_mode_action(materialize_mode: str) -> str:
     if materialize_mode == "issues-sync":
         return "issue-materialization-sync-mode"
     raise WorkflowCommandError(f"Unsupported materialize mode: {materialize_mode!r}.", exit_code=4)
+
+
+def _summarize_materialized_issue_actions(materialized_issues: list[dict[str, Any]]) -> dict[str, int]:
+    """Return deterministic action counters for materialize issue results."""
+    summary = {
+        "total": len(materialized_issues),
+        "created": 0,
+        "updated": 0,
+        "skipped": 0,
+        "would_create": 0,
+        "would_update": 0,
+        "would_skip": 0,
+    }
+    action_to_key = {
+        "created": "created",
+        "updated": "updated",
+        "skipped": "skipped",
+        "would-create": "would_create",
+        "would-update": "would_update",
+        "would-skip": "would_skip",
+    }
+    for item in materialized_issues:
+        action = str(item.get("action", "")).strip()
+        key = action_to_key.get(action)
+        if key is not None:
+            summary[key] += 1
+    return summary
+
+
+def _build_compact_sub_issues_sync(sub_issues_sync: dict[str, Any]) -> dict[str, Any]:
+    """Compress verbose sub-issues reconciliation payload to stable actionable summary."""
+    added = sub_issues_sync.get("added", [])
+    skipped = sub_issues_sync.get("skipped", [])
+    errors = sub_issues_sync.get("errors", [])
+    added_issue_ids: list[str] = []
+    if isinstance(added, list):
+        for item in added:
+            if not isinstance(item, dict):
+                continue
+            issue_id = str(item.get("issue_id", "")).strip()
+            if issue_id:
+                added_issue_ids.append(issue_id)
+    compact: dict[str, Any] = {
+        "attempted": bool(sub_issues_sync.get("attempted", False)),
+        "added_issue_ids": added_issue_ids,
+        "added_count": len(added_issue_ids),
+        "skipped_count": len(skipped) if isinstance(skipped, list) else 0,
+        "errors_count": len(errors) if isinstance(errors, list) else 0,
+    }
+    reason = str(sub_issues_sync.get("reason", "")).strip()
+    if reason:
+        compact["reason"] = reason
+    if isinstance(errors, list) and errors:
+        compact["errors"] = errors
+    return compact
+
+
+def _build_compact_materialized_issues(materialized_issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return shortened per-issue materialize list for default command output."""
+    compact_items: list[dict[str, Any]] = []
+    for item in materialized_issues:
+        issue_id = str(item.get("issue_id", "")).strip()
+        action = str(item.get("action", "")).strip()
+        compact_item: dict[str, Any] = {
+            "issue_id": issue_id,
+            "action": action,
+        }
+        issue_number = _coerce_issue_number(item.get("gh_issue_number"), item.get("gh_issue_url"))
+        if issue_number is not None:
+            compact_item["gh_issue_number"] = issue_number
+        reason = str(item.get("reason", "")).strip()
+        if reason:
+            compact_item["reason"] = reason
+        compact_items.append(compact_item)
+    return compact_items
+
+
+def _build_compact_feature_issue_sync(feature_issue_body_sync: dict[str, Any]) -> dict[str, Any]:
+    """Return small feature-issue-body sync status payload."""
+    compact: dict[str, Any] = {
+        "attempted": bool(feature_issue_body_sync.get("attempted", False)),
+        "updated": bool(feature_issue_body_sync.get("updated", False)),
+    }
+    reason = str(feature_issue_body_sync.get("reason", "")).strip()
+    if reason:
+        compact["reason"] = reason
+    return compact
+
+
+def _build_feature_materialize_output_payload(
+    *,
+    full_payload: dict[str, Any],
+    verbose: bool,
+) -> dict[str, Any]:
+    """Build materialize command output payload with compact-by-default diagnostics."""
+    if verbose:
+        verbose_payload = dict(full_payload)
+        verbose_payload["output_profile"] = "verbose"
+        return verbose_payload
+
+    materialized_issues = full_payload.get("issues_materialized", [])
+    if not isinstance(materialized_issues, list):
+        materialized_issues = []
+    selected_issue_ids = full_payload.get("selected_issue_ids", [])
+    if not isinstance(selected_issue_ids, list):
+        selected_issue_ids = []
+    sub_issues_sync = full_payload.get("sub_issues_sync", {})
+    if not isinstance(sub_issues_sync, dict):
+        sub_issues_sync = {}
+    feature_issue_body_sync = full_payload.get("feature_issue_body_sync", {})
+    if not isinstance(feature_issue_body_sync, dict):
+        feature_issue_body_sync = {}
+    missing_issue_mappings = full_payload.get("missing_issue_mappings", [])
+    if not isinstance(missing_issue_mappings, list):
+        missing_issue_mappings = []
+
+    compact_payload = {
+        "command": full_payload.get("command"),
+        "feature_id": full_payload.get("feature_id"),
+        "mode": full_payload.get("mode"),
+        "write": bool(full_payload.get("write", False)),
+        "github_enabled": bool(full_payload.get("github_enabled", False)),
+        "active_feature_branch": full_payload.get("active_feature_branch"),
+        "branch_action": full_payload.get("branch_action"),
+        "selected_issue_ids": selected_issue_ids,
+        "issues_materialized": _build_compact_materialized_issues(materialized_issues),
+        "issues_materialized_summary": _summarize_materialized_issue_actions(materialized_issues),
+        "sub_issues_sync": _build_compact_sub_issues_sync(sub_issues_sync),
+        "feature_issue_body_sync": _build_compact_feature_issue_sync(feature_issue_body_sync),
+        "missing_issue_mappings_count": len(missing_issue_mappings),
+        "output_profile": "compact",
+        "output_hint": "Use --verbose to include full materialize diagnostics.",
+    }
+    if missing_issue_mappings:
+        compact_payload["missing_issue_mapping_issue_ids"] = [
+            str(item.get("issue_id", "")).strip()
+            for item in missing_issue_mappings
+            if isinstance(item, dict) and str(item.get("issue_id", "")).strip()
+        ]
+    return compact_payload
 
 
 def _enforce_materialize_issue_status_gate(

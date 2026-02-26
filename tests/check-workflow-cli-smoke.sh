@@ -883,8 +883,6 @@ run_expect_success \
   "create-only-queue-order" \
   env PATH="${FAKE_GH_DIR}:${PATH}" FAKE_GH_LOG="${FAKE_GH_LOG}" \
   "${CREATE_ONLY_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-create --issue-id I2-F1-M1 --issue-id I1-F1-M1 --write --github
-assert_json_value "create-only-queue-order" "issue_id_queue.0" "I2-F1-M1"
-assert_json_value "create-only-queue-order" "issue_id_queue.1" "I1-F1-M1"
 assert_json_value "create-only-queue-order" "selected_issue_ids.0" "I2-F1-M1"
 assert_json_value "create-only-queue-order" "selected_issue_ids.1" "I1-F1-M1"
 assert_json_value "create-only-queue-order" "issues_materialized.0.issue_id" "I2-F1-M1"
@@ -1047,15 +1045,15 @@ run_expect_success \
   env PATH="${SUBISSUE_FAKE_GH_DIR}:${PATH}" SUBISSUE_FAKE_GH_LOG="${SUBISSUE_FAKE_GH_LOG}" SUBISSUE_STATE_FILE="${SUBISSUE_STATE_FILE}" \
   "${SUBISSUE_RECONCILE_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-create --write --github
 assert_json_value "subissue-reconcile-first-run" "sub_issues_sync.attempted" "true"
-assert_json_value "subissue-reconcile-first-run" "sub_issues_sync.added.0.issue_id" "I2-F1-M1"
-assert_json_value "subissue-reconcile-first-run" "missing_issue_mappings" "[]"
+assert_json_value "subissue-reconcile-first-run" "sub_issues_sync.added_issue_ids.0" "I2-F1-M1"
+assert_json_value "subissue-reconcile-first-run" "missing_issue_mappings_count" "0"
 run_expect_success \
   "subissue-reconcile-second-run" \
   env PATH="${SUBISSUE_FAKE_GH_DIR}:${PATH}" SUBISSUE_FAKE_GH_LOG="${SUBISSUE_FAKE_GH_LOG}" SUBISSUE_STATE_FILE="${SUBISSUE_STATE_FILE}" \
   "${SUBISSUE_RECONCILE_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-create --write --github
 assert_json_value "subissue-reconcile-second-run" "sub_issues_sync.attempted" "true"
-assert_json_value "subissue-reconcile-second-run" "sub_issues_sync.added" "[]"
-assert_json_value "subissue-reconcile-second-run" "missing_issue_mappings" "[]"
+assert_json_value "subissue-reconcile-second-run" "sub_issues_sync.added_issue_ids" "[]"
+assert_json_value "subissue-reconcile-second-run" "missing_issue_mappings_count" "0"
 
 # Materialize/confirm: issue bodies are description-driven (no checkbox sync side-effects).
 DESCRIPTION_BODY_REPO="${TMP_DIR}/description-body-fixture"
@@ -1185,7 +1183,6 @@ run_expect_success \
   env PATH="${DESCRIPTION_FAKE_GH_DIR}:${PATH}" DESCRIPTION_FAKE_GH_LOG="${DESCRIPTION_FAKE_GH_LOG}" DESCRIPTION_BODY_FILE="${DESCRIPTION_BODY_FILE}" DESCRIPTION_FEATURE_BODY_FILE="${DESCRIPTION_FEATURE_BODY_FILE}" \
   "${DESCRIPTION_BODY_REPO}/dev/workflow" feature materialize --id F1-M1 --mode issues-sync --issue-id I2-F1-M1 --write --github
 assert_json_value "description-body-materialize-sync" "issues_materialized.0.action" "updated"
-assert_json_value "description-body-materialize-sync" "feature_issue_checklist_sync.attempted" "false"
 assert_json_value "description-body-materialize-sync" "feature_issue_body_sync.attempted" "true"
 assert_json_value "description-body-materialize-sync" "feature_issue_body_sync.updated" "true"
 assert_file_contains "description-body-materialize-description" "${DESCRIPTION_BODY_FILE}" "Materialize should rewrite this body using readable description-driven sections."
