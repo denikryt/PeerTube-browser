@@ -49,7 +49,7 @@ Canonical rule map (to prevent duplication drift):
 12. For direct edit commands, do not block on task-command format; execute the requested edits and report changes.
 13. Never make any file/code/config/script changes unless the user has explicitly asked for those concrete edits in the current message.
 14. Hard no-edit default: if the user message is discussion, question, planning, or clarification, do not run any edit command and do not change any file.
-15. Before any edit, require an explicit edit intent in the current user message (examples: "edit", "change", "update", "create file", "delete", "apply patch", "внеси изменения", "измени", "создай", "удали").
+15. Before any edit, require an explicit edit intent in the current user message (examples: "edit", "change", "update", "create file", "delete", "apply patch").
 16. If explicit edit intent is missing, respond with analysis/instructions only and keep repository files untouched.
 
 ## Task and tracking state constraints
@@ -135,6 +135,7 @@ Canonical rule map (to prevent duplication drift):
    - `branch_name` (canonical value: `feature/<feature_id>`),
    - `branch_url` (canonical value: `<repo_url>/tree/feature/<feature_id>`).
 35. During `materialize feature <id>`, when branch context is resolved/created, update `branch_name`/`branch_url` for that feature in the same change set as materialization metadata updates.
+36. For any explicit user request to plan an issue (`plan issue ...`), update the target issue block in `dev/FEATURE_PLANS.md` in the same turn and enforce full compliance with `dev/FEATURE_PLANNING_PROTOCOL.md` (mandatory headings + Gate 0 quality); never leave template/fallback stubs as final plan content.
 
 ## Pipeline constraints
 
