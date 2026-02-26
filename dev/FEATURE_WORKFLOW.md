@@ -66,8 +66,9 @@ Compact command index for milestone/feature operations.
 - `execute task X` / `execute issue <issue_id>` / `execute feature <feature_id>`
   - Purpose: run implementation flow for one task, one issue chain, or full feature chain.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Standard execution flow` + `Issue chain execution flow` + `Feature chain execution flow`.
-- `confirm ... done`
+- `confirm issue <issue_id> done` / `confirm issues --issue-id <issue_a> --issue-id <issue_b> ... done` / `confirm task <task_id> done` / `confirm feature <feature_id> done`
   - Purpose: apply completion updates after explicit user confirmation.
+  - Batch note: use plural `confirm issues` for multi-issue confirmation queues (especially when queue size is greater than two).
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Completion flow`.
 - `reject issue <issue_id>`
   - Purpose: explicitly transition feature issue to `Rejected` and close mapped GitHub issue with deterministic rejection marker when mapping exists.

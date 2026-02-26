@@ -96,6 +96,7 @@ Use this procedure when user requests execution of all tasks under one feature i
 Use explicit completion commands:
 - `confirm task <task_id> done`
 - `confirm issue <issue_id> done`
+- `confirm issues --issue-id <issue_a> --issue-id <issue_b> ... done`
 - `confirm feature <feature_id> done`
 - `confirm standalone-issue <si_id> done`
 - `reject issue <issue_id>`
@@ -118,6 +119,11 @@ Apply the corresponding completion update in one edit run:
   - `confirm issue` does not mutate feature-issue GitHub checklist rows; completion is tracked by local status + issue close flow only.
    - Update local issue status to `Done` in `dev/map/DEV_MAP.json`.
    - Close mapped GitHub issue in the same completion update run.
+2.1 `confirm issues --issue-id <issue_a> --issue-id <issue_b> ... done`
+   - Validate issue-id queue format and reject duplicates before execution.
+   - Batch gate: when confirming more than two issues in one operation, use plural `confirm issues` path (do not pass multi-id payload to `confirm issue`).
+   - Execute per-issue completion semantics using the same rules as `confirm issue <issue_id> done`.
+   - Batch strategy: continue-on-error with deterministic per-item result rows and aggregate summary fields (`processed`, `done`, `failed`).
 3. `confirm feature <feature_id> done`
    - Treat this command as explicit confirmation for the full feature subtree.
    - Resolve all child issues/tasks under `Milestone -> Feature -> Issue -> Task`.

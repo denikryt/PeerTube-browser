@@ -1902,6 +1902,311 @@ run_expect_failure_contains \
   "Feature F9-M1 not found in DEV_MAP." \
   "${SYNC_FEATURE_REPO}/dev/workflow" sync feature --feature-id F9-M1
 
+# confirm issues command: batch success, duplicate rejection, and partial-failure reporting.
+CONFIRM_ISSUES_REPO="${TMP_DIR}/confirm-issues-fixture"
+create_workflow_fixture_repo "${CONFIRM_ISSUES_REPO}"
+cat >"${CONFIRM_ISSUES_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+{
+  "schema_version": "1.4",
+  "updated_at": "2026-02-24T00:00:00+00:00",
+  "task_count": 2,
+  "statuses": ["Pending", "Planned", "Tasked", "Approved", "Rejected", "Done"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Milestone 1",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Feature F1-M1",
+          "description": "Confirm issues batch fixture.",
+          "status": "Approved",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F1-M1",
+              "title": "Issue one",
+              "description": "Issue one description.",
+              "status": "Tasked",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": [
+                {
+                  "id": "1",
+                  "title": "Task one",
+                  "summary": "Summary one",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
+            },
+            {
+              "id": "I2-F1-M1",
+              "title": "Issue two",
+              "description": "Issue two description.",
+              "status": "Tasked",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": [
+                {
+                  "id": "2",
+                  "title": "Task two",
+                  "summary": "Summary two",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
+        }
+      ],
+      "standalone_issues": [],
+      "non_feature_items": []
+    }
+  ]
+}
+EOF
+cat >"${CONFIRM_ISSUES_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F1-M1
+### Dependencies
+- smoke
+
+### Decomposition
+1. smoke
+
+### Issue Execution Order
+1. `I1-F1-M1` - Issue one
+2. `I2-F1-M1` - Issue two
+
+### I1-F1-M1 - Issue one
+
+#### Dependencies
+- smoke
+
+#### Decomposition
+1. smoke
+
+#### Issue/Task Decomposition Assessment
+- smoke
+
+### I2-F1-M1 - Issue two
+
+#### Dependencies
+- smoke
+
+#### Decomposition
+1. smoke
+
+#### Issue/Task Decomposition Assessment
+- smoke
+
+### Issue/Task Decomposition Assessment
+- smoke
+EOF
+cat >"${CONFIRM_ISSUES_REPO}/dev/TASK_LIST.json" <<'EOF'
+{
+  "schema_version": "1.0",
+  "tasks": [
+    {
+      "id": "1",
+      "marker": "[M1][F1]",
+      "title": "Task one",
+      "problem": "Need confirm issue one.",
+      "solution_option": "Run confirm issues batch.",
+      "concrete_steps": ["Confirm issue one in batch."]
+    },
+    {
+      "id": "2",
+      "marker": "[M1][F1]",
+      "title": "Task two",
+      "problem": "Need confirm issue two.",
+      "solution_option": "Run confirm issues batch.",
+      "concrete_steps": ["Confirm issue two in batch."]
+    }
+  ]
+}
+EOF
+cat >"${CONFIRM_ISSUES_REPO}/dev/TASK_EXECUTION_PIPELINE.json" <<'EOF'
+{
+  "schema_version": "1.0",
+  "execution_sequence": [
+    {"tasks": ["1"], "description": "issue-one"},
+    {"tasks": ["2"], "description": "issue-two"}
+  ],
+  "functional_blocks": [
+    {
+      "title": "Confirm issues block",
+      "tasks": ["1", "2"],
+      "scope": "Batch cleanup.",
+      "outcome": "Both issues are confirmed."
+    }
+  ],
+  "overlaps": [
+    {"tasks": ["1", "2"], "description": "shared cleanup"}
+  ]
+}
+EOF
+run_expect_success \
+  "confirm-issues-batch-success" \
+  "${CONFIRM_ISSUES_REPO}/dev/workflow" confirm issues --issue-id I1-F1-M1 --issue-id I2-F1-M1 done --write --force --no-close-github
+assert_json_value "confirm-issues-batch-success" "command" "confirm.issues"
+assert_json_value "confirm-issues-batch-success" "strategy" "continue-on-error"
+assert_json_value "confirm-issues-batch-success" "summary.processed" "2"
+assert_json_value "confirm-issues-batch-success" "summary.done" "2"
+assert_json_value "confirm-issues-batch-success" "summary.failed" "0"
+assert_json_value "confirm-issues-batch-success" "results.0.action" "confirmed"
+assert_json_value "confirm-issues-batch-success" "results.1.action" "confirmed"
+assert_jq_file_value \
+  "confirm-issues-batch-status-issue1" \
+  "${CONFIRM_ISSUES_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues[] | select(.id=="I1-F1-M1") | .status' \
+  "Done"
+assert_jq_file_value \
+  "confirm-issues-batch-status-issue2" \
+  "${CONFIRM_ISSUES_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues[] | select(.id=="I2-F1-M1") | .status' \
+  "Done"
+assert_jq_file_value \
+  "confirm-issues-batch-task-list-cleaned" \
+  "${CONFIRM_ISSUES_REPO}/dev/TASK_LIST.json" \
+  '.tasks | length' \
+  "0"
+assert_file_not_contains "confirm-issues-batch-order-cleaned-issue1" "${CONFIRM_ISSUES_REPO}/dev/FEATURE_PLANS.md" '`I1-F1-M1` - Issue one'
+assert_file_not_contains "confirm-issues-batch-order-cleaned-issue2" "${CONFIRM_ISSUES_REPO}/dev/FEATURE_PLANS.md" '`I2-F1-M1` - Issue two'
+
+CONFIRM_ISSUES_PARTIAL_REPO="${TMP_DIR}/confirm-issues-partial-fixture"
+create_workflow_fixture_repo "${CONFIRM_ISSUES_PARTIAL_REPO}"
+cat >"${CONFIRM_ISSUES_PARTIAL_REPO}/dev/map/DEV_MAP.json" <<'EOF'
+{
+  "schema_version": "1.4",
+  "updated_at": "2026-02-24T00:00:00+00:00",
+  "task_count": 1,
+  "statuses": ["Pending", "Planned", "Tasked", "Approved", "Rejected", "Done"],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Milestone 1",
+      "features": [
+        {
+          "id": "F1-M1",
+          "title": "Feature F1-M1",
+          "description": "Partial batch fixture.",
+          "status": "Approved",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F1-M1",
+              "title": "Issue one",
+              "description": "Issue one description.",
+              "status": "Tasked",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": [
+                {
+                  "id": "1",
+                  "title": "Task one",
+                  "summary": "Summary one",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
+        }
+      ],
+      "standalone_issues": [],
+      "non_feature_items": []
+    }
+  ]
+}
+EOF
+cat >"${CONFIRM_ISSUES_PARTIAL_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F1-M1
+### Dependencies
+- smoke
+
+### Decomposition
+1. smoke
+
+### Issue Execution Order
+1. `I1-F1-M1` - Issue one
+
+### I1-F1-M1 - Issue one
+
+#### Dependencies
+- smoke
+
+#### Decomposition
+1. smoke
+
+#### Issue/Task Decomposition Assessment
+- smoke
+
+### Issue/Task Decomposition Assessment
+- smoke
+EOF
+cat >"${CONFIRM_ISSUES_PARTIAL_REPO}/dev/TASK_LIST.json" <<'EOF'
+{
+  "schema_version": "1.0",
+  "tasks": [
+    {
+      "id": "1",
+      "marker": "[M1][F1]",
+      "title": "Task one",
+      "problem": "Need partial batch check.",
+      "solution_option": "Run confirm issues with one invalid issue id.",
+      "concrete_steps": ["Confirm first issue and report second failure."]
+    }
+  ]
+}
+EOF
+cat >"${CONFIRM_ISSUES_PARTIAL_REPO}/dev/TASK_EXECUTION_PIPELINE.json" <<'EOF'
+{
+  "schema_version": "1.0",
+  "execution_sequence": [{"tasks": ["1"], "description": "issue-one"}],
+  "functional_blocks": [
+    {
+      "title": "Confirm issues partial block",
+      "tasks": ["1"],
+      "scope": "Partial run.",
+      "outcome": "One issue succeeds and one fails."
+    }
+  ],
+  "overlaps": []
+}
+EOF
+run_expect_success \
+  "confirm-issues-partial-failure" \
+  "${CONFIRM_ISSUES_PARTIAL_REPO}/dev/workflow" confirm issues --issue-id I1-F1-M1 --issue-id I9-F1-M1 done --write --force --no-close-github
+assert_json_value "confirm-issues-partial-failure" "strategy" "continue-on-error"
+assert_json_value "confirm-issues-partial-failure" "summary.processed" "2"
+assert_json_value "confirm-issues-partial-failure" "summary.done" "1"
+assert_json_value "confirm-issues-partial-failure" "summary.failed" "1"
+assert_json_value "confirm-issues-partial-failure" "results.0.action" "confirmed"
+assert_json_value "confirm-issues-partial-failure" "results.1.action" "failed"
+assert_jq_file_value \
+  "confirm-issues-partial-first-issue-done" \
+  "${CONFIRM_ISSUES_PARTIAL_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues[0].status' \
+  "Done"
+run_expect_failure_contains \
+  "confirm-issues-duplicate-queue" \
+  "Duplicate --issue-id value I1-F1-M1" \
+  "${CONFIRM_ISSUES_PARTIAL_REPO}/dev/workflow" confirm issues --issue-id I1-F1-M1 --issue-id I1-F1-M1 done --force --no-close-github
+
 # Gate-fail: task preflight blocked for missing materialization metadata.
 GATE_PREFLIGHT_REPO="${TMP_DIR}/gate-preflight-fixture"
 create_workflow_fixture_repo "${GATE_PREFLIGHT_REPO}"
