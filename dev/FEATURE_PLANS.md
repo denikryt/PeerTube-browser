@@ -63,9 +63,11 @@ Canonical per-issue plan block format inside a feature section:
    - `dev/FEATURE_WORKFLOW.md` materialize gate wording,
    - `dev/FEATURE_PLANNING_PROTOCOL.md` Gate C checklist.
 4. Add strict execution gate for issue-chain execution:
-   - `execute issue <issue_id>` is allowed only when target issue status is exactly `Tasked`,
-   - keep existing materialization gate (`gh_issue_number`/`gh_issue_url`) as an additional required condition,
-   - return deterministic gate error that reports current status and required status.
+   - `execute issue <issue_id>` is allowed only when both conditions are true at the same time:
+     - target issue status is exactly `Tasked`,
+     - remote mapping is present and valid: `gh_issue_number` is non-null and `gh_issue_url` is non-empty.
+   - if at least one condition is not met, execution must fail with deterministic gate error output and no execution side effects.
+   - gate error must explicitly report which condition failed (status gate, mapping gate, or both).
 5. Update runtime behavior in `dev/workflow_lib/feature_commands.py`:
    - adjust `_enforce_materialize_issue_status_gate` to match new allowed statuses,
    - keep mapped-issue `issues-sync` exception behavior,
