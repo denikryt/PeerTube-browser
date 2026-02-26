@@ -142,11 +142,16 @@ Apply the corresponding completion update in one edit run:
    - Close mapped GitHub standalone issue in the same completion update run.
 5. `reject issue <issue_id>`
    - Resolve target feature issue node by ID and validate ownership chain.
-   - Persist local issue status to `Rejected` (idempotent if already `Rejected`).
+   - Branch by materialization state:
+     - mapped issue (`gh_issue_number` + `gh_issue_url` present): keep local status transition to `Rejected`,
+     - unmapped issue (missing mapping): remove local issue node from owner feature instead of status-only transition.
+   - In write mode, cleanup issue artifacts when present:
+     - remove issue plan block and Issue Execution Order row from `dev/FEATURE_PLANS.md`,
+     - remove linked task artifacts from `dev/TASK_LIST.json` and `dev/TASK_EXECUTION_PIPELINE.json` using confirm-style cleanup path.
    - If mapped GitHub issue exists and close is enabled:
      - append deterministic rejection marker in issue body,
      - close mapped issue in the same reject run.
-   - If GitHub mapping is missing, keep reject command successful with local-only transition and explicit `missing_fields` output.
+   - If GitHub mapping is missing, keep reject command successful with explicit `missing_fields` output (unmapped-delete branch).
 6. If process rules changed, update this file in the same edit run.
 
 ## Feature planning/materialization flow

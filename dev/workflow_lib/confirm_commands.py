@@ -169,19 +169,55 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
 
     issue_node = issue_ref["issue"]
     feature_node = issue_ref["feature"]
+    feature_id = str(feature_node.get("id", "")).strip()
     status_before = str(issue_node.get("status", "")).strip() or "Pending"
     if status_before == "Done":
         raise WorkflowCommandError(
             f"Issue {issue_id} is already Done and cannot transition to Rejected.",
             exit_code=4,
         )
-    if bool(args.write) and status_before != "Rejected":
-        issue_node["status"] = "Rejected"
-        _touch_updated_at(dev_map)
-        _write_json(context.dev_map_path, dev_map)
 
     issue_number = _coerce_issue_number(issue_node.get("gh_issue_number"))
     issue_url = str(issue_node.get("gh_issue_url", "")).strip()
+    is_mapped_issue = issue_number is not None and bool(issue_url)
+    reject_resolution = "mapped-reject" if is_mapped_issue else "unmapped-delete"
+
+    child_tasks = issue_node.get("tasks", [])
+    child_task_ids = [str(task.get("id", "")).strip() for task in child_tasks if str(task.get("id", "")).strip()]
+    cleanup_preview = _compute_tracker_cleanup_preview(context, set(child_task_ids))
+    feature_plan_cleanup_preview = _cleanup_feature_plan_issue_artifacts(
+        feature_plans_path=context.feature_plans_path,
+        feature_id=feature_id,
+        issue_id=issue_id,
+        write=False,
+    )
+    cleanup_preview["feature_plans"] = feature_plan_cleanup_preview
+    cleanup_result = cleanup_preview
+    issue_removed = False
+
+    if bool(args.write):
+        if reject_resolution == "mapped-reject" and status_before != "Rejected":
+            issue_node["status"] = "Rejected"
+        if reject_resolution == "unmapped-delete":
+            issue_removed = _remove_issue_node_from_feature(feature_node=feature_node, issue_id=issue_id)
+            if not issue_removed:
+                raise WorkflowCommandError(
+                    f"Issue {issue_id} was expected in feature {feature_id} but could not be removed.",
+                    exit_code=4,
+                )
+        feature_plan_cleanup_result = _cleanup_feature_plan_issue_artifacts(
+            feature_plans_path=context.feature_plans_path,
+            feature_id=feature_id,
+            issue_id=issue_id,
+            write=True,
+        )
+        cleanup_result = _apply_tracker_cleanup(
+            context=context,
+            dev_map=dev_map,
+            task_ids_to_remove=set(child_task_ids),
+        )
+        cleanup_result["feature_plans"] = feature_plan_cleanup_result
+
     github_rejection: dict[str, Any] = {
         "attempted": False,
         "closed": False,
@@ -195,7 +231,7 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
             "marker_added": False,
             "reason": "close-github-disabled",
         }
-    elif issue_number is None or not issue_url:
+    elif not is_mapped_issue:
         github_rejection = {
             "attempted": False,
             "closed": False,
@@ -243,12 +279,19 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
 
     emit_json(
         {
+            "cleanup": cleanup_result,
             "close_github": bool(args.close_github),
             "command": "reject.issue",
-            "feature_id": str(feature_node.get("id", "")).strip(),
+            "feature_id": feature_id,
             "github_rejection": github_rejection,
             "issue_id": issue_id,
-            "status_after": str(issue_node.get("status", "")).strip() if bool(args.write) else status_before,
+            "issue_removed": issue_removed,
+            "reject_resolution": reject_resolution,
+            "status_after": (
+                "Deleted"
+                if bool(args.write) and issue_removed
+                else (str(issue_node.get("status", "")).strip() if bool(args.write) else status_before)
+            ),
             "status_before": status_before,
             "write": bool(args.write),
         }
@@ -978,6 +1021,27 @@ def _find_issue(dev_map: dict[str, Any], issue_id: str) -> dict[str, Any] | None
                         "milestone": milestone,
                     }
     return None
+
+
+def _remove_issue_node_from_feature(feature_node: dict[str, Any], issue_id: str) -> bool:
+    """Remove one issue node from feature issue list by ID and return removal status."""
+    issues = feature_node.get("issues", [])
+    if not isinstance(issues, list):
+        raise WorkflowCommandError("Feature issue list must be a list for reject deletion.", exit_code=4)
+    remaining_issues: list[dict[str, Any]] = []
+    removed = False
+    for issue in issues:
+        if not isinstance(issue, dict):
+            remaining_issues.append(issue)
+            continue
+        candidate_issue_id = str(issue.get("id", "")).strip().upper()
+        if not removed and candidate_issue_id == issue_id:
+            removed = True
+            continue
+        remaining_issues.append(issue)
+    if removed:
+        feature_node["issues"] = remaining_issues
+    return removed
 
 
 def _find_feature(dev_map: dict[str, Any], feature_id: str) -> dict[str, Any] | None:

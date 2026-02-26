@@ -1230,7 +1230,16 @@ cat >"${REJECT_FLOW_REPO}/dev/map/DEV_MAP.json" <<'EOF'
               "status": "Tasked",
               "gh_issue_number": 401,
               "gh_issue_url": "https://github.com/owner/repo/issues/401",
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "11",
+                  "title": "Mapped cleanup task",
+                  "summary": "Mapped issue task summary.",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
             },
             {
               "id": "I2-F1-M1",
@@ -1238,7 +1247,16 @@ cat >"${REJECT_FLOW_REPO}/dev/map/DEV_MAP.json" <<'EOF'
               "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "12",
+                  "title": "Unmapped cleanup task",
+                  "summary": "Unmapped issue task summary.",
+                  "status": "Planned",
+                  "date": "2026-02-24",
+                  "time": "00:00:00"
+                }
+              ]
             }
           ],
           "branch_name": null,
@@ -1250,6 +1268,108 @@ cat >"${REJECT_FLOW_REPO}/dev/map/DEV_MAP.json" <<'EOF'
     }
   ]
 }
+EOF
+cat >"${REJECT_FLOW_REPO}/dev/TASK_LIST.json" <<'EOF'
+{
+  "schema_version": "1.0",
+  "tasks": [
+    {
+      "id": "11",
+      "marker": "[M1][F1]",
+      "title": "Mapped cleanup task",
+      "problem": "Mapped reject issue has one task artifact.",
+      "solution_option": "Remove mapped task artifact during reject cleanup.",
+      "concrete_steps": [
+        "Run mapped reject cleanup."
+      ]
+    },
+    {
+      "id": "12",
+      "marker": "[M1][F1]",
+      "title": "Unmapped cleanup task",
+      "problem": "Unmapped reject issue has one task artifact.",
+      "solution_option": "Remove unmapped task artifact during reject cleanup.",
+      "concrete_steps": [
+        "Run unmapped reject cleanup."
+      ]
+    }
+  ]
+}
+EOF
+cat >"${REJECT_FLOW_REPO}/dev/TASK_EXECUTION_PIPELINE.json" <<'EOF'
+{
+  "schema_version": "1.0",
+  "execution_sequence": [
+    {
+      "tasks": ["11"],
+      "description": "mapped cleanup row"
+    },
+    {
+      "tasks": ["12"],
+      "description": "unmapped cleanup row"
+    }
+  ],
+  "functional_blocks": [
+    {
+      "title": "Reject mapped block",
+      "tasks": ["11"],
+      "scope": "mapped issue task scope",
+      "outcome": "mapped cleanup path is applied"
+    },
+    {
+      "title": "Reject unmapped block",
+      "tasks": ["12"],
+      "scope": "unmapped issue task scope",
+      "outcome": "unmapped cleanup path is applied"
+    }
+  ],
+  "overlaps": [
+    {
+      "tasks": ["11", "12"],
+      "description": "reject cleanup overlap fixture"
+    }
+  ]
+}
+EOF
+cat >"${REJECT_FLOW_REPO}/dev/FEATURE_PLANS.md" <<'EOF'
+# Feature Plans
+
+## F1-M1
+
+### Issue Execution Order
+1. `I1-F1-M1` - Mapped reject issue
+2. `I2-F1-M1` - Unmapped reject issue
+
+### Dependencies
+- Reject flow fixture dependencies.
+
+### Decomposition
+1. Reject flow fixture decomposition.
+
+### Issue/Task Decomposition Assessment
+- Fixture-only assessment.
+
+### I1-F1-M1 - Mapped reject issue
+
+#### Dependencies
+- Fixture dependency.
+
+#### Decomposition
+1. Fixture decomposition step.
+
+#### Issue/Task Decomposition Assessment
+- Fixture assessment.
+
+### I2-F1-M1 - Unmapped reject issue
+
+#### Dependencies
+- Fixture dependency.
+
+#### Decomposition
+1. Fixture decomposition step.
+
+#### Issue/Task Decomposition Assessment
+- Fixture assessment.
 EOF
 REJECT_MAPPED_BODY_FILE="${TMP_DIR}/reject-mapped-body.md"
 cat >"${REJECT_MAPPED_BODY_FILE}" <<'EOF'
@@ -1309,22 +1429,47 @@ run_expect_success \
   env PATH="${REJECT_FAKE_GH_DIR}:${PATH}" REJECT_FAKE_GH_LOG="${REJECT_FAKE_GH_LOG}" REJECT_MAPPED_BODY_FILE="${REJECT_MAPPED_BODY_FILE}" \
   "${REJECT_FLOW_REPO}/dev/workflow" reject issue --id I1-F1-M1 --write
 assert_json_value "reject-flow-mapped-write" "status_after" "Rejected"
+assert_json_value "reject-flow-mapped-write" "reject_resolution" "mapped-reject"
+assert_json_value "reject-flow-mapped-write" "issue_removed" "false"
 assert_json_value "reject-flow-mapped-write" "github_rejection.attempted" "true"
 assert_json_value "reject-flow-mapped-write" "github_rejection.closed" "true"
 assert_json_value "reject-flow-mapped-write" "github_rejection.marker_added" "true"
+assert_json_value "reject-flow-mapped-write" "cleanup.task_list_entries_removed" "1"
+assert_json_value "reject-flow-mapped-write" "cleanup.pipeline.execution_rows_removed" "1"
+assert_json_value "reject-flow-mapped-write" "cleanup.pipeline.overlap_rows_removed" "1"
+assert_json_value "reject-flow-mapped-write" "cleanup.feature_plans.issue_block_removed" "true"
+assert_json_value "reject-flow-mapped-write" "cleanup.feature_plans.issue_order_row_removed" "true"
 assert_file_contains "reject-flow-mapped-marker" "${REJECT_MAPPED_BODY_FILE}" "<!-- workflow:issue-rejected:I1-F1-M1 -->"
+assert_file_not_contains "reject-flow-plan-removed-mapped-block" "${REJECT_FLOW_REPO}/dev/FEATURE_PLANS.md" "### I1-F1-M1 - Mapped reject issue"
+assert_file_not_contains "reject-flow-plan-removed-mapped-order-row" "${REJECT_FLOW_REPO}/dev/FEATURE_PLANS.md" '`I1-F1-M1` - Mapped reject issue'
 run_expect_success \
   "reject-flow-repeated-write" \
   env PATH="${REJECT_FAKE_GH_DIR}:${PATH}" REJECT_FAKE_GH_LOG="${REJECT_FAKE_GH_LOG}" REJECT_MAPPED_BODY_FILE="${REJECT_MAPPED_BODY_FILE}" \
   "${REJECT_FLOW_REPO}/dev/workflow" reject issue --id I1-F1-M1 --write
 assert_json_value "reject-flow-repeated-write" "status_before" "Rejected"
 assert_json_value "reject-flow-repeated-write" "github_rejection.reason" "already-rejected-no-op"
+assert_json_value "reject-flow-repeated-write" "cleanup.task_list_entries_removed" "0"
+assert_json_value "reject-flow-repeated-write" "cleanup.feature_plans.issue_block_removed" "false"
 run_expect_success \
   "reject-flow-unmapped-write" \
   env PATH="${REJECT_FAKE_GH_DIR}:${PATH}" REJECT_FAKE_GH_LOG="${REJECT_FAKE_GH_LOG}" REJECT_MAPPED_BODY_FILE="${REJECT_MAPPED_BODY_FILE}" \
   "${REJECT_FLOW_REPO}/dev/workflow" reject issue --id I2-F1-M1 --write
-assert_json_value "reject-flow-unmapped-write" "status_after" "Rejected"
+assert_json_value "reject-flow-unmapped-write" "status_after" "Deleted"
+assert_json_value "reject-flow-unmapped-write" "reject_resolution" "unmapped-delete"
+assert_json_value "reject-flow-unmapped-write" "issue_removed" "true"
 assert_json_value "reject-flow-unmapped-write" "github_rejection.reason" "issue-not-mapped"
+assert_json_value "reject-flow-unmapped-write" "cleanup.task_list_entries_removed" "1"
+assert_json_value "reject-flow-unmapped-write" "cleanup.pipeline.execution_rows_removed" "1"
+assert_json_value "reject-flow-unmapped-write" "cleanup.pipeline.blocks_removed" "1"
+assert_json_value "reject-flow-unmapped-write" "cleanup.feature_plans.issue_block_removed" "true"
+assert_json_value "reject-flow-unmapped-write" "cleanup.feature_plans.issue_order_row_removed" "true"
+assert_jq_file_value \
+  "reject-flow-unmapped-removed-from-dev-map" \
+  "${REJECT_FLOW_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues | length' \
+  "1"
+assert_file_not_contains "reject-flow-plan-removed-unmapped-block" "${REJECT_FLOW_REPO}/dev/FEATURE_PLANS.md" "### I2-F1-M1 - Unmapped reject issue"
+assert_file_not_contains "reject-flow-plan-removed-unmapped-order-row" "${REJECT_FLOW_REPO}/dev/FEATURE_PLANS.md" '`I2-F1-M1` - Unmapped reject issue'
 
 # Confirm issue keeps DEV_MAP issue/task nodes, but removes issue plan artifacts from FEATURE_PLANS.
 CONFIRM_PLAN_CLEANUP_REPO="${TMP_DIR}/confirm-plan-cleanup-fixture"

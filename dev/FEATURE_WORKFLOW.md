@@ -71,7 +71,7 @@ Compact command index for milestone/feature operations.
   - Batch note: use plural `confirm issues` for multi-issue confirmation queues (especially when queue size is greater than two).
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Completion flow`.
 - `reject issue <issue_id>`
-  - Purpose: explicitly transition feature issue to `Rejected` and close mapped GitHub issue with deterministic rejection marker when mapping exists.
+  - Purpose: reject mapped issues with close+marker semantics and reject unmapped issues via local node deletion, with plan/task artifact cleanup when present.
   - Canonical contract: `dev/TASK_EXECUTION_PROTOCOL.md` -> `Completion flow`.
 
 This file must not contain duplicated normative procedure text owned by canonical protocol files.
