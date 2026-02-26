@@ -181,17 +181,28 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
     issue_url = str(issue_node.get("gh_issue_url", "")).strip()
     is_mapped_issue = issue_number is not None and bool(issue_url)
     reject_resolution = "mapped-reject" if is_mapped_issue else "unmapped-delete"
+    issue_would_be_removed = reject_resolution == "unmapped-delete"
+    status_after_preview = "Deleted" if issue_would_be_removed else "Rejected"
 
     child_tasks = issue_node.get("tasks", [])
     child_task_ids = [str(task.get("id", "")).strip() for task in child_tasks if str(task.get("id", "")).strip()]
-    cleanup_preview = _compute_tracker_cleanup_preview(context, set(child_task_ids))
+    cleanup_preview_raw = _compute_tracker_cleanup_preview(context, set(child_task_ids))
     feature_plan_cleanup_preview = _cleanup_feature_plan_issue_artifacts(
         feature_plans_path=context.feature_plans_path,
         feature_id=feature_id,
         issue_id=issue_id,
         write=False,
     )
-    cleanup_preview["feature_plans"] = feature_plan_cleanup_preview
+    cleanup_preview = {
+        "feature_plans": feature_plan_cleanup_preview,
+        "mode": "preview",
+        "pipeline": {
+            "blocks_would_be_removed": int(cleanup_preview_raw["pipeline"]["blocks_removed"]),
+            "execution_rows_would_be_removed": int(cleanup_preview_raw["pipeline"]["execution_rows_removed"]),
+            "overlap_rows_would_be_removed": int(cleanup_preview_raw["pipeline"]["overlap_rows_removed"]),
+        },
+        "task_list_entries_would_be_removed": int(cleanup_preview_raw["task_list_entries_removed"]),
+    }
     cleanup_result = cleanup_preview
     issue_removed = False
 
@@ -217,6 +228,7 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
             task_ids_to_remove=set(child_task_ids),
         )
         cleanup_result["feature_plans"] = feature_plan_cleanup_result
+        cleanup_result["mode"] = "applied"
 
     github_rejection: dict[str, Any] = {
         "attempted": False,
@@ -286,12 +298,14 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
             "github_rejection": github_rejection,
             "issue_id": issue_id,
             "issue_removed": issue_removed,
+            "issue_would_be_removed": issue_would_be_removed,
             "reject_resolution": reject_resolution,
             "status_after": (
                 "Deleted"
                 if bool(args.write) and issue_removed
                 else (str(issue_node.get("status", "")).strip() if bool(args.write) else status_before)
             ),
+            "status_after_preview": status_after_preview,
             "status_before": status_before,
             "write": bool(args.write),
         }
@@ -1070,9 +1084,12 @@ def _cleanup_feature_plan_issue_artifacts(
             "attempted": False,
             "feature_section_found": False,
             "issue_block_removed": False,
+            "issue_block_would_be_removed": False,
             "issue_order_row_removed": False,
+            "issue_order_row_would_be_removed": False,
             "order_block_found": False,
             "updated": False,
+            "would_update": False,
         }
 
     lines = text.splitlines()
@@ -1094,10 +1111,13 @@ def _cleanup_feature_plan_issue_artifacts(
     return {
         "attempted": True,
         "feature_section_found": True,
-        "issue_block_removed": issue_block_removed,
-        "issue_order_row_removed": issue_order_row_removed,
+        "issue_block_removed": issue_block_removed if write else False,
+        "issue_block_would_be_removed": issue_block_removed,
+        "issue_order_row_removed": issue_order_row_removed if write else False,
+        "issue_order_row_would_be_removed": issue_order_row_removed,
         "order_block_found": _find_issue_execution_order_heading(section_lines) is not None,
-        "updated": updated if write else (issue_order_row_removed or issue_block_removed),
+        "updated": updated if write else False,
+        "would_update": updated,
     }
 
 

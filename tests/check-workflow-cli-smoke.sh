@@ -1425,6 +1425,27 @@ exit 1
 EOF
 chmod +x "${REJECT_FAKE_GH_DIR}/gh"
 run_expect_success \
+  "reject-flow-unmapped-dry-run" \
+  env PATH="${REJECT_FAKE_GH_DIR}:${PATH}" REJECT_FAKE_GH_LOG="${REJECT_FAKE_GH_LOG}" REJECT_MAPPED_BODY_FILE="${REJECT_MAPPED_BODY_FILE}" \
+  "${REJECT_FLOW_REPO}/dev/workflow" reject issue --id I2-F1-M1
+assert_json_value "reject-flow-unmapped-dry-run" "write" "false"
+assert_json_value "reject-flow-unmapped-dry-run" "status_before" "Tasked"
+assert_json_value "reject-flow-unmapped-dry-run" "status_after" "Tasked"
+assert_json_value "reject-flow-unmapped-dry-run" "status_after_preview" "Deleted"
+assert_json_value "reject-flow-unmapped-dry-run" "reject_resolution" "unmapped-delete"
+assert_json_value "reject-flow-unmapped-dry-run" "issue_removed" "false"
+assert_json_value "reject-flow-unmapped-dry-run" "issue_would_be_removed" "true"
+assert_json_value "reject-flow-unmapped-dry-run" "cleanup.mode" "preview"
+assert_json_value "reject-flow-unmapped-dry-run" "cleanup.task_list_entries_would_be_removed" "1"
+assert_json_value "reject-flow-unmapped-dry-run" "cleanup.pipeline.execution_rows_would_be_removed" "1"
+assert_json_value "reject-flow-unmapped-dry-run" "cleanup.feature_plans.issue_block_removed" "false"
+assert_json_value "reject-flow-unmapped-dry-run" "cleanup.feature_plans.issue_block_would_be_removed" "true"
+assert_jq_file_value \
+  "reject-flow-dry-run-dev-map-unchanged" \
+  "${REJECT_FLOW_REPO}/dev/map/DEV_MAP.json" \
+  '.milestones[0].features[0].issues | length' \
+  "2"
+run_expect_success \
   "reject-flow-mapped-write" \
   env PATH="${REJECT_FAKE_GH_DIR}:${PATH}" REJECT_FAKE_GH_LOG="${REJECT_FAKE_GH_LOG}" REJECT_MAPPED_BODY_FILE="${REJECT_MAPPED_BODY_FILE}" \
   "${REJECT_FLOW_REPO}/dev/workflow" reject issue --id I1-F1-M1 --write
