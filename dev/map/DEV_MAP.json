@@ -948,6 +948,24 @@
                   "time": "00:03:28"
                 }
               ]
+            },
+            {
+              "id": "I27-F4-M1",
+              "title": "Add dedicated sync feature command for feature-only remote sync",
+              "description": "Feature synchronization currently goes through issues-sync flow, which mixes issue updates with feature updates and blurs command intent. Add a dedicated sync feature command that updates only feature-level remote metadata/body for one feature id, one milestone id, or all features.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I28-F4-M1",
+              "title": "Add confirm issues batch command for multi-issue completion",
+              "description": "Confirming multiple issues currently requires repetitive one-by-one command runs and increases operator error risk. Add confirm issues batch mode so multiple issue ids can be confirmed done in one command, especially when confirming more than two issues.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F4-M1",
