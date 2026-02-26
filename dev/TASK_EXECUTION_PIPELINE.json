@@ -58,14 +58,6 @@
       "description": "task timestamp removal and viewer regression checks"
     },
     {
-      "tasks": ["153", "154"],
-      "description": "canonical immediate materialize rule and protocol update"
-    },
-    {
-      "tasks": ["155", "156"],
-      "description": "workflow index alignment and regression checks"
-    },
-    {
       "tasks": ["157", "158"],
       "description": "reject unmapped delete path and local cleanup"
     },
@@ -131,7 +123,7 @@
     },
     {
       "title": "Block L: DevMap Viewer description visibility and issue creation materialization rule",
-      "tasks": ["149", "150", "151", "152", "153", "154", "155", "156"],
+      "tasks": ["149", "150", "151", "152"],
       "scope": "DevMap Viewer expanded-row metadata rendering and protocol rule updates for immediate issue materialization.",
       "outcome": "Expanded Feature and Issue rows show description text, task rows stop rendering timestamps, and canonical workflow guidance requires immediate materialization after new issue creation."
     },
@@ -198,10 +190,6 @@
     {
       "tasks": ["151", "152"],
       "description": "UI field removal and regression checks must stay consistent"
-    },
-    {
-      "tasks": ["154", "155"],
-      "description": "protocol canonical wording and workflow index references must remain aligned"
     },
     {
       "tasks": ["158", "147"],

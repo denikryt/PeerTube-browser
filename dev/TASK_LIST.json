@@ -617,54 +617,6 @@
       ]
     },
     {
-      "id": "153",
-      "marker": "[M1][F4]",
-      "title": "Workflow: define immediate materialize rule for issue creation",
-      "problem": "New issues can remain local-only when materialization is skipped after creation.",
-      "solution_option": "Define canonical rule that new issue creation must be followed by immediate materialization.",
-      "concrete_steps": [
-        "Specify the rule in canonical protocol wording.",
-        "Clarify rule intent: keep local and GitHub issue mapping synchronized.",
-        "Preserve explicit standalone materialize command availability."
-      ]
-    },
-    {
-      "id": "154",
-      "marker": "[M1][F4]",
-      "title": "Workflow protocol: require immediate issue materialization step",
-      "problem": "Current protocol sequence does not clearly enforce immediate materialization after issue creation.",
-      "solution_option": "Add explicit required materialization step in canonical issue creation procedure.",
-      "concrete_steps": [
-        "Update TASK_EXECUTION_PROTOCOL issue-creation section with immediate materialize step.",
-        "Place rule in canonical owner file only.",
-        "Keep wording deterministic and command-oriented."
-      ]
-    },
-    {
-      "id": "155",
-      "marker": "[M1][F4]",
-      "title": "Workflow index: align creation flow with immediate materialization",
-      "problem": "Workflow index can drift from canonical protocol and hide required materialization behavior.",
-      "solution_option": "Update FEATURE_WORKFLOW references so issue creation flow points to immediate materialization requirement.",
-      "concrete_steps": [
-        "Update command sequence/index references in FEATURE_WORKFLOW.",
-        "Keep FEATURE_WORKFLOW as index-only doc and avoid duplicating full normative blocks.",
-        "Ensure examples reflect create-then-materialize flow."
-      ]
-    },
-    {
-      "id": "156",
-      "marker": "[M1][F4]",
-      "title": "Workflow checks: detect missing immediate materialize guidance",
-      "problem": "Protocol/documentation rule can regress without guard checks.",
-      "solution_option": "Add smoke/docs checks that verify immediate materialization guidance remains present.",
-      "concrete_steps": [
-        "Add or update smoke checks for required issue-creation guidance text.",
-        "Cover fail case when immediate materialize step is absent.",
-        "Keep checks scoped to rule presence without changing execution semantics."
-      ]
-    },
-    {
       "id": "157",
       "marker": "[M1][F4]",
       "title": "Reject flow: delete unmapped issue nodes",

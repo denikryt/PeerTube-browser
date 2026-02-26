@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T03:05:08+02:00",
+  "updated_at": "2026-02-26T03:28:56+02:00",
   "task_count": 160,
   "milestones": [
     {
@@ -1069,48 +1069,6 @@
                   "id": "152",
                   "title": "Add viewer regression checks for description visibility and timestamp removal",
                   "summary": "Add/update viewer smoke/manual checks that verify description visibility on expand and absence of task timestamp text.",
-                  "status": "Planned",
-                  "date": "2026-02-26",
-                  "time": "02:45:15"
-                }
-              ]
-            },
-            {
-              "id": "I30-F4-M1",
-              "title": "Issue creation protocol: require immediate materialization after creating a new issue",
-              "description": "Issue creation flow can leave local issues unmapped on GitHub when materialization is skipped. Update the canonical workflow/protocol so new issue creation includes immediate materialization as a required follow-up step, while keeping materialize available as a standalone command.",
-              "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
-              "tasks": [
-                {
-                  "id": "153",
-                  "title": "Define immediate materialize rule for new issue creation",
-                  "summary": "Define canonical workflow rule that new local issue creation must be followed by immediate materialization to GitHub mapping.",
-                  "status": "Planned",
-                  "date": "2026-02-26",
-                  "time": "02:45:15"
-                },
-                {
-                  "id": "154",
-                  "title": "Update canonical protocol issue-creation sequence",
-                  "summary": "Update TASK_EXECUTION_PROTOCOL creation/materialization procedure so immediate issue materialization is an explicit required step.",
-                  "status": "Planned",
-                  "date": "2026-02-26",
-                  "time": "02:45:15"
-                },
-                {
-                  "id": "155",
-                  "title": "Align workflow index with immediate materialize requirement",
-                  "summary": "Update FEATURE_WORKFLOW command sequence/index references to reflect required immediate materialization after issue creation while preserving standalone materialize command.",
-                  "status": "Planned",
-                  "date": "2026-02-26",
-                  "time": "02:45:15"
-                },
-                {
-                  "id": "156",
-                  "title": "Add regression checks for immediate materialize guidance",
-                  "summary": "Add/update smoke or docs checks that fail when issue creation guidance omits the immediate materialization step.",
                   "status": "Planned",
                   "date": "2026-02-26",
                   "time": "02:45:15"

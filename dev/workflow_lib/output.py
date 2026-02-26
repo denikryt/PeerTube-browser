@@ -8,5 +8,4 @@ from typing import Any
 
 def emit_json(payload: dict[str, Any]) -> None:
     """Emit stable JSON output for workflow commands."""
-    print(json.dumps(payload, sort_keys=True))
-
+    print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))

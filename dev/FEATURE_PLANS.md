@@ -34,8 +34,7 @@ Canonical per-issue plan block format inside a feature section:
 2. `I9-F4-M1` - Add workflow CLI show/status commands for feature/issue/task
 3. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
 4. `I29-F4-M1` - DevMap Viewer: show feature/issue descriptions in expanded rows and hide task timestamps
-5. `I30-F4-M1` - Issue creation protocol: require immediate materialization after creating a new issue
-6. `I31-F4-M1` - Reject issue flow: cleanup issue plan/tasks and delete unmapped issue nodes
+5. `I31-F4-M1` - Reject issue flow: cleanup issue plan/tasks and delete unmapped issue nodes
 ### Dependencies
 - See issue-level dependency blocks below.
 
@@ -59,20 +58,6 @@ Canonical per-issue plan block format inside a feature section:
 
 #### Issue/Task Decomposition Assessment
 - UI rendering changes span three separate surfaces (Feature expand, Issue expand, Task row fields), so decomposition should split them into isolated implementation tasks.
-
-### I30-F4-M1 - Issue creation protocol: require immediate materialization after creating a new issue
-#### Dependencies
-- Canonical command semantics in `dev/TASK_EXECUTION_PROTOCOL.md`.
-- Workflow command index in `dev/FEATURE_WORKFLOW.md`.
-
-#### Decomposition
-1. Define canonical rule: after local issue creation, immediate materialization is required to create/match GitHub issue mapping.
-2. Update canonical protocol section that documents issue creation and next-step command order to include immediate materialization step.
-3. Update workflow index references so creation flow and examples reflect the new required step while preserving standalone `materialize` command availability.
-4. Add/adjust smoke/docs checks to detect missing materialization step in issue creation guidance.
-
-#### Issue/Task Decomposition Assessment
-- Rule definition, protocol edits, workflow index alignment, and regression coverage should be decomposed into separate tasks because they touch different ownership boundaries.
 
 ### I31-F4-M1 - Reject issue flow: cleanup issue plan/tasks and delete unmapped issue nodes
 
