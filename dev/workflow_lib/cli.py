@@ -10,6 +10,7 @@ from .confirm_commands import register_confirm_router, register_reject_router
 from .context import WorkflowContext, build_default_context
 from .errors import WorkflowCommandError
 from .feature_commands import register_feature_router, register_plan_router
+from .sync_commands import register_sync_router
 from .task_commands import register_task_router
 from .validate_commands import register_validate_router
 
@@ -32,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command_group", required=True)
     register_feature_router(subparsers)
     register_plan_router(subparsers)
+    register_sync_router(subparsers)
     register_task_router(subparsers)
     register_confirm_router(subparsers)
     register_reject_router(subparsers)
