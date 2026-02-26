@@ -257,20 +257,43 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
 
 
 def _handle_confirm_issues_done(args: Namespace, context: WorkflowContext) -> int:
-    """Validate plural issue queue and emit deterministic command payload."""
+    """Confirm multiple issues in queue order with continue-on-error strategy."""
     issue_id_queue = _parse_confirm_issue_queue(getattr(args, "issue_id", []))
     dev_map = _load_json(context.dev_map_path)
     queue_ownership: list[dict[str, str]] = []
     for issue_id in issue_id_queue:
         issue_ref = _find_issue(dev_map, issue_id)
-        if issue_ref is None:
-            raise WorkflowCommandError(f"Issue {issue_id} not found in DEV_MAP.", exit_code=4)
         queue_ownership.append(
             {
                 "issue_id": issue_id,
-                "feature_id": str(issue_ref["feature"].get("id", "")).strip(),
+                "feature_id": str(issue_ref["feature"].get("id", "")).strip() if issue_ref is not None else "",
             }
         )
+    per_issue_results: list[dict[str, Any]] = []
+    done_count = 0
+    failed_count = 0
+    for issue_id in issue_id_queue:
+        try:
+            issue_payload = _confirm_one_issue_done(
+                context=context,
+                issue_id=issue_id,
+                force=bool(args.force),
+                write=bool(args.write),
+                close_github=bool(args.close_github),
+            )
+        except WorkflowCommandError as error:
+            failed_count += 1
+            per_issue_results.append(
+                {
+                    "action": "failed",
+                    "error": str(error),
+                    "exit_code": int(error.exit_code),
+                    "issue_id": issue_id,
+                }
+            )
+            continue
+        done_count += 1
+        per_issue_results.append({"action": "confirmed", **issue_payload})
     emit_json(
         {
             "close_github": bool(args.close_github),
@@ -278,7 +301,13 @@ def _handle_confirm_issues_done(args: Namespace, context: WorkflowContext) -> in
             "issue_id_queue": issue_id_queue,
             "issue_count": len(issue_id_queue),
             "queue_ownership": queue_ownership,
-            "strategy": "batch-validated-surface-only",
+            "results": per_issue_results,
+            "strategy": "continue-on-error",
+            "summary": {
+                "done": done_count,
+                "failed": failed_count,
+                "processed": len(issue_id_queue),
+            },
             "write": bool(args.write),
         }
     )
@@ -369,6 +398,31 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
             f"Invalid issue ID {args.id!r}; expected I<local>-F<feature_local>-M<milestone>.",
             exit_code=4,
         )
+    issue_payload = _confirm_one_issue_done(
+        context=context,
+        issue_id=issue_id,
+        force=bool(args.force),
+        write=bool(args.write),
+        close_github=bool(args.close_github),
+    )
+    emit_json(
+        {
+            "command": "confirm.issue",
+            **issue_payload,
+        }
+    )
+    return 0
+
+
+def _confirm_one_issue_done(
+    *,
+    context: WorkflowContext,
+    issue_id: str,
+    force: bool,
+    write: bool,
+    close_github: bool,
+) -> dict[str, Any]:
+    """Confirm one issue completion and return deterministic payload."""
 
     dev_map = _load_json(context.dev_map_path)
     issue_ref = _find_issue(dev_map, issue_id)
@@ -386,7 +440,7 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
         if str(task.get("id", "")).strip() and str(task.get("status", "")) != "Done"
     ]
     needs_extra_confirmation = bool(pending_child_ids)
-    if needs_extra_confirmation and not bool(args.force):
+    if needs_extra_confirmation and not force:
         if not _ask_pending_tasks_confirmation(issue_id, pending_child_ids):
             raise WorkflowCommandError(
                 f"Confirmation cancelled for {issue_id}; pending child tasks were not accepted for cascade.",
@@ -395,7 +449,7 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
 
     github_issue_number = issue_node.get("gh_issue_number")
     github_issue_url = str(issue_node.get("gh_issue_url", "")).strip()
-    if bool(args.close_github) and (github_issue_number is None or not github_issue_url):
+    if close_github and (github_issue_number is None or not github_issue_url):
         raise WorkflowCommandError(
             f"Issue {issue_id} has no mapped GitHub issue metadata (gh_issue_number/gh_issue_url).",
             exit_code=4,
@@ -409,7 +463,7 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
         write=False,
     )
     cleanup_preview["feature_plans"] = feature_plan_cleanup_preview
-    if bool(args.write):
+    if write:
         for task in child_tasks:
             task["status"] = "Done"
         issue_node["status"] = "Done"
@@ -435,27 +489,23 @@ def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int
         "row_found": False,
         "reason": "description-driven-body-no-checklist-sync",
     }
-    if bool(args.write) and bool(args.close_github):
+    if write and close_github:
         close_github_issue(int(github_issue_number))
         github_closed = True
 
-    emit_json(
-        {
-            "child_tasks_marked_done": len(pending_child_ids) if bool(args.write) else 0,
-            "cleanup": cleanup_result,
-            "close_github": bool(args.close_github),
-            "command": "confirm.issue",
-            "extra_confirmation_required": needs_extra_confirmation,
-            "feature_id": feature_id,
-            "feature_issue_checklist_sync": feature_issue_checklist_sync,
-            "github_closed": github_closed,
-            "issue_id": issue_id,
-            "issue_status_after": "Done" if bool(args.write) else str(issue_node.get("status", "")),
-            "pending_child_tasks": pending_child_ids,
-            "write": bool(args.write),
-        }
-    )
-    return 0
+    return {
+        "child_tasks_marked_done": len(pending_child_ids) if write else 0,
+        "cleanup": cleanup_result,
+        "close_github": close_github,
+        "extra_confirmation_required": needs_extra_confirmation,
+        "feature_id": feature_id,
+        "feature_issue_checklist_sync": feature_issue_checklist_sync,
+        "github_closed": github_closed,
+        "issue_id": issue_id,
+        "issue_status_after": "Done" if write else str(issue_node.get("status", "")),
+        "pending_child_tasks": pending_child_ids,
+        "write": write,
+    }
 
 def _handle_confirm_feature_done(args: Namespace, context: WorkflowContext) -> int:
     """Confirm full feature subtree completion and close mapped GitHub issues."""
