@@ -257,15 +257,28 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
 
 
 def _handle_confirm_issues_done(args: Namespace, context: WorkflowContext) -> int:
-    """Emit deterministic payload for plural issue-confirm command surface."""
-    issue_id_queue = [str(issue_id).strip() for issue_id in getattr(args, "issue_id", [])]
+    """Validate plural issue queue and emit deterministic command payload."""
+    issue_id_queue = _parse_confirm_issue_queue(getattr(args, "issue_id", []))
+    dev_map = _load_json(context.dev_map_path)
+    queue_ownership: list[dict[str, str]] = []
+    for issue_id in issue_id_queue:
+        issue_ref = _find_issue(dev_map, issue_id)
+        if issue_ref is None:
+            raise WorkflowCommandError(f"Issue {issue_id} not found in DEV_MAP.", exit_code=4)
+        queue_ownership.append(
+            {
+                "issue_id": issue_id,
+                "feature_id": str(issue_ref["feature"].get("id", "")).strip(),
+            }
+        )
     emit_json(
         {
             "close_github": bool(args.close_github),
             "command": "confirm.issues",
             "issue_id_queue": issue_id_queue,
             "issue_count": len(issue_id_queue),
-            "strategy": "batch-surface-only",
+            "queue_ownership": queue_ownership,
+            "strategy": "batch-validated-surface-only",
             "write": bool(args.write),
         }
     )
@@ -338,7 +351,19 @@ def _handle_confirm_task_done(args: Namespace, context: WorkflowContext) -> int:
 
 def _handle_confirm_issue_done(args: Namespace, context: WorkflowContext) -> int:
     """Confirm issue completion with optional child-task cascade."""
-    issue_id = _normalize_identifier(args.id)
+    inline_issue_ids = _parse_inline_issue_identifiers(str(args.id))
+    if len(inline_issue_ids) > 2:
+        raise WorkflowCommandError(
+            "confirm issue supports one issue ID; use confirm issues --issue-id <id> ... "
+            "when confirming more than two issues.",
+            exit_code=4,
+        )
+    if len(inline_issue_ids) > 1:
+        raise WorkflowCommandError(
+            "confirm issue supports one issue ID; use confirm issues --issue-id <id> ... for multi-issue runs.",
+            exit_code=4,
+        )
+    issue_id = inline_issue_ids[0]
     if ISSUE_ID_PATTERN.fullmatch(issue_id) is None:
         raise WorkflowCommandError(
             f"Invalid issue ID {args.id!r}; expected I<local>-F<feature_local>-M<milestone>.",
@@ -806,6 +831,41 @@ def _ask_pending_tasks_confirmation(issue_id: str, pending_child_ids: list[str])
 def _normalize_identifier(raw_identifier: str) -> str:
     """Normalize identifier text to canonical uppercase representation."""
     return str(raw_identifier).strip().upper()
+
+
+def _parse_inline_issue_identifiers(raw_identifier: str) -> list[str]:
+    """Parse one inline issue-id string and return normalized issue tokens."""
+    tokens = [token.strip() for token in str(raw_identifier).split(",")]
+    issue_ids = [_normalize_identifier(token) for token in tokens if token.strip()]
+    if not issue_ids:
+        raise WorkflowCommandError("Issue ID must be provided.", exit_code=4)
+    return issue_ids
+
+
+def _parse_confirm_issue_queue(raw_issue_ids: Any) -> list[str]:
+    """Normalize and validate confirm-issues queue input."""
+    if not isinstance(raw_issue_ids, list) or not raw_issue_ids:
+        raise WorkflowCommandError(
+            "confirm issues requires at least one --issue-id value.",
+            exit_code=4,
+        )
+    issue_id_queue: list[str] = []
+    seen_issue_ids: set[str] = set()
+    for raw_issue_id in raw_issue_ids:
+        issue_id = _normalize_identifier(str(raw_issue_id))
+        if ISSUE_ID_PATTERN.fullmatch(issue_id) is None:
+            raise WorkflowCommandError(
+                f"Invalid --issue-id value {raw_issue_id!r}; expected I<local>-F<feature_local>-M<milestone>.",
+                exit_code=4,
+            )
+        if issue_id in seen_issue_ids:
+            raise WorkflowCommandError(
+                f"Duplicate --issue-id value {issue_id}; provide each issue once in queue order.",
+                exit_code=4,
+            )
+        seen_issue_ids.add(issue_id)
+        issue_id_queue.append(issue_id)
+    return issue_id_queue
 
 
 def _load_json(path: Path) -> dict[str, Any]:
