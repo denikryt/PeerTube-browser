@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T02:31:39+02:00",
+  "updated_at": "2026-02-26T02:35:55+02:00",
   "task_count": 148,
   "milestones": [
     {
@@ -1032,6 +1032,24 @@
                   "time": "02:09:07"
                 }
               ]
+            },
+            {
+              "id": "I29-F4-M1",
+              "title": "DevMap Viewer: show feature/issue descriptions in expanded rows and hide task timestamps",
+              "description": "In DevMap Viewer expanded rows, issue context is incomplete because only GitHub issue number is visible, and task timestamps add visual noise. Show human-readable description text for expanded Feature and Issue rows, and remove task timestamp rendering from the task list view.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I30-F4-M1",
+              "title": "Issue creation protocol: require immediate materialization after creating a new issue",
+              "description": "Issue creation flow can leave local issues unmapped on GitHub when materialization is skipped. Update the canonical workflow/protocol so new issue creation includes immediate materialization as a required follow-up step, while keeping materialize available as a standalone command.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F4-M1",
