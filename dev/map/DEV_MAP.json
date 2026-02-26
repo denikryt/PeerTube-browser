@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T04:48:43+02:00",
+  "updated_at": "2026-02-26T04:53:21+02:00",
   "task_count": 160,
   "milestones": [
     {
@@ -1130,6 +1130,15 @@
               "id": "I33-F4-M1",
               "title": "Split DEV_MAP schema ownership into JSON schema and rules doc only",
               "description": "Replace the Markdown schema owner with two canonical files only: `DEV_MAP_JSON_SCHEMA.json` for structure and `DEV_MAP_RULES.md` for lifecycle/process semantics, then rewrite all dependencies to these owners without backward compatibility.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I34-F4-M1",
+              "title": "Enforce explicit task breakdown quality in Issue/Task Decomposition Assessment",
+              "description": "Issue plans currently allow vague assessment prose without an actionable task list. Enforce strict assessment quality rules that require concrete task decomposition with implementation and validation details.",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,

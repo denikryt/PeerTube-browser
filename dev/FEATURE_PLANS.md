@@ -35,6 +35,7 @@ Canonical per-issue plan block format inside a feature section:
 3. `I13-F4-M1` - Auto-delete sync delta file after successful decomposition write
 4. `I32-F4-M1` - Allow materialize for Pending issues without mandatory issue plan/tasks
 5. `I33-F4-M1` - Split DEV_MAP schema ownership into JSON schema and rules doc only
+6. `I34-F4-M1` - Enforce explicit task breakdown quality in Issue/Task Decomposition Assessment
 ### Dependencies
 - See issue-level dependency blocks below.
 
@@ -126,3 +127,47 @@ Canonical per-issue plan block format inside a feature section:
 - Scope is migration-oriented and intentionally breaks backward compatibility by design.
 - Work is separated into structural contract, semantic rules, dependency rewrite, and validation enforcement to keep responsibilities non-overlapping.
 - Expected outcome is deterministic: two canonical files only (`DEV_MAP_JSON_SCHEMA.json`, `DEV_MAP_RULES.md`) with zero canonical dependency on `DEV_MAP_SCHEMA.md`.
+
+### I34-F4-M1 - Enforce explicit task breakdown quality in Issue/Task Decomposition Assessment
+
+#### Dependencies
+- Planning quality owner: `dev/FEATURE_PLANNING_PROTOCOL.md`.
+- Command/lint implementation path: `dev/workflow_lib/feature_commands.py` (`plan-issue` write/lint flow).
+- Canonical command-order owner references: `dev/TASK_EXECUTION_PROTOCOL.md`, `dev/FEATURE_WORKFLOW.md`.
+- Regression harness for quality gates: `tests/check-workflow-cli-smoke.sh`.
+
+#### Decomposition
+1. Define strict quality contract for `Issue/Task Decomposition Assessment` in `dev/FEATURE_PLANNING_PROTOCOL.md`:
+   - section must contain a numbered task breakdown list (not generic prose),
+   - each task item must include implementation target, concrete file/module scope, and validation step,
+   - reject vague placeholders (`improve`, `refine`, `etc.` without implementation/validation details).
+2. Update canonical references in process docs so this rule is declared once in planning owner and referenced elsewhere:
+   - `dev/TASK_EXECUTION_PROTOCOL.md` and `dev/FEATURE_WORKFLOW.md` should reference planning owner without duplicating rule text.
+3. Implement enforcement in workflow lint path (`dev/workflow_lib/feature_commands.py`):
+   - parse the `Issue/Task Decomposition Assessment` section and require explicit numbered task rows,
+   - return deterministic error messages indicating missing task list or incomplete task item fields.
+4. Update `feature plan-issue` generation behavior:
+   - produced block must include issue-specific task breakdown (not fallback boilerplate),
+   - generated tasks must map directly to the issue context (`title`, `description`, affected modules).
+5. Align existing active issue plan blocks in `dev/FEATURE_PLANS.md` to the new contract where required.
+6. Add smoke coverage for pass/fail cases:
+   - fail when assessment contains only abstract text,
+   - pass when assessment has explicit task list with implementation + validation details.
+7. Run full lint/smoke verification and fix any residual drift in one change set.
+
+#### Issue/Task Decomposition Assessment
+1. Task A: Planning contract hardening
+   - Deliverable: explicit normative rule text in `dev/FEATURE_PLANNING_PROTOCOL.md`.
+   - Validation: `feature plan-lint` rejects issue blocks that miss numbered task breakdown.
+2. Task B: Lint parser enforcement
+   - Deliverable: parser/validator updates in `dev/workflow_lib/feature_commands.py` for assessment task rows.
+   - Validation: deterministic error output identifies exact missing element per task row.
+3. Task C: Plan-issue output quality
+   - Deliverable: `feature plan-issue` writes issue-specific task list with concrete implementation scope.
+   - Validation: generated block includes actionable tasks tied to issue context, no generic stubs.
+4. Task D: Existing-plan conformance update
+   - Deliverable: normalize affected active issue blocks in `dev/FEATURE_PLANS.md` to new format.
+   - Validation: `python3 dev/workflow feature plan-lint --id F4-M1` returns `valid: true`.
+5. Task E: Regression coverage
+   - Deliverable: smoke cases for failing/good assessment content in `tests/check-workflow-cli-smoke.sh`.
+   - Validation: smoke run fails on vague assessment and passes on explicit task breakdown format.
