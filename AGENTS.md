@@ -156,3 +156,10 @@ Canonical rule map (to prevent duplication drift):
 5. Format by language:
    - Python: triple-quoted docstrings.
    - JS/TS: JSDoc-style block comments above module/class/function/method declarations.
+
+## AI Agent (Antigravity) Constraints
+
+1. **Artifact Override**: Do NOT create or maintain default system artifacts like `task.md`, `implementation_plan.md`, or `walkthrough.md`. Use ONLY `dev/TASK_LIST.json` and `dev/FEATURE_PLANS.md` for all tracking and planning.
+2. **Approval Pauses**: When a protocol step requires explicit user approval (e.g. `approve feature plan` or `confirm task X done`), you MUST completely stop execution and use the `notify_user` tool with `BlockedOnUser=true`. Do NOT assume approval.
+3. **Execution Trigger**: Do NOT use the `task_boundary` tool in `EXECUTION` mode or start writing code until the exact trigger phrase (e.g. `execute task X`) is provided.
+4. **Workflow Indexing**: Before executing canonical commands (like `execute task` or `plan feature`), check if a corresponding file exists in `.agents/workflows/`. If found, use the `view_file` tool to read it and strictly follow its steps.

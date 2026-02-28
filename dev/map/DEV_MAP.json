@@ -1232,6 +1232,46 @@
           ],
           "branch_name": null,
           "branch_url": null
+        },
+        {
+          "id": "F6-M1",
+          "title": "Parse AI-generated markdown templates for issue/feature creation",
+          "description": "This feature introduces a file-based input mechanism (--input) for CLI creation commands, allowing AI agents to safely generate titles and descriptions in Markdown without risking JSON schema corruption.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "branch_name": null,
+          "branch_url": null,
+          "issues": [
+            {
+              "id": "I1-F6-M1",
+              "title": "Implement Markdown template parser for CLI inputs",
+              "description": "CLI commands currently cannot accept multi-line text blocks safely. Implement a parser that extracts # title and # description sections from a provided Markdown draft file.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F6-M1",
+              "title": "Wire --input argument to create feature and create issue commands",
+              "description": "The create commands only accept CLI string flags. Extend them to accept an optional --input file path, parse it, and use the extracted values instead of flags.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F6-M1",
+              "title": "Update agent workflows to use draft files for CLI commands",
+              "description": "The current AI workflows generate planning data in memory. Update the agent workflow files (e.g. plan-feature, plan-issue) to explicitly write intellectual output to a temporary draft file and pass it to the CLI commands.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ]
         }
       ],
       "non_feature_items": [
