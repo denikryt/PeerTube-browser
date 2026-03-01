@@ -24,7 +24,7 @@ Required input for `plan feature <id>`:
 - `feature_title`: short title.
 - `milestone_id`: target milestone (`M1..Mn`).
 - `dependencies`: task/feature/issue dependencies.
-- `overlaps`: affected tasks in `dev/TASK_EXECUTION_PIPELINE.json`.
+- `overlaps`: affected tasks in `dev/TASK_EXECUTION_PIPELINE.json` (planning-only identification for `FEATURE_PLANS.md`, does not write to tracker).
 - `step_flow`: strict command sequence with per-step actions (`what to run`, `what script does`, `what executor does`, `step result`).
 - `issue_task_decomposition_assessment`: explicit assessment whether to split or not split; if split, minimal logical issues/tasks.
 
@@ -59,6 +59,14 @@ Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
 ## 2) Decomposition Rules
 
 - One feature maps to one primary feature issue (`type:feature`) on GitHub.
+- **Feature -> Issue decomposition rules (mandatory for `plan feature`):**
+  - **Check Existing:** Before initiating a new breakdown, first check `dev/map/DEV_MAP.json` for any existing issue nodes already linked to the target feature.
+  - **Prioritize Existing:** If linked issues exist, the planning focus must be on individual `plan issue <issue_id>` and `plan tasks for issue <issue_id>` steps for those issues.
+  - **Adequate Breakdown:** If no issues exist yet, the feature must be decomposed into a set of issues. The breakdown must be evaluated based on:
+    - **Adequacy (Адекватность):** Does the set of issues fully cover the feature scope?
+    - **Realism (Реалистичность):** Can each issue be implemented within a reasonable timeframe?
+    - **Practicality (Практичность):** Is the split logical from an implementation/dependency perspective?
+    - **Sequence (Последовательность):** Is there a clear, non-blocking implementation order?
 - Additional work issues (`type:work`) are allowed when scope is too large for one implementation thread.
 - Tasks stay in `dev/TASK_LIST.json` and are not forced into 1-task-1-issue mapping.
 - Every task must be attached to a parent chain in `dev/map/DEV_MAP.json`:
