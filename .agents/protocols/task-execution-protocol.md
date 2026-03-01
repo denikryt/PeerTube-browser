@@ -1,14 +1,13 @@
 # Task Execution Protocol
 
 This file defines only the execution procedure (how to execute tasks).
-Hard constraints (what is allowed/forbidden) are defined in `AGENTS.md`.
+Hard constraints (what is allowed/forbidden) are defined in `.agents/rules/`.
 
 ## Scope ownership (canonical)
 
 - This file owns command semantics and command order for execution-related flows.
-- `AGENTS.md` owns hard policy constraints and permission gates.
-- `dev/FEATURE_PLANNING_PROTOCOL.md` owns planning-only quality requirements.
-- `dev/FEATURE_WORKFLOW.md` is an index that points to canonical sections and must not duplicate normative contracts.
+- `.agents/rules/` owns hard policy constraints and permission gates.
+- `.agents/protocols/feature-planning-protocol.md` owns planning-only quality requirements.
 
 If any command-order/step-contract wording differs across docs, this file is canonical.
 
@@ -20,7 +19,7 @@ Use this procedure after an explicit execution command is given.
    - Read exact task text for task `X` in `dev/TASK_LIST.json`.
    - Read `dev/TASK_EXECUTION_PIPELINE.json`.
    - Read `dev/map/DEV_MAP.json` context for task `X` and related ownership markers (`M/F` or `M/SI` path).
-   - Read this file (`dev/TASK_EXECUTION_PROTOCOL.md`).
+   - Read this file (`.agents/protocols/task-execution-protocol.md`).
 
 2. **Check overlaps/dependencies**
    - For task `X`, inspect overlaps and ordering constraints in `dev/TASK_EXECUTION_PIPELINE.json`.
@@ -113,10 +112,10 @@ Apply the corresponding completion update in one edit run:
    - If additional confirmation is not given, stop without applying completion updates.
    - If additional confirmation is given:
      - update child task statuses to `Done` in `dev/map/DEV_MAP.json`.
-  - In write mode, cleanup issue plan artifacts in `dev/FEATURE_PLANS.md`:
+   - In write mode, cleanup issue plan artifacts in `dev/FEATURE_PLANS.md`:
      - remove issue row from `Issue Execution Order`,
      - remove issue plan block under owning feature section.
-  - `confirm issue` does not mutate feature-issue GitHub checklist rows; completion is tracked by local status + issue close flow only.
+   - `confirm issue` does not mutate feature-issue GitHub checklist rows; completion is tracked by local status + issue close flow only.
    - Update local issue status to `Done` in `dev/map/DEV_MAP.json`.
    - Close mapped GitHub issue in the same completion update run.
 2.1 `confirm issues --issue-id <issue_a> --issue-id <issue_b> ... done`
@@ -257,7 +256,7 @@ When creating or rewriting a task definition:
    - `[M*][F*]` for feature path,
    - `[M*][SI*]` for standalone path.
 9. Update `dev/TASK_EXECUTION_PIPELINE.json` order/overlaps for pending tasks.
-10. Keep this protocol and `AGENTS.md` consistent if process/policy changed.
+10. Keep this protocol and `.agents/rules/` consistent if process/policy changed.
 
 ## Bundle command format
 

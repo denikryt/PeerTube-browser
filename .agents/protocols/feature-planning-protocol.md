@@ -7,8 +7,8 @@ Canonical structure and ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md`.
 ## Scope ownership
 
 - This file owns planning artifacts and planning quality gates only.
-- Command semantics/order (`create/plan/plan issue/plan tasks for/materialize/execute/confirm`) are owned by `dev/TASK_EXECUTION_PROTOCOL.md`.
-- Hard constraints are owned by `AGENTS.md`.
+- Command semantics/order (`create/plan/plan issue/plan tasks for/materialize/execute/confirm`) are owned by `.agents/protocols/task-execution-protocol.md`.
+- Hard constraints are owned by `.agents/rules/`.
 
 ## 0) Issue Planning Order (mandatory)
 
@@ -38,7 +38,7 @@ Required input for `plan issue <issue_id>`:
 Required output in `dev/FEATURE_PLANS.md`:
 - dependencies section for the feature,
 - decomposition section with strict step-by-step flow,
-- `Issue Execution Order` block with ordered active issue rows (``<issue_id>`` - `<issue_title>`),
+- `Issue Execution Order` block with ordered active issue rows (`<issue_id>` - `<issue_title>`),
 - `Issue/Task Decomposition Assessment`,
 - draft decomposition (`Feature -> Issue(s) -> Task(s)`) only if splitting is actually needed.
 
@@ -114,7 +114,7 @@ Checklist:
 
 ## 4) Execution Procedure References
 
-Use canonical execution sections from `dev/TASK_EXECUTION_PROTOCOL.md`:
+Use canonical execution sections from `.agents/protocols/task-execution-protocol.md`:
 - `Feature planning/materialization flow` for command order and command contracts.
 - `Standalone issue flow` for non-product work.
 - `Completion flow` for `confirm ... done` semantics.

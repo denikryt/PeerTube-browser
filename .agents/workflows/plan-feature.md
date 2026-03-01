@@ -1,7 +1,7 @@
 ---
 description: Generate or update a feature plan in FEATURE_PLANS.md
 ---
-1. Read `dev/FEATURE_PLANNING_PROTOCOL.md` (Gate 0 and Gate A quality requirements).
+1. Read `.agents/protocols/feature-planning-protocol.md` (Gate 0 and Gate A quality requirements).
 2. Formulate dependencies: Identify task, feature, and issue dependencies required for this feature.
 3. Formulate overlaps: Identify affected tasks in `dev/TASK_EXECUTION_PIPELINE.json`.
 4. Formulate step flow: Create a strict command sequence defining what to run, script actions, executor actions, and expected step results.
