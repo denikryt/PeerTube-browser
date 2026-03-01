@@ -1,8 +1,10 @@
 ---
 description: Apply completion updates after explicit user confirmation
 ---
-1. Ascertain the target of the `confirm` command.
-2. Execute the CLI command to apply completion updates across trackers.
+1. Verification: Read the completed work and verify it meets all task requirements.
+2. Canonical Sequence: Perform the mandatory update sequence defined in `.agents/protocols/task-execution-protocol.md` (Completion flow) in one edit run. 
+   - Note: Do NOT mutate GitHub issue checklists; status is tracked by local status and issue close flow.
+3. Only after the intellectual update is formulated, execute the CLI confirm command.
 
 // turbo
 3. Run: `python3 dev/workflow confirm <target_type> --id <id> [additional_args]`

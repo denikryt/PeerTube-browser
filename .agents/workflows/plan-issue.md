@@ -10,5 +10,8 @@ description: Produce or update an issue-level plan block in FEATURE_PLANS.md
 // turbo
 6. Run: `python3 dev/workflow feature plan-issue --id <issue_id> [--title <optional_title>]`
 
-7. Update `dev/FEATURE_PLANS.md` by inserting your drafted plan into the generated issue block. Do NOT mutate `Issue Execution Order` or parent feature sections.
-8. Stop and wait for user review using `notify_user` with `BlockedOnUser=true`.
+7. Update `dev/FEATURE_PLANS.md` by inserting your drafted plan into the generated issue block. Ensure the block meets **Gate 0: Plan Detail and Formatting Standard** in `.agents/protocols/feature-planning-protocol.md`.
+8. Validate structure:
+// turbo
+9. Run: `python3 dev/workflow feature plan-lint --id <issue_id> --type issue`
+10. Stop and wait for user review using `notify_user` with `BlockedOnUser=true`.

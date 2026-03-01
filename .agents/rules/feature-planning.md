@@ -18,20 +18,12 @@ description: Feature planning and decomposition policy
 
 ## Feature branch policy
 
-1. Feature branch policy for `materialize feature <id>` is mandatory.
-2. Canonical branch name format: `feature/<feature_id>` (e.g., `feature/F1-M1`).
-3. Never create duplicate feature branches for the same feature id (e.g., `feature/F1-M1-2`).
-4. Default scope is one branch per feature; do not create per-issue branches unless explicitly requested.
-5. Store branch linkage in `dev/map/DEV_MAP.json`: `branch_name` and `branch_url`.
+1. Feature branch naming and materialization must follow the procedure defined in `.agents/protocols/task-execution-protocol.md` (Section 6, Branch policy).
+2. Store branch linkage in `dev/map/DEV_MAP.json`: `branch_name` and `branch_url`.
 
-## Feature decomposition rules
+## Feature decomposition policy
 
 1. One feature maps to one primary feature issue (`type:feature`) on GitHub.
-2. Before initiating a new breakdown, first check `dev/map/DEV_MAP.json` for any existing issues already linked to the target feature.
-3. If no existing issues are found or if the existing breakdown is insufficient, decompose the feature into several logical issues based on these criteria:
-   - **Adequacy**: The scope of each issue must be clearly defined and sufficient for a meaningful unit of work.
-   - **Realism**: Each issue must be achievable within a reasonable timeframe and within the project's technical constraints.
-   - **Practicality**: The breakdown should facilitate efficient implementation and testing.
-   - **Sequence**: Issues must be ordered logically, respecting technical and functional dependencies.
-4. Prioritize reusing existing issues in `dev/map/DEV_MAP.json` over creating new ones whenever possible.
+2. Feature decomposition into logical issues must strictly follow the criteria and standards defined in `.agents/protocols/feature-planning-protocol.md` (Section 2, Decomposition Rules).
+3. Prioritize reusing existing issues in `dev/map/DEV_MAP.json` over creating new ones whenever possible.
 

@@ -5,15 +5,13 @@ Hard constraints (what is allowed/forbidden) are defined in `.agents/rules/`.
 
 ## Scope ownership (canonical)
 
-- This file owns command semantics and command order for execution-related flows.
-- `.agents/rules/` owns hard policy constraints and permission gates.
-- `.agents/protocols/feature-planning-protocol.md` owns planning-only quality requirements.
+- This file owns **Execution State Transition Standards** and **Materialization Gates**.
+- `.agents/rules/` owns **Hard Policy Constraints** and **Permission Gates**.
+- `.agents/workflows/` owns **Actionable Procedures** and **CLI Command Sequences**.
 
-If any command-order/step-contract wording differs across docs, this file is canonical.
+If any procedural detail differs across docs, the corresponding `.agents/workflows/` file is canonical for steps, while this file is canonical for quality and state transition requirements.
 
-## Standard execution flow (single task)
-
-Use this procedure after an explicit execution command is given.
+## Section 1: Read order (mandatory)
 
 1. **Read in strict order before coding**
    - Read exact task text for task `X` in `dev/TASK_LIST.json`.
@@ -21,74 +19,22 @@ Use this procedure after an explicit execution command is given.
    - Read `dev/map/DEV_MAP.json` context for task `X` and related ownership markers (`M/F` or `M/SI` path).
    - Read this file (`.agents/protocols/task-execution-protocol.md`).
 
-2. **Check overlaps/dependencies**
-   - For task `X`, inspect overlaps and ordering constraints in `dev/TASK_EXECUTION_PIPELINE.json`.
-   - Identify shared primitives to avoid one-off local implementations.
-   - Verify markers in `dev/TASK_LIST.json` are consistent with planned ownership:
-     - product path: `[M*][F*]`
-     - standalone path: `[M*][SI*]`
-     If task exists in `dev/map/DEV_MAP.json`, markers must match parent chain.
-   - Enforce execution materialization gate from local tracker state:
-     - resolve parent `Issue`/`StandaloneIssue` for task `X` in `dev/map/DEV_MAP.json`,
-     - require non-null `gh_issue_number` and `gh_issue_url` on that parent node,
-     - if any of those fields is missing, stop execution and request `materialize feature <id> --mode issues-create` or `materialize standalone-issue`.
+## Standard execution flow (single task)
 
-3. **Prepare a short implementation plan**
-   - List concrete files/modules to update.
-   - Note validations to run after implementation.
+Procedural steps for executing a single task are defined in `.agents/workflows/execute-task.md`.
+This protocol enforces the following standards during execution:
+- **Mandatory Read Order**: Section 1 of this protocol must be followed before any implementation.
+- **Materialization Gate**: Parent issues must be materialized on GitHub before task execution.
+- **Requirement Closure**: Every stated requirement must be explicitly verified before reporting results.
+- **No Auto-Completion**: Tasks must only be marked completed after explicit user confirmation.
 
-4. **Implement**
-   - Apply code/doc/config/test changes required by task `X`.
-   - Keep one source of truth per concern; avoid duplicate logic.
+## Chain execution flow (Feature / Issue)
 
-5. **Validate**
-   - Run relevant checks/tests/smokes for changed paths.
-   - Verify no regressions in overlapping areas touched by task `X`.
+Procedural steps for chain execution are defined in:
+- `.agents/workflows/execute-feature.md`
+- `.agents/workflows/execute-issue.md`
 
-6. **Requirement closure check (mandatory final stage)**
-   - Re-read the exact task text for task `X` in `dev/TASK_LIST.json`.
-   - Verify each stated requirement is implemented.
-   - If any requirement is not implemented, list it explicitly before reporting result.
-   - Verify tracking sync was preserved (`dev/map/DEV_MAP.json`, `dev/TASK_LIST.json`, `dev/TASK_EXECUTION_PIPELINE.json`).
-
-7. **Report implementation result**
-   - Summarize what was changed, what was validated, and any remaining risks.
-   - Do not mark task completed until explicit user confirmation.
-
-## Feature chain execution flow (`execute feature <feature_id>`)
-
-Use this procedure when user requests execution of all tasks under one feature.
-
-1. Resolve `<feature_id>` in `dev/map/DEV_MAP.json` and collect all child tasks under `Milestone -> Feature -> Issue -> Task`.
-2. Keep only pending tasks (`status != Done`).
-3. Enforce materialization gate for feature child issues:
-   - for each issue that contains pending tasks, require non-null `gh_issue_number` and `gh_issue_url`,
-   - if any issue fails this check, stop execution and request `materialize feature <feature_id> --mode issues-create`.
-4. Build execution order:
-   - first: task IDs that are present in `dev/TASK_EXECUTION_PIPELINE.json` execution order,
-   - then: remaining pending tasks in `DEV_MAP` issue/task order.
-5. Execute each task sequentially using the full **Standard execution flow (single task)**.
-6. After each task, run overlap/dependency validations relevant to the next tasks in the same feature chain.
-7. Stop on the first blocking failure and report the exact failed task + blocker; continue only if user explicitly asks to continue.
-8. Do not auto-mark task/issue/feature as `Done`; completion updates require explicit `confirm ... done` commands.
-
-## Issue chain execution flow (`execute issue <issue_id>`)
-
-Use this procedure when user requests execution of all tasks under one feature issue.
-
-1. Resolve `<issue_id>` in `dev/map/DEV_MAP.json` under `Milestone -> Feature -> Issue`.
-2. Keep only pending tasks (`status != Done`) from this issue subtree.
-3. If no pending tasks remain, stop and report that this issue has nothing to execute.
-4. Enforce materialization gate for the target issue:
-   - require non-null `gh_issue_number` and `gh_issue_url` on this issue node,
-   - if either field is missing, stop execution and request `materialize feature <feature_id> --mode issues-create`.
-5. Build execution order:
-   - first: task IDs that are present in `dev/TASK_EXECUTION_PIPELINE.json` execution order,
-   - then: remaining pending tasks in issue task order from `DEV_MAP`.
-6. Execute each task sequentially using the full **Standard execution flow (single task)**.
-7. After each task, run overlap/dependency validations relevant to the next tasks in the same issue chain.
-8. Stop on the first blocking failure and report the exact failed task + blocker; continue only if user explicitly asks to continue.
-9. Do not auto-mark task/issue/feature as `Done`; completion updates require explicit `confirm ... done` commands.
+Chain execution must follow the same materialization and validation standards as individual task execution, ensuring sequential processing and stopping on the first blocking failure.
 
 ## Completion flow (after explicit user confirmation)
 
@@ -205,7 +151,7 @@ Use this procedure before executing tasks for a new feature.
 7. Only then run `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`.
    - Execution gate: every parent `Issue` for the target task set must have non-null `gh_issue_number` and `gh_issue_url` in `dev/map/DEV_MAP.json`.
 
-## Standalone issue flow (non-product work)
+## Section 3: Implementation constraints
 
 Use this when work should not be attached to a product feature (ops/process/tooling/governance).
 
@@ -258,16 +204,7 @@ When creating or rewriting a task definition:
 9. Update `dev/TASK_EXECUTION_PIPELINE.json` order/overlaps for pending tasks.
 10. Keep this protocol and `.agents/rules/` consistent if process/policy changed.
 
-## Bundle command format
+## Execution Command Format
 
-Use this command style when requesting multiple tasks:
-
-`Execute bundle: <taskA> -> <taskB> -> <taskC>, mode=strict, no-duplicate-logic`
-
-Feature-chain execution command:
-
-`execute feature <feature_id>`
-
-Issue-chain execution command:
-
-`execute issue <issue_id>`
+Mandatory execution trigger formats are defined in `.agents/rules/execution-triggers.md`.
+Do not use verbatim command templates in this protocol.

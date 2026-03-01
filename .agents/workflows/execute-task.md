@@ -1,10 +1,10 @@
 ---
 description: Execute a single task following strict protocol
 ---
-1. Check task tracker: Read the exact task text for the given task ID from `dev/TASK_LIST.json`.
-2. Check overlaps/dependencies: Read `dev/TASK_EXECUTION_PIPELINE.json` to inspect ordering constraints and identify shared primitives.
-3. Check context: Read `dev/map/DEV_MAP.json` to verify ownership markers (`[M*][F*]` or `[M*][SI*]`).
-4. Enforce materialization: Resolve the parent `Issue` in `dev/map/DEV_MAP.json` and ensure `gh_issue_number` and `gh_issue_url` are not null. Stop if they are missing.
+1. Preparation: Follow the **Mandatory Read Order** defined in Section 1 of `.agents/protocols/task-execution-protocol.md`.
+2. Check trackers: Read the exact task text for the given task ID from `dev/TASK_LIST.json` and context from `dev/map/DEV_MAP.json`.
+3. Check overlaps: Read `dev/TASK_EXECUTION_PIPELINE.json` to inspect ordering constraints and identify shared primitives.
+4. Enforce materialization: Verify the **Materialization Gate** for the parent issue in `dev/map/DEV_MAP.json`. Stop if `gh_issue_number` or `gh_issue_url` are missing.
 5. Plan: Prepare a short implementation plan listing concrete files/modules to update.
 6. Execution: Implement code/doc/config changes required, avoiding duplicate logic.
 7. Validation: Run relevant checks/tests to verify no regressions in overlapping areas.

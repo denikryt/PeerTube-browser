@@ -18,12 +18,5 @@ description: Task state management and tracking rules
 
 ### After user confirmation (required sequence)
 
-When the user explicitly confirms a task or block of tasks is completed, perform these steps in the same edit run:
-
-1. Update task status in `dev/map/DEV_MAP.json` to `Done`.
-2. Update task state in `dev/TASK_LIST.json` (remove/move the confirmed task from future tasks).
-3. Update the matching item in `CHANGELOG.json` to status `Done`.
-4. If task ordering/block status changed, update `dev/TASK_EXECUTION_PIPELINE.json` accordingly.
-5. If execution rules changed, update `.agents/protocols/task-execution-protocol.md` accordingly.
-6. In the final response, explicitly list which task IDs/titles were marked completed.
+When the user explicitly confirms a task or block of tasks is completed, perform the mandatory update sequence defined in `.agents/protocols/task-execution-protocol.md` (Completion flow) in the same edit run.
 
