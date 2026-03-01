@@ -1,17 +1,94 @@
 ---
 description: Produce or update an issue-level plan block in FEATURE_PLANS.md
 ---
-1. Read the target `<issue_id>` and resolve its parent feature in `dev/map/DEV_MAP.json`.
-2. Formulate dependencies specifically for this issue context.
-3. Formulate decomposition: Create a strict issue-level implementation flow with numbered top-level steps and concrete sub-points specifying input/output contracts and expected results.
-4. Formulate assessment: Write an explicit `Issue/Task Decomposition Assessment` for this issue (pre-task vs tasked state).
-5. Only after formulating the plan, execute the CLI issue initialization.
+> [!NOTE]
+> This is a **planning-only** command for single-issue (or multi-issue) detailed planning.
+> It produces or updates the issue-plan block in `dev/FEATURE_PLANS.md` following strict quality gates.
+>
+> This command is called after `plan feature <feature_id>` either:
+> - to deepen planning of an **existing** issue that was identified in the feature decomposition, or
+> - to plan an **additional** issue if feature decomposition changes
 
-// turbo
-6. Run: `python3 dev/workflow feature plan-issue --id <issue_id> [--title <optional_title>]`
+## Phase 1: Read and Resolve Issue Context
 
-7. Update `dev/FEATURE_PLANS.md` by inserting your drafted plan into the generated issue block. Ensure the block meets **Gate 0: Plan Detail and Formatting Standard** in `.agents/protocols/feature-planning-protocol.md`.
-8. Validate structure:
-// turbo
-9. Run: `python3 dev/workflow feature plan-lint --id <issue_id> --type issue`
-10. Stop and wait for user review using `notify_user` with `BlockedOnUser=true`.
+1. Resolve the target `<issue_id>` in `dev/map/DEV_MAP.json`.
+2. Extract issue metadata:
+   - `issue_title`: from issue node title
+   - `issue_description`: from issue node description
+   - `parent_feature_id`: feature that owns this issue
+   - `issue_status`: current status (`Pending`, `Planned`, `Tasked`, etc.)
+3. Analyze parent feature in `dev/map/DEV_MAP.json`:
+   - confirm issue is properly linked under feature
+   - understand feature context and scope
+
+## Phase 2: Formulate Issue Plan
+
+### 2.1 Dependencies (Issue-Level)
+
+Identify dependencies specifically for this issue:
+- Other issues that must be completed first
+- Feature-level dependencies that affect this issue
+- External task dependencies from `dev/TASK_LIST.json`
+- Code paths, modules, or APIs this issue touches
+- Standards or protocols relevant to implementation (reference `.agents/protocols/`, `.agents/rules/`)
+
+### 2.2 Decomposition (Issue-Level Implementation Flow)
+
+Formulate the issue-level implementation plan following the **Planning Input Contract** in `.agents/protocols/feature-planning-protocol.md` Section 1.
+
+Create numbered top-level steps with concrete sub-points (what to do, input/output contracts, expected result).
+
+Example structure:
+```
+1. Update policy in AGENTS.md
+   - Target file and line range
+   - Input: current policy state
+   - Output: modified text
+   - Validation: grep check for new text
+```
+
+### 2.3 Issue/Task Decomposition Assessment
+
+Formulate the explicit decomposition assessment following the **Planning Input Contract** in `.agents/protocols/feature-planning-protocol.md` Section 1.
+
+State clearly:
+- Decomposition state: `pre-task` (plan only) or `tasked` (with explicit tasks)
+- What must be done next to progress toward `tasked` state
+
+## Phase 3: Quality Verification
+
+Before executing CLI commands:
+1. Review `.agents/protocols/feature-planning-protocol.md` Section 3 (**Gate 0: Plan Detail and Formatting Standard** and **Gate A: Pre-decomposition review**).
+2. Self-check the drafted issue plan against both Gate 0 and Gate A checklists.
+3. If any checks fail, refine the plan before proceeding.
+
+## Phase 4: Execute CLI and Insert Plan
+
+1. Run: `python3 dev/workflow feature plan-issue --id <issue_id> [--title <optional_title>]`
+   - This creates or updates the issue-plan block in `dev/FEATURE_PLANS.md`
+   - Block will use heading `### <issue_id> - <issue_title>` under the parent feature section
+
+2. Open `dev/FEATURE_PLANS.md` and verify the generated block:
+   - Heading format: `### <issue_id> - <issue_title>` (✓)
+   - Allowed inner headings: only `#### Dependencies`, `#### Decomposition`, `#### Issue/Task Decomposition Assessment` (✓)
+   - All three inner headings are present (✓)
+
+3. Insert your drafted plan content into the three sections:
+   - `#### Dependencies`: paste issue-level dependencies
+   - `#### Decomposition`: paste numbered implementation steps
+   - `#### Issue/Task Decomposition Assessment`: paste explicit assessment
+
+4. Ensure issue-specific content (not generic templates or fallback stubs):
+   - Reference actual files/functions/modules
+   - Connect to issue title and description
+   - Explain *why* each step is necessary for this specific issue
+
+## Phase 5: Validate and Complete
+
+1. Run: `python3 dev/workflow feature plan-lint --id <issue_id> --type issue`
+   - This validates structure and content quality against Gate 0/A requirements
+   - If lint fails: read error output, fix `FEATURE_PLANS.md`, and re-run
+
+2. Repeat lint until clean (zero errors)
+
+3. Stop execution and use `notify_user` with `BlockedOnUser=true` to wait for explicit review and approval

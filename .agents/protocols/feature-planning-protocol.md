@@ -60,7 +60,8 @@ Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
 
 ## Section 2: Decomposition Rules
 
-- One feature maps to one primary feature issue (`type:feature`) on GitHub.
+**Scope ownership:** Policy rules are in `.agents/rules/feature-planning.md`. This section defines the decomposition methodology.
+
 - **Feature -> Issue decomposition rules (mandatory for `plan feature`):**
   - **Check Existing:** Before initiating a new breakdown, first check `dev/map/DEV_MAP.json` for any existing issue nodes already linked to the target feature.
   - **Prioritize Existing:** If linked issues exist, the planning focus must be on individual `plan issue <issue_id>` and `plan tasks for issue <issue_id>` steps for those issues.
