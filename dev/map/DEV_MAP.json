@@ -1248,7 +1248,7 @@
               "id": "I1-F6-M1",
               "title": "Implement Markdown template parser for CLI inputs",
               "description": "CLI commands currently cannot accept multi-line text blocks safely. Implement a parser that extracts # title and # description sections from a provided Markdown draft file.",
-              "status": "Pending",
+              "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []
@@ -1257,7 +1257,7 @@
               "id": "I2-F6-M1",
               "title": "Wire --input argument to create feature and create issue commands",
               "description": "The create commands only accept CLI string flags. Extend them to accept an optional --input file path, parse it, and use the extracted values instead of flags.",
-              "status": "Pending",
+              "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []
@@ -1266,7 +1266,7 @@
               "id": "I3-F6-M1",
               "title": "Update agent workflows to use draft files for CLI commands",
               "description": "The current AI workflows generate planning data in memory. Update the agent workflow files (e.g. plan-feature, plan-issue) to explicitly write intellectual output to a temporary draft file and pass it to the CLI commands.",
-              "status": "Pending",
+              "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []

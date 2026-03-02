@@ -52,7 +52,7 @@ Example structure:
 Formulate the explicit decomposition assessment following the **Planning Input Contract** in `.agents/protocols/feature-planning-protocol.md` Section 1.
 
 State clearly:
-- Decomposition state: `pre-task` (plan only) or `tasked` (with explicit tasks)
+- Decomposition state: `planning` (plan only) or `tasked` (with explicit tasks)
 - What must be done next to progress toward `tasked` state
 
 ## Phase 3: Quality Verification
