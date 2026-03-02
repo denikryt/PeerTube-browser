@@ -1272,6 +1272,55 @@
               "tasks": []
             }
           ]
+        },
+        {
+          "id": "F7-M1",
+          "title": "Refactor issue planning lifecycle with validation gates and command structure",
+          "description": "This feature refines the issue planning workflow by introducing explicit validation gates (plan issue → validate issue) and consolidating CLI command structure for clarity and consistency.",
+          "status": "Pending",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "branch_name": null,
+          "branch_url": null,
+          "issues": [
+            {
+              "id": "I1-F7-M1",
+              "title": "Implement validate issue command with Pending→Planned transition",
+              "description": "Add explicit CLI command `validate issue` that reads issue plan from FEATURE_PLANS.md, validates quality (Gate 0), and transitions status Pending→Planned in DEV_MAP when valid.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F7-M1",
+              "title": "Wire --input argument to plan issue command for markdown draft parsing",
+              "description": "Extend `plan issue` CLI to accept optional `--input <draft_file>` argument, parse Markdown template, extract title/description, and insert into FEATURE_PLANS.md issue-plan block.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F7-M1",
+              "title": "Rename feature.plan-issue command to plan issue in CLI routing",
+              "description": "Refactor CLI command registration to expose `plan issue` instead of legacy `feature plan-issue` naming, updating all subcommand routing and help text for consistency.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I4-F7-M1",
+              "title": "Update task-execution-protocol and workflow docs for new planning lifecycle",
+              "description": "Update canonical protocol/workflow documentation to reflect Pending→Planned→Tasked lifecycle with explicit validate gate, rename plan issue command, and document validation requirements.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ]
         }
       ],
       "non_feature_items": [
