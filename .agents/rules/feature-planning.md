@@ -15,10 +15,16 @@ description: Feature planning and decomposition policy
 7. Orphan issues are not allowed: every issue must belong either to a feature (`Issue`) or to a milestone standalone container (`StandaloneIssue`).
 8. Local/GitHub completion is confirmation-gated: Do not mark local state as `Done` or close GitHub issues until explicit user confirmation is received.
 9. For any explicit user request to plan an issue (`plan issue ...`), update the target issue block in `dev/FEATURE_PLANS.md` in the same turn and enforce full compliance with `.agents/protocols/feature-planning-protocol.md` (mandatory headings + Gate 0 quality).
+10. `plan tasks for issue <issue_id>` is blocked while the target issue status is `Pending`; the issue must be planned first.
+11. Successful local issue-to-task decomposition transitions the selected issue nodes to `Tasked`.
+12. `create feature` is registration-only; it must not auto-run planning, task decomposition, materialization, or execution commands.
+13. Materialized GitHub issue bodies must remain issue-focused and must not include local process/protocol instructions or boilerplate sections such as `Work issue for ...`, `Source of truth`, or `Notes`.
+14. Before `execute task <id>`, `execute issue <issue_id>`, or `execute feature <feature_id>`, every parent `Issue` in scope must already be mapped with non-null `gh_issue_number` and `gh_issue_url`.
+15. Before executing a task attached to `StandaloneIssue`, the parent standalone issue must already be mapped with non-null `gh_issue_number` and `gh_issue_url`.
 
 ## Feature branch policy
 
-1. Feature branch naming and materialization must follow the procedure defined in `.agents/protocols/task-execution-protocol.md` (Section 6, Branch policy).
+1. Feature branch naming and materialization must follow `.agents/protocols/task-execution-protocol.md` (Section 5: Branch and materialization standards).
 2. Store branch linkage in `dev/map/DEV_MAP.json`: `branch_name` and `branch_url`.
 
 ## Feature decomposition policy
@@ -26,4 +32,3 @@ description: Feature planning and decomposition policy
 1. One feature maps to one primary feature issue (`type:feature`) on GitHub.
 2. Feature decomposition into logical issues must strictly follow the criteria and standards defined in `.agents/protocols/feature-planning-protocol.md` (Section 2, Decomposition Rules).
 3. Prioritize reusing existing issues in `dev/map/DEV_MAP.json` over creating new ones whenever possible.
-

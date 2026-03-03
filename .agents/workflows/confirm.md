@@ -2,7 +2,7 @@
 description: Apply completion updates after explicit user confirmation
 ---
 1. Verification: Read the completed work and verify it meets all task requirements.
-2. Canonical Sequence: Perform the mandatory update sequence defined in `.agents/protocols/task-execution-protocol.md` (Completion flow) in one edit run. 
+2. Canonical Sequence: Apply completion updates according to `.agents/protocols/task-execution-protocol.md` (Section 4: Completion state-transition contract) in one edit run.
    - Note: Do NOT mutate GitHub issue checklists; status is tracked by local status and issue close flow.
 3. Only after the intellectual update is formulated, execute the CLI confirm command.
 

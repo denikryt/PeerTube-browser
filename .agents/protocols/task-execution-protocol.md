@@ -1,210 +1,65 @@
 # Task Execution Protocol
 
-This file defines only the execution procedure (how to execute tasks).
-Hard constraints (what is allowed/forbidden) are defined in `.agents/rules/`.
+This file defines execution-stage contracts and state-transition standards.
+Hard constraints are defined in `.agents/rules/`.
+Step-by-step command procedures are defined in `.agents/workflows/`.
 
 ## Scope ownership (canonical)
 
-- This file owns **Execution State Transition Standards** and **Materialization Gates**.
+- This file owns **Execution Read Order**, **Execution Gates**, **Completion State-Transition Contracts**, and **Branch/Materialization Standards**.
 - `.agents/rules/` owns **Hard Policy Constraints** and **Permission Gates**.
 - `.agents/workflows/` owns **Actionable Procedures** and **CLI Command Sequences**.
 
-If any procedural detail differs across docs, the corresponding `.agents/workflows/` file is canonical for steps, while this file is canonical for quality and state transition requirements.
+If any procedural detail differs across docs, the corresponding `.agents/workflows/` file is canonical for steps, while this file is canonical for execution contracts and state-transition requirements.
 
 ## Section 1: Read order (mandatory)
 
-1. **Read in strict order before coding**
-   - Read exact task text for task `X` in `dev/TASK_LIST.json`.
-   - Read `dev/TASK_EXECUTION_PIPELINE.json`.
-   - Read `dev/map/DEV_MAP.json` context for task `X` and related ownership markers (`M/F` or `M/SI` path).
-   - Read this file (`.agents/protocols/task-execution-protocol.md`).
+1. Read in strict order before coding:
+   - exact task text in `dev/TASK_LIST.json`,
+   - `dev/TASK_EXECUTION_PIPELINE.json`,
+   - `dev/map/DEV_MAP.json` context for the target task set and ownership markers,
+   - this file (`.agents/protocols/task-execution-protocol.md`).
 
-## Standard execution flow (single task)
+## Section 2: Execution standards
 
-Procedural steps for executing a single task are defined in `.agents/workflows/execute-task.md`.
-This protocol enforces the following standards during execution:
-- **Mandatory Read Order**: Section 1 of this protocol must be followed before any implementation.
-- **Materialization Gate**: Parent issues must be materialized on GitHub before task execution.
-- **Requirement Closure**: Every stated requirement must be explicitly verified before reporting results.
-- **No Auto-Completion**: Tasks must only be marked completed after explicit user confirmation.
+- **Mandatory Read Order**: Section 1 must be completed before any implementation work.
+- **Materialization Gate**: execution is blocked until the parent execution container is materialized on GitHub.
+- **Requirement Closure**: every stated requirement in the exact task text must be explicitly re-checked before reporting results.
+- **No Auto-Completion**: implementation completion and tracker completion are separate states; completion remains confirmation-gated.
+- **Chain Execution Rule**: feature/issue/bundle execution must run sequentially in dependency order and stop on the first blocking failure.
 
-## Chain execution flow (Feature / Issue)
+## Section 3: Execution gates
 
-Procedural steps for chain execution are defined in:
-- `.agents/workflows/execute-feature.md`
-- `.agents/workflows/execute-issue.md`
+### Task / Issue / Feature execution
 
-Chain execution must follow the same materialization and validation standards as individual task execution, ensuring sequential processing and stopping on the first blocking failure.
+- Before `execute task <id>`, `execute issue <issue_id>`, or `execute feature <feature_id>`, every parent `Issue` in scope must have non-null `gh_issue_number` and `gh_issue_url` in `dev/map/DEV_MAP.json`.
 
-## Completion flow (after explicit user confirmation)
+### Standalone execution
 
-Use explicit completion commands:
-- `confirm task <task_id> done`
-- `confirm issue <issue_id> done`
-- `confirm issues --issue-id <issue_a> --issue-id <issue_b> ... done`
-- `confirm feature <feature_id> done`
-- `confirm standalone-issue <si_id> done`
-- `reject issue <issue_id>`
+- Before executing a task attached to `StandaloneIssue`, the parent standalone issue must have non-null `gh_issue_number` and `gh_issue_url` in `dev/map/DEV_MAP.json`.
 
-Apply the corresponding completion update in one edit run:
+## Section 4: Completion state-transition contract
 
-1. `confirm task <task_id> done`
-   - Update task state in `dev/TASK_LIST.json` (remove/move confirmed task from future tasks).
-   - Update task status in `dev/map/DEV_MAP.json` under its existing parent chain.
-   - Remove confirmed completed task/block from `dev/TASK_EXECUTION_PIPELINE.json` (keep only pending items).
-2. `confirm issue <issue_id> done`
-   - Resolve all mapped child tasks under the selected issue.
-   - If any child task is not `Done`, request explicit additional confirmation to cascade these tasks to `Done`.
-   - If additional confirmation is not given, stop without applying completion updates.
-   - If additional confirmation is given:
-     - update child task statuses to `Done` in `dev/map/DEV_MAP.json`.
-   - In write mode, cleanup issue plan artifacts in `dev/FEATURE_PLANS.md`:
-     - remove issue row from `Issue Execution Order`,
-     - remove issue plan block under owning feature section.
-   - `confirm issue` does not mutate feature-issue GitHub checklist rows; completion is tracked by local status + issue close flow only.
-   - Update local issue status to `Done` in `dev/map/DEV_MAP.json`.
-   - Close mapped GitHub issue in the same completion update run.
-2.1 `confirm issues --issue-id <issue_a> --issue-id <issue_b> ... done`
-   - Validate issue-id queue format and reject duplicates before execution.
-   - Batch gate: when confirming more than two issues in one operation, use plural `confirm issues` path (do not pass multi-id payload to `confirm issue`).
-   - Execute per-issue completion semantics using the same rules as `confirm issue <issue_id> done`.
-   - Batch strategy: continue-on-error with deterministic per-item result rows and aggregate summary fields (`processed`, `done`, `failed`).
-3. `confirm feature <feature_id> done`
-   - Treat this command as explicit confirmation for the full feature subtree.
-   - Resolve all child issues/tasks under `Milestone -> Feature -> Issue -> Task`.
-   - For every pending child task:
-     - update task status to `Done` in `dev/map/DEV_MAP.json`,
-     - update task state in `dev/TASK_LIST.json` (remove/move from future list),
-     - remove completed entries from `dev/TASK_EXECUTION_PIPELINE.json` (pipeline keeps only pending items).
-   - For every child issue:
-     - update local issue status to `Done` in `dev/map/DEV_MAP.json`,
-     - close mapped child GitHub issue in the same completion update run.
-   - Update local feature status to `Done` in `dev/map/DEV_MAP.json`.
-   - Close mapped feature GitHub issue in the same completion update run.
-4. `confirm standalone-issue <si_id> done`
-   - Verify all mapped child tasks are already confirmed done.
-   - Update local standalone issue status to `Done` in `dev/map/DEV_MAP.json`.
-   - Close mapped GitHub standalone issue in the same completion update run.
-5. `reject issue <issue_id>`
-   - Resolve target feature issue node by ID and validate ownership chain.
-   - Branch by materialization state:
-     - mapped issue (`gh_issue_number` + `gh_issue_url` present): keep local status transition to `Rejected`,
-     - unmapped issue (missing mapping): remove local issue node from owner feature instead of status-only transition.
-   - In write mode, cleanup issue artifacts when present:
-     - remove issue plan block and Issue Execution Order row from `dev/FEATURE_PLANS.md`,
-     - remove linked task artifacts from `dev/TASK_LIST.json` and `dev/TASK_EXECUTION_PIPELINE.json` using confirm-style cleanup path.
-   - If mapped GitHub issue exists and close is enabled:
-     - append deterministic rejection marker in issue body,
-     - close mapped issue in the same reject run.
-   - If GitHub mapping is missing, keep reject command successful with explicit `missing_fields` output (unmapped-delete branch).
-6. If process rules changed, update this file in the same edit run.
+- Completion updates are allowed only after explicit user confirmation.
+- Completion updates must be applied in one edit run across all affected tracking artifacts.
+- `confirm issue <issue_id> done` may require additional explicit confirmation before cascading unfinished child tasks to `Done`.
+- `confirm feature <feature_id> done` is treated as explicit confirmation for the full feature subtree.
+- `confirm standalone-issue <si_id> done` requires all mapped child tasks to already be confirmed done.
+- `reject issue <issue_id>` uses materialization-aware behavior:
+  - mapped issue: keep local node and transition status to `Rejected`,
+  - unmapped issue: remove the local issue node from its owner chain.
+- Completion and rejection flows must not mutate GitHub checklist rows; status is tracked by local state and issue close flow.
 
-## Feature planning/materialization flow
+## Section 5: Branch and materialization standards
 
-Use this procedure before executing tasks for a new feature.
-
-1. `create feature <id>`: register the feature in local and GitHub trackers.
-   - Create feature node in `dev/map/DEV_MAP.json` using ID format from `dev/map/DEV_MAP_SCHEMA.md`.
-   - Create/update feature-level GitHub issue for this feature and assign it to the corresponding GitHub milestone.
-   - Persist feature `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json` in the same change set.
-   - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
-   - Registration-only boundary: do not auto-run `plan`, `plan issue`, `plan tasks for`, `materialize`, or `execute` after `create feature`.
-2. `plan feature <id>`: produce/update `dependencies`, `decomposition` (strict step-by-step command flow), `Issue Execution Order` (ordered active feature issues), and `Issue/Task Decomposition Assessment` in `dev/FEATURE_PLANS.md`.
-3. `plan issue <issue_id>` (CLI: `feature plan-issue --id <issue_id>`): produce/update one issue-level plan block in `dev/FEATURE_PLANS.md` under the owning feature section.
-   - Resolve `<issue_id>` in `dev/map/DEV_MAP.json` and bind to exactly one parent feature.
-   - If issue is missing in `DEV_MAP`, stop and request issue creation/decomposition first.
-   - Update only issue-plan content for the target issue (do not auto-create feature/issue mapping nodes from this command).
-   - Run scoped lint for the target issue block only (`Dependencies`/`Decomposition`/`Issue/Task Decomposition Assessment`), not full-section mutation.
-   - `Issue Execution Order` is read-only for `plan-issue`; active issue row for the target issue must already exist.
-   - Persist plan content to `dev/FEATURE_PLANS.md` in the same run (no chat-only plan output).
-4. `plan tasks for feature <id>`: create/update local `Issue -> Task` decomposition and persist it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.json`, and `dev/TASK_EXECUTION_PIPELINE.json`.
-   - Optional issue scope: `plan tasks for issue <issue_id>` for one issue-targeted decomposition run.
-   - Optional batch issue scope: `plan tasks for issues --issue-id <issue_a> --issue-id <issue_b> ...` for one queue-targeted decomposition run with shared ID allocation and pipeline updates.
-   - Status gate: selected issue nodes must not be `Pending`; run `plan issue <issue_id>` first for pending issues.
-   - Transition rule: successful decomposition marks selected issue nodes as `Tasked`.
-5. Review/refine local issues/tasks with the user until decomposition is final.
-6. `materialize feature <id> --mode <bootstrap|issues-create|issues-sync>`: run explicit materialization mode for an already-synced feature.
-   - `--mode bootstrap`: resolve/create canonical feature branch context and persist branch linkage metadata; do not materialize child issues.
-   - `--mode issues-create`: materialize feature child `Issue` nodes to GitHub in create-oriented flow from local issue structure.
-   - `--mode issues-sync`: materialize feature child `Issue` nodes to GitHub in sync/update flow from local issue structure.
-   - `--issue-id <issue_id>` is allowed only with `issues-create`/`issues-sync`; the flag is repeatable and forms an ordered issue queue.
-   - Queue mode example: `materialize feature <id> --mode issues-sync --issue-id <issue_a> --issue-id <issue_b>`.
-   - Reconcile parent feature sub-issues from mapped local child issues after create/sync pass; reconciliation must be idempotent on repeated runs.
-   - Return deterministic reconcile output in materialize response: `sub_issues_sync` (`attempted/added/skipped/errors`) and `missing_issue_mappings` (always present, can be empty).
-   - Status gate (`issues-create`/`issues-sync`): selected unmapped issue nodes must have status `Tasked`; already-mapped issue nodes may be updated in `issues-sync` mode regardless of status.
-   - Feature-level GitHub issue is managed at `create feature <id>` step; during materialization, update it only if metadata/body sync is explicitly required, without creating duplicates.
-   - Branch policy (mandatory): resolve canonical feature branch `feature/<feature_id>` and persist branch linkage metadata; do not auto-checkout/switch branches during `materialize`.
-   - Never create duplicate branches for the same feature id (for example `feature/F1-M1-2`).
-   - Default: one branch per feature; create issue-level branches only by explicit user request.
-   - Persist branch linkage on target feature node in `dev/map/DEV_MAP.json`:
-     - `branch_name = feature/<feature_id>`,
-     - `branch_url = <repo_url>/tree/feature/<feature_id>` (or `null` if repository URL cannot be resolved).
-   - Include branch context in result message: `Canonical feature branch: feature/<feature_id>`.
-   - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
-   - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
-   - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
-6.1 `sync feature --feature-id <feature_id>` / `sync feature --milestone-id <milestone_id>` / `sync feature --all`: sync mapped feature-level GitHub issue metadata/body only.
-   - Selector contract: exactly one selector mode per run.
-   - Target resolution must be deterministic for all selector modes.
-   - Sync scope is feature-only: update mapped feature issue title/body from local feature metadata; do not materialize child issues in this command.
-   - Return deterministic summary fields: `attempted`, `updated`, `skipped`, `errors`.
-7. Only then run `execute task X` or `execute issue <issue_id>` or `execute feature <feature_id>`.
-   - Execution gate: every parent `Issue` for the target task set must have non-null `gh_issue_number` and `gh_issue_url` in `dev/map/DEV_MAP.json`.
-
-## Section 3: Implementation constraints
-
-Use this when work should not be attached to a product feature (ops/process/tooling/governance).
-
-1. `create standalone-issue <id>`: create standalone issue node in `dev/map/DEV_MAP.json` using `SI<local>-M<milestone>` ID format.
-2. `plan standalone-issue <id>`: define scope, acceptance checks, and expected tasks.
-3. `approve standalone-issue plan`: freeze boundaries and allow local decomposition sync.
-4. `sync standalone-issue to task list`: create/update local `StandaloneIssue -> Task` decomposition and sync it in one change set across `dev/map/DEV_MAP.json`, `dev/TASK_LIST.json`, and `dev/TASK_EXECUTION_PIPELINE.json`.
-5. Review/refine local tasks with the user until decomposition is final.
-6. `materialize standalone-issue`: create/update GitHub issue from the already-synced local standalone issue structure, assign it to the corresponding GitHub milestone, and persist `gh_issue_number`/`gh_issue_url` in `dev/map/DEV_MAP.json`.
-   - If milestone cannot be resolved on GitHub, stop and ask user to create/select milestone first.
-   - Keep GitHub issue body strictly issue-focused; do not include local process/protocol instructions.
-   - Do not include boilerplate sections/phrases like `Work issue for ...`, `Source of truth`, or `Notes` in materialized GitHub issues.
-7. Only then run `execute task X`.
-   - Execution gate: parent `StandaloneIssue` must have non-null `gh_issue_number` and `gh_issue_url` in `dev/map/DEV_MAP.json`.
-
-## Multi-task execution flow
-
-Use this when multiple tasks are requested in one execution run.
-
-1. Build execution order from `dev/TASK_EXECUTION_PIPELINE.json`.
-2. Identify overlaps and shared primitives before coding.
-3. Implement shared primitives first.
-4. Execute tasks in dependency order.
-5. Run one integration pass for the whole bundle.
-6. Run a requirement closure check for each executed task against its exact task text.
-7. Apply completion flow only for tasks explicitly confirmed by the user.
-
-## New/edited task update flow
-
-When creating or rewriting a task definition:
-
-1. Inspect real implementation context first (relevant code paths/modules/scripts/tests).
-2. Analyze existing bindings in `dev/map/DEV_MAP.json` and prepare candidate targets for this task:
-   - one or more matching feature chains (`Milestone -> Feature -> Issue`), or
-   - standalone chain (`Milestone -> StandaloneIssue`) if no suitable feature exists.
-3. Ask user to choose binding target; do not write mapping before explicit user choice.
-4. Allocate task ID from `dev/map/DEV_MAP.json`:
-   - read `task_count`,
-   - assign `new_id = task_count + 1` as the new numeric task ID,
-   - set `task_count = new_id` in the same change set.
-   Never allocate by scanning or by "last visible task" in `dev/TASK_LIST.json`.
-5. Update `dev/TASK_LIST.json` as one linear list (append new tasks to the end).
-6. For each new/rewritten task entry in `dev/TASK_LIST.json`, add a mandatory `concrete_steps` field with explicit numbered actions (what to edit/run/validate), not only conceptual statements.
-7. Attach/update the task in `dev/map/DEV_MAP.json` under the user-selected target chain (or create missing parent nodes first):
-   - `Milestone -> Feature -> Issue -> Task`, or
-   - `Milestone -> StandaloneIssue -> Task`.
-8. Add/maintain markers for the task in `dev/TASK_LIST.json` according to selected binding:
-   - `[M*][F*]` for feature path,
-   - `[M*][SI*]` for standalone path.
-9. Update `dev/TASK_EXECUTION_PIPELINE.json` order/overlaps for pending tasks.
-10. Keep this protocol and `.agents/rules/` consistent if process/policy changed.
+- Canonical feature branch naming is `feature/<feature_id>`.
+- Do not create duplicate branches for the same feature id.
+- Default branch model is one branch per feature; issue-level branches require explicit user request.
+- Persist branch linkage on the target feature node in `dev/map/DEV_MAP.json`:
+  - `branch_name = feature/<feature_id>`,
+  - `branch_url = <repo_url>/tree/feature/<feature_id>` or `null` if the repository URL cannot be resolved.
+- Materialization/sync workflows must return deterministic reconciliation output for branch linkage and missing issue mappings.
 
 ## Execution Command Format
 
 Mandatory execution trigger formats are defined in `.agents/rules/execution-triggers.md`.
-Do not use verbatim command templates in this protocol.
