@@ -955,3 +955,141 @@ Canonical per-issue plan block format inside a feature section:
   1. rewrite help/examples for publish commands
   2. rewrite workflows and migration guidance
   3. add regression checks for help/docs consistency
+
+## F11-M1
+
+### Issue Execution Order
+1. `I1-F11-M1` - Define and persist milestone-level feature execution order structure
+2. `I2-F11-M1` - Integrate feature execution order maintenance into planning and sync flows
+3. `I3-F11-M1` - Clean feature execution order on confirm and document milestone planning semantics
+
+### Dependencies
+- [dev/FEATURE_PLANS.md](dev/FEATURE_PLANS.md) — target document that must gain a milestone-scoped feature execution order block near the top of the file
+- [dev/map/DEV_MAP.json](dev/map/DEV_MAP.json) — feature ownership and milestone lineage used to infer where execution-order entries belong
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — `plan feature`, `plan tasks`, and plan-status reconciliation logic that may need new structure awareness
+- [dev/workflow_lib/confirm_commands.py](dev/workflow_lib/confirm_commands.py) — feature confirmation cleanup path that should remove completed feature entries from the execution-order block
+- [dev/map/ISSUE_CREATE_INPUT_SCHEMA.md](dev/map/ISSUE_CREATE_INPUT_SCHEMA.md) and adjacent planning contracts — likely touchpoints if planning artifacts or delta payloads need to carry recommended feature ordering explicitly
+- `.agents/workflows/plan-feature.md`, `.agents/workflows/plan-tasks-for.md`, and `.agents/workflows/confirm.md` — workflows that must describe when execution-order entries are created, maintained, and removed
+- The new block should be planning-owned, not registration-owned; features that are only created but not planned should not appear in the recommended execution order
+
+### Decomposition
+1. Define the milestone-level feature execution order contract:
+   - Add one canonical block near the beginning of `FEATURE_PLANS.md` that stores recommended feature execution order grouped by milestone
+   - Make the block planning-owned so only planned features appear there, not every newly registered feature
+   - Define how feature IDs, titles, and ordering are represented, and how empty milestone sections behave
+   - Expected result: the repository has one authoritative planning artifact for milestone-scoped feature execution order
+
+2. Integrate execution-order maintenance into planning flows:
+   - Update planning commands and any related delta/schema contracts so the new block is inserted or updated when a feature plan is created or revised
+   - Keep ordering deterministic and safe when a feature is replanned, moved within the recommendation order, or added after other planned features already exist
+   - Clarify whether order is user-authored, auto-appended, or partially derived from dependencies at planning time
+   - Expected result: feature planning automatically keeps the milestone execution-order block consistent
+
+3. Clean up execution-order entries during confirmation:
+   - Remove a feature from the milestone execution order when `confirm feature done` succeeds
+   - Keep dry-run versus write-mode cleanup visible in the confirm output contract
+   - Ensure milestone execution-order cleanup stays consistent with other planning/tracker cleanup behavior
+   - Expected result: completed features no longer remain in the recommended execution queue
+
+### Issue/Task Decomposition Assessment
+- Feature scope should split into three sequential issues because structure definition, planning integration, and confirm cleanup are tightly related but need different code paths and validation surfaces
+- Minimal execution order:
+  1. define the global milestone execution-order structure and any supporting schema changes,
+  2. wire that structure into planning/sync flows,
+  3. remove completed features from the order during confirm and document the lifecycle
+- Expected commit-oriented split:
+  - `I1-F11-M1`: 2-3 commits (structure contract, parser/schema support, tests)
+  - `I2-F11-M1`: 3-4 commits (planning insertion/update logic, delta/schema flow updates, tests)
+  - `I3-F11-M1`: 2-3 commits (confirm cleanup, workflow/docs updates, regression checks)
+
+### I1-F11-M1 - Define and persist milestone-level feature execution order structure
+
+#### Dependencies
+- [dev/FEATURE_PLANS.md](dev/FEATURE_PLANS.md) — target file that must gain the new canonical top-level block
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — parsing and lint logic that will need to understand the added structure
+- [dev/map/ISSUE_CREATE_INPUT_SCHEMA.md](dev/map/ISSUE_CREATE_INPUT_SCHEMA.md) and adjacent planning contracts if a formal schema or delta payload is chosen for order metadata
+
+#### Decomposition
+1. Define the top-level milestone execution-order format:
+   - Introduce one canonical block near the top of `FEATURE_PLANS.md`, for example `## Milestone Feature Execution Order` with per-milestone sub-sections
+   - Define row format for ordered features: feature ID, feature title, and stable numbering
+   - Decide whether milestones without planned features are omitted or retained as empty sections
+   - Expected result: the file structure is explicit and parseable before any runtime code is changed
+
+2. Add parser/lint support for the new block:
+   - Extend plan parsing and validation code so the added top-level block does not conflict with feature sections
+   - If planning delta or schema artifacts need to reference feature-order metadata, extend those contracts explicitly
+   - Keep failure behavior deterministic when the block is malformed
+   - Expected result: the new structure is safe to parse, lint, and evolve
+
+3. Add regression coverage for structure handling:
+   - Cover valid execution-order block parsing and malformed-block rejection where appropriate
+   - Ensure existing feature plan sections remain lint-clean when the new global block is present
+   - Expected result: the new top-level structure is stable enough for later planning integration
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 2-3 tasks / commit slices
+  1. define canonical milestone execution-order block format
+  2. update parser/lint/schema handling
+  3. add regression coverage for structure validity
+
+### I2-F11-M1 - Integrate feature execution order maintenance into planning and sync flows
+
+#### Dependencies
+- [I1-F11-M1](#i1-f11-m1--define-and-persist-milestone-level-feature-execution-order-structure) — the top-level structure must exist before planning can maintain it
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — `feature plan-init`, `feature plan-lint`, and planning reconciliation logic
+- `.agents/workflows/plan-feature.md` and `.agents/protocols/feature-planning-protocol.md` — planning-stage ownership for when features enter the recommended execution order
+
+#### Decomposition
+1. Define planning-stage insertion/update semantics:
+   - Make `plan feature <id>` the owning step that inserts a feature into the milestone execution-order block
+   - Define whether new planned features are appended by default or inserted according to explicit dependency reasoning
+   - Keep unplanned-but-created features out of the execution order
+   - Expected result: the planning lifecycle clearly owns the presence of feature entries in the order block
+
+2. Implement planning and sync integration:
+   - Update plan initialization or plan write flows so the milestone order block is created or updated when a feature plan is authored
+   - If planning uses delta files or schema-backed payloads for ordering metadata, update those inputs so recommended order can be carried explicitly
+   - Keep order updates deterministic under repeated planning runs
+   - Expected result: planned features appear in the recommended milestone execution order automatically and consistently
+
+3. Add regression coverage and edge-case handling:
+   - Cover first planned feature in a milestone, later appended feature, and repeat planning of an existing feature
+   - Cover ordering updates when titles change or when replanning should preserve prior order
+   - Expected result: planning integration behaves predictably under real workflow usage
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3-4 tasks / commit slices
+  1. define planning ownership and insertion rules
+  2. implement order maintenance in plan flows
+  3. update delta/schema contracts if needed
+  4. add regression coverage for append/replan cases
+
+### I3-F11-M1 - Clean feature execution order on confirm and document milestone planning semantics
+
+#### Dependencies
+- [I1-F11-M1](#i1-f11-m1--define-and-persist-milestone-level-feature-execution-order-structure) and [I2-F11-M1](#i2-f11-m1--integrate-feature-execution-order-maintenance-into-planning-and-sync-flows) — confirm cleanup should operate on the finalized structure and planning ownership model
+- [dev/workflow_lib/confirm_commands.py](dev/workflow_lib/confirm_commands.py) — feature confirm path that must remove completed features from the order block
+- `.agents/workflows/confirm.md`, `.agents/workflows/plan-feature.md`, and related planning docs — lifecycle guidance that must explain when entries are added and removed
+
+#### Decomposition
+1. Define confirm cleanup behavior:
+   - Remove a feature’s row from the milestone execution-order block only when `confirm feature done` succeeds
+   - Define dry-run preview fields and write-mode cleanup results for the new block alongside existing tracker cleanup output
+   - Expected result: feature completion removes the feature from the recommended execution queue deterministically
+
+2. Implement runtime cleanup:
+   - Extend confirm cleanup helpers so milestone execution-order entries are removed in the same write run as other planning artifacts
+   - Handle empty milestone sections consistently after removal
+   - Expected result: confirm feature keeps the milestone execution-order block pending-only and free of completed features
+
+3. Update workflow docs and regression checks:
+   - Document that planning adds entries and confirm removes them
+   - Cover dry-run and successful cleanup behavior in tests
+   - Expected result: milestone execution-order lifecycle is documented and protected against regressions
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 2-3 tasks / commit slices
+  1. define confirm cleanup contract for the new order block
+  2. implement runtime removal and empty-section handling
+  3. add docs and regression checks for planning/confirm lifecycle
