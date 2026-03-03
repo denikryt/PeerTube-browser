@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-03T03:04:27+02:00",
+  "updated_at": "2026-03-03T03:14:51+02:00",
   "task_count": 169,
   "milestones": [
     {
@@ -1239,8 +1239,8 @@
           "description": "This feature introduces a file-based input mechanism (--input) for CLI creation commands, allowing AI agents to safely generate titles and descriptions in Markdown without risking JSON schema corruption.",
           "status": "Approved",
           "track": "System/Test",
-          "gh_issue_number": null,
-          "gh_issue_url": null,
+          "gh_issue_number": 114,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/114",
           "issues": [
             {
               "id": "I1-F6-M1",
