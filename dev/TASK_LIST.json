@@ -567,6 +567,150 @@
         "Return clear gate error messages with required status.",
         "Add regression checks for blocked non-approved issue paths."
       ]
+    },
+    {
+      "id": "170",
+      "marker": "[M1][F8]",
+      "title": "Audit current feature create and materialize behavior",
+      "problem": "feature-level create and materialize behavior is currently split across entity-first commands and partially hidden feature issue side effects, which makes the migration target ambiguous.",
+      "solution_option": "catalog the existing feature registration flow, feature-level GitHub issue behavior, output payloads, and local state mutations before refactoring routing.",
+      "concrete_steps": [
+        "1. Trace how feature create registers a local feature node and how feature create --github creates or updates the mapped feature-level GitHub issue.",
+        "2. Trace how existing feature materialize and sync code paths update feature issue metadata, branch linkage, and deterministic output payload fields.",
+        "3. Record the current success, retry, and invalid-input behavior so the action-first migration preserves intentional feature-level contracts."
+      ]
+    },
+    {
+      "id": "171",
+      "marker": "[M1][F8]",
+      "title": "Define canonical action-first feature command contract",
+      "problem": "without one explicit feature command contract the runtime refactor can drift between local registration behavior and feature-level issue materialization semantics.",
+      "solution_option": "define the target contract for create feature and materialize feature, including feature issue creation, sync boundaries, failure cases, and idempotency expectations.",
+      "concrete_steps": [
+        "1. Define which responsibilities belong to create feature versus materialize feature, including whether materialize supports create-only, sync-only, or both feature-level issue flows.",
+        "2. Specify deterministic success and failure outputs for missing feature nodes, invalid mode usage, unmapped feature issues, and repeat runs against already registered features.",
+        "3. Keep the contract aligned with milestone linkage, branch metadata persistence, and stable DEV_MAP feature issue mapping fields."
+      ]
+    },
+    {
+      "id": "172",
+      "marker": "[M1][F8]",
+      "title": "Refactor feature routing and handlers to action-first entrypoints",
+      "problem": "the current runtime exposes feature behavior through the old command grammar, which hides feature issue operations and makes the future CLI surface inconsistent.",
+      "solution_option": "move feature registration and feature issue materialization logic behind explicit action-first feature entrypoints while keeping existing deterministic side effects stable.",
+      "concrete_steps": [
+        "1. Introduce action-first parser routing for feature commands and connect it to the existing feature create and materialize implementation paths.",
+        "2. Refactor handler code so feature issue creation and sync run through explicit materialize feature semantics instead of hidden feature-owned behavior.",
+        "3. Preserve idempotent DEV_MAP updates, branch linkage fields, and stable output payloads so repeated runs do not duplicate feature issues or corrupt mappings."
+      ]
+    },
+    {
+      "id": "173",
+      "marker": "[M1][F8]",
+      "title": "Add regression coverage for feature action-first commands",
+      "problem": "feature command routing changes can silently regress feature registration, feature issue sync, or deterministic error handling if they are not locked by tests.",
+      "solution_option": "add regression coverage for feature action-first success and failure paths before the issue-level command refactor builds on them.",
+      "concrete_steps": [
+        "1. Add success tests for create feature local registration and materialize feature feature-level issue create or sync behavior.",
+        "2. Add failure-path tests for invalid feature IDs, invalid feature materialize mode usage, and repeated runs that must remain idempotent.",
+        "3. Verify branch linkage and feature issue mapping fields stay stable across successful and repeated action-first feature runs."
+      ]
+    },
+    {
+      "id": "174",
+      "marker": "[M1][F8]",
+      "title": "Audit current issue create and materialize behavior",
+      "problem": "issue-level command behavior is still routed through feature-scoped commands, so the migration cannot safely proceed until the exact current issue contract is explicit.",
+      "solution_option": "catalog the current local issue registration, issue materialize modes, queue logic, and feature-side checklist or sync side effects before redesigning issue routing.",
+      "concrete_steps": [
+        "1. Trace feature create-issue behavior for local issue registration, optional remote creation, and issue ownership validation.",
+        "2. Trace feature materialize --mode issues-create|issues-sync behavior for mapped and unmapped issues, including --issue-id queue filtering and status gates.",
+        "3. Record which outputs and side effects are truly issue-scoped versus residual feature-scoped behavior that should be removed or made explicit."
+      ]
+    },
+    {
+      "id": "175",
+      "marker": "[M1][F8]",
+      "title": "Define canonical action-first issue command contract",
+      "problem": "without an explicit issue command contract the refactor may preserve hidden feature-owned semantics or introduce ambiguous create versus sync behavior.",
+      "solution_option": "define the target create issue and materialize issue contract for single-issue and feature-owned issue-set flows with deterministic gate and failure behavior.",
+      "concrete_steps": [
+        "1. Define local registration, remote creation, and sync semantics for create issue and materialize issue, including whether sync may create missing mappings.",
+        "2. Specify deterministic failures for invalid owner scope, invalid queue usage, terminal issue status, and missing required mappings or prerequisite state.",
+        "3. Keep milestone assignment, retry policy, and output payload expectations stable across the new action-first issue interface."
+      ]
+    },
+    {
+      "id": "176",
+      "marker": "[M1][F8]",
+      "title": "Refactor issue routing and handlers to action-first entrypoints",
+      "problem": "the current implementation mixes issue runtime behavior into feature-owned commands, which makes the CLI surface harder to discover and maintain.",
+      "solution_option": "move issue registration, queue resolution, and GitHub issue operations behind explicit issue command entrypoints without preserving hidden routing.",
+      "concrete_steps": [
+        "1. Introduce action-first parser routing for issue creation and issue materialization entrypoints with explicit scope validation.",
+        "2. Refactor the current issue handler logic so queue filtering, issue selection, and create or sync behavior run through issue-owned commands.",
+        "3. Preserve milestone handling, deterministic outputs, and any intentional feature-checklist reconciliation behavior while removing hidden feature-only command paths."
+      ]
+    },
+    {
+      "id": "177",
+      "marker": "[M1][F8]",
+      "title": "Add regression coverage for issue action-first commands",
+      "problem": "issue routing changes can regress single-issue and batched issue flows unless the new action-first interface is covered end-to-end.",
+      "solution_option": "add command-level regression coverage for create issue and materialize issue behavior before help and docs are rewritten around the new grammar.",
+      "concrete_steps": [
+        "1. Add success tests for local issue registration and for issue materialization in both single-issue and feature-owned issue-set scope where applicable.",
+        "2. Add failure-path tests for invalid issue ownership, invalid queue usage, blocked statuses, and missing mappings or prerequisite state.",
+        "3. Confirm that deterministic output fields and reconciliation behavior remain stable across the refactored action-first issue command surface."
+      ]
+    },
+    {
+      "id": "178",
+      "marker": "[M1][F8]",
+      "title": "Rewrite CLI help and examples for action-first grammar",
+      "problem": "users currently have to infer the intended command model from implementation details because help output still reflects mixed entity-first and action-first routing.",
+      "solution_option": "rewrite CLI help text and examples so the canonical action-first command grammar is discoverable directly from --help.",
+      "concrete_steps": [
+        "1. Update parser help text for feature and issue create or materialize entrypoints to reflect the new action-first routing and scope ownership.",
+        "2. Replace examples that still rely on entity-first or hidden commands with direct action-first usage examples for feature-level and issue-level flows.",
+        "3. Keep compact help formatting readable while making the canonical command surface obvious without reading runtime internals."
+      ]
+    },
+    {
+      "id": "179",
+      "marker": "[M1][F8]",
+      "title": "Update workflow and protocol docs to the new command surface",
+      "problem": "workflow and protocol documents still describe the old command shape, which will conflict with the refactored runtime unless they are updated in the same migration.",
+      "solution_option": "rewrite workflow and protocol documentation so feature-level and issue-level issue creation and sync align with the new action-first command lifecycle.",
+      "concrete_steps": [
+        "1. Update workflow documents that currently reference entity-first create or materialize commands so they describe the new action-first entrypoints instead.",
+        "2. Align protocol guidance for feature-level issue materialization, issue-level materialization, milestone rules, and branch policy wording with the refactored runtime behavior.",
+        "3. Keep the docs explicit about local registration versus GitHub materialization boundaries so the new lifecycle is discoverable without implementation archaeology."
+      ]
+    },
+    {
+      "id": "180",
+      "marker": "[M1][F8]",
+      "title": "Remove legacy command references from runtime and docs",
+      "problem": "if legacy command references remain in runtime output or documentation, users will see two competing command models and the migration will stay ambiguous.",
+      "solution_option": "replace legacy command references with the canonical action-first grammar across runtime guidance and repository documentation surfaces.",
+      "concrete_steps": [
+        "1. Replace remaining references to feature create, feature create-issue, and legacy feature-owned materialize submodes where the new action-first commands are the intended surface.",
+        "2. Update runtime error messages, examples, and migration-facing text so they point directly to the new canonical commands.",
+        "3. Remove stale documentation references that instruct users to use the legacy entity-first workflow after the new routing is in place."
+      ]
+    },
+    {
+      "id": "181",
+      "marker": "[M1][F8]",
+      "title": "Add consistency checks for help and documentation surfaces",
+      "problem": "help output and documentation can drift apart from runtime behavior during the CLI migration if consistency is not checked explicitly.",
+      "solution_option": "add regression checks that verify help output, workflow docs, and runtime guidance all present one canonical action-first command model.",
+      "concrete_steps": [
+        "1. Add checks that compare help output and documented examples against the canonical action-first command names and scopes.",
+        "2. Add regression coverage for workflow and protocol updates that describe feature-level and issue-level create or materialize behavior.",
+        "3. Verify there are no stale examples or guidance paths that still tell users to rely on hidden or legacy command shapes."
+      ]
     }
   ]
 }

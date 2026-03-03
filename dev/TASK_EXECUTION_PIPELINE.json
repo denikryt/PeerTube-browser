@@ -48,6 +48,18 @@
     {
       "tasks": ["94", "95"],
       "description": "feature checklist sync and issue approved gate"
+    },
+    {
+      "tasks": ["170", "171", "172", "173"],
+      "description": "F8 feature-level action-first command contract and runtime migration"
+    },
+    {
+      "tasks": ["174", "175", "176", "177"],
+      "description": "F8 issue-level action-first command contract and runtime migration"
+    },
+    {
+      "tasks": ["178", "179", "180", "181"],
+      "description": "F8 CLI help, workflow docs, and legacy command cleanup"
     }
   ],
   "functional_blocks": [
@@ -104,6 +116,12 @@
       "tasks": ["94", "95"],
       "scope": "explicit materialize modes, scoped issue materialization, create-only behavior, feature checklist sync, and issue-level approval gate enforcement.",
       "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
+    },
+    {
+      "title": "Block L: Action-first workflow CLI grammar",
+      "tasks": ["170", "171", "172", "173", "174", "175", "176", "177", "178", "179", "180", "181"],
+      "scope": "feature and issue action-first command routing, runtime migration, help output, and workflow documentation alignment.",
+      "outcome": "workflow CLI exposes one explicit action-first grammar for feature and issue create or materialize flows, preserves deterministic tracker and GitHub behavior, and keeps help plus docs aligned with the new command surface."
     }
   ],
   "overlaps": [
@@ -154,6 +172,22 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
+    },
+    {
+      "tasks": ["171", "175"],
+      "description": "feature and issue command contracts must agree on shared create versus materialize semantics and migration boundaries."
+    },
+    {
+      "tasks": ["172", "176"],
+      "description": "feature and issue runtime refactors both touch command routing and shared workflow handler structure."
+    },
+    {
+      "tasks": ["176", "180"],
+      "description": "legacy command references can be removed only after issue runtime entrypoints and migration paths are settled."
+    },
+    {
+      "tasks": ["178", "179"],
+      "description": "CLI help examples and workflow documentation must describe the same action-first command surface."
     }
   ]
 }

@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-03T03:39:34+02:00",
-  "task_count": 169,
+  "updated_at": "2026-03-03T22:07:20+02:00",
+  "task_count": 181,
   "milestones": [
     {
       "id": "M1",
@@ -1410,28 +1410,127 @@
               "id": "I1-F8-M1",
               "title": "Add canonical action-first feature commands for create and materialize flows",
               "description": "Feature-level workflow operations are currently split across `feature create` and hidden materialize behavior. Add canonical action-first feature commands that expose create and materialize flows directly for the feature entity.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "170",
+                  "title": "Audit current feature create and materialize behavior",
+                  "summary": "Trace the existing feature-scoped create and materialize handlers, their local tracker mutations, and their current feature-level GitHub issue side effects.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                },
+                {
+                  "id": "171",
+                  "title": "Define canonical action-first feature command contract",
+                  "summary": "Specify the target behavior split between create feature and materialize feature, including deterministic success and failure contracts for feature-level issue creation and sync.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                },
+                {
+                  "id": "172",
+                  "title": "Refactor feature routing and handlers to action-first entrypoints",
+                  "summary": "Move feature registration and feature-issue materialization behind explicit action-first command paths while preserving branch linkage and stable output payloads.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                },
+                {
+                  "id": "173",
+                  "title": "Add regression coverage for feature action-first commands",
+                  "summary": "Cover create feature and materialize feature success and failure paths so the new command surface stays stable during the CLI grammar migration.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                }
+              ]
             },
             {
               "id": "I2-F8-M1",
               "title": "Add canonical action-first issue commands for create and materialize flows",
               "description": "Issue-level workflow operations are currently routed through feature-scoped command shapes such as `feature create-issue` and feature-owned materialize modes. Introduce canonical action-first issue commands with deterministic create and materialize behavior.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "174",
+                  "title": "Audit current issue create and materialize behavior",
+                  "summary": "Trace feature-owned issue creation and issue materialize modes, including queue handling, gating rules, and feature-issue side effects that must be preserved or replaced.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                },
+                {
+                  "id": "175",
+                  "title": "Define canonical action-first issue command contract",
+                  "summary": "Specify the target create issue and materialize issue semantics for single-issue and feature-owned issue-set flows with deterministic failure behavior.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                },
+                {
+                  "id": "176",
+                  "title": "Refactor issue routing and handlers to action-first entrypoints",
+                  "summary": "Move issue registration, scope resolution, queue validation, and GitHub issue operations behind explicit action-first issue commands without mixing feature-only behavior.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                },
+                {
+                  "id": "177",
+                  "title": "Add regression coverage for issue action-first commands",
+                  "summary": "Cover create issue and materialize issue success and failure paths, including single-issue and feature-owned issue-set behavior.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                }
+              ]
             },
             {
               "id": "I3-F8-M1",
               "title": "Unify workflow CLI routing, help, and docs around action-first grammar",
               "description": "The CLI tree, help text, and workflow docs still describe mixed entity-first and action-first patterns. Align routing, help, and documentation so the new command grammar is discoverable and internally consistent.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "178",
+                  "title": "Rewrite CLI help and examples for action-first grammar",
+                  "summary": "Update parser help text and examples so create and materialize commands are discoverable directly through the new action-first command model.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                },
+                {
+                  "id": "179",
+                  "title": "Update workflow and protocol docs to the new command surface",
+                  "summary": "Align workflow and protocol documentation with the action-first feature and issue command lifecycle, including feature-level issue creation and sync expectations.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                },
+                {
+                  "id": "180",
+                  "title": "Remove legacy command references from runtime and docs",
+                  "summary": "Replace entity-first and hidden command references with the canonical action-first grammar across runtime messages and repository documentation.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                },
+                {
+                  "id": "181",
+                  "title": "Add consistency checks for help and documentation surfaces",
+                  "summary": "Add regression checks that keep help output, workflow docs, and runtime guidance aligned on one canonical command model.",
+                  "status": "Planned",
+                  "date": "2026-03-03",
+                  "time": "22:07:20"
+                }
+              ]
             }
           ],
           "branch_name": null,
