@@ -18,6 +18,8 @@ If any procedural detail differs across docs, the corresponding `.agents/workflo
 - `plan tasks for feature <id>` and `plan tasks for issue <issue_id>` are **Enforcement/Write** phases. They are the sole owners of active synchronization across `dev/TASK_LIST.json` and `dev/TASK_EXECUTION_PIPELINE.json`.
 - `plan tasks for issue <issue_id>` is allowed only after a valid issue-plan block exists in `dev/FEATURE_PLANS.md` that meets the quality requirements defined in this protocol.
 - A plan must define the implementation direction; task decomposition is a separate subsequent step.
+- Agents may use markdown draft files for multi-line create-command input; the canonical draft structure is defined in `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md`.
+- Recommended temporary storage for agent-generated drafts is `tmp/workflow/`.
 
 ## Section 1: Planning Input Contract
 

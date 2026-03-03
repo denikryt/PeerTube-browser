@@ -38,6 +38,8 @@ Formulate the issue-level implementation plan following the **Planning Input Con
 
 Create numbered top-level steps with concrete sub-points (what to do, input/output contracts, expected result).
 
+If agent-generated draft files are used for create commands, keep them in `tmp/workflow/` and use `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md` as the only schema reference.
+
 Example structure:
 ```
 1. Update policy in AGENTS.md

@@ -16,12 +16,10 @@ def tmp_repo(tmp_path):
     
     # Create directory structure
     (repo_dir / "dev/map").mkdir(parents=True)
-    (repo_dir / "dev/workflow_lib").mkdir(parents=True)
     
     # Copy workflow CLI files
     shutil.copy(ROOT_DIR / "dev/workflow", repo_dir / "dev/workflow")
-    for lib_file in (ROOT_DIR / "dev/workflow_lib").glob("*.py"):
-        shutil.copy(lib_file, repo_dir / "dev/workflow_lib/")
+    shutil.copytree(ROOT_DIR / "dev/workflow_lib", repo_dir / "dev/workflow_lib", dirs_exist_ok=True)
     
     (repo_dir / "dev/workflow").chmod(0o755)
     
