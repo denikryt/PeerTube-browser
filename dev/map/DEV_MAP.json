@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-02-26T19:37:29+02:00",
-  "task_count": 160,
+  "updated_at": "2026-03-03T03:39:34+02:00",
+  "task_count": 169,
   "milestones": [
     {
       "id": "M1",
@@ -1225,6 +1225,210 @@
               "title": "Optional canonical ID simplification after ownership decoupling",
               "description": "Optionally simplify feature/issue canonical IDs after ownership is fully field-driven and no longer encoded in IDs.",
               "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
+        },
+        {
+          "id": "F6-M1",
+          "title": "Parse AI-generated markdown templates for issue/feature creation",
+          "description": "This feature introduces a file-based input mechanism (--input) for CLI creation commands, allowing AI agents to safely generate titles and descriptions in Markdown without risking JSON schema corruption.",
+          "status": "Done",
+          "track": "System/Test",
+          "gh_issue_number": 114,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/114",
+          "issues": [
+            {
+              "id": "I1-F6-M1",
+              "title": "Implement Markdown template parser for CLI inputs",
+              "description": "CLI commands currently cannot accept multi-line text blocks safely. Implement a parser that extracts # title and # description sections from a provided Markdown draft file.",
+              "status": "Done",
+              "gh_issue_number": 111,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/111",
+              "tasks": [
+                {
+                  "id": "161",
+                  "title": "Add markdown parser module and heading extraction flow",
+                  "summary": "Create the markdown parser module and implement deterministic title/description extraction from the first two headings in a UTF-8 template file.",
+                  "status": "Done",
+                  "date": "2026-03-03",
+                  "time": "02:06:35"
+                },
+                {
+                  "id": "162",
+                  "title": "Implement parser validation and actionable error handling",
+                  "summary": "Add missing-file, missing-heading, empty-title, and read-error handling with WorkflowCommandError exit-code-4 guidance for invalid draft inputs.",
+                  "status": "Done",
+                  "date": "2026-03-03",
+                  "time": "02:06:35"
+                },
+                {
+                  "id": "163",
+                  "title": "Cover parser success and failure paths with regression tests",
+                  "summary": "Add tests for flexible heading levels, empty descriptions, invalid templates, and file-not-found behavior so parser changes stay deterministic.",
+                  "status": "Done",
+                  "date": "2026-03-03",
+                  "time": "02:06:35"
+                }
+              ]
+            },
+            {
+              "id": "I2-F6-M1",
+              "title": "Wire --input argument to create feature and create issue commands",
+              "description": "The create commands only accept CLI string flags. Extend them to accept an optional --input file path, parse it, and use the extracted values instead of flags.",
+              "status": "Done",
+              "gh_issue_number": 112,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/112",
+              "tasks": [
+                {
+                  "id": "164",
+                  "title": "Add --input argument support to create feature and create issue parsers",
+                  "summary": "Extend create feature and create issue CLI parsers with optional --input handling and enforce one input mode between draft-file and title/description flags.",
+                  "status": "Done",
+                  "date": "2026-03-03",
+                  "time": "02:06:35"
+                },
+                {
+                  "id": "165",
+                  "title": "Wire parsed draft values into create command handlers",
+                  "summary": "Update create handlers to call the markdown parser, merge parsed title/description into existing command flow, and preserve backward-compatible flag mode.",
+                  "status": "Done",
+                  "date": "2026-03-03",
+                  "time": "02:06:35"
+                },
+                {
+                  "id": "166",
+                  "title": "Add regression coverage for draft-input CLI behavior",
+                  "summary": "Add command-level tests for successful draft parsing, parser error propagation, conflicting input modes, and unchanged behavior when --input is absent.",
+                  "status": "Done",
+                  "date": "2026-03-03",
+                  "time": "02:06:35"
+                }
+              ]
+            },
+            {
+              "id": "I3-F6-M1",
+              "title": "Update agent workflows to use draft files for CLI commands",
+              "description": "The current AI workflows generate planning data in memory. Update the agent workflow files (e.g. plan-feature, plan-issue) to explicitly write intellectual output to a temporary draft file and pass it to the CLI commands.",
+              "status": "Done",
+              "gh_issue_number": 113,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/113",
+              "tasks": [
+                {
+                  "id": "167",
+                  "title": "Define canonical markdown draft schema for feature and issue creation",
+                  "summary": "Create ISSUE_CREATE_INPUT_SCHEMA documentation that defines required headings, optional sections, examples, and recovery guidance for agent-generated draft files.",
+                  "status": "Done",
+                  "date": "2026-03-03",
+                  "time": "02:06:35"
+                },
+                {
+                  "id": "168",
+                  "title": "Update planning protocol for optional draft-file agent output",
+                  "summary": "Document the markdown draft workflow, tmp/workflow storage convention, and parser-based CLI usage in the feature planning protocol without changing human-only flow requirements.",
+                  "status": "Done",
+                  "date": "2026-03-03",
+                  "time": "02:06:35"
+                },
+                {
+                  "id": "169",
+                  "title": "Update agent workflows to reference draft-file planning flow",
+                  "summary": "Revise plan-feature and plan-issue workflow docs to reference the schema file and optional draft-file command path while keeping schema rules centralized.",
+                  "status": "Done",
+                  "date": "2026-03-03",
+                  "time": "02:06:35"
+                }
+              ]
+            }
+          ],
+          "branch_name": "feature/F6-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F6-M1"
+        },
+        {
+          "id": "F7-M1",
+          "title": "Refactor issue planning lifecycle with validation gates and command structure",
+          "description": "This feature refines the issue planning workflow by introducing explicit validation gates (plan issue → validate issue) and consolidating CLI command structure for clarity and consistency.",
+          "status": "Pending",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "branch_name": null,
+          "branch_url": null,
+          "issues": [
+            {
+              "id": "I1-F7-M1",
+              "title": "Implement validate issue command with Pending→Planned transition",
+              "description": "Add explicit CLI command `validate issue` that reads issue plan from FEATURE_PLANS.md, validates quality (Gate 0), and transitions status Pending→Planned in DEV_MAP when valid.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F7-M1",
+              "title": "Wire --input argument to plan issue command for markdown draft parsing",
+              "description": "Extend `plan issue` CLI to accept optional `--input <draft_file>` argument, parse Markdown template, extract title/description, and insert into FEATURE_PLANS.md issue-plan block.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F7-M1",
+              "title": "Rename feature.plan-issue command to plan issue in CLI routing",
+              "description": "Refactor CLI command registration to expose `plan issue` instead of legacy `feature plan-issue` naming, updating all subcommand routing and help text for consistency.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I4-F7-M1",
+              "title": "Update task-execution-protocol and workflow docs for new planning lifecycle",
+              "description": "Update canonical protocol/workflow documentation to reflect Pending→Planned→Tasked lifecycle with explicit validate gate, rename plan issue command, and document validation requirements.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ]
+        },
+        {
+          "id": "F8-M1",
+          "title": "Refactor workflow CLI into explicit action and entity command grammar",
+          "description": "This feature reorganizes workflow CLI commands around explicit action-first entity scopes such as create feature, create issue, materialize feature, and materialize issue, while clarifying create and sync semantics, preserving deterministic tracker behavior, and aligning help and workflow documentation with the new command model.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F8-M1",
+              "title": "Add canonical action-first feature commands for create and materialize flows",
+              "description": "Feature-level workflow operations are currently split across `feature create` and hidden materialize behavior. Add canonical action-first feature commands that expose create and materialize flows directly for the feature entity.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F8-M1",
+              "title": "Add canonical action-first issue commands for create and materialize flows",
+              "description": "Issue-level workflow operations are currently routed through feature-scoped command shapes such as `feature create-issue` and feature-owned materialize modes. Introduce canonical action-first issue commands with deterministic create and materialize behavior.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F8-M1",
+              "title": "Unify workflow CLI routing, help, and docs around action-first grammar",
+              "description": "The CLI tree, help text, and workflow docs still describe mixed entity-first and action-first patterns. Align routing, help, and documentation so the new command grammar is discoverable and internally consistent.",
+              "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []

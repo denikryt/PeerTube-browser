@@ -1,0 +1,630 @@
+{
+  "version": "1.0",
+  "lastUpdated": "2026-03-02",
+  "services": [
+    {
+      "id": "frontend",
+      "name": "Frontend (Browser)",
+      "description": "Vue.js application running in user's browser",
+      "ports": ["3000 (dev)", "80/443 (prod)"],
+      "language": "TypeScript/JavaScript",
+      "color": "#4CAF50",
+      "endpoints": [
+        {
+          "id": "fe_video_page",
+          "path": "/video/:uuid",
+          "method": "GET",
+          "description": "Load video page with player and recommendations",
+          "sendsTo": ["client_fetch_similar", "client_user_profile"],
+          "input": {
+            "uuid": "string (video UUID from URL)",
+            "host": "string (instance domain)"
+          },
+          "output": {
+            "type": "HTML/JS page with embedded API calls"
+          },
+          "steps": [
+            "1. Render video player",
+            "2. Call /recommendations to get similar videos",
+            "3. Display user profile (likes)"
+          ]
+        },
+        {
+          "id": "fe_like_action",
+          "path": "JavaScript: sendUserAction()",
+          "method": "INTERNAL",
+          "description": "User clicks like/dislike button",
+          "sendsTo": ["client_user_action"],
+          "input": {
+            "action": "'like' | 'dislike' | 'undo_like'",
+            "uuid": "string",
+            "host": "string"
+          },
+          "output": {
+            "success": "boolean",
+            "likesUpdated": "array"
+          },
+          "steps": [
+            "1. User clicks like button",
+            "2. Call POST /api/user-action with action type",
+            "3. Update local UI",
+            "4. Persist to localStorage"
+          ]
+        },
+        {
+          "id": "fe_fetch_similar",
+          "path": "JavaScript: fetchSimilarVideosPayload()",
+          "method": "INTERNAL",
+          "description": "Get similar/recommended videos",
+          "sendsTo": ["client_recommendations"],
+          "input": {
+            "likes": "array of {video_uuid, instance_domain}",
+            "userId": "string (optional)"
+          },
+          "output": {
+            "rows": "VideoRow[]",
+            "total": "number"
+          },
+          "steps": [
+            "1. Read user's likes from localStorage",
+            "2. Call POST /recommendations with likes",
+            "3. Render video cards"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "client",
+      "name": "Client Backend",
+      "description": "Python HTTP server handling client-side logic and Engine bridge",
+      "ports": ["7172 (default)"],
+      "language": "Python",
+      "color": "#2196F3",
+      "dependencies": ["engine"],
+      "endpoints": [
+        {
+          "id": "client_health",
+          "path": "/api/health",
+          "method": "GET",
+          "description": "Health check endpoint",
+          "respondsTo": ["fe_*"],
+          "response": {
+            "status": 200,
+            "ok": true,
+            "service": "client-backend",
+            "engine_ingest_base": "string",
+            "publish_mode": "string"
+          },
+          "steps": [
+            "1. Return service status and configuration"
+          ]
+        },
+        {
+          "id": "client_user_action",
+          "path": "/api/user-action",
+          "method": "POST",
+          "description": "Record user like/dislike/undo_like action",
+          "respondsTo": ["fe_like_action"],
+          "sendsTo": ["engine_resolve", "engine_ingest"],
+          "input": {
+            "action": "'like' | 'dislike' | 'undo_like' (required)",
+            "video_id": "string (optional)",
+            "uuid": "string (optional)",
+            "host": "string (optional)",
+            "user_id": "string (optional)"
+          },
+          "response": {
+            "status": 200,
+            "ok": true,
+            "bridge_ok": true,
+            "user_id": "string",
+            "updatedAt": "number (ms)"
+          },
+          "steps": [
+            "1. Validate action type",
+            "2. Resolve video via Engine /internal/videos/resolve",
+            "3. Get canonical video_id",
+            "4. Record in users.db",
+            "5. Build event payload",
+            "6. Publish to Engine /internal/events/ingest",
+            "7. Return success"
+          ]
+        },
+        {
+          "id": "client_user_profile",
+          "path": "/api/user-profile",
+          "method": "GET",
+          "description": "Fetch user profile with recent likes",
+          "respondsTo": ["fe_fetch_similar"],
+          "input": {
+            "user_id": "string (query param, optional)"
+          },
+          "response": {
+            "user_id": "string",
+            "likes": "VideoRow[]",
+            "updatedAt": "number (ms)"
+          },
+          "steps": [
+            "1. Generate or use provided user_id",
+            "2. Fetch from users.db (video_id + instance_domain)",
+            "3. Call Engine /internal/videos/metadata for full info",
+            "4. Return enriched VideoRow objects"
+          ]
+        },
+        {
+          "id": "client_user_profile_likes_get",
+          "path": "/api/user-profile/likes",
+          "method": "GET",
+          "description": "Fetch user likes (simple)",
+          "respondsTo": ["fe_*"],
+          "input": {
+            "user_id": "string (query param)"
+          },
+          "response": {
+            "user_id": "string",
+            "likes": "VideoRow[]",
+            "updatedAt": "number (ms)"
+          },
+          "steps": [
+            "1. Get user_id from params",
+            "2. Fetch recent likes from users.db",
+            "3. Call Engine /internal/videos/metadata",
+            "4. Return VideoRow objects"
+          ]
+        },
+        {
+          "id": "client_user_profile_likes_post",
+          "path": "/api/user-profile/likes",
+          "method": "POST",
+          "description": "Fetch metadata for client-provided likes",
+          "respondsTo": ["fe_*"],
+          "sendsTo": ["engine_resolve", "engine_metadata"],
+          "input": {
+            "likes": "array of {uuid, host}"
+          },
+          "response": {
+            "likes": "VideoRow[]",
+            "updatedAt": "number (ms)"
+          },
+          "steps": [
+            "1. Parse incoming likes (uuid + host)",
+            "2. Resolve each to canonical video_id via Engine",
+            "3. Batch fetch metadata from Engine",
+            "4. Return full VideoRow objects"
+          ]
+        },
+        {
+          "id": "client_user_profile_reset",
+          "path": "/api/user-profile/reset",
+          "method": "POST",
+          "description": "Clear user's likes",
+          "input": {
+            "user_id": "string (optional)"
+          },
+          "response": {
+            "user_id": "string",
+            "likes": "[]",
+            "updatedAt": "number (ms)"
+          },
+          "steps": [
+            "1. Get user_id",
+            "2. Clear all likes from users.db",
+            "3. Return empty profile"
+          ]
+        },
+        {
+          "id": "client_recommendations",
+          "path": "/recommendations",
+          "method": "POST",
+          "description": "Proxy to Engine recommendations (with validation)",
+          "respondsTo": ["fe_fetch_similar"],
+          "sendsTo": ["engine_recommendations"],
+          "input": {
+            "likes": "array of {uuid, host}",
+            "user_id": "string (optional)",
+            "mode": "string (optional)"
+          },
+          "response": {
+            "rows": "VideoRow[]",
+            "total": "number",
+            "count": "number"
+          },
+          "rateLimit": "90 requests per 60 seconds per IP",
+          "steps": [
+            "1. Validate incoming request",
+            "2. Sanitize query params and body",
+            "3. Forward to Engine /recommendations",
+            "4. Return Engine response"
+          ]
+        },
+        {
+          "id": "client_similar",
+          "path": "/videos/similar",
+          "method": "POST",
+          "description": "Proxy to Engine similar videos",
+          "respondsTo": ["fe_*"],
+          "sendsTo": ["engine_similar"],
+          "input": {
+            "likes": "array"
+          },
+          "response": {
+            "rows": "VideoRow[]"
+          },
+          "steps": [
+            "1. Validate request",
+            "2. Forward to Engine",
+            "3. Return response"
+          ]
+        },
+        {
+          "id": "client_api_video",
+          "path": "/api/video",
+          "method": "GET",
+          "description": "Proxy to Engine video metadata",
+          "respondsTo": ["fe_*"],
+          "sendsTo": ["engine_api_video"],
+          "input": {
+            "id": "string",
+            "host": "string"
+          },
+          "steps": [
+            "1. Validate params",
+            "2. Forward GET to Engine",
+            "3. Return metadata"
+          ]
+        },
+        {
+          "id": "client_api_channels",
+          "path": "/api/channels",
+          "method": "GET",
+          "description": "Proxy to Engine channels listing",
+          "respondsTo": ["fe_*"],
+          "sendsTo": ["engine_api_channels"],
+          "input": {
+            "limit": "number",
+            "offset": "number",
+            "q": "string (search)"
+          },
+          "steps": [
+            "1. Sanitize query params",
+            "2. Forward to Engine",
+            "3. Return channels list"
+          ]
+        },
+        {
+          "id": "client_events_publish",
+          "path": "/client/events/publish",
+          "method": "POST",
+          "description": "Publish arbitrary events to Engine",
+          "sendsTo": ["engine_ingest"],
+          "input": {
+            "event_type": "string",
+            "actor_id": "string",
+            "object": "object"
+          },
+          "steps": [
+            "1. Validate event structure",
+            "2. Send to Engine /internal/events/ingest",
+            "3. Return result"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "engine",
+      "name": "Engine Backend",
+      "description": "Python server with ML recommendations, embeddings, and event ingestion",
+      "ports": ["7070 (default)"],
+      "language": "Python",
+      "color": "#FF9800",
+      "endpoints": [
+        {
+          "id": "engine_health",
+          "path": "/api/health",
+          "method": "GET",
+          "description": "Health check with stats",
+          "response": {
+            "ok": true,
+            "total": "number of videos",
+            "embeddingDim": "number"
+          }
+        },
+        {
+          "id": "engine_api_video",
+          "path": "/api/video",
+          "method": "GET",
+          "description": "Fetch single video metadata",
+          "input": {
+            "id": "string (required)",
+            "host": "string (optional)"
+          },
+          "output": "VideoRow (full metadata)"
+        },
+        {
+          "id": "engine_api_channels",
+          "path": "/api/channels",
+          "method": "GET",
+          "description": "List channels with advanced filtering",
+          "input": {
+            "limit": "1-500 (default 20)",
+            "offset": "number",
+            "q": "string (search query)",
+            "instance": "string (filter)",
+            "minFollowers": "number",
+            "minVideos": "number",
+            "sort": "'followers'|'name'|'instance'|'videos'",
+            "dir": "'asc'|'desc'"
+          },
+          "output": {
+            "rows": "ChannelRow[]",
+            "total": "number"
+          }
+        },
+        {
+          "id": "engine_recommendations",
+          "path": "/recommendations",
+          "method": "POST",
+          "description": "Generate recommendation feed with optional likes",
+          "input": {
+            "likes": "array of {video_uuid, instance_domain}",
+            "user_id": "string (optional)",
+            "mode": "'home'|'upnext'",
+            "limit": "number",
+            "debug": "boolean"
+          },
+          "output": {
+            "rows": "VideoRow[]",
+            "total": "number",
+            "count": "number",
+            "seed": "object (if debug)",
+            "debug": "object (if requested)"
+          },
+          "steps": [
+            "1. Parse likes from request",
+            "2. If likes present: build embedding from seed videos",
+            "3. Search similar videos in ANN index",
+            "4. Score and rank candidates",
+            "5. Apply moderation filters",
+            "6. Return ordered results"
+          ]
+        },
+        {
+          "id": "engine_similar",
+          "path": "/videos/similar",
+          "method": "POST",
+          "description": "Extended similar videos endpoint",
+          "input": {
+            "likes": "array"
+          },
+          "output": {
+            "rows": "VideoRow[]"
+          }
+        },
+        {
+          "id": "engine_similar_by_id",
+          "path": "/videos/{id}/similar",
+          "method": "GET",
+          "description": "Get similar videos by video ID",
+          "input": {
+            "id": "string (URL path)",
+            "host": "string (query)",
+            "limit": "number"
+          },
+          "output": {
+            "rows": "VideoRow[]"
+          }
+        },
+        {
+          "id": "engine_resolve",
+          "path": "/internal/videos/resolve",
+          "method": "POST",
+          "isInternal": true,
+          "description": "Resolve canonical video identity by video_id/uuid+host",
+          "access": "Client Backend only",
+          "input": {
+            "video_id": "string (optional)",
+            "host": "string (optional)",
+            "uuid": "string (optional)"
+          },
+          "output": {
+            "ok": true,
+            "video": {
+              "video_id": "string (canonical ID in Engine DB)",
+              "video_uuid": "string (PeerTube UUID)",
+              "instance_domain": "string",
+              "channel_id": "string",
+              "title": "string"
+            }
+          },
+          "steps": [
+            "1. Accept video_id OR uuid+host",
+            "2. Query embeddings.db for canonical record",
+            "3. Return canonical identity"
+          ]
+        },
+        {
+          "id": "engine_metadata",
+          "path": "/internal/videos/metadata",
+          "method": "POST",
+          "isInternal": true,
+          "description": "Batch fetch metadata by canonical (video_id, instance_domain)",
+          "access": "Client Backend only",
+          "input": {
+            "entries": "array of {video_id, instance_domain}"
+          },
+          "output": {
+            "ok": true,
+            "count": "number",
+            "rows": "VideoRow[]"
+          },
+          "steps": [
+            "1. Accept list of (video_id, instance_domain) tuples",
+            "2. Batch query metadata.db",
+            "3. Merge with live instance data",
+            "4. Return full VideoRow objects"
+          ]
+        },
+        {
+          "id": "engine_ingest",
+          "path": "/internal/events/ingest",
+          "method": "POST",
+          "isInternal": true,
+          "description": "Ingest normalized interaction events (Like, UndoLike, View)",
+          "access": "Client Backend only",
+          "input": {
+            "event_id": "string (unique)",
+            "event_type": "'Like'|'UndoLike'|'View'",
+            "actor_id": "string (user ID)",
+            "object": {
+              "video_uuid": "string",
+              "instance_domain": "string",
+              "canonical_url": "string"
+            },
+            "published_at": "number (ms)",
+            "source_instance": "string"
+          },
+          "output": {
+            "ok": true,
+            "count": "number",
+            "ingested": "number",
+            "duplicates": "number",
+            "results": "array of {event_id, ok, duplicate}"
+          },
+          "steps": [
+            "1. Validate event fields",
+            "2. Check for duplicates (idempotent)",
+            "3. Ingest into interaction_events.db",
+            "4. Update user embedding",
+            "5. Return ingestion stats"
+          ]
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "like_flow",
+      "name": "User Likes a Video",
+      "steps": [
+        {
+          "service": "Frontend",
+          "action": "User clicks like button on video page"
+        },
+        {
+          "service": "Frontend->Client",
+          "action": "POST /api/user-action with uuid+host",
+          "endpoint": "client_user_action"
+        },
+        {
+          "service": "Client->Engine",
+          "action": "POST /internal/videos/resolve to get video_id",
+          "endpoint": "engine_resolve"
+        },
+        {
+          "service": "Client->DB",
+          "action": "Record like in users.db (canonical video_id)",
+          "details": "{video_id, instance_domain, user_id, timestamp}"
+        },
+        {
+          "service": "Client->Engine",
+          "action": "POST /internal/events/ingest with Like event",
+          "endpoint": "engine_ingest"
+        },
+        {
+          "service": "Engine->DB",
+          "action": "Store event in interaction_events.db",
+          "details": "Idempotent storage"
+        },
+        {
+          "service": "Frontend",
+          "action": "Update UI, show success"
+        }
+      ]
+    },
+    {
+      "id": "recommendations_flow",
+      "name": "Get Recommendations for User",
+      "steps": [
+        {
+          "service": "Frontend",
+          "action": "Load video page with user context"
+        },
+        {
+          "service": "Frontend->Client",
+          "action": "POST /recommendations with user likes",
+          "endpoint": "client_recommendations"
+        },
+        {
+          "service": "Client->Engine",
+          "action": "Forward POST /recommendations",
+          "endpoint": "engine_recommendations"
+        },
+        {
+          "service": "Engine",
+          "action": "Build embedding from seed videos",
+          "details": "Average embeddings of liked videos"
+        },
+        {
+          "service": "Engine",
+          "action": "Search ANN index for similar videos",
+          "details": "Fast similarity lookup"
+        },
+        {
+          "service": "Engine",
+          "action": "Score, rank, and apply filters",
+          "details": "Moderation, deduplication, diversification"
+        },
+        {
+          "service": "Engine->Frontend",
+          "action": "Return VideoRow array",
+          "endpoint": "engine_recommendations"
+        },
+        {
+          "service": "Frontend",
+          "action": "Render recommendation feed"
+        }
+      ]
+    },
+    {
+      "id": "profile_view_flow",
+      "name": "View User Profile with Likes",
+      "steps": [
+        {
+          "service": "Frontend",
+          "action": "Load profile page"
+        },
+        {
+          "service": "Frontend->Client",
+          "action": "GET /api/user-profile",
+          "endpoint": "client_user_profile"
+        },
+        {
+          "service": "Client->DB",
+          "action": "Fetch recent likes from users.db",
+          "details": "Returns {video_id, instance_domain, user_id}"
+        },
+        {
+          "service": "Client->Engine",
+          "action": "POST /internal/videos/metadata with canonical IDs",
+          "endpoint": "engine_metadata"
+        },
+        {
+          "service": "Engine->DB",
+          "action": "Batch fetch from metadata.db + live instance data"
+        },
+        {
+          "service": "Engine->Client",
+          "action": "Return full VideoRow objects"
+        },
+        {
+          "service": "Client->Frontend",
+          "action": "Return enriched likes array"
+        },
+        {
+          "service": "Frontend",
+          "action": "Render profile with video cards"
+        }
+      ]
+    }
+  ]
+}

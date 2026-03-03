@@ -23,6 +23,7 @@ from .github_adapter import (
     gh_issue_list_sub_issue_numbers,
     resolve_github_repository,
 )
+from .markdown_parser import parse_feature_issue_template
 from .output import emit_json
 from .sync_delta import load_sync_delta, resolve_sync_delta_references
 from .tracker_store import load_pipeline_payload, load_task_list_payload, write_pipeline_payload, write_task_list_payload
@@ -85,10 +86,32 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
         "--description",
         help="Optional concise feature description (used for feature issue body sync).",
     )
+    create_parser.add_argument(
+        "--input",
+        help="Optional markdown draft file used instead of --title/--description.",
+    )
     create_parser.add_argument("--track", default="System/Test", help="Track label for feature node.")
     create_parser.add_argument("--write", action="store_true", help="Write local tracker updates.")
     create_parser.add_argument("--github", action="store_true", help="Enable GitHub sync wiring.")
     create_parser.set_defaults(handler=_handle_feature_create)
+
+    create_issue_parser = feature_subparsers.add_parser(
+        "create-issue",
+        help="Create or validate one issue registration contract.",
+    )
+    create_issue_parser.add_argument("--id", required=True, help="Issue ID (for example, I1-F1-M1).")
+    create_issue_parser.add_argument("--title", help="Issue title when creating a new node.")
+    create_issue_parser.add_argument(
+        "--description",
+        help="Optional concise issue description (used for issue GitHub body sync).",
+    )
+    create_issue_parser.add_argument(
+        "--input",
+        help="Optional markdown draft file used instead of --title/--description.",
+    )
+    create_issue_parser.add_argument("--write", action="store_true", help="Write local tracker updates.")
+    create_issue_parser.add_argument("--github", action="store_true", help="Enable GitHub sync wiring.")
+    create_issue_parser.set_defaults(handler=_handle_create_issue)
 
     plan_init_parser = feature_subparsers.add_parser(
         "plan-init",
@@ -119,56 +142,80 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     materialize_parser = feature_subparsers.add_parser(
         "materialize",
         help="Materialize local feature issues to GitHub and apply canonical branch policy.",
+        description=(
+            "Materialize one feature in explicit modes.\n"
+            "  bootstrap: set or verify canonical feature branch linkage only; no child issue materialization.\n"
+            "  issues-create: create GitHub issues only for selected local issues that are not mapped yet.\n"
+            "  issues-sync: create missing issue mappings and update already mapped GitHub issues for the selected scope."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  python3 dev/workflow feature materialize --id F6-M1 --mode bootstrap --write\n"
+            "  python3 dev/workflow feature materialize --id F6-M1 --mode issues-create --write --github\n"
+            "  python3 dev/workflow feature materialize --id F6-M1 --mode issues-sync --issue-id I1-F6-M1 --write --github"
+        ),
     )
-    materialize_parser.add_argument("--id", required=True, help="Feature ID.")
+    materialize_parser.add_argument("--id", required=True, help="Feature ID to materialize.")
     materialize_parser.add_argument(
         "--mode",
         required=True,
         choices=["bootstrap", "issues-create", "issues-sync"],
-        help="Materialize mode contract.",
+        help=(
+            "Select materialize behavior.\n"
+            "bootstrap: branch linkage only; no issue materialization.\n"
+            "issues-create: create GitHub issues only for unmapped selected issues.\n"
+            "issues-sync: update mapped issues and create any missing selected issue mappings."
+        ),
     )
     materialize_parser.add_argument(
         "--issue-id",
         action="append",
         default=[],
-        help="Optional repeatable child issue selector (queue order is preserved).",
+        help=(
+            "Optional repeatable child issue selector. Queue order is preserved.\n"
+            "Allowed only in issues-create and issues-sync modes."
+        ),
     )
-    materialize_parser.add_argument("--write", action="store_true", help="Persist tracker updates and side effects.")
+    materialize_parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Persist branch linkage, issue mappings, and other write-mode side effects.",
+    )
     materialize_parser.add_argument(
         "--github",
         dest="github",
         action="store_true",
         default=True,
-        help="Create or update mapped GitHub issues.",
+        help="Enable GitHub create or update calls. Default: enabled.",
     )
     materialize_parser.add_argument(
         "--no-github",
         dest="github",
         action="store_false",
-        help="Skip GitHub issue create/update calls.",
+        help="Disable GitHub create or update calls and keep the run local/dry for remote issue changes.",
     )
     materialize_parser.add_argument(
         "--pause-seconds",
         type=float,
         default=1.0,
-        help="Pause between GitHub materialize requests in write+github mode.",
+        help="Pause between consecutive GitHub requests in write plus github mode. Default: 1.0.",
     )
     materialize_parser.add_argument(
         "--max-retries",
         type=int,
         default=4,
-        help="Max retry attempts for transient GitHub request failures.",
+        help="Maximum retry attempts for transient GitHub request failures. Default: 4.",
     )
     materialize_parser.add_argument(
         "--request-timeout",
         type=float,
         default=20.0,
-        help="Per-request GitHub CLI timeout in seconds for materialize write mode.",
+        help="Per-request GitHub CLI timeout in seconds for write plus github mode. Default: 20.0.",
     )
     materialize_parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Emit full materialize diagnostics (large per-item lists); default output is compact.",
+        help="Emit full materialize diagnostics, including large per-issue lists. Default output is compact.",
     )
     materialize_parser.set_defaults(handler=_handle_feature_materialize)
 
@@ -304,7 +351,9 @@ def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
     feature_ref = _find_feature(dev_map, feature_id)
     feature_exists = feature_ref is not None
     wrote_changes = False
-    requested_feature_description = str(getattr(args, "description", "") or "").strip()
+    resolved_input = _resolve_markdown_command_input(args, command_label="feature create")
+    requested_feature_title = resolved_input["title"]
+    requested_feature_description = resolved_input["description"]
     if feature_ref is not None:
         existing_milestone = feature_ref["milestone"]["id"]
         if existing_milestone != milestone_id:
@@ -324,7 +373,7 @@ def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
     else:
         feature_node = _build_feature_node(
             feature_id=feature_id,
-            title=(args.title or f"Feature {feature_id}"),
+            title=(requested_feature_title or f"Feature {feature_id}"),
             description=requested_feature_description,
             track=args.track,
         )
@@ -356,7 +405,7 @@ def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
             github_issue = {
                 "action": "would-update" if existing_issue_number is not None else "would-create",
                 "gh_issue_number": existing_issue_number,
-                "gh_issue_url": str(feature_node.get("gh_issue_url", "")).strip() or None,
+                "gh_issue_url": _optional_text(feature_node.get("gh_issue_url")),
                 "milestone_title": milestone_title,
             }
 
@@ -374,6 +423,120 @@ def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
             "gh_issue_url": feature_node.get("gh_issue_url"),
             "github_enabled": bool(args.github),
             "github_issue": github_issue,
+            "input_warnings": resolved_input["warnings"],
+            "milestone_title": milestone_title,
+            "milestone_id": milestone_id,
+            "write_applied": bool(args.write) and wrote_changes,
+            "write": bool(args.write),
+        }
+    )
+    return 0
+
+
+def _handle_create_issue(args: Namespace, context: WorkflowContext) -> int:
+    """Create one issue node under its owning feature and optionally sync GitHub metadata."""
+    issue_id, feature_local_num, feature_milestone_num = _parse_issue_id(args.id)
+    feature_id = f"F{feature_local_num}-M{feature_milestone_num}"
+    milestone_id = f"M{feature_milestone_num}"
+
+    dev_map = _load_json(context.dev_map_path)
+    milestone_node = _find_milestone(dev_map, milestone_id)
+    if milestone_node is None:
+        raise WorkflowCommandError(f"Milestone {milestone_id} not found in DEV_MAP.", exit_code=4)
+    milestone_title = _resolve_github_milestone_title(milestone_node, milestone_id)
+    feature_ref = _find_feature(dev_map, feature_id)
+    if feature_ref is None:
+        raise WorkflowCommandError(
+            f"Feature {feature_id} not found in DEV_MAP; create the parent feature before creating issue {issue_id}.",
+            exit_code=4,
+        )
+
+    feature_node = feature_ref["feature"]
+    issues = feature_node.setdefault("issues", [])
+    if not isinstance(issues, list):
+        raise WorkflowCommandError(f"Feature {feature_id} has invalid issue list in DEV_MAP.", exit_code=4)
+
+    resolved_input = _resolve_markdown_command_input(args, command_label="feature create-issue")
+    requested_issue_title = resolved_input["title"]
+    requested_issue_description = resolved_input["description"]
+
+    issue_node = None
+    for candidate in issues:
+        if isinstance(candidate, dict) and str(candidate.get("id", "")).strip() == issue_id:
+            issue_node = candidate
+            break
+    issue_exists = issue_node is not None
+    wrote_changes = False
+
+    if issue_node is None:
+        issue_node = _build_issue_node(
+            issue_id=issue_id,
+            title=requested_issue_title or f"Issue {issue_id}",
+            description=requested_issue_description,
+        )
+        if bool(args.write):
+            issues.append(issue_node)
+            _normalize_feature_issue_nodes_layout(feature_node)
+            wrote_changes = True
+    elif bool(args.write):
+        if requested_issue_title:
+            issue_node["title"] = requested_issue_title
+            wrote_changes = True
+        if requested_issue_description:
+            issue_node["description"] = requested_issue_description
+            wrote_changes = True
+        elif not str(issue_node.get("description", "")).strip():
+            issue_node["description"] = _build_default_issue_description(issue_node)
+            wrote_changes = True
+        _normalize_issue_node_layout(issue_node)
+
+    github_issue: dict[str, Any] | None = None
+    if bool(args.github):
+        if bool(args.write):
+            github_repo = resolve_github_repository(context.root_dir)
+            ensure_github_milestone_exists(
+                repo_name_with_owner=github_repo["name_with_owner"],
+                milestone_title=milestone_title,
+                milestone_id=milestone_id,
+            )
+            github_issue = _materialize_feature_issue_node(
+                issue_node=issue_node,
+                milestone_title=milestone_title,
+                repo_name_with_owner=github_repo["name_with_owner"],
+                repo_url=_normalize_repository_url(str(github_repo.get("url", ""))),
+                max_retries=4,
+                retry_pause_seconds=1.0,
+                request_timeout=20.0,
+            )
+            wrote_changes = True
+        else:
+            existing_issue_number = _coerce_issue_number(
+                issue_node.get("gh_issue_number"),
+                issue_node.get("gh_issue_url"),
+            )
+            github_issue = {
+                "action": "would-update" if existing_issue_number is not None else "would-create",
+                "gh_issue_number": existing_issue_number,
+                "gh_issue_url": _optional_text(issue_node.get("gh_issue_url")),
+                "milestone_title": milestone_title,
+            }
+
+    if bool(args.write) and wrote_changes:
+        _touch_updated_at(dev_map)
+        _write_json(context.dev_map_path, dev_map)
+
+    emit_json(
+        {
+            "action": "already-exists" if issue_exists else ("created" if bool(args.write) else "would-create"),
+            "command": "feature.create-issue",
+            "feature_id": feature_id,
+            "issue_id": issue_id,
+            "description": str(issue_node.get("description", "")).strip() or None,
+            "gh_issue_number": issue_node.get("gh_issue_number"),
+            "gh_issue_url": issue_node.get("gh_issue_url"),
+            "github_enabled": bool(args.github),
+            "github_issue": github_issue,
+            "input_warnings": resolved_input["warnings"],
             "milestone_title": milestone_title,
             "milestone_id": milestone_id,
             "write_applied": bool(args.write) and wrote_changes,
@@ -2265,6 +2428,57 @@ def _build_feature_node(feature_id: str, title: str, description: str, track: st
         "branch_name": None,
         "branch_url": None,
     }
+
+
+def _build_issue_node(issue_id: str, title: str, description: str) -> dict[str, Any]:
+    """Build canonical issue node shape for DEV_MAP."""
+    normalized_title = title.strip()
+    description_value = description.strip() or _build_default_issue_description(
+        {"id": issue_id, "title": normalized_title}
+    )
+    return {
+        "id": issue_id,
+        "title": normalized_title,
+        "description": description_value,
+        "status": "Pending",
+        "gh_issue_number": None,
+        "gh_issue_url": None,
+        "tasks": [],
+    }
+
+
+def _resolve_markdown_command_input(args: Namespace, *, command_label: str) -> dict[str, Any]:
+    """Resolve title/description values from flags or markdown draft input."""
+    raw_title = str(getattr(args, "title", "") or "").strip()
+    raw_description = str(getattr(args, "description", "") or "").strip()
+    raw_input = str(getattr(args, "input", "") or "").strip()
+    if raw_input and (raw_title or raw_description):
+        raise WorkflowCommandError(
+            "Cannot combine --input with --title/--description. Use one input method only.",
+            exit_code=4,
+        )
+    if not raw_input:
+        return {
+            "title": raw_title,
+            "description": raw_description,
+            "warnings": [],
+        }
+    parsed = parse_feature_issue_template(Path(raw_input))
+    return {
+        "title": str(parsed.get("title", "")).strip(),
+        "description": str(parsed.get("description", "")).strip(),
+        "warnings": list(parsed.get("warnings", [])),
+        "input_path": raw_input,
+        "command_label": command_label,
+    }
+
+
+def _optional_text(raw_value: Any) -> str | None:
+    """Return one optional non-empty string value without turning None into text."""
+    if raw_value is None:
+        return None
+    value = str(raw_value).strip()
+    return value or None
 
 
 def _require_feature_exists(context: WorkflowContext, feature_id: str) -> None:

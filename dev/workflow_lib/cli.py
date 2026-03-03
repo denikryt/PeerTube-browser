@@ -10,6 +10,7 @@ from .confirm_commands import register_confirm_router, register_reject_router
 from .context import WorkflowContext, build_default_context
 from .errors import WorkflowCommandError
 from .feature_commands import register_feature_router, register_plan_router
+from .helpers.cli_format import CompactHelpFormatter
 from .sync_commands import register_sync_router
 from .task_commands import register_task_router
 from .validate_commands import register_validate_router
@@ -17,6 +18,16 @@ from .validate_commands import register_validate_router
 
 class WorkflowArgumentParser(argparse.ArgumentParser):
     """Provide deterministic parser error output and exit code."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        """Initialize workflow parsers with the shared terminal help formatter."""
+        kwargs.setdefault("formatter_class", CompactHelpFormatter)
+        super().__init__(*args, **kwargs)
+
+    def add_subparsers(self, **kwargs: object) -> argparse._SubParsersAction[argparse.ArgumentParser]:
+        """Ensure nested workflow subparsers inherit the shared parser class."""
+        kwargs.setdefault("parser_class", type(self))
+        return super().add_subparsers(**kwargs)
 
     def error(self, message: str) -> None:
         """Print deterministic usage+error text for invalid args."""
