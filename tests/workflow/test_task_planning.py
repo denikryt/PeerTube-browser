@@ -192,7 +192,7 @@ def test_materialize_missing_milestone_title_fails(workflow, tmp_repo):
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map), encoding="utf-8")
     
     with pytest.raises(pytest.fail.Exception) as excinfo:
-        workflow.run("feature", "materialize", "--id", "F1-M1", "--mode", "issues-sync")
+        workflow.run("materialize", "feature", "--id", "F1-M1", "--mode", "sync")
     assert "has empty title in DEV_MAP" in str(excinfo.value)
 
 def test_issue_mapping_skip_logic(workflow, tmp_repo):
@@ -215,9 +215,9 @@ def test_issue_mapping_skip_logic(workflow, tmp_repo):
     }
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map), encoding="utf-8")
     
-    # Materialize mode issues-create with no-github should skip the mapped issue
+    # Materialize issue create mode with no-github should skip the mapped issue
     # Since we use --no-github, it's a dry-run and reports 'would_skip'
-    res = workflow.run("feature", "materialize", "--id", "F1-M1", "--mode", "issues-create", "--no-github")
+    res = workflow.run("materialize", "issue", "--feature-id", "F1-M1", "--mode", "create", "--no-github")
     assert res["issues_materialized_summary"]["created"] == 0
     assert res["issues_materialized_summary"]["would_skip"] == 1
 

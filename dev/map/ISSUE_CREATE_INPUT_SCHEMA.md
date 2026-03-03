@@ -4,8 +4,8 @@ Canonical markdown draft format for workflow create commands that accept `--inpu
 
 ## Supported Commands
 
-- `python3 dev/workflow feature create --input <draft_file>`
-- `python3 dev/workflow feature create-issue --input <draft_file>`
+- `python3 dev/workflow create feature --input <draft_file>`
+- `python3 dev/workflow create issue --input <draft_file>`
 
 ## Required Structure
 

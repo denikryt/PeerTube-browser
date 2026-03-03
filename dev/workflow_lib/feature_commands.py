@@ -65,53 +65,15 @@ ISSUE_ALLOWED_PLANNING_STATUSES = ISSUE_PLANNING_ACTIVE_STATUSES | ISSUE_TERMINA
 
 
 def register_feature_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Register feature router and its base subcommands."""
+    """Register feature-scoped planning and execution-plan commands."""
     feature_parser = subparsers.add_parser(
         "feature",
-        help="Feature-level workflow commands.",
+        help="Feature-scoped planning and execution-plan commands.",
     )
     feature_subparsers = feature_parser.add_subparsers(
         dest="feature_command",
         required=True,
     )
-
-    create_parser = feature_subparsers.add_parser(
-        "create",
-        help="Create or validate a feature registration contract.",
-    )
-    create_parser.add_argument("--id", required=True, help="Feature ID (for example, F1-M1).")
-    create_parser.add_argument("--milestone", help="Milestone ID (for example, M1).")
-    create_parser.add_argument("--title", help="Feature title when creating a new node.")
-    create_parser.add_argument(
-        "--description",
-        help="Optional concise feature description (used for feature issue body sync).",
-    )
-    create_parser.add_argument(
-        "--input",
-        help="Optional markdown draft file used instead of --title/--description.",
-    )
-    create_parser.add_argument("--track", default="System/Test", help="Track label for feature node.")
-    create_parser.add_argument("--write", action="store_true", help="Write local tracker updates.")
-    create_parser.add_argument("--github", action="store_true", help="Enable GitHub sync wiring.")
-    create_parser.set_defaults(handler=_handle_feature_create)
-
-    create_issue_parser = feature_subparsers.add_parser(
-        "create-issue",
-        help="Create or validate one issue registration contract.",
-    )
-    create_issue_parser.add_argument("--id", required=True, help="Issue ID (for example, I1-F1-M1).")
-    create_issue_parser.add_argument("--title", help="Issue title when creating a new node.")
-    create_issue_parser.add_argument(
-        "--description",
-        help="Optional concise issue description (used for issue GitHub body sync).",
-    )
-    create_issue_parser.add_argument(
-        "--input",
-        help="Optional markdown draft file used instead of --title/--description.",
-    )
-    create_issue_parser.add_argument("--write", action="store_true", help="Write local tracker updates.")
-    create_issue_parser.add_argument("--github", action="store_true", help="Enable GitHub sync wiring.")
-    create_issue_parser.set_defaults(handler=_handle_create_issue)
 
     plan_init_parser = feature_subparsers.add_parser(
         "plan-init",
@@ -139,86 +101,6 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     plan_issue_parser.add_argument("--strict", action="store_true", help="Enable strict scoped lint checks.")
     plan_issue_parser.set_defaults(handler=_handle_feature_plan_issue)
 
-    materialize_parser = feature_subparsers.add_parser(
-        "materialize",
-        help="Materialize local feature issues to GitHub and apply canonical branch policy.",
-        description=(
-            "Materialize one feature in explicit modes.\n"
-            "  bootstrap: set or verify canonical feature branch linkage only; no child issue materialization.\n"
-            "  issues-create: create GitHub issues only for selected local issues that are not mapped yet.\n"
-            "  issues-sync: create missing issue mappings and update already mapped GitHub issues for the selected scope."
-        ),
-        epilog=(
-            "Examples:\n"
-            "  python3 dev/workflow feature materialize --id F6-M1 --mode bootstrap --write\n"
-            "  python3 dev/workflow feature materialize --id F6-M1 --mode issues-create --write --github\n"
-            "  python3 dev/workflow feature materialize --id F6-M1 --mode issues-sync --issue-id I1-F6-M1 --write --github"
-        ),
-    )
-    materialize_parser.add_argument("--id", required=True, help="Feature ID to materialize.")
-    materialize_parser.add_argument(
-        "--mode",
-        required=True,
-        choices=["bootstrap", "issues-create", "issues-sync"],
-        help=(
-            "Select materialize behavior.\n"
-            "bootstrap: branch linkage only; no issue materialization.\n"
-            "issues-create: create GitHub issues only for unmapped selected issues.\n"
-            "issues-sync: update mapped issues and create any missing selected issue mappings."
-        ),
-    )
-    materialize_parser.add_argument(
-        "--issue-id",
-        action="append",
-        default=[],
-        help=(
-            "Optional repeatable child issue selector. Queue order is preserved.\n"
-            "Allowed only in issues-create and issues-sync modes."
-        ),
-    )
-    materialize_parser.add_argument(
-        "--write",
-        action="store_true",
-        help="Persist branch linkage, issue mappings, and other write-mode side effects.",
-    )
-    materialize_parser.add_argument(
-        "--github",
-        dest="github",
-        action="store_true",
-        default=True,
-        help="Enable GitHub create or update calls. Default: enabled.",
-    )
-    materialize_parser.add_argument(
-        "--no-github",
-        dest="github",
-        action="store_false",
-        help="Disable GitHub create or update calls and keep the run local/dry for remote issue changes.",
-    )
-    materialize_parser.add_argument(
-        "--pause-seconds",
-        type=float,
-        default=1.0,
-        help="Pause between consecutive GitHub requests in write plus github mode. Default: 1.0.",
-    )
-    materialize_parser.add_argument(
-        "--max-retries",
-        type=int,
-        default=4,
-        help="Maximum retry attempts for transient GitHub request failures. Default: 4.",
-    )
-    materialize_parser.add_argument(
-        "--request-timeout",
-        type=float,
-        default=20.0,
-        help="Per-request GitHub CLI timeout in seconds for write plus github mode. Default: 20.0.",
-    )
-    materialize_parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Emit full materialize diagnostics, including large per-issue lists. Default output is compact.",
-    )
-    materialize_parser.set_defaults(handler=_handle_feature_materialize)
-
     execution_plan_parser = feature_subparsers.add_parser(
         "execution-plan",
         help="Return ordered execution plan for one feature subtree.",
@@ -236,6 +118,168 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     )
     execution_plan_parser.set_defaults(only_pending=True, from_pipeline=True)
     execution_plan_parser.set_defaults(handler=_handle_feature_execution_plan)
+
+
+def register_create_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register canonical action-first create commands."""
+    create_parser = subparsers.add_parser(
+        "create",
+        help="Canonical action-first create commands.",
+    )
+    create_subparsers = create_parser.add_subparsers(dest="create_target", required=True)
+
+    create_feature_parser = create_subparsers.add_parser(
+        "feature",
+        help="Register one feature locally without GitHub materialization.",
+    )
+    create_feature_parser.add_argument("--id", required=True, help="Feature ID (for example, F1-M1).")
+    create_feature_parser.add_argument("--milestone", help="Milestone ID (for example, M1).")
+    create_feature_parser.add_argument("--title", help="Feature title when creating a new node.")
+    create_feature_parser.add_argument(
+        "--description",
+        help="Optional concise feature description persisted on the local feature node.",
+    )
+    create_feature_parser.add_argument(
+        "--input",
+        help="Optional markdown draft file used instead of --title/--description.",
+    )
+    create_feature_parser.add_argument("--track", default="System/Test", help="Track label for feature node.")
+    create_feature_parser.add_argument("--write", action="store_true", help="Write local tracker updates.")
+    create_feature_parser.set_defaults(handler=_handle_create_feature_action)
+
+    create_issue_parser = create_subparsers.add_parser(
+        "issue",
+        help="Register one issue locally without GitHub materialization.",
+    )
+    create_issue_parser.add_argument("--id", required=True, help="Issue ID (for example, I1-F1-M1).")
+    create_issue_parser.add_argument("--title", help="Issue title when creating a new node.")
+    create_issue_parser.add_argument(
+        "--description",
+        help="Optional concise issue description persisted on the local issue node.",
+    )
+    create_issue_parser.add_argument(
+        "--input",
+        help="Optional markdown draft file used instead of --title/--description.",
+    )
+    create_issue_parser.add_argument("--write", action="store_true", help="Write local tracker updates.")
+    create_issue_parser.set_defaults(handler=_handle_create_issue_action)
+
+
+def register_materialize_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register canonical action-first materialize commands."""
+    materialize_parser = subparsers.add_parser(
+        "materialize",
+        help="Canonical action-first GitHub materialization commands.",
+    )
+    materialize_subparsers = materialize_parser.add_subparsers(dest="materialize_target", required=True)
+
+    materialize_feature_parser = materialize_subparsers.add_parser(
+        "feature",
+        help="Create or sync one feature-level GitHub issue and branch linkage.",
+        description=(
+            "Materialize one feature-level GitHub issue.\n"
+            "  create: create the feature issue if it is not mapped yet; mapped feature issues are skipped.\n"
+            "  sync: update an already mapped feature issue; unmapped feature issues are rejected."
+        ),
+    )
+    materialize_feature_parser.add_argument("--id", required=True, help="Feature ID to materialize.")
+    materialize_feature_parser.add_argument(
+        "--mode",
+        required=True,
+        choices=["create", "sync"],
+        help=(
+            "Select feature-level materialize behavior.\n"
+            "create: create GitHub issue only when the feature issue is not mapped yet.\n"
+            "sync: update the already mapped feature issue."
+        ),
+    )
+    materialize_feature_parser.add_argument("--write", action="store_true", help="Persist branch linkage and mappings.")
+    materialize_feature_parser.add_argument(
+        "--github",
+        dest="github",
+        action="store_true",
+        default=True,
+        help="Enable GitHub create or update calls. Default: enabled.",
+    )
+    materialize_feature_parser.add_argument(
+        "--no-github",
+        dest="github",
+        action="store_false",
+        help="Disable GitHub create or update calls and keep the run local/dry for remote feature issue changes.",
+    )
+    materialize_feature_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include full materialize diagnostics. Default output is compact.",
+    )
+    materialize_feature_parser.set_defaults(handler=_handle_materialize_feature_action)
+
+    materialize_issue_parser = materialize_subparsers.add_parser(
+        "issue",
+        help="Create or sync one issue or one feature-owned issue set on GitHub.",
+        description=(
+            "Materialize one issue or one feature-owned issue set.\n"
+            "  create: create GitHub issues only for unmapped target issues.\n"
+            "  sync: update mapped issues and create any missing mappings for the selected scope."
+        ),
+    )
+    issue_target_group = materialize_issue_parser.add_mutually_exclusive_group(required=True)
+    issue_target_group.add_argument("--id", help="Single issue ID to materialize (for example, I1-F1-M1).")
+    issue_target_group.add_argument("--feature-id", help="Feature ID owning the issue set to materialize.")
+    materialize_issue_parser.add_argument(
+        "--issue-id",
+        action="append",
+        default=[],
+        help="Optional repeatable issue selector when using --feature-id. Queue order is preserved.",
+    )
+    materialize_issue_parser.add_argument(
+        "--mode",
+        required=True,
+        choices=["create", "sync"],
+        help=(
+            "Select issue-level materialize behavior.\n"
+            "create: create GitHub issues only for unmapped selected issues.\n"
+            "sync: update mapped issues and create any missing selected issue mappings."
+        ),
+    )
+    materialize_issue_parser.add_argument("--write", action="store_true", help="Persist issue mappings and branch linkage.")
+    materialize_issue_parser.add_argument(
+        "--github",
+        dest="github",
+        action="store_true",
+        default=True,
+        help="Enable GitHub create or update calls. Default: enabled.",
+    )
+    materialize_issue_parser.add_argument(
+        "--no-github",
+        dest="github",
+        action="store_false",
+        help="Disable GitHub create or update calls and keep the run local/dry for remote issue changes.",
+    )
+    materialize_issue_parser.add_argument(
+        "--pause-seconds",
+        type=float,
+        default=1.0,
+        help="Pause between consecutive GitHub requests in write plus github mode. Default: 1.0.",
+    )
+    materialize_issue_parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=4,
+        help="Maximum retry attempts for transient GitHub request failures. Default: 4.",
+    )
+    materialize_issue_parser.add_argument(
+        "--request-timeout",
+        type=float,
+        default=20.0,
+        help="Per-request GitHub CLI timeout in seconds for write plus github mode. Default: 20.0.",
+    )
+    materialize_issue_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Emit full materialize diagnostics, including per-issue details. Default output is compact.",
+    )
+    materialize_issue_parser.set_defaults(handler=_handle_materialize_issue_action)
 
 
 def register_plan_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -416,7 +460,7 @@ def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
     emit_json(
         {
             "action": "already-exists" if feature_exists else ("created" if bool(args.write) else "would-create"),
-            "command": "feature.create",
+            "command": str(getattr(args, "command_output", "feature.create")).strip() or "feature.create",
             "feature_id": feature_id,
             "description": str(feature_node.get("description", "")).strip() or None,
             "gh_issue_number": feature_node.get("gh_issue_number"),
@@ -528,7 +572,7 @@ def _handle_create_issue(args: Namespace, context: WorkflowContext) -> int:
     emit_json(
         {
             "action": "already-exists" if issue_exists else ("created" if bool(args.write) else "would-create"),
-            "command": "feature.create-issue",
+            "command": str(getattr(args, "command_output", "feature.create-issue")).strip() or "feature.create-issue",
             "feature_id": feature_id,
             "issue_id": issue_id,
             "description": str(issue_node.get("description", "")).strip() or None,
@@ -544,6 +588,20 @@ def _handle_create_issue(args: Namespace, context: WorkflowContext) -> int:
         }
     )
     return 0
+
+
+def _handle_create_feature_action(args: Namespace, context: WorkflowContext) -> int:
+    """Execute canonical action-first `create feature` as local registration only."""
+    setattr(args, "github", False)
+    setattr(args, "command_output", "create.feature")
+    return _handle_feature_create(args, context)
+
+
+def _handle_create_issue_action(args: Namespace, context: WorkflowContext) -> int:
+    """Execute canonical action-first `create issue` as local registration only."""
+    setattr(args, "github", False)
+    setattr(args, "command_output", "create.issue")
+    return _handle_create_issue(args, context)
 
 
 def _handle_feature_plan_init(args: Namespace, context: WorkflowContext) -> int:
@@ -1099,7 +1157,7 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
         "active_feature_branch_message": active_branch_message,
         "branch_action": branch_action,
         "branch_url": branch_url,
-        "command": "feature.materialize",
+        "command": str(getattr(args, "command_output", "feature.materialize")).strip() or "feature.materialize",
         "feature_id": feature_id,
         "feature_issue_checklist_sync": feature_issue_checklist_sync,
         "feature_issue_body_sync": feature_issue_body_sync,
@@ -1126,6 +1184,156 @@ def _handle_feature_materialize(args: Namespace, context: WorkflowContext) -> in
         )
     )
     return 0
+
+
+def _handle_materialize_feature_action(args: Namespace, context: WorkflowContext) -> int:
+    """Execute canonical action-first `materialize feature` for feature-level issue sync."""
+    feature_id, feature_milestone_num = _parse_feature_id(args.id)
+    materialize_mode = str(args.mode).strip()
+    if materialize_mode not in {"create", "sync"}:
+        raise WorkflowCommandError(
+            f"Unsupported feature materialize mode {materialize_mode!r}; expected create or sync.",
+            exit_code=4,
+        )
+
+    milestone_id = f"M{feature_milestone_num}"
+    dev_map = _load_json(context.dev_map_path)
+    milestone_node = _find_milestone(dev_map, milestone_id)
+    if milestone_node is None:
+        raise WorkflowCommandError(f"Milestone {milestone_id} not found in DEV_MAP.", exit_code=4)
+    milestone_title = _resolve_github_milestone_title(milestone_node, milestone_id)
+    feature_ref = _find_feature(dev_map, feature_id)
+    if feature_ref is None:
+        raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
+
+    feature_node = feature_ref["feature"]
+    if not str(feature_node.get("description", "")).strip():
+        feature_node["description"] = _build_default_feature_description(feature_node)
+    _normalize_feature_node_layout(feature_node)
+
+    existing_issue_number = _coerce_issue_number(
+        feature_node.get("gh_issue_number"),
+        feature_node.get("gh_issue_url"),
+    )
+    existing_issue_url = _optional_text(feature_node.get("gh_issue_url"))
+    if materialize_mode == "sync" and existing_issue_number is None:
+        raise WorkflowCommandError(
+            f"materialize feature --mode sync requires existing feature issue mapping for {feature_id}.",
+            exit_code=4,
+        )
+
+    branch_name = f"feature/{feature_id}"
+    repo_url = _resolve_repository_url(context.root_dir, feature_node)
+    branch_url = _build_branch_url(repo_url, branch_name)
+    branch_action = plan_canonical_feature_branch(context.root_dir, branch_name)
+
+    github_issue: dict[str, Any]
+    if bool(args.write) and bool(args.github):
+        github_repo = resolve_github_repository(context.root_dir)
+        github_repo_url = _normalize_repository_url(str(github_repo.get("url", "")))
+        ensure_github_milestone_exists(
+            repo_name_with_owner=github_repo["name_with_owner"],
+            milestone_title=milestone_title,
+            milestone_id=milestone_id,
+        )
+        if materialize_mode == "create" and existing_issue_number is not None:
+            github_issue = {
+                "action": "skipped",
+                "gh_issue_number": existing_issue_number,
+                "gh_issue_url": existing_issue_url,
+                "reason": "already-materialized-create-only",
+                "milestone_title": milestone_title,
+            }
+        else:
+            github_issue = _materialize_feature_registration_issue(
+                feature_node=feature_node,
+                milestone_title=milestone_title,
+                repo_name_with_owner=github_repo["name_with_owner"],
+                repo_url=github_repo_url,
+            )
+    else:
+        if materialize_mode == "create" and existing_issue_number is not None:
+            action = "would-skip"
+            reason = "already-materialized-create-only"
+        elif materialize_mode == "create":
+            action = "would-create"
+            reason = ""
+        else:
+            action = "would-update"
+            reason = ""
+        github_issue = {
+            "action": action,
+            "gh_issue_number": existing_issue_number,
+            "gh_issue_url": existing_issue_url,
+            "milestone_title": milestone_title,
+        }
+        if reason:
+            github_issue["reason"] = reason
+
+    if bool(args.write):
+        feature_node["branch_name"] = branch_name
+        feature_node["branch_url"] = branch_url
+        _touch_updated_at(dev_map)
+        _write_json(context.dev_map_path, dev_map)
+
+    payload = {
+        "command": "materialize.feature",
+        "feature_id": feature_id,
+        "mode": materialize_mode,
+        "write": bool(args.write),
+        "github_enabled": bool(args.github),
+        "active_feature_branch": branch_name,
+        "branch_action": branch_action,
+        "branch_url": branch_url,
+        "gh_issue_number": feature_node.get("gh_issue_number"),
+        "gh_issue_url": feature_node.get("gh_issue_url"),
+        "github_issue": github_issue,
+        "output_profile": "compact",
+    }
+    if bool(getattr(args, "verbose", False)):
+        payload["feature_description"] = str(feature_node.get("description", "")).strip() or None
+        payload["milestone_id"] = milestone_id
+        payload["milestone_title"] = milestone_title
+    emit_json(payload)
+    return 0
+
+
+def _handle_materialize_issue_action(args: Namespace, context: WorkflowContext) -> int:
+    """Execute canonical action-first `materialize issue` via the shared issue sync engine."""
+    materialize_mode = str(args.mode).strip()
+    if materialize_mode == "create":
+        mapped_mode = "issues-create"
+    elif materialize_mode == "sync":
+        mapped_mode = "issues-sync"
+    else:
+        raise WorkflowCommandError(
+            f"Unsupported issue materialize mode {materialize_mode!r}; expected create or sync.",
+            exit_code=4,
+        )
+
+    raw_issue_id = _optional_text(getattr(args, "id", None))
+    raw_feature_id = _optional_text(getattr(args, "feature_id", None))
+    selected_issue_ids = list(getattr(args, "issue_id", []) or [])
+    if raw_issue_id is not None:
+        if selected_issue_ids:
+            raise WorkflowCommandError(
+                "materialize issue does not allow --issue-id when a single --id target is provided.",
+                exit_code=4,
+            )
+        issue_id, feature_local_num, feature_milestone_num = _parse_issue_id(raw_issue_id)
+        setattr(args, "id", f"F{feature_local_num}-M{feature_milestone_num}")
+        setattr(args, "issue_id", [issue_id])
+    else:
+        if raw_feature_id is None:
+            raise WorkflowCommandError(
+                "materialize issue requires either --id <issue_id> or --feature-id <feature_id>.",
+                exit_code=4,
+            )
+        feature_id, _ = _parse_feature_id(raw_feature_id)
+        setattr(args, "id", feature_id)
+    setattr(args, "mode", mapped_mode)
+    setattr(args, "command_output", "materialize.issue")
+    return _handle_feature_materialize(args, context)
 
 
 def _handle_feature_execution_plan(args: Namespace, context: WorkflowContext) -> int:

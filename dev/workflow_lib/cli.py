@@ -9,7 +9,12 @@ from typing import Sequence
 from .confirm_commands import register_confirm_router, register_reject_router
 from .context import WorkflowContext, build_default_context
 from .errors import WorkflowCommandError
-from .feature_commands import register_feature_router, register_plan_router
+from .feature_commands import (
+    register_create_router,
+    register_feature_router,
+    register_materialize_router,
+    register_plan_router,
+)
 from .helpers.cli_format import CompactHelpFormatter
 from .sync_commands import register_sync_router
 from .task_commands import register_task_router
@@ -42,7 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Workflow automation CLI for repository planning/execution flow.",
     )
     subparsers = parser.add_subparsers(dest="command_group", required=True)
+    register_create_router(subparsers)
     register_feature_router(subparsers)
+    register_materialize_router(subparsers)
     register_plan_router(subparsers)
     register_sync_router(subparsers)
     register_task_router(subparsers)
