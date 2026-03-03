@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-03T03:14:51+02:00",
+  "updated_at": "2026-03-03T03:39:34+02:00",
   "task_count": 169,
   "milestones": [
     {
@@ -1237,7 +1237,7 @@
           "id": "F6-M1",
           "title": "Parse AI-generated markdown templates for issue/feature creation",
           "description": "This feature introduces a file-based input mechanism (--input) for CLI creation commands, allowing AI agents to safely generate titles and descriptions in Markdown without risking JSON schema corruption.",
-          "status": "Approved",
+          "status": "Done",
           "track": "System/Test",
           "gh_issue_number": 114,
           "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/114",
@@ -1246,7 +1246,7 @@
               "id": "I1-F6-M1",
               "title": "Implement Markdown template parser for CLI inputs",
               "description": "CLI commands currently cannot accept multi-line text blocks safely. Implement a parser that extracts # title and # description sections from a provided Markdown draft file.",
-              "status": "Tasked",
+              "status": "Done",
               "gh_issue_number": 111,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/111",
               "tasks": [
@@ -1254,7 +1254,7 @@
                   "id": "161",
                   "title": "Add markdown parser module and heading extraction flow",
                   "summary": "Create the markdown parser module and implement deterministic title/description extraction from the first two headings in a UTF-8 template file.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-03",
                   "time": "02:06:35"
                 },
@@ -1262,7 +1262,7 @@
                   "id": "162",
                   "title": "Implement parser validation and actionable error handling",
                   "summary": "Add missing-file, missing-heading, empty-title, and read-error handling with WorkflowCommandError exit-code-4 guidance for invalid draft inputs.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-03",
                   "time": "02:06:35"
                 },
@@ -1270,7 +1270,7 @@
                   "id": "163",
                   "title": "Cover parser success and failure paths with regression tests",
                   "summary": "Add tests for flexible heading levels, empty descriptions, invalid templates, and file-not-found behavior so parser changes stay deterministic.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-03",
                   "time": "02:06:35"
                 }
@@ -1280,7 +1280,7 @@
               "id": "I2-F6-M1",
               "title": "Wire --input argument to create feature and create issue commands",
               "description": "The create commands only accept CLI string flags. Extend them to accept an optional --input file path, parse it, and use the extracted values instead of flags.",
-              "status": "Tasked",
+              "status": "Done",
               "gh_issue_number": 112,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/112",
               "tasks": [
@@ -1288,7 +1288,7 @@
                   "id": "164",
                   "title": "Add --input argument support to create feature and create issue parsers",
                   "summary": "Extend create feature and create issue CLI parsers with optional --input handling and enforce one input mode between draft-file and title/description flags.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-03",
                   "time": "02:06:35"
                 },
@@ -1296,7 +1296,7 @@
                   "id": "165",
                   "title": "Wire parsed draft values into create command handlers",
                   "summary": "Update create handlers to call the markdown parser, merge parsed title/description into existing command flow, and preserve backward-compatible flag mode.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-03",
                   "time": "02:06:35"
                 },
@@ -1304,7 +1304,7 @@
                   "id": "166",
                   "title": "Add regression coverage for draft-input CLI behavior",
                   "summary": "Add command-level tests for successful draft parsing, parser error propagation, conflicting input modes, and unchanged behavior when --input is absent.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-03",
                   "time": "02:06:35"
                 }
@@ -1314,7 +1314,7 @@
               "id": "I3-F6-M1",
               "title": "Update agent workflows to use draft files for CLI commands",
               "description": "The current AI workflows generate planning data in memory. Update the agent workflow files (e.g. plan-feature, plan-issue) to explicitly write intellectual output to a temporary draft file and pass it to the CLI commands.",
-              "status": "Tasked",
+              "status": "Done",
               "gh_issue_number": 113,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/113",
               "tasks": [
@@ -1322,7 +1322,7 @@
                   "id": "167",
                   "title": "Define canonical markdown draft schema for feature and issue creation",
                   "summary": "Create ISSUE_CREATE_INPUT_SCHEMA documentation that defines required headings, optional sections, examples, and recovery guidance for agent-generated draft files.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-03",
                   "time": "02:06:35"
                 },
@@ -1330,7 +1330,7 @@
                   "id": "168",
                   "title": "Update planning protocol for optional draft-file agent output",
                   "summary": "Document the markdown draft workflow, tmp/workflow storage convention, and parser-based CLI usage in the feature planning protocol without changing human-only flow requirements.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-03",
                   "time": "02:06:35"
                 },
@@ -1338,7 +1338,7 @@
                   "id": "169",
                   "title": "Update agent workflows to reference draft-file planning flow",
                   "summary": "Revise plan-feature and plan-issue workflow docs to reference the schema file and optional draft-file command path while keeping schema rules centralized.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-03",
                   "time": "02:06:35"
                 }
