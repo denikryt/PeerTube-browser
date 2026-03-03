@@ -21,6 +21,8 @@ description: Feature planning and decomposition policy
 13. Materialized GitHub issue bodies must remain issue-focused and must not include local process/protocol instructions or boilerplate sections such as `Work issue for ...`, `Source of truth`, or `Notes`.
 14. Before `execute task <id>`, `execute issue <issue_id>`, or `execute feature <feature_id>`, every parent `Issue` in scope must already be mapped with non-null `gh_issue_number` and `gh_issue_url`.
 15. Before executing a task attached to `StandaloneIssue`, the parent standalone issue must already be mapped with non-null `gh_issue_number` and `gh_issue_url`.
+16. For `create feature`, `milestone_id` remains mandatory input. If the user does not explicitly provide feature title and/or description, derive them from the current request context and nearby discussion instead of blocking for additional wording.
+17. Any auto-derived feature title/description used during `create feature` must stay concrete, repository-specific, and consistent with the user request; do not invent unrelated scope.
 
 ## Feature branch policy
 
