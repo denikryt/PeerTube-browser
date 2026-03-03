@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-04T00:36:41+02:00",
+  "updated_at": "2026-03-04T00:59:30+02:00",
   "task_count": 181,
   "milestones": [
     {
@@ -1575,6 +1575,46 @@
           ],
           "branch_name": "feature/F9-M1",
           "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F9-M1"
+        },
+        {
+          "id": "F10-M1",
+          "title": "Replace materialize with explicit publish commands for GitHub issues",
+          "description": "This feature replaces ambiguous materialize naming with explicit publish commands that create feature issues and child issues on GitHub with milestone-linked behavior and clear separation between local registration and remote publication.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": 120,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/120",
+          "issues": [
+            {
+              "id": "I1-F10-M1",
+              "title": "Add explicit publish command for feature GitHub issue creation",
+              "description": "Introduce a clear command that publishes a feature as a GitHub issue with milestone assignment and deterministic create-versus-already-published behavior.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F10-M1",
+              "title": "Add explicit publish commands for child issues and feature-owned issue batches",
+              "description": "Introduce clear commands that publish one issue or all child issues of a feature on GitHub while preserving milestone ownership and parent-feature linkage semantics.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F10-M1",
+              "title": "Rewrite help, workflows, and migration guidance around publish semantics",
+              "description": "Replace materialize-oriented help and workflow guidance with publish-focused commands so users can clearly distinguish local registration from GitHub issue publication.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": "feature/F10-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F10-M1"
         }
       ],
       "non_feature_items": [

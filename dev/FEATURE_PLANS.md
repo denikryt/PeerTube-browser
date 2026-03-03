@@ -815,3 +815,143 @@ Canonical per-issue plan block format inside a feature section:
   2. decide and implement explicit runtime hook if warranted
   3. document GitHub visibility limits
   4. add regression or workflow checks for the chosen behavior
+
+## F10-M1
+
+### Issue Execution Order
+1. `I1-F10-M1` - Add explicit publish command for feature GitHub issue creation
+2. `I2-F10-M1` - Add explicit publish commands for child issues and feature-owned issue batches
+3. `I3-F10-M1` - Rewrite help, workflows, and migration guidance around publish semantics
+
+### Dependencies
+- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — top-level command tree where the new publish grammar must become discoverable
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current create/materialize feature and issue flows that need explicit publish-oriented entrypoints
+- [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — GitHub issue creation/update helpers and milestone validation primitives
+- [.agents/workflows/create-feature.md](.agents/workflows/create-feature.md) and [.agents/workflows/materialize-feature.md](.agents/workflows/materialize-feature.md) — workflow docs that currently describe registration/materialize language instead of explicit publication semantics
+- [dev/map/DEV_MAP.json](dev/map/DEV_MAP.json) — local source of truth for feature issue mappings, child issue mappings, and milestone ownership
+- Existing create-vs-GitHub publication behavior must stay deterministic while the command surface is renamed and clarified
+- Milestone assignment must remain automatic from local ownership; the new publish commands must not require redundant milestone input when the target is already mapped under `M1`
+
+### Decomposition
+1. Define explicit publish semantics for GitHub issue creation:
+   - Replace ambiguous `materialize` terminology with commands that explicitly say they create GitHub issues
+   - Separate local registration from remote publication so users can predict side effects from the command name alone
+   - Keep milestone assignment automatic from the local ownership chain instead of asking the user to repeat milestone data
+   - Expected result: users can read the command and immediately know it creates a GitHub issue
+
+2. Refactor runtime around publish-oriented entity scopes:
+   - Add publish flow for one feature issue, one issue, and one feature-owned issue batch
+   - Preserve deterministic behavior for already-published targets, dry-run paths, and local mapping updates
+   - Keep parent feature issue linkage semantics explicit for child issue publishing
+   - Expected result: runtime behavior is clear for `feature issue`, `child issue`, and `all child issues of one feature`
+
+3. Align help and workflow documentation with the new model:
+   - Replace materialize-oriented examples with publish-oriented commands
+   - Clarify which commands only register local nodes and which ones create remote GitHub issues
+   - Document dry-run versus write behavior in terms of publication instead of abstract materialization
+   - Expected result: command naming, help output, and workflows all describe one consistent publication model
+
+### Issue/Task Decomposition Assessment
+- Feature scope should split into three sequential issues because feature publication, child issue publication, and docs/help migration are related but should be implemented and validated independently
+- Minimal execution order:
+  1. establish feature issue publication command,
+  2. establish child issue and issue-batch publication commands on top of that model,
+  3. rewrite help/workflows after the runtime contract is settled
+- Expected commit-oriented split:
+  - `I1-F10-M1`: 2-3 commits (contract, runtime, regression checks)
+  - `I2-F10-M1`: 3-4 commits (single issue publish, feature-owned issue batch publish, linkage behavior, tests)
+  - `I3-F10-M1`: 2-3 commits (help/docs rewrite, migration text cleanup, regression checks)
+
+### I1-F10-M1 - Add explicit publish command for feature GitHub issue creation
+
+#### Dependencies
+- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — top-level router where `publish feature` must become first-class
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current feature-level GitHub issue create/sync logic that should be exposed under publish naming
+- [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — existing milestone validation and issue create/edit helpers reused by the new publish command
+
+#### Decomposition
+1. Define the `publish feature` contract:
+   - Specify that the command creates the feature issue on GitHub and records local mapping state
+   - Define deterministic create-only behavior for already published features versus not-yet-published features
+   - Keep milestone assignment implicit from local ownership, not repeated as user input
+   - Expected result: one explicit contract replaces ambiguous feature-level materialize wording
+
+2. Implement runtime wiring for `publish feature`:
+   - Route the new command to the existing feature issue creation/update primitives with publish-oriented output text
+   - Preserve dry-run and write-mode behavior without hiding GitHub side effects
+   - Keep branch linkage behavior separate from publication semantics unless explicitly required
+   - Expected result: users can publish a feature issue with one clearly named command
+
+3. Add regression coverage:
+   - Cover dry-run preview for unpublished feature issues
+   - Cover write-mode publication for unpublished features
+   - Cover already-published feature behavior so repeat runs stay deterministic
+   - Expected result: feature publication semantics remain stable during the command rename
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3 tasks / commit slices
+  1. define feature publish contract and output semantics
+  2. implement publish feature runtime path
+  3. add regression coverage for dry-run, create, and repeat behavior
+
+### I2-F10-M1 - Add explicit publish commands for child issues and feature-owned issue batches
+
+#### Dependencies
+- [I1-F10-M1](#i1-f10-m1--add-explicit-publish-command-for-feature-github-issue-creation) — feature-level publish semantics should be explicit first
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current issue and issue-batch materialize behavior that must be replaced with publish naming
+- [dev/map/DEV_MAP.json](dev/map/DEV_MAP.json) — issue ownership and milestone lineage that drive publication targets
+
+#### Decomposition
+1. Define `publish issue` and `publish issues --feature-id` contracts:
+   - Support one explicit command for a single issue and one for all child issues under a feature
+   - Define create behavior for unmapped issues and deterministic skip or error behavior for already published issues
+   - Clarify how child issue publication relates to an existing parent feature issue mapping
+   - Expected result: users can publish one child issue or the full child issue set without guessing command scope
+
+2. Implement runtime publication paths:
+   - Route single-issue and feature-owned issue-batch publication through the existing GitHub issue creation logic
+   - Preserve milestone assignment from local ownership and queue-order behavior for batch publication
+   - Keep deterministic output for selected issue IDs, created mappings, and skipped already-published issues
+   - Expected result: issue publication works through explicit publish commands instead of materialize naming
+
+3. Validate linkage and edge cases:
+   - Cover feature-owned issue batch publish when the parent feature issue exists and when it does not
+   - Define whether publication only creates issues or also reconciles parent/child linkage in the same run
+   - Cover blocked invalid-owner or invalid-queue behavior
+   - Expected result: child issue publication semantics are explicit and safe for batch use
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3-4 tasks / commit slices
+  1. define single-issue and feature-owned issue-batch publish contracts
+  2. implement publish issue runtime path
+  3. implement publish issues batch path and linkage behavior
+  4. add regression coverage for create/skip/error cases
+
+### I3-F10-M1 - Rewrite help, workflows, and migration guidance around publish semantics
+
+#### Dependencies
+- [I1-F10-M1](#i1-f10-m1--add-explicit-publish-command-for-feature-github-issue-creation) and [I2-F10-M1](#i2-f10-m1--add-explicit-publish-commands-for-child-issues-and-feature-owned-issue-batches) — runtime command semantics must be finalized before docs can be rewritten
+- [.agents/workflows/create-feature.md](.agents/workflows/create-feature.md) and [.agents/workflows/materialize-feature.md](.agents/workflows/materialize-feature.md) — workflow docs that need publish-oriented terminology
+- CLI help output and any repository guidance that still uses materialize wording
+
+#### Decomposition
+1. Rewrite help output and examples:
+   - Replace materialize-oriented examples with `publish feature`, `publish issue`, and `publish issues` examples
+   - Make the local-registration versus GitHub-publication split obvious from `--help`
+   - Expected result: users can discover the right publish command directly from help text
+
+2. Update workflow and migration documentation:
+   - Rewrite workflow docs so local creation and GitHub publication are described as separate lifecycle steps
+   - Document milestone behavior, dry-run behavior, and parent-feature versus child-issue publication paths in publish terminology
+   - Expected result: operator guidance matches the new command surface without legacy ambiguity
+
+3. Add regression checks and clean up legacy wording:
+   - Ensure help and docs no longer present `materialize` as the canonical way to create GitHub issues
+   - Keep compatibility or migration notes explicit if any old command remains temporarily supported
+   - Expected result: the repository exposes one clear publish-oriented model for GitHub issue creation
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 2-3 tasks / commit slices
+  1. rewrite help/examples for publish commands
+  2. rewrite workflows and migration guidance
+  3. add regression checks for help/docs consistency
