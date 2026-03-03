@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-04T01:17:16+02:00",
+  "updated_at": "2026-03-04T01:33:06+02:00",
   "task_count": 181,
   "milestones": [
     {
@@ -1352,12 +1352,10 @@
           "id": "F7-M1",
           "title": "Refactor issue planning lifecycle with validation gates and command structure",
           "description": "This feature refines the issue planning workflow by introducing explicit validation gates (plan issue → validate issue) and consolidating CLI command structure for clarity and consistency.",
-          "status": "Pending",
+          "status": "Planned",
           "track": "System/Test",
-          "gh_issue_number": null,
-          "gh_issue_url": null,
-          "branch_name": null,
-          "branch_url": null,
+          "gh_issue_number": 122,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/122",
           "issues": [
             {
               "id": "I1-F7-M1",
@@ -1395,7 +1393,9 @@
               "gh_issue_url": null,
               "tasks": []
             }
-          ]
+          ],
+          "branch_name": "feature/F7-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F7-M1"
         },
         {
           "id": "F8-M1",
