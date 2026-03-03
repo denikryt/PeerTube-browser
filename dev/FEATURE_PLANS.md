@@ -511,169 +511,171 @@ Canonical per-issue plan block format inside a feature section:
 ## F8-M1
 
 ### Issue Execution Order
-1. `I1-F8-M1` - Add explicit materialize feature scope for feature-level GitHub issue create and sync
-2. `I2-F8-M1` - Add explicit materialize issue scope for issue-level create and sync flows
-3. `I3-F8-M1` - Align CLI help, workflow docs, and legacy compatibility for explicit materialize scopes
+1. `I1-F8-M1` - Add canonical action-first feature commands for create and materialize flows
+2. `I2-F8-M1` - Add canonical action-first issue commands for create and materialize flows
+3. `I3-F8-M1` - Unify workflow CLI routing, help, and docs around action-first grammar
 
 ### Dependencies
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current feature materialize router, feature create GitHub wiring, and mode handlers to refactor
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current feature-owned create/materialize handlers that need to move behind explicit action-first entrypoints
 - [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — top-level CLI tree and help output path for command-surface changes
 - [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — GitHub create/edit primitives reused by new feature and issue materialize scopes
-- [.agents/workflows/materialize-feature.md](.agents/workflows/materialize-feature.md) — workflow documentation that currently describes only the old feature-scoped materialize entrypoint
-- [dev/TASK_EXECUTION_PIPELINE.json](dev/TASK_EXECUTION_PIPELINE.json) — existing materialize overlaps in F4-M1 (`74`, `78`, `94`, `95`) that define the current command contract and compatibility risks
-- Existing feature-level materialization behavior in `feature create --github` is prerequisite context; new command shape must not regress already mapped feature issue updates
-- Existing issue-level `bootstrap|issues-create|issues-sync` behavior is prerequisite context; refactor must preserve deterministic GitHub side effects during migration
+- [.agents/workflows/create-feature.md](.agents/workflows/create-feature.md) and [.agents/workflows/materialize-feature.md](.agents/workflows/materialize-feature.md) — workflow docs that still assume entity-first command routing
+- [dev/TASK_EXECUTION_PIPELINE.json](dev/TASK_EXECUTION_PIPELINE.json) — existing materialize overlaps in F4-M1 (`74`, `78`, `94`, `95`) and draft-input create flows in F6-M1 define the compatibility surface
+- Existing feature-level behavior in `feature create --github` is prerequisite context; new command shape must not regress already mapped feature issue updates
+- Existing issue-level behavior in `feature create-issue` and `feature materialize --mode bootstrap|issues-create|issues-sync` is prerequisite context; refactor must preserve deterministic GitHub side effects during migration
 
 ### Decomposition
 1. Define the target command surface and scope ownership:
-   - Decide the canonical command model for feature-level and issue-level materialization so each command maps to one entity scope
-   - Specify `create` versus `sync` semantics for both scopes, including whether `sync` updates only mapped nodes or also creates missing remote mappings
-   - Define backward-compatibility behavior for legacy `feature materialize --mode bootstrap|issues-create|issues-sync`
-   - Expected result: one unambiguous command contract exists before code changes begin
+- Decide the canonical action-first command model for `create` and `materialize` across `feature` and `issue` entities
+- Specify `create` versus `sync` semantics for both materialize scopes, including whether `sync` updates only mapped nodes or also creates missing remote mappings
+- Define the direct canonical replacement for legacy `feature create`, `feature create-issue`, and `feature materialize --mode bootstrap|issues-create|issues-sync`
+   - Expected result: one unambiguous action/entity command contract exists before code changes begin
 
-2. Refactor runtime materialization handlers around explicit scopes:
-   - Extract feature-level materialization behavior from `feature create --github` into an explicit materialize path for the feature issue itself
-   - Introduce issue-level materialize entrypoints that operate on one issue ID or a feature-owned issue set with deterministic create/sync behavior
+2. Refactor runtime handlers around action-first routing:
+   - Extract feature-level create and materialize behavior into explicit `create feature` and `materialize feature` entrypoints
+   - Introduce issue-level `create issue` and `materialize issue` entrypoints that operate on one issue ID or a feature-owned issue set with deterministic create/sync behavior
    - Keep milestone resolution, GitHub retry policy, branch linkage, and output payloads stable across the refactor
-   - Expected result: runtime code paths cleanly separate feature issue materialization from child issue materialization
+   - Expected result: runtime code paths cleanly separate action routing from entity scope and remove hidden feature-owned issue commands
 
 3. Align CLI help, migration behavior, and process docs:
-   - Update parser help, examples, and error messages so command discovery matches the new scope model
-   - Update workflow/protocol docs to explain the new commands and remove hidden feature issue materialization semantics
-   - Decide whether legacy commands remain as aliases, emit guided errors, or are removed entirely, and document that policy consistently
+   - Update parser help, examples, and error messages so command discovery matches the new action-first grammar
+   - Update workflow/protocol docs to explain the new commands and remove hidden feature issue or issue-create semantics
+   - Replace old command references with the new canonical commands instead of preserving compatibility shims
    - Expected result: users can discover the new command model directly from `--help` and workflow docs without reading implementation code
 
 4. Validate the refactor end-to-end:
    - Run `feature plan-lint` for plan quality, then implement task decomposition later from the approved issue split
-   - During execution phase, require regression coverage for feature issue create/sync, issue create/sync, and any legacy redirect or rejection path
+   - During execution phase, require regression coverage for feature create/materialize, issue create/materialize, and any legacy redirect or rejection path
    - Confirm no command path silently mixes feature-issue and child-issue side effects after the refactor
    - Expected result: the command model is testable, migration-safe, and ready for later task decomposition
-    
+
 
 ### Issue/Task Decomposition Assessment
-- Feature scope should split into three sequential issues because command semantics, runtime behavior, and migration/docs concerns are separable but dependent
+- Feature scope should split into three sequential issues because feature routing, issue routing, and help/docs alignment concerns are separable but dependent
 - Planned issue order is minimal-sufficient:
-  1. define explicit feature-level materialization scope,
-  2. define explicit issue-level materialization scope on top of that command model,
-  3. align help/docs/compatibility after the new runtime behavior is clear
+  1. establish canonical action-first feature commands,
+  2. establish canonical action-first issue commands on top of that routing model,
+  3. align help/docs after the new runtime behavior is clear
 - Expected follow-up: `plan issue I1-F8-M1`, `plan issue I2-F8-M1`, and `plan issue I3-F8-M1`, then `plan tasks for F8-M1` after issue plans are reviewed
 
-### I1-F8-M1 - Add explicit materialize feature scope for feature-level GitHub issue create and sync
+### I1-F8-M1 - Add canonical action-first feature commands for create and materialize flows
 
 #### Dependencies
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — `_handle_feature_create`, `_materialize_feature_registration_issue`, and feature issue body sync behavior
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current `feature create` handling, `_materialize_feature_registration_issue`, and feature issue body sync behavior
+- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — top-level parser tree that currently exposes entity-first feature routing
 - [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — `gh_issue_create` and `gh_issue_edit` feature issue calls
 - [dev/map/DEV_MAP.json](dev/map/DEV_MAP.json) — feature-level `gh_issue_number` and `gh_issue_url` are the local source of truth for feature issue mapping
-- Current behavior in `feature create --github` must be preserved or migrated cleanly so existing feature registration flow does not regress
+- Current behavior in `feature create --github` must be preserved or migrated cleanly so existing feature registration flow does not regress during the action-first move
 
 #### Decomposition
-1. Audit current feature-level materialization behavior:
-   - Trace how `feature create --github` creates or updates the feature-level GitHub issue
-   - Trace how `issues-sync` updates feature issue body when the feature issue is already mapped
-   - Identify all output payload fields and local state mutations tied to feature issue mapping
-   - Expected result: current feature issue create/update semantics are fully cataloged
+1. Audit current feature-level command behavior:
+   - Trace how `feature create` registers the local feature and how `feature create --github` creates or updates the feature-level GitHub issue
+   - Trace how feature issue state is updated during existing materialize and sync paths when the feature issue is already mapped
+   - Identify all output payload fields and local state mutations tied to feature registration and feature issue mapping
+   - Expected result: current feature create/materialize semantics are fully cataloged
 
-2. Define the new explicit feature-scope command contract:
-   - Introduce a materialize command path that targets the feature entity itself rather than child issues
-   - Define `create` behavior for unmapped feature issues and `sync` behavior for mapped feature issues
-   - Define failure-path behavior for mismatched milestone, missing feature node, and invalid sync-on-unmapped cases if sync is strict
-   - Expected result: one explicit feature materialize contract replaces hidden feature issue behavior
+2. Define the new action-first feature command contract:
+   - Introduce canonical `create feature` and `materialize feature` command paths that target the feature entity directly
+   - Define how local feature registration, feature issue creation, and feature issue sync are split between those entrypoints
+   - Define failure-path behavior for missing feature node, mismatched milestone, and invalid sync-on-unmapped cases if sync is strict
+   - Expected result: one explicit feature command contract replaces hidden feature issue behavior and entity-first create routing
 
 3. Refactor runtime implementation:
-   - Move feature issue create/update logic behind the new feature-scope materialize handler
+   - Move feature registration and feature issue create/update logic behind the new action-first feature entrypoints
    - Keep branch linkage persistence and deterministic output fields intact
    - Preserve idempotency so repeated `create` or `sync` runs do not corrupt `DEV_MAP` mappings or duplicate GitHub issues
-   - Expected result: feature issue materialization is discoverable, explicit, and behaviorally stable
+   - Expected result: feature create/materialize behavior is discoverable, explicit, and behaviorally stable
 
 4. Define acceptance and regression coverage:
-   - Success path: create feature issue when unmapped
-   - Success path: sync feature issue title/body/milestone when mapped
+   - Success path: register feature through `create feature`
+   - Success path: create or sync feature issue through `materialize feature`
    - Failure path: invalid feature ID or invalid materialize mode reports deterministic output
-   - Expected result: later task decomposition can split runtime refactor and regression checks cleanly
+   - Expected result: later task decomposition can split routing refactor and regression checks cleanly
 
 #### Issue/Task Decomposition Assessment
 - Expected split: 3-4 tasks
-  1. audit current feature issue materialize behavior and output contract
-  2. implement explicit feature-scope create/sync handler path
+  1. audit current feature create/materialize behavior and output contract
+  2. implement canonical action-first feature routing and handler path
   3. preserve branch linkage and idempotent mapping behavior
-  4. add regression coverage for feature issue create/sync paths
+  4. add regression coverage for feature create/materialize paths
 
-### I2-F8-M1 - Add explicit materialize issue scope for issue-level create and sync flows
+### I2-F8-M1 - Add canonical action-first issue commands for create and materialize flows
 
 #### Dependencies
-- [I1-F8-M1](#i1-f8-m1--add-explicit-materialize-feature-scope-for-feature-level-github-issue-create-and-sync) — feature-level scope should be explicit before child issue commands are redesigned
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current `bootstrap|issues-create|issues-sync` handlers, issue queue logic, and materialize status gates
+- [I1-F8-M1](#i1-f8-m1--add-canonical-action-first-feature-commands-for-create-and-materialize-flows) — feature-level action-first routing should be explicit before issue commands are redesigned
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current `feature create-issue`, `bootstrap|issues-create|issues-sync` handlers, issue queue logic, and materialize status gates
+- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — command-tree routing that currently nests issue creation under feature commands
 - [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — issue create/edit adapters and sub-issue reconciliation helpers
 - [dev/TASK_EXECUTION_PIPELINE.json](dev/TASK_EXECUTION_PIPELINE.json) — current F4 materialize tasks and overlaps define existing issue-mode guarantees that must be preserved or intentionally replaced
 
 #### Decomposition
-1. Audit current issue-level materialization behavior:
+1. Audit current issue-level command behavior:
+   - Trace `feature create-issue` behavior for local issue registration and optional GitHub materialization
    - Trace `issues-create` and `issues-sync` behavior for mapped versus unmapped issues
    - Trace `--issue-id` queue logic, gating rules, and output payload differences
    - Identify exactly which parts are truly issue-scoped and which parts are residual feature-scoped behavior
-   - Expected result: the current issue materialize contract is explicit enough to redesign safely
+   - Expected result: the current issue create/materialize contract is explicit enough to redesign safely
 
-2. Define the new issue-scope command contract:
-   - Introduce an explicit issue-level materialize path that targets one issue or a feature-owned issue set
-   - Define `create` behavior for unmapped issues and `sync` behavior for mapped issues, including whether sync may create missing mappings
+2. Define the new action-first issue command contract:
+   - Introduce canonical `create issue` and `materialize issue` command paths that target one issue or a feature-owned issue set
+   - Define `create` behavior for local issue registration versus remote issue creation, and `sync` behavior for mapped issues, including whether sync may create missing mappings
    - Define deterministic failure behavior for invalid issue ownership, terminal status, missing mappings, and queue misuse
-   - Expected result: issue create/sync semantics are clear and no longer hidden behind feature-scoped mode names
+   - Expected result: issue create/materialize semantics are clear and no longer hidden behind feature-scoped command names
 
-3. Refactor issue materialize runtime:
-   - Move queue validation, scope resolution, and GitHub create/edit operations behind the new issue-scope command surface
+3. Refactor issue runtime:
+   - Move issue registration, queue validation, scope resolution, and GitHub create/edit operations behind the new action-first issue command surface
    - Keep milestone assignment, retry policy, and deterministic output payloads stable
    - Preserve or explicitly replace sub-issue reconciliation behavior tied to the parent feature issue
-   - Expected result: issue materialization works through explicit issue-oriented commands without mixing feature issue semantics
+   - Expected result: issue create/materialize works through explicit issue-oriented commands without mixing feature issue semantics
 
 4. Define acceptance and regression coverage:
-   - Success path: create one unmapped issue
-   - Success path: sync one mapped issue
-   - Batch path: run issue materialization for all issues owned by one feature
-   - Expected result: later task decomposition can separate parser/routing work from regression checks and compatibility cases
+   - Success path: register one issue through `create issue`
+   - Success path: materialize or sync one issue through `materialize issue`
+   - Batch path: run issue materialization for all issues owned by one feature if batch mode remains in scope
+   - Expected result: later task decomposition can separate routing work from regression checks and compatibility cases
 
 #### Issue/Task Decomposition Assessment
 - Expected split: 4 tasks
-  1. audit and document current issue materialize scope behavior
-  2. implement explicit issue-scope create/sync routing and validation
+  1. audit and document current issue create/materialize scope behavior
+  2. implement canonical action-first issue routing and validation
   3. preserve milestone/sub-issue/output contracts during refactor
   4. add regression coverage for single-issue and feature-owned issue-set flows
 
-### I3-F8-M1 - Align CLI help, workflow docs, and legacy compatibility for explicit materialize scopes
+### I3-F8-M1 - Unify workflow CLI routing, help, and docs around action-first grammar
 
 #### Dependencies
-- [I1-F8-M1](#i1-f8-m1--add-explicit-materialize-feature-scope-for-feature-level-github-issue-create-and-sync) and [I2-F8-M1](#i2-f8-m1--add-explicit-materialize-issue-scope-for-issue-level-create-and-sync-flows) — runtime command semantics must be settled before documentation and compatibility policy can be finalized
+- [I1-F8-M1](#i1-f8-m1--add-canonical-action-first-feature-commands-for-create-and-materialize-flows) and [I2-F8-M1](#i2-f8-m1--add-canonical-action-first-issue-commands-for-create-and-materialize-flows) — runtime command semantics must be settled before documentation and compatibility policy can be finalized
+- [I1-F8-M1](#i1-f8-m1--add-canonical-action-first-feature-commands-for-create-and-materialize-flows) and [I2-F8-M1](#i2-f8-m1--add-canonical-action-first-issue-commands-for-create-and-materialize-flows) — runtime command semantics must be settled before documentation can be finalized
 - [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) and [dev/workflow_lib/helpers/cli_format.py](dev/workflow_lib/helpers/cli_format.py) — help output path for new command descriptions/examples
-- [.agents/workflows/materialize-feature.md](.agents/workflows/materialize-feature.md) — workflow text must match the new canonical command surface
-- Planning and execution docs that reference materialization flow or feature issue mapping expectations
+- [.agents/workflows/create-feature.md](.agents/workflows/create-feature.md) and [.agents/workflows/materialize-feature.md](.agents/workflows/materialize-feature.md) — workflow text must match the new canonical command surface
+- Planning and execution docs that reference create or materialization flow or feature issue mapping expectations
 
 #### Decomposition
 1. Update CLI help and examples:
-   - Rewrite parser help text so feature-level and issue-level materialization are discoverable from `--help`
-   - Add examples that show the new feature and issue commands directly instead of relying on hidden `feature create --github` semantics
+   - Rewrite parser help text so feature-level and issue-level create/materialize flows are discoverable from `--help`
+   - Add examples that show the new action-first feature and issue commands directly instead of relying on hidden `feature create --github` or `feature create-issue` semantics
    - Ensure multiline help remains readable under the shared compact formatter
    - Expected result: users can infer the command model from help output alone
 
 2. Update workflow and protocol docs:
-   - Rewrite `.agents/workflows/materialize-feature.md` and any linked planning/execution docs that still describe the old command model
-   - Clarify how feature-level GitHub issue creation now fits into the lifecycle relative to child issue materialization
+   - Rewrite `.agents/workflows/materialize-feature.md`, `.agents/workflows/create-feature.md`, and any linked planning/execution docs that still describe the old command model
+   - Clarify how feature-level and issue-level GitHub issue creation now fit into the lifecycle relative to local registration and sync
    - Keep materialization gates, milestone rules, and branch policy wording consistent with the runtime behavior
    - Expected result: canonical docs match the new CLI semantics without hidden exceptions
 
-3. Define and implement compatibility policy:
-   - Decide whether legacy `feature materialize --mode ...` paths stay as aliases, emit deprecation guidance, or fail with migration instructions
-   - If aliases remain, keep output deterministic and clearly mark the canonical replacement
-   - If aliases are removed, error text must point to the new command shape explicitly
-   - Expected result: migration from the old command surface is predictable and documented
+3. Remove old command references from runtime and documentation:
+   - Replace legacy `feature create`, `feature create-issue`, and `feature materialize --mode ...` references with the new canonical commands
+   - Keep error text and examples pointed at the new command shape explicitly
+   - Expected result: the runtime and docs present one command model instead of parallel legacy and canonical paths
 
 4. Define acceptance and regression coverage:
    - Verify help output, workflow docs, and runtime behavior all point to the same canonical commands
-   - Add checks for any chosen alias or deprecation path
-   - Ensure no stale docs/examples remain that instruct users to materialize feature issues through `feature create --github`
+   - Ensure no stale docs/examples remain that instruct users to use entity-first create/materialize paths
    - Expected result: users can adopt the new command model without reading implementation history
 
 #### Issue/Task Decomposition Assessment
 - Expected split: 3-4 tasks
-  1. update CLI help and examples for the new materialize model
+  1. update CLI help and examples for the new action-first command model
   2. rewrite workflow/protocol docs to the new command surface
-  3. implement alias/deprecation or rejection behavior for legacy commands
-  4. add regression checks for help/docs/compatibility consistency
+  3. remove old command references from runtime/docs surfaces
+  4. add regression checks for help/docs consistency

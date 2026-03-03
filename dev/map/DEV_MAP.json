@@ -1399,8 +1399,8 @@
         },
         {
           "id": "F8-M1",
-          "title": "Refactor materialize CLI into explicit feature and issue scopes",
-          "description": "This feature makes workflow materialization commands explicit by separating feature-level and issue-level GitHub materialization, clarifying create/sync semantics, and aligning CLI help and workflow docs with the new command model.",
+          "title": "Refactor workflow CLI into explicit action and entity command grammar",
+          "description": "This feature reorganizes workflow CLI commands around explicit action-first entity scopes such as create feature, create issue, materialize feature, and materialize issue, while clarifying create and sync semantics, preserving deterministic tracker behavior, and aligning help and workflow documentation with the new command model.",
           "status": "Planned",
           "track": "System/Test",
           "gh_issue_number": null,
@@ -1408,8 +1408,8 @@
           "issues": [
             {
               "id": "I1-F8-M1",
-              "title": "Add explicit materialize feature scope for feature-level GitHub issue create and sync",
-              "description": "Feature-level GitHub issue materialization is currently hidden behind `feature create --github` and partially updated in `issues-sync`. Add one explicit command scope for feature issue create/sync behavior.",
+              "title": "Add canonical action-first feature commands for create and materialize flows",
+              "description": "Feature-level workflow operations are currently split across `feature create` and hidden materialize behavior. Add canonical action-first feature commands that expose create and materialize flows directly for the feature entity.",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
@@ -1417,8 +1417,8 @@
             },
             {
               "id": "I2-F8-M1",
-              "title": "Add explicit materialize issue scope for issue-level create and sync flows",
-              "description": "Child issue materialization is currently coupled to feature-scoped mode names and mixed feature/issue semantics. Introduce explicit issue-scoped create/sync behavior with deterministic scope selection.",
+              "title": "Add canonical action-first issue commands for create and materialize flows",
+              "description": "Issue-level workflow operations are currently routed through feature-scoped command shapes such as `feature create-issue` and feature-owned materialize modes. Introduce canonical action-first issue commands with deterministic create and materialize behavior.",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
@@ -1426,8 +1426,8 @@
             },
             {
               "id": "I3-F8-M1",
-              "title": "Align CLI help, workflow docs, and legacy compatibility for explicit materialize scopes",
-              "description": "The CLI and workflow docs still describe the old materialize model. Update help text, process docs, and compatibility behavior so users can discover and migrate to the new command structure safely.",
+              "title": "Unify workflow CLI routing, help, and docs around action-first grammar",
+              "description": "The CLI tree, help text, and workflow docs still describe mixed entity-first and action-first patterns. Align routing, help, and documentation so the new command grammar is discoverable and internally consistent.",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
