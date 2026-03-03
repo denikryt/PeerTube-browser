@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-03T02:35:39+02:00",
+  "updated_at": "2026-03-03T03:01:45+02:00",
   "task_count": 169,
   "milestones": [
     {
@@ -1396,6 +1396,18 @@
               "tasks": []
             }
           ]
+        },
+        {
+          "id": "F8-M1",
+          "title": "Refactor materialize CLI into explicit feature and issue scopes",
+          "description": "This feature makes workflow materialization commands explicit by separating feature-level and issue-level GitHub materialization, clarifying create/sync semantics, and aligning CLI help and workflow docs with the new command model.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [],
+          "branch_name": null,
+          "branch_url": null
         }
       ],
       "non_feature_items": [
