@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-03T22:07:20+02:00",
+  "updated_at": "2026-03-03T22:15:32+02:00",
   "task_count": 181,
   "milestones": [
     {
@@ -1403,16 +1403,16 @@
           "description": "This feature reorganizes workflow CLI commands around explicit action-first entity scopes such as create feature, create issue, materialize feature, and materialize issue, while clarifying create and sync semantics, preserving deterministic tracker behavior, and aligning help and workflow documentation with the new command model.",
           "status": "Planned",
           "track": "System/Test",
-          "gh_issue_number": null,
-          "gh_issue_url": null,
+          "gh_issue_number": 118,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/118",
           "issues": [
             {
               "id": "I1-F8-M1",
               "title": "Add canonical action-first feature commands for create and materialize flows",
               "description": "Feature-level workflow operations are currently split across `feature create` and hidden materialize behavior. Add canonical action-first feature commands that expose create and materialize flows directly for the feature entity.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 115,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/115",
               "tasks": [
                 {
                   "id": "170",
@@ -1453,8 +1453,8 @@
               "title": "Add canonical action-first issue commands for create and materialize flows",
               "description": "Issue-level workflow operations are currently routed through feature-scoped command shapes such as `feature create-issue` and feature-owned materialize modes. Introduce canonical action-first issue commands with deterministic create and materialize behavior.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 116,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/116",
               "tasks": [
                 {
                   "id": "174",
@@ -1495,8 +1495,8 @@
               "title": "Unify workflow CLI routing, help, and docs around action-first grammar",
               "description": "The CLI tree, help text, and workflow docs still describe mixed entity-first and action-first patterns. Align routing, help, and documentation so the new command grammar is discoverable and internally consistent.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 117,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/117",
               "tasks": [
                 {
                   "id": "178",
@@ -1533,8 +1533,8 @@
               ]
             }
           ],
-          "branch_name": null,
-          "branch_url": null
+          "branch_name": "feature/F8-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F8-M1"
         }
       ],
       "non_feature_items": [
