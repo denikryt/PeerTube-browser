@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-03T03:01:45+02:00",
+  "updated_at": "2026-03-03T03:04:27+02:00",
   "task_count": 169,
   "milestones": [
     {
@@ -1405,7 +1405,35 @@
           "track": "System/Test",
           "gh_issue_number": null,
           "gh_issue_url": null,
-          "issues": [],
+          "issues": [
+            {
+              "id": "I1-F8-M1",
+              "title": "Add explicit materialize feature scope for feature-level GitHub issue create and sync",
+              "description": "Feature-level GitHub issue materialization is currently hidden behind `feature create --github` and partially updated in `issues-sync`. Add one explicit command scope for feature issue create/sync behavior.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F8-M1",
+              "title": "Add explicit materialize issue scope for issue-level create and sync flows",
+              "description": "Child issue materialization is currently coupled to feature-scoped mode names and mixed feature/issue semantics. Introduce explicit issue-scoped create/sync behavior with deterministic scope selection.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F8-M1",
+              "title": "Align CLI help, workflow docs, and legacy compatibility for explicit materialize scopes",
+              "description": "The CLI and workflow docs still describe the old materialize model. Update help text, process docs, and compatibility behavior so users can discover and migrate to the new command structure safely.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
           "branch_name": null,
           "branch_url": null
         }

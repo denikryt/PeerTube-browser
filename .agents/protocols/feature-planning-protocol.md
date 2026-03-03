@@ -90,9 +90,8 @@ Checklist:
   - failure-path behavior,
   - idempotency/stability behavior.
 - `#### Issue/Task Decomposition Assessment` includes:
-  - explicit decomposition state (`planning` or `tasked`),
-  - for `planning`: what must be decomposed next and why,
-  - for `tasked`: explicit `task_count` and per-task scope.
+  - what must be decomposed next and why, or
+  - explicit `task_count` and per-task scope when task decomposition already exists.
 - Avoid generic wording (`improve`, `enhance`, `refine`) without concrete mechanism, files, or validation criteria.
 - For `plan issue`, generic fallback stubs are not acceptable completion: the block must be issue-specific and implementation-oriented on the first write.
 
