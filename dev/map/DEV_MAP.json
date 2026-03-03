@@ -1237,7 +1237,7 @@
           "id": "F6-M1",
           "title": "Parse AI-generated markdown templates for issue/feature creation",
           "description": "This feature introduces a file-based input mechanism (--input) for CLI creation commands, allowing AI agents to safely generate titles and descriptions in Markdown without risking JSON schema corruption.",
-          "status": "Planned",
+          "status": "Approved",
           "track": "System/Test",
           "gh_issue_number": null,
           "gh_issue_url": null,
