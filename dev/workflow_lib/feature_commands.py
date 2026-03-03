@@ -119,56 +119,80 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
     materialize_parser = feature_subparsers.add_parser(
         "materialize",
         help="Materialize local feature issues to GitHub and apply canonical branch policy.",
+        description=(
+            "Materialize one feature in explicit modes.\n"
+            "  bootstrap: set or verify canonical feature branch linkage only; no child issue materialization.\n"
+            "  issues-create: create GitHub issues only for selected local issues that are not mapped yet.\n"
+            "  issues-sync: create missing issue mappings and update already mapped GitHub issues for the selected scope."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  python3 dev/workflow feature materialize --id F6-M1 --mode bootstrap --write\n"
+            "  python3 dev/workflow feature materialize --id F6-M1 --mode issues-create --write --github\n"
+            "  python3 dev/workflow feature materialize --id F6-M1 --mode issues-sync --issue-id I1-F6-M1 --write --github"
+        ),
     )
-    materialize_parser.add_argument("--id", required=True, help="Feature ID.")
+    materialize_parser.add_argument("--id", required=True, help="Feature ID to materialize.")
     materialize_parser.add_argument(
         "--mode",
         required=True,
         choices=["bootstrap", "issues-create", "issues-sync"],
-        help="Materialize mode contract.",
+        help=(
+            "Select materialize behavior.\n"
+            "bootstrap: branch linkage only; no issue materialization.\n"
+            "issues-create: create GitHub issues only for unmapped selected issues.\n"
+            "issues-sync: update mapped issues and create any missing selected issue mappings."
+        ),
     )
     materialize_parser.add_argument(
         "--issue-id",
         action="append",
         default=[],
-        help="Optional repeatable child issue selector (queue order is preserved).",
+        help=(
+            "Optional repeatable child issue selector. Queue order is preserved.\n"
+            "Allowed only in issues-create and issues-sync modes."
+        ),
     )
-    materialize_parser.add_argument("--write", action="store_true", help="Persist tracker updates and side effects.")
+    materialize_parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Persist branch linkage, issue mappings, and other write-mode side effects.",
+    )
     materialize_parser.add_argument(
         "--github",
         dest="github",
         action="store_true",
         default=True,
-        help="Create or update mapped GitHub issues.",
+        help="Enable GitHub create or update calls. Default: enabled.",
     )
     materialize_parser.add_argument(
         "--no-github",
         dest="github",
         action="store_false",
-        help="Skip GitHub issue create/update calls.",
+        help="Disable GitHub create or update calls and keep the run local/dry for remote issue changes.",
     )
     materialize_parser.add_argument(
         "--pause-seconds",
         type=float,
         default=1.0,
-        help="Pause between GitHub materialize requests in write+github mode.",
+        help="Pause between consecutive GitHub requests in write plus github mode. Default: 1.0.",
     )
     materialize_parser.add_argument(
         "--max-retries",
         type=int,
         default=4,
-        help="Max retry attempts for transient GitHub request failures.",
+        help="Maximum retry attempts for transient GitHub request failures. Default: 4.",
     )
     materialize_parser.add_argument(
         "--request-timeout",
         type=float,
         default=20.0,
-        help="Per-request GitHub CLI timeout in seconds for materialize write mode.",
+        help="Per-request GitHub CLI timeout in seconds for write plus github mode. Default: 20.0.",
     )
     materialize_parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Emit full materialize diagnostics (large per-item lists); default output is compact.",
+        help="Emit full materialize diagnostics, including large per-issue lists. Default output is compact.",
     )
     materialize_parser.set_defaults(handler=_handle_feature_materialize)
 

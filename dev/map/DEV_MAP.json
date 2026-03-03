@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-03T02:06:35+02:00",
+  "updated_at": "2026-03-03T02:35:39+02:00",
   "task_count": 169,
   "milestones": [
     {
@@ -1247,8 +1247,8 @@
               "title": "Implement Markdown template parser for CLI inputs",
               "description": "CLI commands currently cannot accept multi-line text blocks safely. Implement a parser that extracts # title and # description sections from a provided Markdown draft file.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 111,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/111",
               "tasks": [
                 {
                   "id": "161",
@@ -1281,8 +1281,8 @@
               "title": "Wire --input argument to create feature and create issue commands",
               "description": "The create commands only accept CLI string flags. Extend them to accept an optional --input file path, parse it, and use the extracted values instead of flags.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 112,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/112",
               "tasks": [
                 {
                   "id": "164",
@@ -1315,8 +1315,8 @@
               "title": "Update agent workflows to use draft files for CLI commands",
               "description": "The current AI workflows generate planning data in memory. Update the agent workflow files (e.g. plan-feature, plan-issue) to explicitly write intellectual output to a temporary draft file and pass it to the CLI commands.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 113,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/113",
               "tasks": [
                 {
                   "id": "167",
@@ -1345,8 +1345,8 @@
               ]
             }
           ],
-          "branch_name": null,
-          "branch_url": null
+          "branch_name": "feature/F6-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F6-M1"
         },
         {
           "id": "F7-M1",
