@@ -679,3 +679,139 @@ Canonical per-issue plan block format inside a feature section:
   2. rewrite workflow/protocol docs to the new command surface
   3. remove old command references from runtime/docs surfaces
   4. add regression checks for help/docs consistency
+
+## F9-M1
+
+### Issue Execution Order
+1. `I1-F9-M1` - Remove feature plan artifacts during confirm feature only when closure is valid
+2. `I2-F9-M1` - Add explicit child-issue cascade mode for confirm feature
+3. `I3-F9-M1` - Define issue-scoped execution commit policy and workflow guidance
+
+### Dependencies
+- [dev/workflow_lib/confirm_commands.py](dev/workflow_lib/confirm_commands.py) — current confirm task/issue/feature handlers, cleanup helpers, and GitHub close flow
+- [dev/FEATURE_PLANS.md](dev/FEATURE_PLANS.md) — feature and issue plan blocks that must be removed deterministically during confirm cleanup
+- [.agents/rules/tracking-state.md](.agents/rules/tracking-state.md) — confirmation gating and subtree rules that constrain feature-level cascade behavior
+- [.agents/workflows/confirm.md](.agents/workflows/confirm.md) — confirm command contract that must stay aligned with the runtime behavior
+- GitHub issue close semantics and parent/sub-issue visibility rules constrain what commit linkage can realistically surface at the feature-issue level
+- Existing `confirm issue done` cleanup behavior is prerequisite context; feature-level cleanup and cascade behavior should reuse it instead of reimplementing divergent rules
+
+### Decomposition
+1. Tighten feature-level confirm cleanup semantics:
+   - Define when `confirm feature done` may remove the full feature section from `FEATURE_PLANS.md`
+   - Require the default feature confirm path to succeed only when all child issues are already `Done`
+   - Preserve deterministic dry-run output so users can preview plan/tracker cleanup before write mode
+   - Expected result: feature-level close flow has explicit, non-ambiguous cleanup rules and no silent issue-state cascade
+
+2. Add an explicit feature-level cascade mode for child issues:
+   - Introduce one explicit flag for cascading child issue/task completion instead of overloading generic `--force`
+   - Reuse issue cleanup semantics so child issue blocks are removed from `FEATURE_PLANS.md` and mapped GitHub issues are closed in one scripted flow
+   - Define failure behavior for unmapped issues, already-done children, and mixed subtree states
+   - Expected result: operators can intentionally close the full feature subtree in one command, while the default feature confirm path remains strict
+
+3. Define issue-scoped execution commit policy:
+   - Specify whether commit creation is optional or required during `execute issue`
+   - Define commit message format tied to the owning issue and document what GitHub does and does not surface on child issues versus the parent feature issue
+   - Keep commit behavior explicit and separate from confirm semantics so execution and closure stay independently controllable
+   - Expected result: issue execution gains one documented commit contract without assuming unsupported GitHub aggregation behavior at the feature issue level
+
+### Issue/Task Decomposition Assessment
+- Feature scope should split into three sequential issues because cleanup semantics, explicit cascade behavior, and execution commit policy are related but should be implemented and validated independently
+- Minimal execution order:
+  1. lock strict `confirm feature` cleanup rules,
+  2. add explicit subtree cascade mode on top of those rules,
+  3. define and wire issue-scoped commit behavior after the closure contract is stable
+- Expected commit-oriented split:
+  - `I1-F9-M1`: 2-3 commits (cleanup contract, cleanup implementation, regression checks)
+  - `I2-F9-M1`: 2-3 commits (CLI flag surface, cascade executor, regression checks)
+  - `I3-F9-M1`: 2-4 commits (contract/docs, runtime hook if approved, workflow/docs/tests)
+
+### I1-F9-M1 - Remove feature plan artifacts during confirm feature only when closure is valid
+
+#### Dependencies
+- [dev/workflow_lib/confirm_commands.py](dev/workflow_lib/confirm_commands.py) — current `confirm feature` path and issue-level cleanup helpers
+- [dev/FEATURE_PLANS.md](dev/FEATURE_PLANS.md) — target artifact for feature-section removal
+- [I2-F9-M1](#i2-f9-m1--add-explicit-child-issue-cascade-mode-for-confirm-feature) depends on this issue's cleanup contract and should not redefine feature-section deletion rules
+
+#### Decomposition
+1. Define the strict feature confirm contract:
+   - Require default `confirm feature --id <feature_id> done` to proceed only when every child issue already has status `Done`
+   - Define preview output fields for `FEATURE_PLANS` feature-section cleanup alongside existing `TASK_LIST` and pipeline cleanup previews
+   - Expected result: default feature confirm behavior becomes explicit, non-cascading, and previewable
+
+2. Implement feature-level `FEATURE_PLANS` cleanup:
+   - Add helper logic that removes the full `## <feature_id>` section only when the closure preconditions are satisfied
+   - Keep dry-run versus write-mode behavior deterministic and aligned with existing confirm cleanup payloads
+   - Expected result: successful feature confirmation removes the feature plan section in the same write run as tracker cleanup
+
+3. Add regression coverage and edge-case checks:
+   - Cover blocked feature confirm when any child issue is not `Done`
+   - Cover successful feature confirm cleanup when all child issues are already `Done`
+   - Cover idempotent repeat behavior after section removal
+   - Expected result: feature-level plan cleanup is stable and cannot silently bypass subtree state requirements
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3 tasks / commit slices
+  1. define and validate strict `confirm feature` closure gate
+  2. implement full feature-section cleanup in `FEATURE_PLANS`
+  3. add regression and idempotency coverage
+
+### I2-F9-M1 - Add explicit child-issue cascade mode for confirm feature
+
+#### Dependencies
+- [I1-F9-M1](#i1-f9-m1--remove-feature-plan-artifacts-during-confirm-feature-only-when-closure-is-valid) — strict non-cascading feature confirm behavior must be defined first
+- [dev/workflow_lib/confirm_commands.py](dev/workflow_lib/confirm_commands.py) — confirm parser, feature confirm executor, and issue cleanup helpers
+- [.agents/workflows/confirm.md](.agents/workflows/confirm.md) — command examples and lifecycle guidance must reflect the new explicit cascade mode
+
+#### Decomposition
+1. Define the explicit cascade command surface:
+   - Choose one explicit flag name such as `--with-child-issues` instead of overloading `--force`
+   - Define exactly which states transition in cascade mode: child tasks, child issues, feature node, `FEATURE_PLANS`, tracker cleanup, and GitHub closing
+   - Expected result: subtree cascade behavior is discoverable and semantically distinct from the strict default path
+
+2. Implement subtree cascade executor:
+   - Reuse issue cleanup primitives so each child issue gets the same plan/tracker cleanup semantics as `confirm issue done`
+   - Close mapped child GitHub issues and the feature GitHub issue in one controlled write run
+   - Keep deterministic reporting for already-done children, unmapped children, and partial precondition failures
+   - Expected result: one explicit feature confirm command can close the full subtree without hidden side effects
+
+3. Add regression coverage and documentation:
+   - Cover dry-run preview for cascade mode
+   - Cover successful write-mode cascade over mixed not-yet-done child issues/tasks
+   - Update confirm workflow docs so users understand the difference between strict feature confirm and explicit subtree cascade
+   - Expected result: cascade semantics remain intentional, documented, and test-protected
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3 tasks / commit slices
+  1. add explicit CLI flag and contract validation
+  2. implement cascade executor with child issue cleanup and GitHub close flow
+  3. add regression coverage and workflow documentation
+
+### I3-F9-M1 - Define issue-scoped execution commit policy and workflow guidance
+
+#### Dependencies
+- [I1-F9-M1](#i1-f9-m1--remove-feature-plan-artifacts-during-confirm-feature-only-when-closure-is-valid) and [I2-F9-M1](#i2-f9-m1--add-explicit-child-issue-cascade-mode-for-confirm-feature) — execution commit policy should build on the finalized closure semantics rather than drift independently
+- [.agents/workflows/execute-issue.md](.agents/workflows/execute-issue.md) and [.agents/workflows/execute-feature.md](.agents/workflows/execute-feature.md) — execution workflow docs that may need commit guidance
+- GitHub issue/commit visibility behavior constrains what parent feature issues can display from child-issue-linked commits
+
+#### Decomposition
+1. Define commit policy contract:
+   - Decide whether commit creation during `execute issue` is optional, required by explicit flag, or documentation-only for now
+   - Define canonical commit message format tied to the issue identity (for example `<issue_id>: <summary>` or `#<gh_issue_number>: <summary>`)
+   - Expected result: one issue-scoped commit contract exists before any runtime automation is added
+
+2. Evaluate runtime integration points:
+   - Inspect where `execute issue` could trigger explicit commit creation without hiding repository state changes from the user
+   - Separate documentation-only guidance from actual CLI automation if automatic commits would be too risky by default
+   - Expected result: the repository gets a defensible implementation decision instead of implicit commit side effects
+
+3. Document GitHub visibility limits and test chosen behavior:
+   - Document what linked commits or closing keywords do and do not surface on child issues and parent feature issues
+   - If runtime support is added, cover explicit flag behavior and failure paths; if not, cover workflow/docs consistency
+   - Expected result: users get accurate expectations about commit linkage and parent-feature visibility
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 2-4 tasks / commit slices
+  1. define commit policy and canonical message format
+  2. decide and implement explicit runtime hook if warranted
+  3. document GitHub visibility limits
+  4. add regression or workflow checks for the chosen behavior

@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-03T23:36:49+02:00",
+  "updated_at": "2026-03-04T00:36:41+02:00",
   "task_count": 181,
   "milestones": [
     {
@@ -1535,6 +1535,46 @@
           ],
           "branch_name": "feature/F8-M1",
           "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F8-M1"
+        },
+        {
+          "id": "F9-M1",
+          "title": "Refine confirm closure semantics and issue execution commit policy",
+          "description": "This feature tightens completion semantics by cleaning FEATURE_PLANS during confirm flows, adding explicit feature-level child-issue cascade rules, and defining an issue-scoped commit policy for execution so closure and commit linkage remain explicit and deterministic.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": 119,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/119",
+          "issues": [
+            {
+              "id": "I1-F9-M1",
+              "title": "Remove feature plan artifacts during confirm feature only when closure is valid",
+              "description": "Make confirm feature clean up the entire feature section in FEATURE_PLANS only when all child issues are already Done, and keep deterministic dry-run versus write behavior for feature-level cleanup.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F9-M1",
+              "title": "Add explicit child-issue cascade mode for confirm feature",
+              "description": "Add an explicit feature confirm mode that marks child issues and tasks Done, removes their plan artifacts, and closes mapped GitHub issues in one controlled cascade instead of relying on implicit force semantics.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F9-M1",
+              "title": "Define issue-scoped execution commit policy and workflow guidance",
+              "description": "Define how execute issue should support explicit commit creation and issue-linked commit messaging, and document the limits of GitHub visibility between child issues and parent feature issues.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": "feature/F9-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F9-M1"
         }
       ],
       "non_feature_items": [
