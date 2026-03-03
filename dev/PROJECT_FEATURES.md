@@ -34,11 +34,13 @@
 
 15. Implement database migration system.
 
-16. Implement data backup mechanism (database and indexes).
+16. Migrate Engine database storage to PostgreSQL.
 
-17. Implement a task queue system for heavy operations.
+17. Implement data backup mechanism (database and indexes).
 
-18. Implement content feed modes:
+18. Implement a task queue system for heavy operations.
+
+19. Implement content feed modes:
 
 * random
 * hot
@@ -46,49 +48,51 @@
 * fresh
 * recommendations
 
-19. Implement endpoint `similar(video_id)`.
+20. Implement endpoint `similar(video_id)`.
 
-20. Implement endpoint `recommendations(list_of_video_ids)`.
+21. Implement endpoint `recommendations(list_of_video_ids)`.
 
-21. Implement a dedicated search API.
+22. Implement video search logic in Engine.
 
-22. Implement scoped recommendations based on a specified instance.
+23. Implement a dedicated search API.
 
-23. Implement crawler with federated scope limitation.
+24. Implement scoped recommendations based on a specified instance.
 
-24. Implement ActivityPub actor for Engine.
+25. Implement crawler with federated scope limitation.
 
-25. Implement follow logic and processing of incoming ActivityPub updates.
+26. Implement ActivityPub actor for Engine.
 
-26. Implement deduplication of incoming ActivityPub activities.
+27. Implement follow logic and processing of incoming ActivityPub updates.
 
-27. Implement intake of user interactions (likes, comments) for scoring.
+28. Implement deduplication of incoming ActivityPub activities.
 
-28. Implement receiving and processing personalization parameters from Client.
+29. Implement intake of user interactions (likes, comments) for scoring.
 
-29. Implement incremental vector and index recalculation.
+30. Implement receiving and processing personalization parameters from Client.
 
-30. Implement full index recalculation mechanism.
+31. Implement incremental vector and index recalculation.
 
-31. Migrate to video-ID-based indexing.
+32. Implement full index recalculation mechanism.
 
-32. Ensure proper content deletion without full index recalculation.
+33. Migrate to video-ID-based indexing.
 
-33. Implement Engine moderation system (ban instances, ban channels).
+34. Ensure proper content deletion without full index recalculation.
 
-34. Implement public Engine dashboard (open statistics).
+35. Implement Engine moderation system (ban instances, ban channels).
 
-35. Implement collection and exposure of statistical data (instances, videos, channels, load, updates, tokens).
+36. Implement public Engine dashboard (open statistics).
 
-36. Implement display of blocked / active / new instances in the dashboard.
+37. Implement collection and exposure of statistical data (instances, videos, channels, load, updates, tokens).
 
-37. Implement moderation and data management interface for Engine via UI.
+38. Implement display of blocked / active / new instances in the dashboard.
 
-38. Implement UI for Engine analytics (metrics, resource usage, token activity).
+39. Implement moderation and data management interface for Engine via UI.
 
-39. Enable third-party instances to use Engine via API (plugin-like scenario).
+40. Implement UI for Engine analytics (metrics, resource usage, token activity).
 
-40. Migrate Engine HTTP server from ThreadingHTTPServer to FastAPI (ASGI)
+41. Enable third-party instances to use Engine via API (plugin-like scenario).
+
+42. Migrate Engine HTTP server from ThreadingHTTPServer to FastAPI (ASGI)
 
 ---
 
