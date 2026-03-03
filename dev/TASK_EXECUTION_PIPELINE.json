@@ -48,6 +48,18 @@
     {
       "tasks": ["94", "95"],
       "description": "feature checklist sync and issue approved gate"
+    },
+    {
+      "tasks": ["161", "162", "163"],
+      "description": "F6 parser foundation for markdown draft ingestion"
+    },
+    {
+      "tasks": ["164", "165", "166"],
+      "description": "F6 CLI --input wiring on top of parser contract"
+    },
+    {
+      "tasks": ["167", "168", "169"],
+      "description": "F6 schema and workflow documentation for draft-file planning"
     }
   ],
   "functional_blocks": [
@@ -104,6 +116,12 @@
       "tasks": ["94", "95"],
       "scope": "explicit materialize modes, scoped issue materialization, create-only behavior, feature checklist sync, and issue-level approval gate enforcement.",
       "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
+    },
+    {
+      "title": "Block K: Markdown draft input for workflow creation commands",
+      "tasks": ["161", "162", "163", "164", "165", "166", "167", "168", "169"],
+      "scope": "parser implementation, CLI input-mode wiring, and canonical agent-workflow documentation for markdown draft files.",
+      "outcome": "workflow create commands accept validated markdown draft files through --input, and canonical planning docs describe one schema-backed draft-file flow for agents."
     }
   ],
   "overlaps": [
@@ -154,6 +172,14 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
+    },
+    {
+      "tasks": ["161", "165"],
+      "description": "CLI handler integration depends on one shared markdown parser contract and should not duplicate parsing logic."
+    },
+    {
+      "tasks": ["165", "169"],
+      "description": "workflow documentation must reflect the exact --input command behavior implemented in the create handlers."
     }
   ]
 }
