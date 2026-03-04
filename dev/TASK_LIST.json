@@ -759,6 +759,150 @@
         "2. Verify no canonical docs still claim that plan feature is feature-only when child issue drafting is part of the workflow.",
         "3. Keep the docs and command examples aligned on Draft validation lifecycle wording."
       ]
+    },
+    {
+      "id": "198",
+      "marker": "[M1][F9]",
+      "title": "Audit current confirm feature cleanup and closure gates",
+      "problem": "confirm feature currently updates trackers and closes issues without one clearly documented contract for when full feature-plan cleanup is allowed.",
+      "solution_option": "trace existing confirm feature and confirm issue behavior across FEATURE_PLANS, TASK_LIST, PIPELINE, and GitHub close flows before tightening closure rules.",
+      "concrete_steps": [
+        "1. Audit confirm feature and confirm issue handlers in dev/workflow_lib/confirm_commands.py, including dry-run versus write behavior.",
+        "2. Trace how current cleanup paths mutate FEATURE_PLANS, TASK_LIST, TASK_EXECUTION_PIPELINE, DEV_MAP statuses, and GitHub close payloads.",
+        "3. Record the exact current closure gates and where feature-level behavior diverges from issue-level cleanup semantics."
+      ]
+    },
+    {
+      "id": "199",
+      "marker": "[M1][F9]",
+      "title": "Define strict confirm feature closure contract",
+      "problem": "without one strict non-cascading contract, confirm feature can remain ambiguous about whether it is allowed to close unfinished child issues or remove feature plan artifacts.",
+      "solution_option": "define confirm feature done as a strict path that succeeds only when all child issues are already Done and previews all cleanup side effects before write mode.",
+      "concrete_steps": [
+        "1. Specify the exact preconditions for default confirm feature done, including child issue status requirements and allowed repeat behavior.",
+        "2. Define deterministic preview output for feature-section cleanup in FEATURE_PLANS alongside existing tracker cleanup reporting.",
+        "3. Keep the strict path explicitly non-cascading so later cascade mode can be introduced as a separate semantic surface."
+      ]
+    },
+    {
+      "id": "200",
+      "marker": "[M1][F9]",
+      "title": "Implement feature-level FEATURE_PLANS cleanup on valid confirm",
+      "problem": "feature confirmation currently leaves the parent feature section in FEATURE_PLANS even when closure is valid, which leaves planning artifacts behind after completion.",
+      "solution_option": "add feature-section removal to confirm feature when the strict closure preconditions are satisfied and keep dry-run and write behavior deterministic.",
+      "concrete_steps": [
+        "1. Implement helper logic that locates and removes the full feature section from dev/FEATURE_PLANS.md only after strict closure preconditions are met.",
+        "2. Reuse existing confirm cleanup sequencing so FEATURE_PLANS removal happens in the same write run as other tracker cleanup.",
+        "3. Keep output payloads explicit about whether feature plan artifacts would be removed or were removed."
+      ]
+    },
+    {
+      "id": "201",
+      "marker": "[M1][F9]",
+      "title": "Add regression coverage for strict confirm feature cleanup",
+      "problem": "cleanup and closure-gate changes can silently regress subtree safety or idempotent confirm behavior unless they are locked by tests.",
+      "solution_option": "add regression checks that cover blocked, successful, and repeat confirm feature flows under the new strict cleanup contract.",
+      "concrete_steps": [
+        "1. Add tests for blocked confirm feature when any child issue is not Done.",
+        "2. Add tests for successful strict confirm feature cleanup when all child issues are already Done.",
+        "3. Add idempotency coverage for repeat runs after feature-section cleanup has already been applied."
+      ]
+    },
+    {
+      "id": "202",
+      "marker": "[M1][F9]",
+      "title": "Define explicit child-issue cascade command surface",
+      "problem": "users need one intentional way to close a feature subtree in one command, but overloading generic force semantics would make closure side effects too opaque.",
+      "solution_option": "define one explicit feature confirm flag that clearly communicates child-issue and child-task cascade behavior and keeps it separate from the strict default path.",
+      "concrete_steps": [
+        "1. Choose the explicit cascade flag name and define its scope over child tasks, child issues, feature cleanup, and GitHub close behavior.",
+        "2. Define how already-Done children, unmapped children, and mixed subtree states should be reported in dry-run and write modes.",
+        "3. Keep the new command surface semantically distinct from the strict confirm feature path."
+      ]
+    },
+    {
+      "id": "203",
+      "marker": "[M1][F9]",
+      "title": "Implement subtree cascade executor for confirm feature",
+      "problem": "there is no explicit runtime path that reuses issue-level cleanup semantics to close an entire feature subtree in one controlled write run.",
+      "solution_option": "implement a feature-level cascade executor that confirms child issues and tasks, removes their plan artifacts, and closes mapped GitHub issues via one explicit mode.",
+      "concrete_steps": [
+        "1. Reuse issue cleanup primitives so child issues receive the same FEATURE_PLANS and tracker cleanup semantics as confirm issue done.",
+        "2. Close mapped child GitHub issues and the feature GitHub issue in one controlled cascade path.",
+        "3. Keep deterministic reporting for mixed subtree states, already-done children, and unmapped GitHub children."
+      ]
+    },
+    {
+      "id": "204",
+      "marker": "[M1][F9]",
+      "title": "Update confirm workflow guidance for strict versus cascade modes",
+      "problem": "once subtree cascade exists, users need clear documentation that explains how it differs from the strict default confirm feature path.",
+      "solution_option": "rewrite confirm workflow guidance and examples so strict and cascade confirm modes are discoverable and their side effects are obvious.",
+      "concrete_steps": [
+        "1. Update workflow and help text examples to show the strict confirm path separately from the explicit child-issue cascade path.",
+        "2. Document which cleanup and status transitions happen only in cascade mode and which remain blocked in strict mode.",
+        "3. Keep the documentation aligned with the exact runtime flag name and payload semantics."
+      ]
+    },
+    {
+      "id": "205",
+      "marker": "[M1][F9]",
+      "title": "Add regression coverage for child-issue cascade confirm mode",
+      "problem": "feature-level cascade behavior can easily become unsafe or ambiguous without direct dry-run and write-mode regression coverage.",
+      "solution_option": "add tests that lock cascade previews, subtree completion behavior, and edge-case reporting for the explicit child-issue cascade mode.",
+      "concrete_steps": [
+        "1. Add dry-run tests that preview which child issues, tasks, plan artifacts, and GitHub issues would be affected.",
+        "2. Add write-mode tests for successful subtree cascade over mixed unfinished child issues and tasks.",
+        "3. Add edge-case tests for already-done children and partially unmapped GitHub issue sets."
+      ]
+    },
+    {
+      "id": "206",
+      "marker": "[M1][F9]",
+      "title": "Define issue-scoped execution commit policy contract",
+      "problem": "execution commit behavior is currently ad hoc, so users do not know whether execute issue should create commits automatically or what message format should be considered canonical.",
+      "solution_option": "define one issue-scoped commit policy that decides whether commit creation is optional, explicit-flag based, or documentation-only and standardizes the message format.",
+      "concrete_steps": [
+        "1. Evaluate whether commit creation during execute issue should be optional by explicit flag, mandatory, or workflow guidance only.",
+        "2. Define the canonical issue-linked commit message format tied to issue identity and, when applicable, GitHub issue numbers.",
+        "3. Keep commit policy separate from confirm semantics so execution and closure remain independently controllable."
+      ]
+    },
+    {
+      "id": "207",
+      "marker": "[M1][F9]",
+      "title": "Evaluate runtime integration points for explicit issue commits",
+      "problem": "automatic commits can hide repository mutations from the user if they are introduced without a careful integration review of execute issue flows.",
+      "solution_option": "inspect execute issue integration points and make a defensible decision about whether explicit commit automation is safe enough for runtime support.",
+      "concrete_steps": [
+        "1. Audit execute issue flow and determine where an explicit commit hook could run without obscuring repository state changes.",
+        "2. Separate documentation-only guidance from actual CLI automation if automatic commits are too risky by default.",
+        "3. Define any explicit-flag preconditions and failure behavior if runtime commit support is warranted."
+      ]
+    },
+    {
+      "id": "208",
+      "marker": "[M1][F9]",
+      "title": "Document GitHub issue and feature visibility limits for linked commits",
+      "problem": "users may assume child-issue-linked commits automatically appear as a rich aggregated stream on the parent feature issue, which GitHub does not reliably provide.",
+      "solution_option": "document the realistic visibility limits for commit references, closing keywords, child issues, and parent feature issues so execution expectations stay accurate.",
+      "concrete_steps": [
+        "1. Document what commit references and closing keywords do on child GitHub issues versus parent feature issues.",
+        "2. Clarify which visibility relationships are handled through issue hierarchy or linked PRs instead of commit aggregation.",
+        "3. Keep workflow guidance explicit about the limits of parent feature issue visibility for child-issue-linked commits."
+      ]
+    },
+    {
+      "id": "209",
+      "marker": "[M1][F9]",
+      "title": "Add coverage or checks for the chosen commit policy behavior",
+      "problem": "once a commit policy is chosen, runtime and documentation can drift unless the selected behavior is covered by tests or consistency checks.",
+      "solution_option": "add runtime tests if commit automation is implemented or documentation consistency checks if the policy remains workflow guidance only.",
+      "concrete_steps": [
+        "1. Add command-level tests for any explicit commit flag surface if runtime support is introduced.",
+        "2. Otherwise add workflow or documentation checks that keep the chosen commit policy and message format consistent.",
+        "3. Verify the repository guidance does not promise unsupported GitHub parent-feature commit aggregation."
+      ]
     }
   ]
 }

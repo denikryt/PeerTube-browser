@@ -64,6 +64,18 @@
     {
       "tasks": ["194", "195", "196", "197"],
       "description": "F7 protocol and workflow rewrite for Draft validation lifecycle"
+    },
+    {
+      "tasks": ["198", "199", "200", "201"],
+      "description": "F9 strict confirm feature cleanup contract and implementation"
+    },
+    {
+      "tasks": ["202", "203", "204", "205"],
+      "description": "F9 explicit child-issue cascade mode for confirm feature"
+    },
+    {
+      "tasks": ["206", "207", "208", "209"],
+      "description": "F9 issue-scoped execution commit policy and GitHub visibility guidance"
     }
   ],
   "functional_blocks": [
@@ -126,6 +138,12 @@
       "tasks": ["182", "183", "184", "185", "186", "187", "188", "189", "190", "191", "192", "193", "194", "195", "196", "197"],
       "scope": "planning lifecycle status model, validation commands, draft-file issue planning, canonical status routing, and protocol/workflow alignment.",
       "outcome": "planning flows explicitly move through Pending, Draft, Planned, and Tasked states, issue and feature validation become explicit gates, and compact status commands expose lifecycle state without tracker-file parsing."
+    },
+    {
+      "title": "Block N: Confirm closure semantics and execution commit policy",
+      "tasks": ["198", "199", "200", "201", "202", "203", "204", "205", "206", "207", "208", "209"],
+      "scope": "strict feature-confirm cleanup gates, explicit subtree cascade behavior, and issue-scoped execution commit policy guidance.",
+      "outcome": "confirm feature distinguishes strict closure from explicit subtree cascade, FEATURE_PLANS cleanup becomes deterministic at both issue and feature levels, and execute issue has one documented commit policy with accurate GitHub visibility expectations."
     }
   ],
   "overlaps": [
@@ -196,6 +214,22 @@
     {
       "tasks": ["191", "196"],
       "description": "Workflow docs must reflect the exact canonical plan issue routing after legacy feature plan-issue removal."
+    },
+    {
+      "tasks": ["198", "200"],
+      "description": "Feature-level cleanup implementation must follow the audited confirm sequencing and existing issue cleanup primitives."
+    },
+    {
+      "tasks": ["200", "203"],
+      "description": "Cascade runtime should reuse the strict feature cleanup helper instead of implementing separate feature-section deletion logic."
+    },
+    {
+      "tasks": ["202", "204"],
+      "description": "Workflow guidance and help text must reflect the exact explicit cascade flag and its subtree semantics."
+    },
+    {
+      "tasks": ["206", "208"],
+      "description": "Commit policy wording must stay aligned with the documented GitHub visibility limits for child issues and parent feature issues."
     }
   ]
 }

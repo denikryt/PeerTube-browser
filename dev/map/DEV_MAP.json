@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-04T02:49:27+02:00",
-  "task_count": 197,
+  "updated_at": "2026-03-04T02:53:57+02:00",
+  "task_count": 209,
   "milestones": [
     {
       "id": "M1",
@@ -1681,28 +1681,127 @@
               "id": "I1-F9-M1",
               "title": "Remove feature plan artifacts during confirm feature only when closure is valid",
               "description": "Make confirm feature clean up the entire feature section in FEATURE_PLANS only when all child issues are already Done, and keep deterministic dry-run versus write behavior for feature-level cleanup.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "198",
+                  "title": "Audit current confirm feature cleanup and closure gates",
+                  "summary": "Trace existing confirm feature and confirm issue cleanup behavior across FEATURE_PLANS, TASK_LIST, PIPELINE, and GitHub close flows before tightening feature-level closure rules.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                },
+                {
+                  "id": "199",
+                  "title": "Define strict confirm feature closure contract",
+                  "summary": "Specify the non-cascading confirm feature semantics that require all child issues to already be Done and preview full feature-plan cleanup before write mode.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                },
+                {
+                  "id": "200",
+                  "title": "Implement feature-level FEATURE_PLANS cleanup on valid confirm",
+                  "summary": "Add feature-section removal to confirm feature when closure preconditions are satisfied while keeping dry-run and write-mode cleanup reporting deterministic.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                },
+                {
+                  "id": "201",
+                  "title": "Add regression coverage for strict confirm feature cleanup",
+                  "summary": "Cover blocked, successful, and idempotent feature confirmation flows so feature-level plan cleanup cannot bypass subtree state requirements.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                }
+              ]
             },
             {
               "id": "I2-F9-M1",
               "title": "Add explicit child-issue cascade mode for confirm feature",
               "description": "Add an explicit feature confirm mode that marks child issues and tasks Done, removes their plan artifacts, and closes mapped GitHub issues in one controlled cascade instead of relying on implicit force semantics.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "202",
+                  "title": "Define explicit child-issue cascade command surface",
+                  "summary": "Choose and specify the feature confirm flag that intentionally cascades child issue and task completion instead of overloading force semantics.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                },
+                {
+                  "id": "203",
+                  "title": "Implement subtree cascade executor for confirm feature",
+                  "summary": "Reuse issue cleanup primitives to confirm child issues and tasks, remove plan artifacts, and close mapped GitHub issues in one explicit feature-level cascade.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                },
+                {
+                  "id": "204",
+                  "title": "Update confirm workflow guidance for strict versus cascade modes",
+                  "summary": "Document the difference between default strict confirm feature behavior and explicit subtree cascade mode across workflow guidance and runtime help.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                },
+                {
+                  "id": "205",
+                  "title": "Add regression coverage for child-issue cascade confirm mode",
+                  "summary": "Cover dry-run previews, write-mode cascade completion, and mixed subtree states so the new feature-level cascade remains explicit and predictable.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                }
+              ]
             },
             {
               "id": "I3-F9-M1",
               "title": "Define issue-scoped execution commit policy and workflow guidance",
               "description": "Define how execute issue should support explicit commit creation and issue-linked commit messaging, and document the limits of GitHub visibility between child issues and parent feature issues.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "206",
+                  "title": "Define issue-scoped execution commit policy contract",
+                  "summary": "Decide whether execute issue commit creation is optional, explicit-flag driven, or documentation-only, and define the canonical issue-linked commit message format.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                },
+                {
+                  "id": "207",
+                  "title": "Evaluate runtime integration points for explicit issue commits",
+                  "summary": "Inspect execute issue hooks and determine whether explicit commit automation is safe enough for runtime support or should remain workflow guidance only.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                },
+                {
+                  "id": "208",
+                  "title": "Document GitHub issue and feature visibility limits for linked commits",
+                  "summary": "Clarify what commit references or closing keywords do and do not surface on child issues and parent feature issues so commit expectations stay realistic.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                },
+                {
+                  "id": "209",
+                  "title": "Add coverage or checks for the chosen commit policy behavior",
+                  "summary": "Lock the selected commit-policy path with runtime tests or documentation consistency checks so execute issue guidance does not drift.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:53:57"
+                }
+              ]
             }
           ],
           "branch_name": "feature/F9-M1",
