@@ -18,6 +18,7 @@ If any procedural detail differs across docs, the corresponding `.agents/workflo
 - `plan tasks for feature <id>` and `plan tasks for issue <issue_id>` are **Enforcement/Write** phases. They are the sole owners of active synchronization across `dev/TASK_LIST.json` and `dev/TASK_EXECUTION_PIPELINE.json`.
 - `plan tasks for issue <issue_id>` is allowed only after a valid issue-plan block exists in `dev/FEATURE_PLANS.md` that meets the quality requirements defined in this protocol.
 - A plan must define the implementation direction; task decomposition is a separate subsequent step.
+- Task decomposition is code-informed work: before authoring tasks or overlaps, the agent must read the current code, runtime handlers, schemas, workflows, and tests relevant to the issue scope.
 - Agents may use markdown draft files for multi-line create-command input; the canonical draft structure is defined in `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md`.
 - Recommended temporary storage for agent-generated drafts is `tmp/workflow/`.
 
@@ -78,6 +79,14 @@ Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
   `Milestone -> Feature -> Issue -> Task`.
   If parent nodes do not exist yet, create them first using `dev/map/DEV_MAP_SCHEMA.md`.
 - Every task in `dev/TASK_LIST.json` must carry markers `[M*][F*]` that match `dev/map/DEV_MAP.json`.
+- Every planned task must describe concrete code changes:
+  - what to remove,
+  - what to add,
+  - what to rename or move,
+  - what to validate in tests, docs, or runtime behavior.
+- Generic task wording is not acceptable for `plan tasks`; decomposition must be anchored to real files, modules, handlers, schemas, commands, or tests discovered during code reading.
+- `overlaps` in `dev/TASK_EXECUTION_PIPELINE.json` must be derived from real shared code surfaces or dependency chains, not from high-level topic similarity alone.
+- Overlap descriptions may include a short generalized summary, but only after naming the concrete shared code surface or dependency chain that justifies the overlap.
 
 ## Section 3: Planning Quality Gates
 
@@ -110,8 +119,12 @@ Checklist:
 Checklist:
 - target feature plan is lint-clean and reviewed,
 - target issue nodes are not `Pending` (pending issues must be planned first via `plan issue <issue_id>`),
+- relevant code for the target issues has been read before task decomposition is written,
 - decomposition is represented as local `Issue -> Task` structure,
+- each task contains concrete code-change steps that identify what will be removed, added, changed, or validated,
 - planned task markers/ownership are consistent with `DEV_MAP` parent chain,
+- overlaps are justified by actual shared files, primitives, parser paths, handlers, schemas, tests, or dependency chains found in the code,
+- overlap wording may summarize the broader shared concern, but it must still include the concrete code-level basis,
 - decomposition scope is minimal and executable,
 - successful decomposition is expected to transition selected issues to `Tasked`.
 
