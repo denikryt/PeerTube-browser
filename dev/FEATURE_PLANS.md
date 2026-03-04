@@ -331,182 +331,183 @@ Canonical per-issue plan block format inside a feature section:
 ## F7-M1
 
 ### Issue Execution Order
-1. `I1-F7-M1` - Implement validate issue command with Pending→Planned transition
+1. `I1-F7-M1` - Introduce Draft planning status and validate issue/feature transitions
 2. `I2-F7-M1` - Wire --input argument to plan issue command for markdown draft parsing
-3. `I3-F7-M1` - Rename feature.plan-issue command to plan issue in CLI routing
-4. `I4-F7-M1` - Update task-execution-protocol and workflow docs for new planning lifecycle
+3. `I3-F7-M1` - Add canonical status/plan CLI surface and remove legacy feature.plan-issue path
+4. `I4-F7-M1` - Update task-execution-protocol and workflow docs for Pending→Draft→Planned lifecycle
 
 ### Dependencies
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — CLI routing, command handlers, DEV_MAP write paths
-- [dev/workflow_lib/markdown_parser.py](dev/workflow_lib/markdown_parser.py) — parser from F6-M1 (prerequisite: I1-F6-M1 or I2-F6-M1 must be completed)
-- [dev/workflow_lib/errors.py](dev/workflow_lib/errors.py) — `WorkflowCommandError` for validation
-- [.agents/protocols/task-execution-protocol.md](.agents/protocols/task-execution-protocol.md) — command execution standards (read + update allowed)
-- [.agents/workflows/plan-feature.md](.agents/workflows/plan-feature.md) and [plan-issue.md](.agents/workflows/plan-issue.md) — workflow procedures (read + update allowed)
-- `dev/FEATURE_PLANS.md` — issue plan blocks (target for `plan issue` writes)
-- `dev/map/DEV_MAP.json` — issue node storage (status updates)
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current issue-planning handlers, DEV_MAP write paths, and legacy `feature plan-issue` surface
+- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — top-level CLI tree for `plan`, `validate`, and `status`
+- [dev/workflow_lib/validate_commands.py](dev/workflow_lib/validate_commands.py) — existing validate surface to extend with issue/feature validation
+- [dev/workflow_lib/markdown_parser.py](dev/workflow_lib/markdown_parser.py) — parser from F6-M1 for `--input <draft_file>` flows
+- [dev/workflow_lib/errors.py](dev/workflow_lib/errors.py) — `WorkflowCommandError` for deterministic lifecycle and validation failures
+- [.agents/protocols/task-execution-protocol.md](.agents/protocols/task-execution-protocol.md) — execution and planning lifecycle standards
+- [.agents/protocols/feature-planning-protocol.md](.agents/protocols/feature-planning-protocol.md) — Gate 0 and planning-gate wording
+- [.agents/workflows/plan-feature.md](.agents/workflows/plan-feature.md) and [plan-issue.md](.agents/workflows/plan-issue.md) — workflow procedures that must align with runtime behavior
+- `dev/FEATURE_PLANS.md` — issue plan blocks written during draft planning
+- `dev/map/DEV_MAP.json` — source of truth for lifecycle status (`Pending`, `Draft`, `Planned`, `Tasked`)
 
 ### Decomposition
-1. Implement explicit `validate issue` command with quality gate enforcement and status transition logic.
-2. Wire `--input <draft_file>` argument to `plan issue` command to parse Markdown templates from agent-generated draft files.
-3. Consolidate CLI command structure by renaming legacy `feature plan-issue` to canonical `plan issue`.
-4. Update all canonical protocol and workflow documentation to reflect new Pending→Planned→Tasked lifecycle with explicit validation gates.
+1. Introduce explicit planning lifecycle states `Pending -> Draft -> Planned -> Tasked` so plan creation and plan approval are separate operations.
+2. Make `plan issue` write or update draft issue plans, including parser-backed `--input` flows, without silently promoting status to `Planned`.
+3. Consolidate the CLI around canonical top-level `plan issue`, `validate issue|feature`, and cheap `status issue|feature` commands while deleting the legacy `feature plan-issue` path.
+4. Rewrite protocol and workflow docs so `plan feature` remains a useful cascading planning command that can draft child issues without contradicting single-issue planning and validation flows.
 
 ### Issue/Task Decomposition Assessment
-- Decomposition splits into four sequential issues: I1 (validate command) → I2 (input wiring) → I3 (rename) → I4 (docs update).
-- Expected outcome: unified planning workflow with explicit validation gate; agents can safely generate draft files and parse them via CLI.
-- New command dependency: I2-F7-M1 requires markdown parser from F6-M1; gate enforcement requires both I1 + I2 before code integration.
+- Decomposition splits into four sequential issues: I1 defines the lifecycle contract, I2 makes draft creation practical, I3 exposes the canonical command surface, and I4 rewrites the workflow/protocol text around the final model.
+- Expected outcome: agents and scripts can determine planning state from status alone, inspect it with low-token `status` commands, and distinguish between draft plan insertion and validated plan approval.
+- Dependency note: I2-F7-M1 depends on the markdown parser from F6-M1, while I3-F7-M1 depends on I1 and I2 so the new CLI exposes the finalized lifecycle rather than an intermediate contract.
 
-### I1-F7-M1 - Implement validate issue command with Pending→Planned transition
+### I1-F7-M1 - Introduce Draft planning status and validate issue/feature transitions
 
 #### Dependencies
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — command registration, handler implementation, DEV_MAP write paths
-- [dev/workflow_lib/errors.py](dev/workflow_lib/errors.py) — `WorkflowCommandError` for validation failures
-- [.agents/protocols/feature-planning-protocol.md](.agents/protocols/feature-planning-protocol.md) — Gate 0 quality standards for reference
-- `dev/FEATURE_PLANS.md` — issue-plan block location and validation target
-- `dev/map/DEV_MAP.json` — issue node storage for status updates
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — shared DEV_MAP mutation helpers and current planning-related handlers
+- [dev/workflow_lib/validate_commands.py](dev/workflow_lib/validate_commands.py) — extend validate surface with entity-specific commands
+- [dev/workflow_lib/errors.py](dev/workflow_lib/errors.py) — deterministic validation and bad-state errors
+- [.agents/protocols/feature-planning-protocol.md](.agents/protocols/feature-planning-protocol.md) — Gate 0 quality requirements
+- `dev/FEATURE_PLANS.md` — issue-plan blocks to validate
+- `dev/map/DEV_MAP.json` — issue and feature node storage for lifecycle status writes
 
 #### Decomposition
-1. Create new CLI command handler `_handle_validate_issue`:
-   - Input: `issue_id` (required), `--write` flag (optional dry-run vs commit)
-   - Resolve target issue in `DEV_MAP.json`; validate ownership chain and status precondition (must be Pending)
-   - Read FEATURE_PLANS.md and extract issue-plan block for target issue
-   - Return error if issue section/block not found with actionable guidance (run `plan issue` first)
+1. Introduce new planning status semantics in DEV_MAP:
+   - `Pending` means no draft plan has been recorded yet
+   - `Draft` means a plan block exists but has not passed validation
+   - `Planned` means the draft passed validation and is eligible for task decomposition
+   - Keep downstream `Tasked` semantics unchanged
 
-2. Implement quality validation against Gate 0 requirements:
-   - Issue-plan block exists and contains all three mandatory sections: `#### Dependencies`, `#### Decomposition`, `#### Issue/Task Decomposition Assessment`
-   - `#### Decomposition` has numbered top-level steps with concrete sub-points (not generic prose)
-   - `#### Issue/Task Decomposition Assessment` contains explicit expected split/task breakdown (not vague placeholders)
-   - Return deterministic error messages for each validation failure (e.g., "Missing numbered steps in Decomposition section")
+2. Implement entity-specific validation commands:
+   - `validate issue --id <issue_id>` validates one issue plan block and transitions `Draft -> Planned`
+   - `validate feature --id <feature_id>` validates all child issue plans in one pass and transitions validated children plus the parent feature to `Planned`
+   - Reject validation for `Pending` issues with guidance to run `plan issue` or `plan feature` first
 
-3. Implement status transition logic (only when `--write` is provided):
-   - If validation passes: update issue status in DEV_MAP.json from Pending → Planned
-   - Write DEV_MAP changes in same edit run
-   - Return success with explicit status field: `"status": "Planned"`, `"validation": "passed"`
-   - If validation fails: make no DEV_MAP changes, return error with validation details
+3. Enforce Gate 0 validation rules during validation:
+   - issue-plan block exists and contains `#### Dependencies`, `#### Decomposition`, and `#### Issue/Task Decomposition Assessment`
+   - `#### Decomposition` contains numbered top-level steps with concrete sub-points
+   - `#### Issue/Task Decomposition Assessment` contains explicit next-step or task-split guidance
+   - validation failures return deterministic actionable errors
 
-4. Deterministic output contract:
-   - Dry-run (`--write` absent): return action "would-plan-validate"
-   - Commit (`--write` present): return action "validated-planned", include updated issue status
+4. Define deterministic output contract:
+   - dry-run (`--write` absent) returns action `would-validate` plus the target status
+   - commit (`--write` present) returns action `validated` and the updated `status`
+   - payloads stay compact enough to support repeated scripted checks
 
 #### Issue/Task Decomposition Assessment
 - Expected split: 3-4 tasks
-  1. Handler registration in CLI feature_commands module + argument parser setup
-  2. Quality validation logic implementation (headings, numbered steps, assessment content checks)
-  3. DEV_MAP status update logic + error handling for edge cases (missing block, bad status, ownership mismatch)
-  4. Test coverage for validation pass/fail paths and status transition idempotency
+1. Add `Draft` lifecycle support to DEV_MAP status helpers and validation preconditions.
+2. Implement `validate issue` and `validate feature` handlers with Gate 0 checks.
+3. Wire lifecycle transitions and edge-case handling for missing blocks, bad statuses, and ownership mismatches.
+4. Add tests for `Pending -> Draft -> Planned` transitions and feature-level cascading validation.
 
 ### I2-F7-M1 - Wire --input argument to plan issue command for markdown draft parsing
 
 #### Dependencies
-- [I1-F7-M1](#i1-f7-m1--implement-validate-issue-command-with-pendingplanned-transition) — validate issue command should exist first for clarity
+- [I1-F7-M1](#i1-f7-m1--introduce-draft-planning-status-and-validate-issuefeature-transitions) — lifecycle semantics must exist before draft insertion behavior is finalized
 - [I1-F6-M1](dev/FEATURE_PLANS.md#i1-f6-m1--implement-markdown-template-parser-for-cli-inputs) — markdown parser from F6-M1 must be available
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — `plan issue` command handler and argument parser
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — canonical `plan issue` handler and argument parser
 - [dev/workflow_lib/markdown_parser.py](dev/workflow_lib/markdown_parser.py) — `parse_feature_issue_template()` parser function
 
 #### Decomposition
-1. Extend CLI argument parser for `plan issue` subcommand:
-   - Add optional `--input <file_path>` argument accepting file path string
-   - Keep existing manual arguments (`--title`, `--description`, etc.) for backward compatibility
-   - Validation: if both `--input` and manual args are provided, error with message: `"Cannot combine --input with --title/--description. Use one input method only."`
+1. Extend CLI argument parsing for `plan issue`:
+   - add optional `--input <file_path>` accepting a markdown draft file
+   - keep explicit flag-based inputs (`--title`, `--description`, etc.) for non-file planning flows
+   - reject mixed input modes with a deterministic mutual-exclusion error
 
-2. Update `_handle_feature_plan_issue` handler logic:
-   - Check if `args.input` is provided
-   - If yes: import and call parser from F6-M1; extract title/description from parsed result (catches parser errors with exit code 4)
-   - If no: use existing manual args as-is (backward compatible)
-   - Merge extracted values into same downstream plan-block generation logic (no duplication)
+2. Update `plan issue` handler logic:
+   - if `args.input` is provided, parse the file through the F6-M1 parser and extract normalized values
+   - if `args.input` is absent, continue using explicit CLI args
+   - feed both modes into the same downstream plan-block generation path
 
-3. Ensure deterministic behavior:
-   - `--input` takes precedence; flags ignored when `--input` provided (or strict mutual-exclusion error)
-   - Parser errors propagate with original error messages and exit codes (4 for input validation)
-   - Successfully parsed values use same validation/defaults as manual args (empty description allowed, empty title errors)
+3. Define draft-state write behavior:
+   - successful plan insertion or update transitions `Pending -> Draft`
+   - if the issue is already `Draft`, update the plan block without changing status
+   - if the issue is already `Planned`, require explicit overwrite semantics or reject silent downgrades
+   - parser errors propagate with original validation messages and exit codes
 
-4. Deterministic output contract:
-   - Both input modes produce identical output; only source differs (file vs args)
-   - Return action "created-plan" or "updated-plan" based on block mutation, not input method
-   - Backward compatibility: no breaking API changes; existing flag-based workflows unchanged
+4. Define deterministic output contract:
+   - both input modes return the same shape; only the source differs
+   - return action `created-draft` or `updated-draft` based on the resulting block mutation
+   - return resulting status explicitly as `Draft`
 
 #### Issue/Task Decomposition Assessment
 - Expected split: 3-4 tasks
-  1. Argument parser extension for `--input` in plan-issue CLI registration
-  2. Handler logic update: conditional parser call + value extraction + merge with existing flow
-  3. Error handling + backward-compatibility validation tests (both input modes)
-  4. Integration smoke tests + command docs update (clarify both modes supported)
+1. Extend parser/arg registration for `--input` in canonical `plan issue`.
+2. Route parsed values and explicit args through one draft-generation path.
+3. Add lifecycle tests for `Pending`, `Draft`, and `Planned` issue states.
+4. Add integration smoke coverage and docs notes for both input modes.
 
-### I3-F7-M1 - Rename feature.plan-issue command to plan issue in CLI routing
+### I3-F7-M1 - Add canonical status/plan CLI surface and remove legacy feature.plan-issue path
 
 #### Dependencies
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — CLI command registration and routing
-- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — command-line interface module
-- [I2-F7-M1](#i2-f7-m1--wire--input-argument-to-plan-issue-command-for-markdown-draft-parsing) — should be ready before rename to avoid duplicate code paths
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current legacy command registration and planning handlers
+- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — top-level CLI routing
+- [I1-F7-M1](#i1-f7-m1--introduce-draft-planning-status-and-validate-issuefeature-transitions) — lifecycle statuses must be settled before exposing `status`
+- [I2-F7-M1](#i2-f7-m1--wire--input-argument-to-plan-issue-command-for-markdown-draft-parsing) — canonical `plan issue` semantics should be stable before final routing cleanup
 
 #### Decomposition
-1. Audit existing command registration:
-   - Search for `feature.plan-issue` in CLI router (feature_commands.py, cli.py)
-   - Identify all subcommand registration points and help text references
-   - List all validation/routing logic that depends on command structure
+1. Audit current planning command routing:
+   - find every `feature.plan-issue` registration and reference in CLI/help/error paths
+   - map all handlers and validation logic coupled to the old namespace
+   - identify all call sites that should move to top-level `plan` and `status`
 
-2. Implement CLI routing change:
-   - Remove `feature plan-issue` registration from feature command group
-   - Add new top-level `plan issue` command registration (separate from feature group)
-   - Update argument parser bindings and handler references
-   - Preserve all existing functionality; only namespace/structure changes
+2. Implement canonical top-level command surface:
+   - add `plan issue --id <issue_id>` as the only issue-planning entrypoint
+   - add `status issue --id <issue_id>` and `status feature --id <feature_id>`
+   - keep output intentionally compact for low-token polling and shell scripting
 
-3. No backward compatibility: remove `feature plan-issue` entirely and replace with `plan issue` as the canonical command.
-   - Remove all code paths and registrations for old `feature.plan-issue` command
-   - Update all error messages and docs to reject old command name explicitly
-   - Document breaking change clearly in release notes
+3. Define status output contract:
+   - `status issue` returns minimal JSON like `{ "command": "status.issue", "issue_id": "<id>", "status": "Draft" }`
+   - `status feature` returns minimal JSON like `{ "command": "status.feature", "feature_id": "<id>", "status": "Draft" }`
+   - avoid extra derived fields unless they are required to disambiguate state
 
-4. Return deterministic output:
-   - `plan issue --help` shows new command structure
-   - Command execution behavior unchanged (same handler, same output contract)
-   - CLI help text references new command naming throughout
+4. Remove the legacy path:
+   - delete `feature plan-issue` registration and related code paths entirely
+   - update help text and error messages to point to canonical commands
+   - keep `plan feature` as a valid higher-level workflow; only the legacy issue-planning namespace is removed
 
 #### Issue/Task Decomposition Assessment
 - Expected split: 3-4 tasks
-  1. Audit and mapping of all command registration points (feature_commands.py, cli.py)
-  2. Implement new `plan issue` routing + remove old `feature plan-issue` path entirely
-  3. Update all help text, error messages, docs references to reject old command name
-  4. Smoke tests: verify `plan issue --help` works, `feature plan-issue` explicitly rejected with error
+1. Audit all command-registration points in `feature_commands.py` and `cli.py`.
+2. Implement canonical `plan issue` and cheap `status issue|feature` routing.
+3. Remove the old `feature plan-issue` path and align help/error text.
+4. Add smoke tests for `plan issue --help`, `status issue`, `status feature`, and rejection of legacy syntax.
 
-### I4-F7-M1 - Update task-execution-protocol and workflow docs for new planning lifecycle
+### I4-F7-M1 - Update task-execution-protocol and workflow docs for Pending→Draft→Planned lifecycle
 
 #### Dependencies
-- [I1-F7-M1](#i1-f7-m1--implement-validate-issue-command-with-pendingplanned-transition), [I2-F7-M1](#i2-f7-m1--wire--input-argument-to-plan-issue-command-for-markdown-draft-parsing), [I3-F7-M1](#i3-f7-m1--rename-featureplan-issue-command-to-plan-issue-in-cli-routing) — all prior issues should be completed before doc updates
-- [.agents/protocols/task-execution-protocol.md](.agents/protocols/task-execution-protocol.md) — command/feature planning flow section
-- [.agents/protocols/feature-planning-protocol.md](.agents/protocols/feature-planning-protocol.md) — planning quality gates section
-- [.agents/workflows/plan-feature.md](.agents/workflows/plan-feature.md) — feature planning workflow procedure
-- [.agents/workflows/plan-issue.md](.agents/workflows/plan-issue.md) — issue planning workflow procedure
+- [I1-F7-M1](#i1-f7-m1--introduce-draft-planning-status-and-validate-issuefeature-transitions), [I2-F7-M1](#i2-f7-m1--wire--input-argument-to-plan-issue-command-for-markdown-draft-parsing), [I3-F7-M1](#i3-f7-m1--add-canonical-statusplan-cli-surface-and-remove-legacy-featureplan-issue-path) — doc updates should reflect the final runtime contract
+- [.agents/protocols/task-execution-protocol.md](.agents/protocols/task-execution-protocol.md) — command and lifecycle flow sections
+- [.agents/protocols/feature-planning-protocol.md](.agents/protocols/feature-planning-protocol.md) — planning quality gates
+- [.agents/workflows/plan-feature.md](.agents/workflows/plan-feature.md) — feature planning workflow
+- [.agents/workflows/plan-issue.md](.agents/workflows/plan-issue.md) — issue planning workflow
 
 #### Decomposition
-1. Update `task-execution-protocol.md` Section "Feature planning/materialization flow":
-   - Clarify `plan feature <id>` purpose: initialize Feature Execution Order + Dependencies + Decomposition + Assessment (feature-level only; no issue plans)
-   - Issue plans are invoked separately: `plan issue <id>` with optional `--input <draft_file>` for each issue
-   - Add step for batch-issue workflow: `plan issue --input <draft_file>` for each feature issue (enables F6-M1 parser-based insertion)
-   - Add new command: `validate issue <id>` validates issue plan and transitions Pending → Planned
-   - Update status gate contract: `plan tasks for issue` requires Pending → Planned transition (via validate command)
+1. Update `task-execution-protocol.md`:
+   - document the lifecycle `Pending -> Draft -> Planned -> Tasked`
+   - document `status issue|feature` as the cheap lifecycle check surface
+   - document `validate issue` and `validate feature` as explicit approval gates before task decomposition
 
-2. Update `feature-planning-protocol.md` Section 3 (Planning Quality Gates):
-   - Remove references to "decomposition state" from Gate 0 (status tracking is DEV_MAP, not plans)
-   - Update Gate A/Gate B to reference validate gate explicitly
-   - Remove any `"planning"` / `"tasked"` status terminology from planning protocol; keep in task-execution-protocol only
+2. Update `feature-planning-protocol.md`:
+   - align gate terminology with `Draft` as the post-planning pre-validation state
+   - clarify that status lives in DEV_MAP and plans are validated against Gate 0 before promotion to `Planned`
+   - remove wording that implies plan existence must be inferred from markdown parsing instead of status
 
-3. Update `plan-feature.md` procedure:
-   - Clarify purpose: `plan feature <id>` initializes **feature-level structure only** (Issue Execution Order, Dependencies, Decomposition, Assessment)
-   - Per-issue planning is **separate concern**: after `plan feature` completes, loop over issues with `plan issue --input <draft> --id <issue_id>`
-   - Document batch-planning pattern: agents generate drafts to `tmp/workflow/`, then loop with `plan issue --input` for each issue
-   - Add Phase 5 step: validate all issues with loop: `validate issue --id <issue_id> --write` to approve plans
+3. Update `plan-feature.md`:
+   - keep `plan feature <id>` as a valid cascading planning command
+   - define safe behavior when some child issues are already `Draft` or `Planned` so existing work is not blindly overwritten
+   - document the batch pattern for drafting only missing issue plans, followed by `validate issue` or `validate feature`
 
-4. Update `plan-issue.md` procedure:
-   - Replace Phase 4 (Execute CLI) to reflect `plan issue --input <draft_file>` workflow (parser from F6-M1)
-   - Add reference to validation as separate step: `validate issue --id <issue_id> --write`
-   - Document plan-vs-validate split (plan = insertion to FEATURE_PLANS, validate = approval + Pending→Planned status transition)
+4. Update `plan-issue.md`:
+   - replace legacy `feature plan-issue` references with canonical `plan issue`
+   - document the split between planning (`Draft`) and validation (`Planned`)
+   - add a compact status-check step before and after validation
 
 #### Issue/Task Decomposition Assessment
 - Expected split: 3-4 tasks
-  1. Update task-execution-protocol.md with validate command, rename plan-issue, document --input
-  2. Update feature-planning-protocol.md to remove status terminology, align gates with validate
-  3. Update plan-feature.md and plan-issue.md with new command sequence and draft-file workflow
-  4. Smoke/validation: grep-check for old `feature plan-issue` naming, verify no references remain
+1. Rewrite protocol wording around `Draft` and explicit validate gates.
+2. Update feature-planning protocol so Gate 0 and lifecycle text match runtime behavior.
+3. Update `plan-feature.md` and `plan-issue.md` for cascading feature planning and compact status checks.
+4. Add smoke validation for old `feature-only` planning claims and old `feature plan-issue` naming.
 
 ## F8-M1
 
