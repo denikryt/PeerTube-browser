@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-04T02:53:57+02:00",
-  "task_count": 209,
+  "updated_at": "2026-03-04T03:02:33+02:00",
+  "task_count": 221,
   "milestones": [
     {
       "id": "M1",
@@ -1820,28 +1820,127 @@
               "id": "I1-F10-M1",
               "title": "Add explicit publish command for feature GitHub issue creation",
               "description": "Introduce a clear command that publishes a feature as a GitHub issue with milestone assignment and deterministic create-versus-already-published behavior.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "210",
+                  "title": "Audit current feature issue creation and materialize semantics",
+                  "summary": "Trace the current feature-level GitHub issue create and sync paths, milestone handling, and local mapping behavior before introducing explicit publish naming.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                },
+                {
+                  "id": "211",
+                  "title": "Define publish feature contract and output semantics",
+                  "summary": "Specify the create-only feature publication behavior, already-published handling, milestone ownership rules, and deterministic dry-run versus write outputs.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                },
+                {
+                  "id": "212",
+                  "title": "Implement publish feature runtime path",
+                  "summary": "Expose a publish-oriented feature command that creates the feature GitHub issue and records local mapping state without mixing in unrelated branch materialization behavior.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                },
+                {
+                  "id": "213",
+                  "title": "Add regression coverage for publish feature behavior",
+                  "summary": "Cover dry-run, first publication, and repeat publication flows so feature issue publishing remains deterministic during the command-surface rename.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                }
+              ]
             },
             {
               "id": "I2-F10-M1",
               "title": "Add explicit publish commands for child issues and feature-owned issue batches",
               "description": "Introduce clear commands that publish one issue or all child issues of a feature on GitHub while preserving milestone ownership and parent-feature linkage semantics.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "214",
+                  "title": "Define publish issue and publish issues batch contracts",
+                  "summary": "Specify explicit contracts for publishing one child issue and all child issues of a feature, including create, skip, error, and parent-feature linkage behavior.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                },
+                {
+                  "id": "215",
+                  "title": "Implement publish issue runtime path for one child issue",
+                  "summary": "Expose an explicit single-issue publish command that creates one GitHub issue with milestone ownership and deterministic mapping updates.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                },
+                {
+                  "id": "216",
+                  "title": "Implement publish issues runtime path for feature-owned issue batches",
+                  "summary": "Add feature-owned issue-batch publication that preserves queue order, milestone lineage, and predictable handling of already-published child issues.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                },
+                {
+                  "id": "217",
+                  "title": "Add regression coverage for child issue publish flows",
+                  "summary": "Cover single-issue publish, feature-owned issue-batch publish, parent-feature linkage edge cases, and deterministic create/skip/error behavior.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                }
+              ]
             },
             {
               "id": "I3-F10-M1",
               "title": "Rewrite help, workflows, and migration guidance around publish semantics",
               "description": "Replace materialize-oriented help and workflow guidance with publish-focused commands so users can clearly distinguish local registration from GitHub issue publication.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "218",
+                  "title": "Rewrite CLI help and examples around publish commands",
+                  "summary": "Replace materialize-oriented help text and examples with publish feature, publish issue, and publish issues commands that make side effects obvious.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                },
+                {
+                  "id": "219",
+                  "title": "Update workflow docs for local registration versus GitHub publication",
+                  "summary": "Rewrite workflow guidance so local create flows and remote publish flows are clearly separated, including milestone behavior and parent/child publication paths.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                },
+                {
+                  "id": "220",
+                  "title": "Clean up legacy materialize wording and migration guidance",
+                  "summary": "Remove materialize as the canonical issue-creation wording from runtime guidance and repository docs while keeping any explicit migration notes accurate.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                },
+                {
+                  "id": "221",
+                  "title": "Add consistency checks for publish help and docs surfaces",
+                  "summary": "Lock help output and workflow documentation to one publish-oriented command model so materialize wording does not drift back into canonical guidance.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:02:33"
+                }
+              ]
             }
           ],
           "branch_name": "feature/F10-M1",

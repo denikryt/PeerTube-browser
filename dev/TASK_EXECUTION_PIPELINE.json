@@ -76,6 +76,18 @@
     {
       "tasks": ["206", "207", "208", "209"],
       "description": "F9 issue-scoped execution commit policy and GitHub visibility guidance"
+    },
+    {
+      "tasks": ["210", "211", "212", "213"],
+      "description": "F10 explicit feature issue publication contract and runtime"
+    },
+    {
+      "tasks": ["214", "215", "216", "217"],
+      "description": "F10 explicit child issue publication and feature-owned issue batches"
+    },
+    {
+      "tasks": ["218", "219", "220", "221"],
+      "description": "F10 publish-oriented help, workflow docs, and migration cleanup"
     }
   ],
   "functional_blocks": [
@@ -144,6 +156,12 @@
       "tasks": ["198", "199", "200", "201", "202", "203", "204", "205", "206", "207", "208", "209"],
       "scope": "strict feature-confirm cleanup gates, explicit subtree cascade behavior, and issue-scoped execution commit policy guidance.",
       "outcome": "confirm feature distinguishes strict closure from explicit subtree cascade, FEATURE_PLANS cleanup becomes deterministic at both issue and feature levels, and execute issue has one documented commit policy with accurate GitHub visibility expectations."
+    },
+    {
+      "title": "Block O: Explicit publish commands for GitHub issue creation",
+      "tasks": ["210", "211", "212", "213", "214", "215", "216", "217", "218", "219", "220", "221"],
+      "scope": "feature issue publication, child issue publication, feature-owned issue-batch publication, and publish-oriented help and workflow documentation.",
+      "outcome": "GitHub issue creation uses explicit publish feature, publish issue, and publish issues commands with automatic milestone ownership and one clear separation between local registration and remote publication."
     }
   ],
   "overlaps": [
@@ -230,6 +248,22 @@
     {
       "tasks": ["206", "208"],
       "description": "Commit policy wording must stay aligned with the documented GitHub visibility limits for child issues and parent feature issues."
+    },
+    {
+      "tasks": ["211", "214"],
+      "description": "Feature and child-issue publication contracts must share one consistent model for create-only publication, repeat runs, and milestone ownership."
+    },
+    {
+      "tasks": ["215", "216"],
+      "description": "Single-issue and feature-owned batch publication should reuse one publication engine and not duplicate issue creation or skip logic."
+    },
+    {
+      "tasks": ["216", "219"],
+      "description": "Workflow docs must reflect the exact feature-owned issue-batch publication behavior implemented by the runtime."
+    },
+    {
+      "tasks": ["218", "220"],
+      "description": "Help output and migration guidance must move together from materialize wording to publish wording to avoid mixed command models."
     }
   ]
 }

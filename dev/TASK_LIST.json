@@ -903,6 +903,150 @@
         "2. Otherwise add workflow or documentation checks that keep the chosen commit policy and message format consistent.",
         "3. Verify the repository guidance does not promise unsupported GitHub parent-feature commit aggregation."
       ]
+    },
+    {
+      "id": "210",
+      "marker": "[M1][F10]",
+      "title": "Audit current feature issue creation and materialize semantics",
+      "problem": "feature-level GitHub issue creation is currently hidden behind ambiguous materialize-oriented semantics, so the explicit publish contract cannot be introduced safely without first tracing the existing behavior.",
+      "solution_option": "catalog the current feature issue create and sync paths, milestone handling, and local mapping side effects before renaming the command surface around publish semantics.",
+      "concrete_steps": [
+        "1. Audit the current feature-level GitHub issue creation and sync handlers in dev/workflow_lib/feature_commands.py.",
+        "2. Trace how milestone assignment, dry-run behavior, and local feature issue mapping fields are currently handled.",
+        "3. Record which behaviors belong to feature issue publication and which ones belong to unrelated branch or materialization concerns."
+      ]
+    },
+    {
+      "id": "211",
+      "marker": "[M1][F10]",
+      "title": "Define publish feature contract and output semantics",
+      "problem": "without one explicit contract, publish feature could inherit hidden materialize semantics and remain ambiguous about whether it creates, syncs, or skips feature issues.",
+      "solution_option": "define publish feature as the explicit feature issue publication contract with deterministic create-only behavior, already-published handling, and milestone ownership rules.",
+      "concrete_steps": [
+        "1. Specify what publish feature does for unpublished, already-published, and invalid feature targets.",
+        "2. Define dry-run versus write output fields so the user can tell when a GitHub issue would be created versus when publication is skipped.",
+        "3. Keep milestone assignment implicit from local ownership instead of requiring redundant milestone input."
+      ]
+    },
+    {
+      "id": "212",
+      "marker": "[M1][F10]",
+      "title": "Implement publish feature runtime path",
+      "problem": "the runtime still exposes feature issue creation through materialize-oriented behavior, which makes command intent harder to read and weakens the local-versus-remote lifecycle split.",
+      "solution_option": "add an explicit publish feature runtime path that creates the feature GitHub issue and records local mapping state with publish-oriented messaging.",
+      "concrete_steps": [
+        "1. Add or route the canonical publish feature command through the existing feature issue creation primitives.",
+        "2. Keep branch linkage and unrelated materialization behavior separate from feature issue publication semantics.",
+        "3. Preserve deterministic local mapping updates and already-published repeat behavior during the rename."
+      ]
+    },
+    {
+      "id": "213",
+      "marker": "[M1][F10]",
+      "title": "Add regression coverage for publish feature behavior",
+      "problem": "renaming the feature issue creation surface can silently regress dry-run output, milestone assignment, or repeat-run behavior unless it is covered directly by tests.",
+      "solution_option": "add regression coverage for publish feature preview, first publication, and already-published repeat paths.",
+      "concrete_steps": [
+        "1. Add dry-run tests for unpublished feature publication.",
+        "2. Add write-mode tests for first-time feature issue creation and local mapping persistence.",
+        "3. Add repeat-run tests for already-published feature issues so output remains deterministic."
+      ]
+    },
+    {
+      "id": "214",
+      "marker": "[M1][F10]",
+      "title": "Define publish issue and publish issues batch contracts",
+      "problem": "child issue publication is currently tied to materialize wording and mixed feature-owned semantics, which makes it unclear how single-issue and feature-owned batch publication should behave.",
+      "solution_option": "define explicit contracts for publish issue and publish issues --feature-id with deterministic create, skip, error, and parent-feature linkage behavior.",
+      "concrete_steps": [
+        "1. Specify the command contract for one child issue publish and one feature-owned issue-batch publish flow.",
+        "2. Define how already-published child issues, missing parent feature issue mappings, and invalid owner scopes are handled.",
+        "3. Keep milestone lineage and parent-feature linkage expectations explicit in the contract."
+      ]
+    },
+    {
+      "id": "215",
+      "marker": "[M1][F10]",
+      "title": "Implement publish issue runtime path for one child issue",
+      "problem": "there is no explicit single-command surface that clearly says it publishes one issue to GitHub while preserving local milestone ownership and mapping rules.",
+      "solution_option": "implement publish issue as the canonical single-child-issue publication command with deterministic mapping updates and error handling.",
+      "concrete_steps": [
+        "1. Add or route the canonical publish issue command through the existing issue creation logic.",
+        "2. Preserve milestone ownership from DEV_MAP without redundant user input.",
+        "3. Return deterministic payloads for created, skipped, and blocked issue publication attempts."
+      ]
+    },
+    {
+      "id": "216",
+      "marker": "[M1][F10]",
+      "title": "Implement publish issues runtime path for feature-owned issue batches",
+      "problem": "publishing all child issues of a feature still depends on materialize-oriented behavior, which obscures batch scope and makes parent-feature linkage semantics harder to reason about.",
+      "solution_option": "implement publish issues --feature-id as an explicit feature-owned issue-batch publication flow with predictable queue order and linkage behavior.",
+      "concrete_steps": [
+        "1. Add feature-owned batch publication routing that selects child issues by feature ownership and execution order.",
+        "2. Keep milestone assignment and already-published skip behavior deterministic across the whole batch.",
+        "3. Define and implement how parent feature issue presence or absence affects child issue publication and linkage reporting."
+      ]
+    },
+    {
+      "id": "217",
+      "marker": "[M1][F10]",
+      "title": "Add regression coverage for child issue publish flows",
+      "problem": "single-issue and batch publication flows can easily drift on create, skip, and parent-linkage behavior unless they are covered by direct regression tests.",
+      "solution_option": "add command-level coverage for publish issue and publish issues batch behavior across normal and edge-case publication paths.",
+      "concrete_steps": [
+        "1. Add success tests for one child issue publish and feature-owned issue-batch publish.",
+        "2. Add edge-case tests for already-published child issues, missing parent feature issue mappings, and invalid scope selection.",
+        "3. Verify deterministic output fields for created, skipped, selected, and blocked issue publication behavior."
+      ]
+    },
+    {
+      "id": "218",
+      "marker": "[M1][F10]",
+      "title": "Rewrite CLI help and examples around publish commands",
+      "problem": "users currently see materialize-oriented examples that do not clearly communicate which commands create GitHub issues and which ones only manipulate local tracker state.",
+      "solution_option": "rewrite CLI help and examples so publish feature, publish issue, and publish issues directly communicate GitHub publication side effects.",
+      "concrete_steps": [
+        "1. Replace materialize-oriented examples with publish-oriented feature and issue examples in help output.",
+        "2. Make the local-registration versus remote-publication split explicit in command descriptions.",
+        "3. Keep help output compact while making the publish model discoverable without reading implementation details."
+      ]
+    },
+    {
+      "id": "219",
+      "marker": "[M1][F10]",
+      "title": "Update workflow docs for local registration versus GitHub publication",
+      "problem": "workflow docs still describe local creation and remote GitHub issue creation through materialize language, which leaves the intended publication lifecycle unclear.",
+      "solution_option": "rewrite workflow docs so local create flows and remote publish flows are clearly separated with milestone and parent/child publication guidance.",
+      "concrete_steps": [
+        "1. Update create and publication workflows to describe local registration and GitHub publication as separate lifecycle steps.",
+        "2. Document milestone behavior and parent-feature versus child-issue publication paths in publish terminology.",
+        "3. Keep operator guidance aligned with the exact runtime command surfaces."
+      ]
+    },
+    {
+      "id": "220",
+      "marker": "[M1][F10]",
+      "title": "Clean up legacy materialize wording and migration guidance",
+      "problem": "if materialize remains the canonical wording in runtime or docs, the repository will expose two competing mental models for GitHub issue creation.",
+      "solution_option": "remove materialize as the canonical publish path from runtime guidance and documentation while keeping any explicit migration notes accurate.",
+      "concrete_steps": [
+        "1. Replace remaining canonical materialize wording for GitHub issue creation with publish-oriented terminology.",
+        "2. Keep any migration or compatibility notes explicit rather than leaving stale materialize examples in canonical docs.",
+        "3. Align runtime messages and repository docs on one publish-oriented model."
+      ]
+    },
+    {
+      "id": "221",
+      "marker": "[M1][F10]",
+      "title": "Add consistency checks for publish help and docs surfaces",
+      "problem": "help output and workflow docs can drift back toward materialize wording unless the new publish-oriented command surface is covered by explicit checks.",
+      "solution_option": "add consistency checks that keep help output and workflow documentation aligned on publish feature, publish issue, and publish issues commands.",
+      "concrete_steps": [
+        "1. Add checks that compare documented examples and help output against the canonical publish commands.",
+        "2. Verify no canonical docs still present materialize as the primary way to create GitHub issues.",
+        "3. Keep local-registration versus remote-publication terminology aligned across help and workflow docs."
+      ]
     }
   ]
 }
