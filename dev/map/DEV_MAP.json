@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-04T03:14:02+02:00",
+  "updated_at": "2026-03-04T04:15:28+02:00",
   "task_count": 233,
   "milestones": [
     {
@@ -1362,8 +1362,8 @@
               "title": "Introduce Draft planning status and validate issue/feature transitions",
               "description": "Add explicit planning lifecycle states in DEV_MAP and implement `validate issue` plus `validate feature` commands that promote Draft plans to Planned after Gate 0 validation passes.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 123,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/123",
               "tasks": [
                 {
                   "id": "182",
@@ -1404,8 +1404,8 @@
               "title": "Wire --input argument to plan issue command for markdown draft parsing",
               "description": "Extend `plan issue` CLI to accept optional `--input <draft_file>` argument, parse Markdown template, extract title/description, and insert into FEATURE_PLANS.md issue-plan block.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 124,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/124",
               "tasks": [
                 {
                   "id": "186",
@@ -1446,8 +1446,8 @@
               "title": "Add canonical status/plan CLI surface and remove legacy feature.plan-issue path",
               "description": "Expose canonical top-level `plan issue` plus compact `status issue` and `status feature` commands, and remove the legacy `feature plan-issue` CLI path.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 125,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/125",
               "tasks": [
                 {
                   "id": "190",
@@ -1488,8 +1488,8 @@
               "title": "Update task-execution-protocol and workflow docs for Pending→Draft→Planned lifecycle",
               "description": "Update canonical protocol and workflow documentation to reflect the Pending, Draft, Planned, and Tasked planning lifecycle, compact status commands, cascading feature planning, and explicit validation gates.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 126,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/126",
               "tasks": [
                 {
                   "id": "194",
@@ -1682,8 +1682,8 @@
               "title": "Remove feature plan artifacts during confirm feature only when closure is valid",
               "description": "Make confirm feature clean up the entire feature section in FEATURE_PLANS only when all child issues are already Done, and keep deterministic dry-run versus write behavior for feature-level cleanup.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 127,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/127",
               "tasks": [
                 {
                   "id": "198",
@@ -1724,8 +1724,8 @@
               "title": "Add explicit child-issue cascade mode for confirm feature",
               "description": "Add an explicit feature confirm mode that marks child issues and tasks Done, removes their plan artifacts, and closes mapped GitHub issues in one controlled cascade instead of relying on implicit force semantics.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 128,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/128",
               "tasks": [
                 {
                   "id": "202",
@@ -1766,8 +1766,8 @@
               "title": "Define issue-scoped execution commit policy and workflow guidance",
               "description": "Define how execute issue should support explicit commit creation and issue-linked commit messaging, and document the limits of GitHub visibility between child issues and parent feature issues.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 129,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/129",
               "tasks": [
                 {
                   "id": "206",
@@ -1821,8 +1821,8 @@
               "title": "Add explicit publish command for feature GitHub issue creation",
               "description": "Introduce a clear command that publishes a feature as a GitHub issue with milestone assignment and deterministic create-versus-already-published behavior.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 130,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/130",
               "tasks": [
                 {
                   "id": "210",
@@ -1863,8 +1863,8 @@
               "title": "Add explicit publish commands for child issues and feature-owned issue batches",
               "description": "Introduce clear commands that publish one issue or all child issues of a feature on GitHub while preserving milestone ownership and parent-feature linkage semantics.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 131,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/131",
               "tasks": [
                 {
                   "id": "214",
@@ -1905,8 +1905,8 @@
               "title": "Rewrite help, workflows, and migration guidance around publish semantics",
               "description": "Replace materialize-oriented help and workflow guidance with publish-focused commands so users can clearly distinguish local registration from GitHub issue publication.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 132,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/132",
               "tasks": [
                 {
                   "id": "218",
@@ -1960,8 +1960,8 @@
               "title": "Define and persist milestone-level feature execution order structure",
               "description": "Define the canonical FEATURE_PLANS structure for milestone-scoped feature execution order and update schemas or delta contracts so planning data can carry recommended feature ordering explicitly.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 133,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/133",
               "tasks": [
                 {
                   "id": "222",
@@ -2002,8 +2002,8 @@
               "title": "Integrate feature execution order maintenance into planning and sync flows",
               "description": "Update plan feature and related sync or CLI flows so planned features are inserted into the milestone execution order deterministically and reordered safely when planning data changes.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 134,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/134",
               "tasks": [
                 {
                   "id": "226",
@@ -2044,8 +2044,8 @@
               "title": "Clean feature execution order on confirm and document milestone planning semantics",
               "description": "Remove completed features from the milestone execution order during confirm feature cleanup and document when execution-order entries are created, updated, and removed across workflows.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 135,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/135",
               "tasks": [
                 {
                   "id": "230",
