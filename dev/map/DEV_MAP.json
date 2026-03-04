@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-04T03:02:33+02:00",
-  "task_count": 221,
+  "updated_at": "2026-03-04T03:14:02+02:00",
+  "task_count": 233,
   "milestones": [
     {
       "id": "M1",
@@ -1959,28 +1959,127 @@
               "id": "I1-F11-M1",
               "title": "Define and persist milestone-level feature execution order structure",
               "description": "Define the canonical FEATURE_PLANS structure for milestone-scoped feature execution order and update schemas or delta contracts so planning data can carry recommended feature ordering explicitly.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "222",
+                  "title": "Define canonical milestone execution-order block format",
+                  "summary": "Specify the top-level FEATURE_PLANS structure for milestone-scoped feature execution order, including milestone sections, row format, and empty-section behavior.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                },
+                {
+                  "id": "223",
+                  "title": "Add parser and lint support for milestone execution-order structure",
+                  "summary": "Extend plan parsing and lint logic so the new global execution-order block is accepted, validated, and rejected deterministically when malformed.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                },
+                {
+                  "id": "224",
+                  "title": "Update planning schema and delta contracts for execution-order metadata",
+                  "summary": "Adjust any planning schema or delta payload surfaces that need to carry milestone execution-order metadata explicitly.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                },
+                {
+                  "id": "225",
+                  "title": "Add regression coverage for execution-order block structure handling",
+                  "summary": "Cover valid and malformed milestone execution-order structures so the new top-level block remains stable under parsing and linting.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                }
+              ]
             },
             {
               "id": "I2-F11-M1",
               "title": "Integrate feature execution order maintenance into planning and sync flows",
               "description": "Update plan feature and related sync or CLI flows so planned features are inserted into the milestone execution order deterministically and reordered safely when planning data changes.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "226",
+                  "title": "Define planning ownership and insertion rules for feature execution order",
+                  "summary": "Decide how plan feature owns entry creation, append or reorder behavior, and how unplanned features stay out of milestone execution order.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                },
+                {
+                  "id": "227",
+                  "title": "Integrate execution-order maintenance into plan feature flows",
+                  "summary": "Update plan initialization and plan write flows so planned features are inserted or updated in the milestone execution-order block deterministically.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                },
+                {
+                  "id": "228",
+                  "title": "Integrate execution-order maintenance into planning sync or delta flows",
+                  "summary": "Ensure any sync, reconciliation, or delta-driven planning paths can maintain the milestone execution-order block without drifting from authored plans.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                },
+                {
+                  "id": "229",
+                  "title": "Add regression coverage for append, replan, and title-update cases",
+                  "summary": "Cover first-entry, later-entry, repeat planning, and title-change behavior so execution-order maintenance stays predictable.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                }
+              ]
             },
             {
               "id": "I3-F11-M1",
               "title": "Clean feature execution order on confirm and document milestone planning semantics",
               "description": "Remove completed features from the milestone execution order during confirm feature cleanup and document when execution-order entries are created, updated, and removed across workflows.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "230",
+                  "title": "Define confirm cleanup contract for milestone execution order",
+                  "summary": "Specify when confirm feature removes a feature from the milestone execution-order block and how dry-run versus write cleanup should be reported.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                },
+                {
+                  "id": "231",
+                  "title": "Implement milestone execution-order cleanup during confirm feature",
+                  "summary": "Extend confirm feature cleanup so completed features are removed from the milestone execution-order block in the same write run as other planning artifacts.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                },
+                {
+                  "id": "232",
+                  "title": "Update workflows and docs for milestone execution-order lifecycle",
+                  "summary": "Document when planning adds execution-order entries, when confirm removes them, and how milestone-level ordering fits into the planning lifecycle.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                },
+                {
+                  "id": "233",
+                  "title": "Add regression coverage for confirm cleanup and empty-section handling",
+                  "summary": "Cover dry-run previews, successful cleanup, and empty milestone-section behavior so execution-order removal stays deterministic.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "03:14:02"
+                }
+              ]
             }
           ],
           "branch_name": "feature/F11-M1",

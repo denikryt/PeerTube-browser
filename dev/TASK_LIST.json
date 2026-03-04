@@ -1047,6 +1047,150 @@
         "2. Verify no canonical docs still present materialize as the primary way to create GitHub issues.",
         "3. Keep local-registration versus remote-publication terminology aligned across help and workflow docs."
       ]
+    },
+    {
+      "id": "222",
+      "marker": "[M1][F11]",
+      "title": "Define canonical milestone execution-order block format",
+      "problem": "FEATURE_PLANS currently has no authoritative milestone-level execution-order block, so there is no stable structure for recommended feature ordering across one milestone.",
+      "solution_option": "define one canonical top-level block for milestone-scoped feature execution order, including section headings, row format, numbering, and empty-section behavior.",
+      "concrete_steps": [
+        "1. Specify the exact top-level heading and per-milestone subsection format for the new execution-order block in FEATURE_PLANS.",
+        "2. Define the ordered row shape, including feature ID, feature title, and stable numbering semantics.",
+        "3. Decide whether empty milestone sections are omitted or preserved and document that behavior explicitly."
+      ]
+    },
+    {
+      "id": "223",
+      "marker": "[M1][F11]",
+      "title": "Add parser and lint support for milestone execution-order structure",
+      "problem": "adding a new top-level block to FEATURE_PLANS can break plan parsing or linting unless the new structure is recognized and validated explicitly.",
+      "solution_option": "extend parsing and lint logic so the milestone execution-order block is accepted when valid and rejected deterministically when malformed.",
+      "concrete_steps": [
+        "1. Audit current plan parsing and lint paths that assume FEATURE_PLANS contains only feature sections.",
+        "2. Add structure-aware parsing and validation for the new milestone execution-order block.",
+        "3. Keep malformed-block failures deterministic so planning errors remain actionable."
+      ]
+    },
+    {
+      "id": "224",
+      "marker": "[M1][F11]",
+      "title": "Update planning schema and delta contracts for execution-order metadata",
+      "problem": "if planning or delta payloads need to carry execution-order metadata, the repository needs one explicit contract instead of ad hoc inline handling.",
+      "solution_option": "update relevant planning schema and delta contracts so milestone execution-order metadata can be represented explicitly where needed.",
+      "concrete_steps": [
+        "1. Audit whether existing planning schema or delta payloads need to reference milestone execution-order metadata.",
+        "2. Extend the relevant schema or delta contracts only where execution-order data must be carried explicitly.",
+        "3. Keep the new contract minimal so execution-order metadata does not leak into unrelated planning surfaces."
+      ]
+    },
+    {
+      "id": "225",
+      "marker": "[M1][F11]",
+      "title": "Add regression coverage for execution-order block structure handling",
+      "problem": "without direct regression coverage, the new global execution-order block could silently break linting or drift into malformed states during later planning changes.",
+      "solution_option": "add tests that lock valid structure handling and malformed-block rejection for the milestone execution-order block.",
+      "concrete_steps": [
+        "1. Add tests for valid milestone execution-order block parsing and linting.",
+        "2. Add malformed-structure tests that verify deterministic lint or parser failures.",
+        "3. Verify feature plan sections remain valid when the new global block is present above them."
+      ]
+    },
+    {
+      "id": "226",
+      "marker": "[M1][F11]",
+      "title": "Define planning ownership and insertion rules for feature execution order",
+      "problem": "milestone execution order should be planning-owned rather than registration-owned, but the repository needs one explicit rule for when features enter or move within the order block.",
+      "solution_option": "define plan feature as the owner of execution-order entries and specify append, reorder, and replan behavior for milestone-scoped feature ordering.",
+      "concrete_steps": [
+        "1. Define when plan feature inserts a new feature into the milestone execution-order block and when it should preserve existing order.",
+        "2. Decide whether default behavior is append-only, dependency-aware insertion, or explicit user-authored ordering.",
+        "3. Keep unplanned-but-created features out of the execution-order block by contract."
+      ]
+    },
+    {
+      "id": "227",
+      "marker": "[M1][F11]",
+      "title": "Integrate execution-order maintenance into plan feature flows",
+      "problem": "once the new block exists, plan feature needs one deterministic path that creates or updates execution-order entries instead of leaving the block manual and unsynchronized.",
+      "solution_option": "update plan feature flows so planned features are inserted or updated in the milestone execution-order block automatically and predictably.",
+      "concrete_steps": [
+        "1. Update plan initialization or plan write flows so the milestone execution-order block is created or updated when a feature plan is authored.",
+        "2. Preserve deterministic behavior across repeat planning runs so existing execution-order entries are not duplicated.",
+        "3. Keep title changes and replan scenarios aligned with the chosen ownership rules."
+      ]
+    },
+    {
+      "id": "228",
+      "marker": "[M1][F11]",
+      "title": "Integrate execution-order maintenance into planning sync or delta flows",
+      "problem": "planning sync and reconciliation paths can drift from authored milestone execution order if they do not understand the new global block and its metadata contract.",
+      "solution_option": "extend sync or delta-driven planning flows so milestone execution-order maintenance stays consistent across authored and synchronized planning operations.",
+      "concrete_steps": [
+        "1. Audit plan-sync or reconciliation paths that may need awareness of execution-order metadata.",
+        "2. Update the relevant sync or delta flow so execution-order entries remain aligned with feature planning state.",
+        "3. Avoid duplicating order-maintenance logic between authored plan flows and sync paths."
+      ]
+    },
+    {
+      "id": "229",
+      "marker": "[M1][F11]",
+      "title": "Add regression coverage for append, replan, and title-update cases",
+      "problem": "execution-order maintenance can drift quickly under repeat planning or title changes if append and update behavior is not covered directly.",
+      "solution_option": "add regression coverage that locks the chosen insertion rules and repeat-planning behavior for milestone execution order.",
+      "concrete_steps": [
+        "1. Add tests for the first planned feature in a milestone and later appended features.",
+        "2. Add tests for repeat planning of an existing feature so ordering stays stable unless explicitly changed.",
+        "3. Add title-change coverage so displayed execution-order rows stay accurate without duplicating entries."
+      ]
+    },
+    {
+      "id": "230",
+      "marker": "[M1][F11]",
+      "title": "Define confirm cleanup contract for milestone execution order",
+      "problem": "once planning owns milestone execution-order entries, confirm feature needs one explicit rule for when and how those entries are removed during feature completion.",
+      "solution_option": "define confirm feature cleanup semantics for milestone execution-order rows, including dry-run versus write reporting and empty-section behavior.",
+      "concrete_steps": [
+        "1. Specify when confirm feature removes a feature row from the milestone execution-order block and what happens in dry-run mode.",
+        "2. Define how empty milestone sections are handled after the last planned feature is removed.",
+        "3. Keep execution-order cleanup aligned with other planning-artifact cleanup semantics."
+      ]
+    },
+    {
+      "id": "231",
+      "marker": "[M1][F11]",
+      "title": "Implement milestone execution-order cleanup during confirm feature",
+      "problem": "confirm feature currently has no runtime awareness of milestone execution-order entries, so completed features would remain in the recommended queue after confirmation.",
+      "solution_option": "extend confirm feature cleanup so milestone execution-order entries are removed in the same write run as other planning and tracker cleanup artifacts.",
+      "concrete_steps": [
+        "1. Add execution-order cleanup to the confirm feature write path using the finalized block structure and cleanup contract.",
+        "2. Remove the feature row in the same run as other planning artifact cleanup to avoid partial state.",
+        "3. Keep empty-section handling and cleanup payload reporting deterministic."
+      ]
+    },
+    {
+      "id": "232",
+      "marker": "[M1][F11]",
+      "title": "Update workflows and docs for milestone execution-order lifecycle",
+      "problem": "users will not understand when execution-order entries are created, maintained, and removed unless workflows and planning docs describe the new lifecycle explicitly.",
+      "solution_option": "update planning and confirm docs so they explain milestone execution-order ownership, maintenance, and cleanup across the lifecycle.",
+      "concrete_steps": [
+        "1. Update plan-feature and related docs to explain when a planned feature enters the milestone execution-order block.",
+        "2. Update confirm workflow guidance to explain when completed features are removed from the order block.",
+        "3. Keep milestone planning semantics and execution-order wording aligned across workflow and protocol docs."
+      ]
+    },
+    {
+      "id": "233",
+      "marker": "[M1][F11]",
+      "title": "Add regression coverage for confirm cleanup and empty-section handling",
+      "problem": "milestone execution-order cleanup can regress on dry-run previews, write-mode deletion, or empty-section behavior unless the confirm flow is tested directly.",
+      "solution_option": "add regression coverage for confirm feature cleanup of execution-order entries, including empty milestone-section handling and deterministic payloads.",
+      "concrete_steps": [
+        "1. Add dry-run tests for execution-order cleanup preview fields on confirm feature.",
+        "2. Add write-mode tests for successful feature-row removal from the milestone execution-order block.",
+        "3. Add empty-section tests so cleanup remains predictable when the last feature in a milestone is confirmed done."
+      ]
     }
   ]
 }

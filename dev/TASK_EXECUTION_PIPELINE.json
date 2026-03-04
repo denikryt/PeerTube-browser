@@ -88,6 +88,18 @@
     {
       "tasks": ["218", "219", "220", "221"],
       "description": "F10 publish-oriented help, workflow docs, and migration cleanup"
+    },
+    {
+      "tasks": ["222", "223", "224", "225"],
+      "description": "F11 milestone execution-order block structure and parser support"
+    },
+    {
+      "tasks": ["226", "227", "228", "229"],
+      "description": "F11 planning and sync maintenance for milestone feature execution order"
+    },
+    {
+      "tasks": ["230", "231", "232", "233"],
+      "description": "F11 confirm cleanup and docs for milestone execution-order lifecycle"
     }
   ],
   "functional_blocks": [
@@ -162,6 +174,12 @@
       "tasks": ["210", "211", "212", "213", "214", "215", "216", "217", "218", "219", "220", "221"],
       "scope": "feature issue publication, child issue publication, feature-owned issue-batch publication, and publish-oriented help and workflow documentation.",
       "outcome": "GitHub issue creation uses explicit publish feature, publish issue, and publish issues commands with automatic milestone ownership and one clear separation between local registration and remote publication."
+    },
+    {
+      "title": "Block P: Milestone-level feature execution order planning block",
+      "tasks": ["222", "223", "224", "225", "226", "227", "228", "229", "230", "231", "232", "233"],
+      "scope": "milestone-scoped feature execution-order structure, planning and sync maintenance, and confirm-time cleanup with lifecycle documentation.",
+      "outcome": "FEATURE_PLANS gains one planning-owned milestone execution-order block that is maintained during feature planning and cleaned deterministically during feature confirmation."
     }
   ],
   "overlaps": [
@@ -264,6 +282,22 @@
     {
       "tasks": ["218", "220"],
       "description": "Help output and migration guidance must move together from materialize wording to publish wording to avoid mixed command models."
+    },
+    {
+      "tasks": ["223", "227"],
+      "description": "Plan-flow integration depends on one shared parser and lint understanding of the new milestone execution-order block."
+    },
+    {
+      "tasks": ["224", "228"],
+      "description": "Any sync or delta integration must reuse the same execution-order metadata contract introduced at the structure level."
+    },
+    {
+      "tasks": ["226", "230"],
+      "description": "Confirm cleanup semantics must align with the exact planning-ownership rules that govern when features enter the execution-order block."
+    },
+    {
+      "tasks": ["231", "232"],
+      "description": "Workflow documentation must describe the same confirm cleanup behavior implemented for milestone execution-order entries."
     }
   ]
 }
