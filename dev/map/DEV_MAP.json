@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-04T01:33:06+02:00",
-  "task_count": 181,
+  "updated_at": "2026-03-04T02:49:27+02:00",
+  "task_count": 197,
   "milestones": [
     {
       "id": "M1",
@@ -1361,37 +1361,169 @@
               "id": "I1-F7-M1",
               "title": "Introduce Draft planning status and validate issue/feature transitions",
               "description": "Add explicit planning lifecycle states in DEV_MAP and implement `validate issue` plus `validate feature` commands that promote Draft plans to Planned after Gate 0 validation passes.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "182",
+                  "title": "Add Draft planning status lifecycle to tracking helpers",
+                  "summary": "Introduce explicit Pending, Draft, Planned, and Tasked semantics in DEV_MAP-facing status helpers so planning and validation flows do not infer state from markdown blocks.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "183",
+                  "title": "Implement validate issue command and Gate 0 checks",
+                  "summary": "Add issue-scoped validation that reads the issue block from FEATURE_PLANS, enforces Gate 0 structure, and promotes Draft issues to Planned with deterministic errors.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "184",
+                  "title": "Implement validate feature cascade for child issue plans",
+                  "summary": "Add feature-scoped validation that checks all child issue plan blocks, promotes validated child issues, and keeps parent feature status aligned with one command.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "185",
+                  "title": "Cover Draft lifecycle and validation transitions with regression tests",
+                  "summary": "Lock Pending, Draft, Planned, and feature-level validation behavior with command-level tests so future planning changes do not drift.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                }
+              ]
             },
             {
               "id": "I2-F7-M1",
               "title": "Wire --input argument to plan issue command for markdown draft parsing",
               "description": "Extend `plan issue` CLI to accept optional `--input <draft_file>` argument, parse Markdown template, extract title/description, and insert into FEATURE_PLANS.md issue-plan block.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "186",
+                  "title": "Add --input draft-file support to plan issue parser",
+                  "summary": "Extend the canonical plan issue parser to accept a markdown draft file while keeping explicit flag-based planning inputs available.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "187",
+                  "title": "Write plan issue output as Draft status with deterministic updates",
+                  "summary": "Route parsed or explicit issue planning values through one write path that creates or updates the issue plan block and sets the target issue to Draft without silent promotion.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "188",
+                  "title": "Add state guards for Pending, Draft, and Planned issue planning flows",
+                  "summary": "Prevent mixed input modes, silent Planned downgrades, and ambiguous plan rewrites by adding explicit state and overwrite guardrails to plan issue.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "189",
+                  "title": "Add regression coverage for plan issue input and Draft behavior",
+                  "summary": "Cover draft-file parsing, explicit-arg planning, lifecycle transitions, and failure cases so plan issue stays deterministic across both input modes.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                }
+              ]
             },
             {
               "id": "I3-F7-M1",
               "title": "Add canonical status/plan CLI surface and remove legacy feature.plan-issue path",
               "description": "Expose canonical top-level `plan issue` plus compact `status issue` and `status feature` commands, and remove the legacy `feature plan-issue` CLI path.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "190",
+                  "title": "Audit legacy feature plan-issue routing and planning call sites",
+                  "summary": "Trace every remaining feature.plan-issue registration, help reference, and planning call site so the canonical plan and status surface can replace them cleanly.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "191",
+                  "title": "Promote plan issue to the canonical top-level planning entrypoint",
+                  "summary": "Move issue planning to top-level plan issue routing and delete the legacy feature-owned namespace from runtime command registration.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "192",
+                  "title": "Implement compact status issue and status feature commands",
+                  "summary": "Expose cheap JSON status commands that report issue and feature lifecycle state without requiring plan-file parsing or verbose tracker dumps.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "193",
+                  "title": "Add routing tests for canonical status/plan commands and legacy rejection",
+                  "summary": "Add smoke and regression checks that keep plan issue, status issue, and status feature stable while explicitly rejecting feature plan-issue.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                }
+              ]
             },
             {
               "id": "I4-F7-M1",
               "title": "Update task-execution-protocol and workflow docs for Pending→Draft→Planned lifecycle",
               "description": "Update canonical protocol and workflow documentation to reflect the Pending, Draft, Planned, and Tasked planning lifecycle, compact status commands, cascading feature planning, and explicit validation gates.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "194",
+                  "title": "Rewrite planning protocol docs around Draft validation lifecycle",
+                  "summary": "Update the planning and execution protocols so Pending, Draft, Planned, and Tasked are documented consistently with validate and status command gates.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "195",
+                  "title": "Update plan-feature workflow for cascading draft planning behavior",
+                  "summary": "Rewrite the plan feature workflow so it can safely draft missing child issue plans without claiming feature-only planning or overwriting validated work.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "196",
+                  "title": "Update plan-issue workflow to canonical plan and validate flow",
+                  "summary": "Replace legacy feature plan-issue wording with canonical plan issue guidance and document the Draft-to-Planned transition through validation.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                },
+                {
+                  "id": "197",
+                  "title": "Add consistency checks for lifecycle docs and canonical planning commands",
+                  "summary": "Verify protocol and workflow docs no longer claim feature-only planning or legacy feature plan-issue syntax after the lifecycle rewrite.",
+                  "status": "Planned",
+                  "date": "2026-03-04",
+                  "time": "02:49:27"
+                }
+              ]
             }
           ],
           "branch_name": "feature/F7-M1",

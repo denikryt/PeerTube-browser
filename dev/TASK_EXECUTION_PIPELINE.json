@@ -48,6 +48,22 @@
     {
       "tasks": ["94", "95"],
       "description": "feature checklist sync and issue approved gate"
+    },
+    {
+      "tasks": ["182", "183", "184", "185"],
+      "description": "F7 Draft lifecycle model and validation gate implementation"
+    },
+    {
+      "tasks": ["186", "187", "188", "189"],
+      "description": "F7 plan issue draft-file input and Draft-state write behavior"
+    },
+    {
+      "tasks": ["190", "191", "192", "193"],
+      "description": "F7 canonical plan and status command routing with legacy cleanup"
+    },
+    {
+      "tasks": ["194", "195", "196", "197"],
+      "description": "F7 protocol and workflow rewrite for Draft validation lifecycle"
     }
   ],
   "functional_blocks": [
@@ -104,6 +120,12 @@
       "tasks": ["94", "95"],
       "scope": "explicit materialize modes, scoped issue materialization, create-only behavior, feature checklist sync, and issue-level approval gate enforcement.",
       "outcome": "workflow materialize becomes explicitly mode-driven, supports one-issue targeting, avoids unwanted edits in create-only mode, keeps feature issue checklist in sync, and enforces issue-level approval before execution and issue materialization."
+    },
+    {
+      "title": "Block M: Draft planning lifecycle and canonical status surface",
+      "tasks": ["182", "183", "184", "185", "186", "187", "188", "189", "190", "191", "192", "193", "194", "195", "196", "197"],
+      "scope": "planning lifecycle status model, validation commands, draft-file issue planning, canonical status routing, and protocol/workflow alignment.",
+      "outcome": "planning flows explicitly move through Pending, Draft, Planned, and Tasked states, issue and feature validation become explicit gates, and compact status commands expose lifecycle state without tracker-file parsing."
     }
   ],
   "overlaps": [
@@ -154,6 +176,26 @@
     {
       "tasks": ["72", "73"],
       "description": "sync write path and validation/ID-allocation rules must use one tracker model."
+    },
+    {
+      "tasks": ["182", "187"],
+      "description": "Draft-aware lifecycle helpers must be shared between base status semantics and plan issue write behavior."
+    },
+    {
+      "tasks": ["183", "184"],
+      "description": "Issue and feature validation should reuse one Gate 0 plan-block validation path instead of duplicating checks."
+    },
+    {
+      "tasks": ["191", "192"],
+      "description": "Canonical plan and status commands share one CLI surface and should align on compact deterministic output behavior."
+    },
+    {
+      "tasks": ["192", "194"],
+      "description": "Protocol docs must describe the exact compact status contract implemented by the runtime."
+    },
+    {
+      "tasks": ["191", "196"],
+      "description": "Workflow docs must reflect the exact canonical plan issue routing after legacy feature plan-issue removal."
     }
   ]
 }

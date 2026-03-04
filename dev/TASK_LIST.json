@@ -567,6 +567,198 @@
         "Return clear gate error messages with required status.",
         "Add regression checks for blocked non-approved issue paths."
       ]
+    },
+    {
+      "id": "182",
+      "marker": "[M1][F7]",
+      "title": "Add Draft planning status lifecycle to tracking helpers",
+      "problem": "the current planning lifecycle only distinguishes Pending and Planned, which forces planning logic to infer draft state indirectly from FEATURE_PLANS content.",
+      "solution_option": "introduce explicit Pending, Draft, Planned, and Tasked lifecycle semantics in DEV_MAP-facing helpers so planning and validation commands operate on status alone.",
+      "concrete_steps": [
+        "1. Audit the current issue and feature status transitions used by planning, validation, and task-decomposition code paths.",
+        "2. Add explicit Draft-aware lifecycle handling in the shared tracker mutation helpers without changing downstream Tasked behavior.",
+        "3. Update status checks so later planning and validation flows can rely on DEV_MAP status instead of inferring draft existence from markdown parsing."
+      ]
+    },
+    {
+      "id": "183",
+      "marker": "[M1][F7]",
+      "title": "Implement validate issue command and Gate 0 checks",
+      "problem": "issue plans can be written into FEATURE_PLANS but there is no explicit command that validates them and promotes the issue from Draft to Planned.",
+      "solution_option": "add validate issue as the canonical Gate 0 approval command with deterministic block checks, lifecycle transition rules, and actionable failures.",
+      "concrete_steps": [
+        "1. Add validate issue parser and handler wiring for issue ID resolution, dry-run behavior, and write-mode promotion.",
+        "2. Implement Gate 0 validation for required headings, numbered decomposition steps, and explicit issue/task decomposition assessment content.",
+        "3. Return deterministic success and failure payloads while promoting Draft issues to Planned only when validation passes in write mode."
+      ]
+    },
+    {
+      "id": "184",
+      "marker": "[M1][F7]",
+      "title": "Implement validate feature cascade for child issue plans",
+      "problem": "reviewing a whole feature plan still requires ad hoc per-issue checks, and there is no explicit feature-level validation gate for drafted child plans.",
+      "solution_option": "add validate feature so one command can validate all child issue plan blocks, promote valid children, and keep parent feature status aligned.",
+      "concrete_steps": [
+        "1. Add feature-scoped validation routing that resolves the feature, its child issues, and the corresponding issue plan blocks.",
+        "2. Reuse one shared Gate 0 validation path across issue and feature validation instead of duplicating block-check logic.",
+        "3. Promote validated child issues and the parent feature consistently in write mode while preserving deterministic failure reporting for partial-invalid sets."
+      ]
+    },
+    {
+      "id": "185",
+      "marker": "[M1][F7]",
+      "title": "Cover Draft lifecycle and validation transitions with regression tests",
+      "problem": "planning-state refactors can silently break status transitions or validation contracts if they are not locked by tests.",
+      "solution_option": "add regression coverage for Pending, Draft, Planned, and feature-level validation paths before later command-surface changes build on them.",
+      "concrete_steps": [
+        "1. Add tests for Draft-aware status transitions on issue and feature planning nodes.",
+        "2. Add success and failure tests for validate issue and validate feature, including dry-run and write modes.",
+        "3. Verify invalid plan blocks do not promote status and valid plan blocks promote only the intended nodes."
+      ]
+    },
+    {
+      "id": "186",
+      "marker": "[M1][F7]",
+      "title": "Add --input draft-file support to plan issue parser",
+      "problem": "plan issue still depends on inline arguments, which makes multiline agent-generated drafts harder to pass safely and consistently.",
+      "solution_option": "extend the canonical plan issue parser with optional markdown draft-file input while preserving explicit arg mode for direct planning runs.",
+      "concrete_steps": [
+        "1. Add optional --input argument parsing to the canonical plan issue command surface.",
+        "2. Keep explicit planning flags available for direct non-file workflows and reject mixed input modes deterministically.",
+        "3. Normalize parsed draft-file values so both input modes feed one downstream planning payload."
+      ]
+    },
+    {
+      "id": "187",
+      "marker": "[M1][F7]",
+      "title": "Write plan issue output as Draft status with deterministic updates",
+      "problem": "planning currently lacks one clear write path that both updates FEATURE_PLANS and records the issue as Draft without implicitly approving it.",
+      "solution_option": "route plan issue writes through one Draft-producing path that creates or updates the issue block and leaves promotion to validate commands.",
+      "concrete_steps": [
+        "1. Merge parsed draft-file and explicit-arg values into one plan-block generation path.",
+        "2. Transition Pending issues to Draft on successful plan insertion while preserving Draft status on updates.",
+        "3. Keep write output explicit about created-versus-updated draft behavior and avoid silent promotion to Planned."
+      ]
+    },
+    {
+      "id": "188",
+      "marker": "[M1][F7]",
+      "title": "Add state guards for Pending, Draft, and Planned issue planning flows",
+      "problem": "without explicit guards, repeated planning can silently downgrade Planned issues or produce ambiguous rewrites across lifecycle states.",
+      "solution_option": "add state-aware guardrails to plan issue so Draft and Planned nodes are handled explicitly and unsafe rewrites are blocked by default.",
+      "concrete_steps": [
+        "1. Reject conflicting input modes and malformed draft paths before any tracker or plan-file mutation happens.",
+        "2. Define explicit behavior for Pending, Draft, and Planned issue states, including refusal or overwrite-gated handling for Planned nodes.",
+        "3. Return deterministic guidance when users attempt a blocked rewrite or lifecycle downgrade."
+      ]
+    },
+    {
+      "id": "189",
+      "marker": "[M1][F7]",
+      "title": "Add regression coverage for plan issue input and Draft behavior",
+      "problem": "input-mode changes and Draft-state logic can drift quickly without command-level regression coverage.",
+      "solution_option": "add tests that lock draft-file parsing, explicit-arg planning, lifecycle transitions, and invalid rewrite behavior for plan issue.",
+      "concrete_steps": [
+        "1. Add success tests for draft-file and explicit-arg planning that both produce the same issue-block contract.",
+        "2. Add lifecycle tests for Pending-to-Draft writes, Draft updates, and guarded Planned behavior.",
+        "3. Add failure tests for mixed input modes, parser-driven input errors, and blocked downgrade attempts."
+      ]
+    },
+    {
+      "id": "190",
+      "marker": "[M1][F7]",
+      "title": "Audit legacy feature plan-issue routing and planning call sites",
+      "problem": "legacy feature plan-issue wiring is still scattered across runtime and documentation references, which makes canonical command migration risky.",
+      "solution_option": "catalog every remaining legacy registration, help string, and call site before replacing them with top-level plan and status commands.",
+      "concrete_steps": [
+        "1. Trace every runtime and documentation reference to feature plan-issue and related legacy planning namespaces.",
+        "2. Identify which parser registrations, handler bindings, and help examples must move to canonical plan and status surfaces.",
+        "3. Record residual legacy references that must be removed or turned into explicit rejection paths."
+      ]
+    },
+    {
+      "id": "191",
+      "marker": "[M1][F7]",
+      "title": "Promote plan issue to the canonical top-level planning entrypoint",
+      "problem": "issue planning remains tied to a feature-owned legacy namespace, which makes the command surface harder to discover and contradicts the planned lifecycle model.",
+      "solution_option": "move issue planning to canonical top-level plan issue routing and delete the legacy feature-owned registration from runtime code.",
+      "concrete_steps": [
+        "1. Add or finalize top-level plan issue parser routing and bind it to the canonical planning handler.",
+        "2. Remove feature plan-issue parser registration and related hidden compatibility paths from runtime code.",
+        "3. Keep command help and runtime errors aligned so the canonical planning entrypoint is obvious."
+      ]
+    },
+    {
+      "id": "192",
+      "marker": "[M1][F7]",
+      "title": "Implement compact status issue and status feature commands",
+      "problem": "agents currently need to inspect large tracker files or verbose command output to learn one issue or feature status, which wastes tokens and complicates automation.",
+      "solution_option": "add minimal JSON status commands for issue and feature nodes so lifecycle polling is cheap and deterministic.",
+      "concrete_steps": [
+        "1. Add top-level status routing for issue and feature scopes with explicit ID resolution and error handling.",
+        "2. Return compact JSON payloads that include command name, resolved ID, and status without verbose tracker dumps.",
+        "3. Keep output deterministic so shell automation can rely on one stable status contract."
+      ]
+    },
+    {
+      "id": "193",
+      "marker": "[M1][F7]",
+      "title": "Add routing tests for canonical status/plan commands and legacy rejection",
+      "problem": "CLI migration can leave hidden routing regressions or stale legacy acceptance unless command-surface behavior is tested directly.",
+      "solution_option": "add smoke and regression checks that cover canonical plan and status commands while explicitly rejecting feature plan-issue.",
+      "concrete_steps": [
+        "1. Add help and success-path tests for plan issue, status issue, and status feature.",
+        "2. Add rejection tests for legacy feature plan-issue invocation and stale parser aliases.",
+        "3. Verify canonical commands return stable routing and compact output shapes."
+      ]
+    },
+    {
+      "id": "194",
+      "marker": "[M1][F7]",
+      "title": "Rewrite planning protocol docs around Draft validation lifecycle",
+      "problem": "protocol docs still describe the older planning lifecycle and do not document Draft status, compact status commands, or feature-level validation gates consistently.",
+      "solution_option": "rewrite planning and execution protocol sections so lifecycle wording and command gates match the intended Draft validation model.",
+      "concrete_steps": [
+        "1. Update protocol lifecycle wording to document Pending, Draft, Planned, and Tasked semantics clearly.",
+        "2. Add validate issue, validate feature, and status issue or feature guidance where lifecycle gates are defined.",
+        "3. Remove wording that implies draft existence must be inferred from FEATURE_PLANS content instead of DEV_MAP status."
+      ]
+    },
+    {
+      "id": "195",
+      "marker": "[M1][F7]",
+      "title": "Update plan-feature workflow for cascading draft planning behavior",
+      "problem": "the current feature planning workflow still risks implying feature-only planning or unsafe overwrite behavior for already drafted child issues.",
+      "solution_option": "rewrite plan-feature so it remains a valid cascading planning workflow that drafts only missing child plans and respects existing Draft or Planned work.",
+      "concrete_steps": [
+        "1. Update plan-feature to describe feature decomposition plus child issue draft planning in one consistent flow.",
+        "2. Document how the workflow should treat existing Draft and Planned issue plans without blind rewrites.",
+        "3. Add the expected follow-up validation steps using validate issue or validate feature."
+      ]
+    },
+    {
+      "id": "196",
+      "marker": "[M1][F7]",
+      "title": "Update plan-issue workflow to canonical plan and validate flow",
+      "problem": "plan-issue workflow text still depends on legacy feature-owned command naming and does not clearly document the Draft-to-Planned transition.",
+      "solution_option": "rewrite plan-issue around canonical plan issue and validate issue steps so issue drafting and approval are separated clearly.",
+      "concrete_steps": [
+        "1. Replace legacy feature plan-issue references with canonical plan issue commands and examples.",
+        "2. Document Draft as the result of plan issue writes and Planned as the result of validation.",
+        "3. Add compact status-check guidance before and after validation to keep the flow scriptable."
+      ]
+    },
+    {
+      "id": "197",
+      "marker": "[M1][F7]",
+      "title": "Add consistency checks for lifecycle docs and canonical planning commands",
+      "problem": "protocol and workflow docs can drift apart from runtime planning commands, leaving contradictory guidance around Draft lifecycle and legacy namespaces.",
+      "solution_option": "add consistency checks that catch stale feature-only planning claims and leftover feature plan-issue references after the lifecycle rewrite.",
+      "concrete_steps": [
+        "1. Add grep-style or test-style checks for legacy feature plan-issue references in canonical workflow and protocol docs.",
+        "2. Verify no canonical docs still claim that plan feature is feature-only when child issue drafting is part of the workflow.",
+        "3. Keep the docs and command examples aligned on Draft validation lifecycle wording."
+      ]
     }
   ]
 }
