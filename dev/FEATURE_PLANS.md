@@ -1094,3 +1094,140 @@ Canonical per-issue plan block format inside a feature section:
   1. define confirm cleanup contract for the new order block
   2. implement runtime removal and empty-section handling
   3. add docs and regression checks for planning/confirm lifecycle
+
+## F12-M1
+
+### Issue Execution Order
+1. `I1-F12-M1` - Define GitHub label and project-status sync contract
+2. `I2-F12-M1` - Integrate metadata sync into publish, planning, validation, and confirmation flows
+3. `I3-F12-M1` - Add docs, project-setup guidance, and regression coverage for GitHub metadata sync
+
+### Dependencies
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — publish-oriented feature and issue flows that should create and update GitHub issue metadata after F10 removes `materialize` as the canonical surface
+- [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — GitHub API helpers for issue creation/editing and the likely integration point for labels and Project field updates
+- [dev/workflow_lib/confirm_commands.py](dev/workflow_lib/confirm_commands.py) — confirm flows that should move GitHub Project status to `Done` and keep labels consistent during closure
+- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — command tree where publish, plan, validate, and confirm entrypoints are exposed
+- [dev/map/DEV_MAP.json](dev/map/DEV_MAP.json) — local source of truth for issue type, feature ownership, and workflow state that must map to GitHub metadata
+- [dev/TASK_LIST.json](dev/TASK_LIST.json) and [dev/TASK_EXECUTION_PIPELINE.json](dev/TASK_EXECUTION_PIPELINE.json) — local task decomposition and execution state whose transitions may drive later GitHub metadata updates
+- GitHub labels must remain structural (`feature`, `engine`, `client`, `workflow`) while GitHub Project `Status` must carry the workflow-state projection (`Pending -> Open`, `Draft/Planned/Tasked -> In progress`, `Done -> Done`)
+- The implementation should assume the post-F10 command model: feature and issue publication happens through explicit `publish` commands, not through `materialize` as the canonical user-facing name
+
+### Decomposition
+1. Define the GitHub metadata sync contract:
+   - Map local entity classification to labels such as `feature`, `engine`, `client`, and `workflow`
+   - Map local workflow states to GitHub Project status values: `Pending -> Open`, `Draft/Planned/Tasked -> In progress`, `Done -> Done`
+   - Define which transitions create metadata, which update metadata, and what happens when GitHub Project configuration is unavailable
+   - Expected result: one explicit contract exists for labels versus Project status instead of ad hoc metadata mutations
+
+2. Wire metadata sync into the workflow runtime:
+   - Apply structural labels during publish-oriented GitHub issue creation
+   - Update Project status during planning, validation, task decomposition, execution, and confirmation transitions
+   - Keep repeated runs deterministic and avoid forcing metadata changes when the target GitHub issue or Project item is missing
+   - Expected result: GitHub issue metadata reflects the local workflow lifecycle without replacing DEV_MAP as the source of truth
+
+3. Document setup, fallback behavior, and regression expectations:
+   - Describe required GitHub labels and the Project `Status` field configuration
+   - Document fallback behavior when labels are missing or the issue is not attached to the configured Project
+   - Add regression coverage for label assignment, Project status mapping, and no-op behavior on unsupported GitHub surfaces
+   - Expected result: operators can configure the repo and understand exactly which local transitions do or do not sync to GitHub metadata
+
+### Issue/Task Decomposition Assessment
+- Feature scope should split into three sequential issues because contract definition, runtime integration, and docs/tests touch different layers and should be validated independently
+- Minimal execution order:
+  1. define the metadata mapping contract,
+  2. wire publish and lifecycle transitions to that contract,
+  3. document the required GitHub Project setup and lock behavior with tests
+- Expected commit-oriented split:
+  - `I1-F12-M1`: 2-3 commits (mapping contract, adapter contract, deterministic fallback semantics)
+  - `I2-F12-M1`: 3-4 commits (publish label assignment, Project status updates across lifecycle transitions, repeat-run/idempotency handling, tests)
+  - `I3-F12-M1`: 2-3 commits (docs/setup guidance, fallback behavior docs, regression checks)
+
+### I1-F12-M1 - Define GitHub label and project-status sync contract
+
+#### Dependencies
+- [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — likely home for reusable label and Project-field update primitives
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — publish-oriented feature and issue flows that will consume the metadata contract
+- [dev/workflow_lib/confirm_commands.py](dev/workflow_lib/confirm_commands.py) — closure path that must map local `Done` to GitHub Project `Done`
+
+#### Decomposition
+1. Define structural label assignment:
+   - Specify which issues receive labels such as `feature`, `engine`, `client`, and `workflow`
+   - Decide whether multiple structural labels may coexist and how they are derived from local ownership or scope
+   - Expected result: label semantics are explicit and stable before runtime code starts mutating GitHub issues
+
+2. Define Project status mapping:
+   - Map local workflow states to GitHub Project `Status` values: `Pending -> Open`, `Draft/Planned/Tasked -> In progress`, `Done -> Done`
+   - Define exactly which commands are responsible for writing each transition (`publish`, `plan`, `validate`, `plan tasks`, `execute`, `confirm`)
+   - Expected result: one canonical state projection exists from DEV_MAP to GitHub Project status
+
+3. Define deterministic fallback behavior:
+   - Specify behavior when the target GitHub labels do not exist, the issue is not attached to a Project item, or the Project does not expose the expected `Status` field
+   - Keep fallback behavior explicit and non-destructive so local state remains authoritative
+   - Expected result: runtime integration can fail safely without making metadata sync mandatory for core local workflow progression
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 2-3 tasks / commit slices
+  1. define structural label semantics
+  2. define Project status mapping and command ownership
+  3. define deterministic fallback behavior for missing GitHub metadata surfaces
+
+### I2-F12-M1 - Integrate metadata sync into publish, planning, validation, and confirmation flows
+
+#### Dependencies
+- [I1-F12-M1](#i1-f12-m1--define-github-label-and-project-status-sync-contract) — metadata semantics must be explicit before runtime integration
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — publish, plan-issue, and plan-tasks flows that should trigger GitHub metadata updates
+- [dev/workflow_lib/confirm_commands.py](dev/workflow_lib/confirm_commands.py) — confirm flows that should project `Done`
+- [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — helper layer for GitHub issue and Project metadata mutations
+
+#### Decomposition
+1. Add metadata sync on publish:
+   - During `publish feature`, `publish issue`, and feature-owned issue-batch publish flows, assign the correct structural labels on the created GitHub issue
+   - Attach or update the GitHub Project status as `Open` for newly published `Pending` work items
+   - Expected result: publication creates GitHub issues with the right initial metadata shape
+
+2. Add metadata sync on lifecycle transitions:
+   - Update Project status to `In progress` when the local issue moves into `Draft`, `Planned`, or `Tasked`
+   - Update Project status to `Done` during successful confirm flows
+   - Decide whether `execute` should also touch Project status or only rely on the already-collapsed `In progress` state
+   - Expected result: GitHub Project status follows the local workflow progression without introducing new local authority rules
+
+3. Keep idempotency and partial-sync behavior deterministic:
+   - Repeated runs should not duplicate labels or oscillate Project status unnecessarily
+   - Missing GitHub issue mappings or missing Project items should degrade to explicit warnings or no-op metadata sync, not hard failures for local planning writes
+   - Expected result: metadata sync stays safe across partial materialization and repeated command runs
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3-4 tasks / commit slices
+  1. implement publish-time label assignment and initial Project status
+  2. implement lifecycle-driven Project status updates
+  3. add idempotent and partial-sync behavior
+  4. add regression coverage for create/update/no-op cases
+
+### I3-F12-M1 - Add docs, project-setup guidance, and regression coverage for GitHub metadata sync
+
+#### Dependencies
+- [I1-F12-M1](#i1-f12-m1--define-github-label-and-project-status-sync-contract) and [I2-F12-M1](#i2-f12-m1--integrate-metadata-sync-into-publish-planning-validation-and-confirmation-flows) — docs and tests must reflect the finalized runtime contract
+- [.agents/workflows/create-feature.md](.agents/workflows/create-feature.md), [.agents/workflows/plan-issue.md](.agents/workflows/plan-issue.md), [.agents/workflows/plan-tasks-for.md](.agents/workflows/plan-tasks-for.md), and [.agents/workflows/confirm.md](.agents/workflows/confirm.md) — workflows that will need metadata-sync guidance
+- any GitHub setup docs or operator notes describing repo labels and Project configuration
+
+#### Decomposition
+1. Document GitHub setup requirements:
+   - Describe the required repository labels (`feature`, `engine`, `client`, `workflow`)
+   - Describe the required GitHub Project `Status` field and the intended values `Open`, `In progress`, and `Done`
+   - Expected result: operators know what must exist on GitHub before metadata sync can work end-to-end
+
+2. Document runtime behavior and fallback rules:
+   - Explain which commands write labels, which commands write Project status, and which local transitions remain local-only when GitHub metadata surfaces are unavailable
+   - Clarify that DEV_MAP remains the source of truth even when GitHub metadata is stale or unavailable
+   - Expected result: users can predict metadata side effects without reading implementation code
+
+3. Add regression coverage and consistency checks:
+   - Cover label assignment, Project status updates, and no-op or warning behavior when labels or Project metadata are unavailable
+   - Keep workflow docs and runtime help aligned with the finalized metadata-sync contract
+   - Expected result: GitHub metadata sync remains deterministic and documented after future command-surface changes
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 2-3 tasks / commit slices
+  1. document GitHub label and Project setup
+  2. document runtime and fallback behavior
+  3. add regression checks for metadata sync and docs consistency

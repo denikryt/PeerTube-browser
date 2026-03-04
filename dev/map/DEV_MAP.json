@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-04T04:15:28+02:00",
+  "updated_at": "2026-03-04T04:43:23+02:00",
   "task_count": 233,
   "milestones": [
     {
@@ -2084,6 +2084,46 @@
           ],
           "branch_name": "feature/F11-M1",
           "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F11-M1"
+        },
+        {
+          "id": "F12-M1",
+          "title": "Add GitHub issue metadata sync for labels and project status",
+          "description": "This feature syncs workflow issue metadata to GitHub by assigning structural labels such as feature, engine, client, and workflow, and by mapping local workflow states to GitHub Project status values during publish, planning, validation, task decomposition, execution, and confirmation flows.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F12-M1",
+              "title": "Define GitHub label and project-status sync contract",
+              "description": "Define the canonical mapping between local workflow entities and GitHub labels, and map local workflow states to GitHub Project status values (`Pending -> Open`, `Draft/Planned/Tasked -> In progress`, `Done -> Done`) with explicit create/update semantics.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F12-M1",
+              "title": "Integrate metadata sync into publish, planning, validation, and confirmation flows",
+              "description": "Wire GitHub label assignment and Project status updates into publish-oriented issue creation and later workflow transitions such as plan issue, validate issue or feature, plan tasks, execute, and confirm.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F12-M1",
+              "title": "Add docs, project-setup guidance, and regression coverage for GitHub metadata sync",
+              "description": "Document label semantics, GitHub Project field requirements, fallback behavior when project metadata is unavailable, and add regression coverage that keeps metadata sync deterministic.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
         }
       ],
       "non_feature_items": [
