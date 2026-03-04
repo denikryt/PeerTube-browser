@@ -575,9 +575,9 @@
       "problem": "the current planning lifecycle only distinguishes Pending and Planned, which forces planning logic to infer draft state indirectly from FEATURE_PLANS content.",
       "solution_option": "introduce explicit Pending, Draft, Planned, and Tasked lifecycle semantics in DEV_MAP-facing helpers so planning and validation commands operate on status alone.",
       "concrete_steps": [
-        "1. Audit the current issue and feature status transitions used by planning, validation, and task-decomposition code paths.",
-        "2. Add explicit Draft-aware lifecycle handling in the shared tracker mutation helpers without changing downstream Tasked behavior.",
-        "3. Update status checks so later planning and validation flows can rely on DEV_MAP status instead of inferring draft existence from markdown parsing."
+        "1. Audit the status checks and transitions currently hard-coded in dev/workflow_lib/feature_commands.py, especially ISSUE_PLANNING_ACTIVE_STATUSES, ISSUE_ALLOWED_PLANNING_STATUSES, _enforce_plan_issue_order_row_presence, _collect_issue_planning_status_mismatches, and _reconcile_feature_issue_planning_statuses.",
+        "2. Replace Pending or Planned-only planning assumptions in those code paths with explicit Draft-aware handling, and update any related DEV_MAP mutation logic so Draft can exist without changing downstream Tasked execution semantics.",
+        "3. Validate that plan lint, plan-issue gating, and plan tasks status checks now read planning state from DEV_MAP status directly instead of inferring draft existence only from FEATURE_PLANS blocks."
       ]
     },
     {
@@ -587,9 +587,9 @@
       "problem": "issue plans can be written into FEATURE_PLANS but there is no explicit command that validates them and promotes the issue from Draft to Planned.",
       "solution_option": "add validate issue as the canonical Gate 0 approval command with deterministic block checks, lifecycle transition rules, and actionable failures.",
       "concrete_steps": [
-        "1. Add validate issue parser and handler wiring for issue ID resolution, dry-run behavior, and write-mode promotion.",
-        "2. Implement Gate 0 validation for required headings, numbered decomposition steps, and explicit issue/task decomposition assessment content.",
-        "3. Return deterministic success and failure payloads while promoting Draft issues to Planned only when validation passes in write mode."
+        "1. Extend dev/workflow_lib/cli.py and dev/workflow_lib/validate_commands.py with a canonical issue-scoped command surface instead of only `validate --scope ...`, including parser wiring for issue ID, dry-run, and write-mode behavior.",
+        "2. Reuse the FEATURE_PLANS parsing logic already present in dev/workflow_lib/feature_commands.py to read one issue block, then add Gate 0 checks for required headings, numbered decomposition steps, and issue/task assessment content.",
+        "3. Promote only Draft issues to Planned in DEV_MAP on successful write-mode validation and return deterministic JSON for success, blocked status, missing issue block, and malformed plan content."
       ]
     },
     {
@@ -599,9 +599,9 @@
       "problem": "reviewing a whole feature plan still requires ad hoc per-issue checks, and there is no explicit feature-level validation gate for drafted child plans.",
       "solution_option": "add validate feature so one command can validate all child issue plan blocks, promote valid children, and keep parent feature status aligned.",
       "concrete_steps": [
-        "1. Add feature-scoped validation routing that resolves the feature, its child issues, and the corresponding issue plan blocks.",
-        "2. Reuse one shared Gate 0 validation path across issue and feature validation instead of duplicating block-check logic.",
-        "3. Promote validated child issues and the parent feature consistently in write mode while preserving deterministic failure reporting for partial-invalid sets."
+        "1. Add feature-scoped validation routing in dev/workflow_lib/validate_commands.py that resolves one feature, iterates its child issues from DEV_MAP, and reads each corresponding issue block from FEATURE_PLANS.",
+        "2. Extract the issue-block Gate 0 checks into one shared validator used by both validate issue and validate feature so FEATURE_PLANS parsing and heading validation are not duplicated.",
+        "3. Implement write-mode promotion for validated child issues and the parent feature, and return deterministic payloads for partial-invalid child sets without silently promoting broken plans."
       ]
     },
     {
@@ -611,9 +611,9 @@
       "problem": "planning-state refactors can silently break status transitions or validation contracts if they are not locked by tests.",
       "solution_option": "add regression coverage for Pending, Draft, Planned, and feature-level validation paths before later command-surface changes build on them.",
       "concrete_steps": [
-        "1. Add tests for Draft-aware status transitions on issue and feature planning nodes.",
-        "2. Add success and failure tests for validate issue and validate feature, including dry-run and write modes.",
-        "3. Verify invalid plan blocks do not promote status and valid plan blocks promote only the intended nodes."
+        "1. Add tests covering Draft-aware status handling in the feature planning helpers and in validate command routing so Pending, Draft, Planned, and Tasked states are all exercised.",
+        "2. Add command-level tests for validate issue and validate feature in dry-run and write modes, including missing block, malformed block, and blocked-status paths.",
+        "3. Verify in tests that only the intended DEV_MAP nodes change status on success and that invalid FEATURE_PLANS content never promotes issue or feature status."
       ]
     },
     {
@@ -623,9 +623,9 @@
       "problem": "plan issue still depends on inline arguments, which makes multiline agent-generated drafts harder to pass safely and consistently.",
       "solution_option": "extend the canonical plan issue parser with optional markdown draft-file input while preserving explicit arg mode for direct planning runs.",
       "concrete_steps": [
-        "1. Add optional --input argument parsing to the canonical plan issue command surface.",
-        "2. Keep explicit planning flags available for direct non-file workflows and reject mixed input modes deterministically.",
-        "3. Normalize parsed draft-file values so both input modes feed one downstream planning payload."
+        "1. Extend the existing `feature plan-issue` parser in dev/workflow_lib/feature_commands.py with an optional `--input` path and keep the current explicit flags available for non-file planning flows.",
+        "2. Route `--input` through parse_feature_issue_template from dev/workflow_lib/markdown_parser.py and reject mixed file-plus-flag input before any FEATURE_PLANS mutation happens.",
+        "3. Normalize parsed and explicit values into one payload shape so `_handle_feature_plan_issue` and `_upsert_issue_plan_block_in_section` can use the same downstream write path."
       ]
     },
     {
@@ -635,9 +635,9 @@
       "problem": "planning currently lacks one clear write path that both updates FEATURE_PLANS and records the issue as Draft without implicitly approving it.",
       "solution_option": "route plan issue writes through one Draft-producing path that creates or updates the issue block and leaves promotion to validate commands.",
       "concrete_steps": [
-        "1. Merge parsed draft-file and explicit-arg values into one plan-block generation path.",
-        "2. Transition Pending issues to Draft on successful plan insertion while preserving Draft status on updates.",
-        "3. Keep write output explicit about created-versus-updated draft behavior and avoid silent promotion to Planned."
+        "1. Update `_handle_feature_plan_issue` in dev/workflow_lib/feature_commands.py so parsed draft-file values and explicit CLI values both flow through `_upsert_issue_plan_block_in_section` and one scoped lint path.",
+        "2. After a successful write, update the owning issue node in DEV_MAP from Pending to Draft, preserve Draft on later updates, and avoid changing already Planned issues unless an explicit overwrite rule is introduced.",
+        "3. Return deterministic JSON that distinguishes created-versus-updated plan blocks and reports Draft as the resulting planning state instead of silently promoting to Planned."
       ]
     },
     {
@@ -647,9 +647,9 @@
       "problem": "without explicit guards, repeated planning can silently downgrade Planned issues or produce ambiguous rewrites across lifecycle states.",
       "solution_option": "add state-aware guardrails to plan issue so Draft and Planned nodes are handled explicitly and unsafe rewrites are blocked by default.",
       "concrete_steps": [
-        "1. Reject conflicting input modes and malformed draft paths before any tracker or plan-file mutation happens.",
-        "2. Define explicit behavior for Pending, Draft, and Planned issue states, including refusal or overwrite-gated handling for Planned nodes.",
-        "3. Return deterministic guidance when users attempt a blocked rewrite or lifecycle downgrade."
+        "1. Reject conflicting `--input` plus inline-flag usage and malformed draft-file input before `_handle_feature_plan_issue` mutates FEATURE_PLANS or DEV_MAP.",
+        "2. Add explicit state guards in the plan-issue write path so Pending can become Draft, Draft can be updated in place, and Planned cannot be silently downgraded or overwritten without an explicit contract.",
+        "3. Return deterministic WorkflowCommandError messages for blocked rewrites, bad feature assertions, and lifecycle downgrade attempts."
       ]
     },
     {
@@ -659,9 +659,9 @@
       "problem": "input-mode changes and Draft-state logic can drift quickly without command-level regression coverage.",
       "solution_option": "add tests that lock draft-file parsing, explicit-arg planning, lifecycle transitions, and invalid rewrite behavior for plan issue.",
       "concrete_steps": [
-        "1. Add success tests for draft-file and explicit-arg planning that both produce the same issue-block contract.",
-        "2. Add lifecycle tests for Pending-to-Draft writes, Draft updates, and guarded Planned behavior.",
-        "3. Add failure tests for mixed input modes, parser-driven input errors, and blocked downgrade attempts."
+        "1. Add tests that verify draft-file input and explicit CLI input produce the same canonical issue block under the parent feature section in FEATURE_PLANS.",
+        "2. Add lifecycle tests for Pending-to-Draft writes, Draft-in-place updates, and guarded Planned behavior in DEV_MAP.",
+        "3. Add failure-path coverage for mixed input modes, parser failures from dev/workflow_lib/markdown_parser.py, and blocked downgrade or overwrite attempts."
       ]
     },
     {
@@ -671,9 +671,9 @@
       "problem": "legacy feature plan-issue wiring is still scattered across runtime and documentation references, which makes canonical command migration risky.",
       "solution_option": "catalog every remaining legacy registration, help string, and call site before replacing them with top-level plan and status commands.",
       "concrete_steps": [
-        "1. Trace every runtime and documentation reference to feature plan-issue and related legacy planning namespaces.",
-        "2. Identify which parser registrations, handler bindings, and help examples must move to canonical plan and status surfaces.",
-        "3. Record residual legacy references that must be removed or turned into explicit rejection paths."
+        "1. Trace the existing `feature plan-issue` parser registration in register_feature_router, its handler `_handle_feature_plan_issue`, and every runtime message that still emits `feature.plan-issue` as the command name.",
+        "2. Audit docs and workflows that still mention feature-owned issue planning, especially .agents/workflows/plan-issue.md, .agents/workflows/plan-feature.md, and any help text emitted through dev/workflow_lib/cli.py.",
+        "3. Record which code paths must move to top-level `plan issue` and which old entrypoints must become explicit rejection paths instead of hidden compatibility aliases."
       ]
     },
     {
@@ -683,9 +683,9 @@
       "problem": "issue planning remains tied to a feature-owned legacy namespace, which makes the command surface harder to discover and contradicts the planned lifecycle model.",
       "solution_option": "move issue planning to canonical top-level plan issue routing and delete the legacy feature-owned registration from runtime code.",
       "concrete_steps": [
-        "1. Add or finalize top-level plan issue parser routing and bind it to the canonical planning handler.",
-        "2. Remove feature plan-issue parser registration and related hidden compatibility paths from runtime code.",
-        "3. Keep command help and runtime errors aligned so the canonical planning entrypoint is obvious."
+        "1. Add top-level `plan issue` routing through dev/workflow_lib/cli.py and register_plan_router in dev/workflow_lib/feature_commands.py so issue planning is no longer hidden under the feature router.",
+        "2. Remove the `plan-issue` subparser from register_feature_router and stop emitting `feature.plan-issue` from `_handle_feature_plan_issue` output payloads.",
+        "3. Update command help and error text so canonical issue planning is discoverable through `plan issue` and the legacy `feature plan-issue` path is rejected explicitly."
       ]
     },
     {
@@ -695,9 +695,9 @@
       "problem": "agents currently need to inspect large tracker files or verbose command output to learn one issue or feature status, which wastes tokens and complicates automation.",
       "solution_option": "add minimal JSON status commands for issue and feature nodes so lifecycle polling is cheap and deterministic.",
       "concrete_steps": [
-        "1. Add top-level status routing for issue and feature scopes with explicit ID resolution and error handling.",
-        "2. Return compact JSON payloads that include command name, resolved ID, and status without verbose tracker dumps.",
-        "3. Keep output deterministic so shell automation can rely on one stable status contract."
+        "1. Extend dev/workflow_lib/cli.py with a new top-level status router and implement feature or issue resolution against DEV_MAP instead of reusing the broad `validate --scope ...` surface.",
+        "2. Return minimal JSON from the new handlers with only command name, resolved ID, and status so automation does not need to parse full tracker payloads.",
+        "3. Keep blocked-ID and not-found behavior deterministic so status polling can be used safely by later planning and execution workflows."
       ]
     },
     {
@@ -707,9 +707,9 @@
       "problem": "CLI migration can leave hidden routing regressions or stale legacy acceptance unless command-surface behavior is tested directly.",
       "solution_option": "add smoke and regression checks that cover canonical plan and status commands while explicitly rejecting feature plan-issue.",
       "concrete_steps": [
-        "1. Add help and success-path tests for plan issue, status issue, and status feature.",
-        "2. Add rejection tests for legacy feature plan-issue invocation and stale parser aliases.",
-        "3. Verify canonical commands return stable routing and compact output shapes."
+        "1. Add tests for top-level `plan issue`, `status issue`, and `status feature` routing through dev/workflow_lib/cli.py and their expected compact JSON payloads.",
+        "2. Add explicit rejection tests for `feature plan-issue` so the old parser path cannot survive as an undocumented compatibility surface.",
+        "3. Verify help text and command dispatch stay aligned with the new planning and status command tree."
       ]
     },
     {
@@ -719,9 +719,9 @@
       "problem": "protocol docs still describe the older planning lifecycle and do not document Draft status, compact status commands, or feature-level validation gates consistently.",
       "solution_option": "rewrite planning and execution protocol sections so lifecycle wording and command gates match the intended Draft validation model.",
       "concrete_steps": [
-        "1. Update protocol lifecycle wording to document Pending, Draft, Planned, and Tasked semantics clearly.",
-        "2. Add validate issue, validate feature, and status issue or feature guidance where lifecycle gates are defined.",
-        "3. Remove wording that implies draft existence must be inferred from FEATURE_PLANS content instead of DEV_MAP status."
+        "1. Update .agents/protocols/feature-planning-protocol.md and .agents/protocols/task-execution-protocol.md so lifecycle wording matches the Draft-aware runtime contract.",
+        "2. Add explicit validate issue, validate feature, and status issue or feature guidance where planning and execution gates are defined.",
+        "3. Remove wording that still implies draft existence must be inferred only from FEATURE_PLANS content instead of DEV_MAP status and validate commands."
       ]
     },
     {
@@ -731,9 +731,9 @@
       "problem": "the current feature planning workflow still risks implying feature-only planning or unsafe overwrite behavior for already drafted child issues.",
       "solution_option": "rewrite plan-feature so it remains a valid cascading planning workflow that drafts only missing child plans and respects existing Draft or Planned work.",
       "concrete_steps": [
-        "1. Update plan-feature to describe feature decomposition plus child issue draft planning in one consistent flow.",
-        "2. Document how the workflow should treat existing Draft and Planned issue plans without blind rewrites.",
-        "3. Add the expected follow-up validation steps using validate issue or validate feature."
+        "1. Rewrite .agents/workflows/plan-feature.md so its phases reflect the real feature planning flow implemented around FEATURE_PLANS and DEV_MAP.",
+        "2. Document how the workflow should treat existing Draft and Planned child issue plans without blindly overwriting them during feature replanning.",
+        "3. Add the follow-up validation step using validate issue or validate feature so the workflow matches the new runtime contract."
       ]
     },
     {
@@ -743,9 +743,9 @@
       "problem": "plan-issue workflow text still depends on legacy feature-owned command naming and does not clearly document the Draft-to-Planned transition.",
       "solution_option": "rewrite plan-issue around canonical plan issue and validate issue steps so issue drafting and approval are separated clearly.",
       "concrete_steps": [
-        "1. Replace legacy feature plan-issue references with canonical plan issue commands and examples.",
-        "2. Document Draft as the result of plan issue writes and Planned as the result of validation.",
-        "3. Add compact status-check guidance before and after validation to keep the flow scriptable."
+        "1. Rewrite .agents/workflows/plan-issue.md so its execute step uses canonical `plan issue` commands instead of feature-owned issue planning syntax.",
+        "2. Document Draft as the result of the plan-issue write path and Planned as the result of later validate issue or validate feature promotion.",
+        "3. Add compact status-check guidance before and after validation so the workflow matches the intended `status issue` command surface."
       ]
     },
     {
@@ -755,9 +755,9 @@
       "problem": "protocol and workflow docs can drift apart from runtime planning commands, leaving contradictory guidance around Draft lifecycle and legacy namespaces.",
       "solution_option": "add consistency checks that catch stale feature-only planning claims and leftover feature plan-issue references after the lifecycle rewrite.",
       "concrete_steps": [
-        "1. Add grep-style or test-style checks for legacy feature plan-issue references in canonical workflow and protocol docs.",
-        "2. Verify no canonical docs still claim that plan feature is feature-only when child issue drafting is part of the workflow.",
-        "3. Keep the docs and command examples aligned on Draft validation lifecycle wording."
+        "1. Add grep-style or parser-level checks that fail when canonical docs still mention `feature plan-issue` after the routing cleanup.",
+        "2. Verify canonical workflow and protocol docs no longer claim that plan feature is feature-only when child issue drafting is part of the runtime lifecycle.",
+        "3. Keep command examples, lifecycle wording, and status terminology aligned across docs after the Draft validation rewrite."
       ]
     },
     {
@@ -767,9 +767,9 @@
       "problem": "confirm feature currently updates trackers and closes issues without one clearly documented contract for when full feature-plan cleanup is allowed.",
       "solution_option": "trace existing confirm feature and confirm issue behavior across FEATURE_PLANS, TASK_LIST, PIPELINE, and GitHub close flows before tightening closure rules.",
       "concrete_steps": [
-        "1. Audit confirm feature and confirm issue handlers in dev/workflow_lib/confirm_commands.py, including dry-run versus write behavior.",
-        "2. Trace how current cleanup paths mutate FEATURE_PLANS, TASK_LIST, TASK_EXECUTION_PIPELINE, DEV_MAP statuses, and GitHub close payloads.",
-        "3. Record the exact current closure gates and where feature-level behavior diverges from issue-level cleanup semantics."
+        "1. Audit `_handle_confirm_feature_done`, `_handle_confirm_issue_done`, and `_handle_confirm_issues_done` in dev/workflow_lib/confirm_commands.py, including how they branch between dry-run and write mode.",
+        "2. Trace the concrete cleanup helpers used for FEATURE_PLANS, TASK_LIST, TASK_EXECUTION_PIPELINE, DEV_MAP status writes, gh_issue_edit_body, and close_github_issue.",
+        "3. Record exactly where feature-level confirm diverges from issue-level cleanup, especially around subtree gating, FEATURE_PLANS section removal, and GitHub close behavior."
       ]
     },
     {
@@ -779,9 +779,9 @@
       "problem": "without one strict non-cascading contract, confirm feature can remain ambiguous about whether it is allowed to close unfinished child issues or remove feature plan artifacts.",
       "solution_option": "define confirm feature done as a strict path that succeeds only when all child issues are already Done and previews all cleanup side effects before write mode.",
       "concrete_steps": [
-        "1. Specify the exact preconditions for default confirm feature done, including child issue status requirements and allowed repeat behavior.",
-        "2. Define deterministic preview output for feature-section cleanup in FEATURE_PLANS alongside existing tracker cleanup reporting.",
-        "3. Keep the strict path explicitly non-cascading so later cascade mode can be introduced as a separate semantic surface."
+        "1. Define the exact preconditions inside `_handle_confirm_feature_done` for the default path, including which child issue statuses are allowed and how repeat confirm runs should behave.",
+        "2. Add explicit preview fields for whole-feature FEATURE_PLANS cleanup alongside the existing tracker cleanup payload returned from confirm commands.",
+        "3. Keep the default feature-confirm path non-cascading in parser and handler semantics so any subtree-closing behavior is introduced only through a separate explicit flag."
       ]
     },
     {
@@ -791,9 +791,9 @@
       "problem": "feature confirmation currently leaves the parent feature section in FEATURE_PLANS even when closure is valid, which leaves planning artifacts behind after completion.",
       "solution_option": "add feature-section removal to confirm feature when the strict closure preconditions are satisfied and keep dry-run and write behavior deterministic.",
       "concrete_steps": [
-        "1. Implement helper logic that locates and removes the full feature section from dev/FEATURE_PLANS.md only after strict closure preconditions are met.",
-        "2. Reuse existing confirm cleanup sequencing so FEATURE_PLANS removal happens in the same write run as other tracker cleanup.",
-        "3. Keep output payloads explicit about whether feature plan artifacts would be removed or were removed."
+        "1. Add a helper in dev/workflow_lib/confirm_commands.py that removes the full `## <feature_id>` section from dev/FEATURE_PLANS.md only after strict feature-close preconditions are satisfied.",
+        "2. Call that helper from `_handle_confirm_feature_done` in the same write sequence that applies tracker cleanup, rather than adding a separate post-step.",
+        "3. Return explicit preview and applied payload fields showing whether the full feature section would be removed or was removed."
       ]
     },
     {
@@ -803,9 +803,9 @@
       "problem": "cleanup and closure-gate changes can silently regress subtree safety or idempotent confirm behavior unless they are locked by tests.",
       "solution_option": "add regression checks that cover blocked, successful, and repeat confirm feature flows under the new strict cleanup contract.",
       "concrete_steps": [
-        "1. Add tests for blocked confirm feature when any child issue is not Done.",
-        "2. Add tests for successful strict confirm feature cleanup when all child issues are already Done.",
-        "3. Add idempotency coverage for repeat runs after feature-section cleanup has already been applied."
+        "1. Add tests covering blocked `_handle_confirm_feature_done` runs when any child issue is not Done.",
+        "2. Add tests for successful write-mode feature confirmation that removes the whole feature section from FEATURE_PLANS and keeps other tracker cleanup aligned.",
+        "3. Add repeat-run tests so feature confirmation remains idempotent after the feature section has already been removed."
       ]
     },
     {
@@ -815,9 +815,9 @@
       "problem": "users need one intentional way to close a feature subtree in one command, but overloading generic force semantics would make closure side effects too opaque.",
       "solution_option": "define one explicit feature confirm flag that clearly communicates child-issue and child-task cascade behavior and keeps it separate from the strict default path.",
       "concrete_steps": [
-        "1. Choose the explicit cascade flag name and define its scope over child tasks, child issues, feature cleanup, and GitHub close behavior.",
-        "2. Define how already-Done children, unmapped children, and mixed subtree states should be reported in dry-run and write modes.",
-        "3. Keep the new command surface semantically distinct from the strict confirm feature path."
+        "1. Replace or complement the current generic `--force` surface in register_confirm_router with one explicit cascade flag name that clearly targets child issues and child tasks.",
+        "2. Define in confirm command parsing and payload semantics exactly which child-task, child-issue, feature cleanup, and GitHub close actions happen in cascade mode.",
+        "3. Keep reporting explicit for already-Done children, unmapped GitHub children, and mixed subtree states so the cascade surface stays distinct from the strict default path."
       ]
     },
     {
@@ -827,9 +827,9 @@
       "problem": "there is no explicit runtime path that reuses issue-level cleanup semantics to close an entire feature subtree in one controlled write run.",
       "solution_option": "implement a feature-level cascade executor that confirms child issues and tasks, removes their plan artifacts, and closes mapped GitHub issues via one explicit mode.",
       "concrete_steps": [
-        "1. Reuse issue cleanup primitives so child issues receive the same FEATURE_PLANS and tracker cleanup semantics as confirm issue done.",
-        "2. Close mapped child GitHub issues and the feature GitHub issue in one controlled cascade path.",
-        "3. Keep deterministic reporting for mixed subtree states, already-done children, and unmapped GitHub children."
+        "1. Refactor `_handle_confirm_feature_done` to reuse `_cleanup_feature_plan_issue_artifacts`, tracker cleanup helpers, and child-task completion logic already used by `_handle_confirm_issue_done`.",
+        "2. Close mapped child GitHub issues and the parent feature GitHub issue through the same controlled cascade path instead of a second independent close sequence.",
+        "3. Return deterministic cascade payloads for mixed subtree states, already-Done children, and unmapped GitHub children."
       ]
     },
     {
@@ -839,9 +839,9 @@
       "problem": "once subtree cascade exists, users need clear documentation that explains how it differs from the strict default confirm feature path.",
       "solution_option": "rewrite confirm workflow guidance and examples so strict and cascade confirm modes are discoverable and their side effects are obvious.",
       "concrete_steps": [
-        "1. Update workflow and help text examples to show the strict confirm path separately from the explicit child-issue cascade path.",
-        "2. Document which cleanup and status transitions happen only in cascade mode and which remain blocked in strict mode.",
-        "3. Keep the documentation aligned with the exact runtime flag name and payload semantics."
+        "1. Update .agents/workflows/confirm.md and confirm help output so the strict feature-confirm path and the explicit child-issue cascade path are shown as separate commands.",
+        "2. Document which FEATURE_PLANS, DEV_MAP, TASK_LIST, TASK_EXECUTION_PIPELINE, and GitHub close actions happen only in cascade mode.",
+        "3. Keep the docs aligned with the exact flag name and payload fields implemented in dev/workflow_lib/confirm_commands.py."
       ]
     },
     {
@@ -851,9 +851,9 @@
       "problem": "feature-level cascade behavior can easily become unsafe or ambiguous without direct dry-run and write-mode regression coverage.",
       "solution_option": "add tests that lock cascade previews, subtree completion behavior, and edge-case reporting for the explicit child-issue cascade mode.",
       "concrete_steps": [
-        "1. Add dry-run tests that preview which child issues, tasks, plan artifacts, and GitHub issues would be affected.",
-        "2. Add write-mode tests for successful subtree cascade over mixed unfinished child issues and tasks.",
-        "3. Add edge-case tests for already-done children and partially unmapped GitHub issue sets."
+        "1. Add dry-run tests that preview the exact child issues, tasks, FEATURE_PLANS artifacts, and GitHub issues touched by cascade mode.",
+        "2. Add write-mode tests for successful subtree cascade across mixed unfinished child issues and tasks using the shared cleanup helpers.",
+        "3. Add edge-case tests for already-Done children and partially unmapped GitHub issue sets so reporting stays deterministic."
       ]
     },
     {
@@ -863,9 +863,9 @@
       "problem": "execution commit behavior is currently ad hoc, so users do not know whether execute issue should create commits automatically or what message format should be considered canonical.",
       "solution_option": "define one issue-scoped commit policy that decides whether commit creation is optional, explicit-flag based, or documentation-only and standardizes the message format.",
       "concrete_steps": [
-        "1. Evaluate whether commit creation during execute issue should be optional by explicit flag, mandatory, or workflow guidance only.",
-        "2. Define the canonical issue-linked commit message format tied to issue identity and, when applicable, GitHub issue numbers.",
-        "3. Keep commit policy separate from confirm semantics so execution and closure remain independently controllable."
+        "1. Audit the current execute-issue workflow and task execution path to determine whether commit creation belongs in runtime code or in workflow guidance only.",
+        "2. Define one canonical commit message format that references the issue identity and, if available, the mapped GitHub issue number without conflating it with confirm semantics.",
+        "3. Record the commit-policy decision in a way that stays independent from confirm subtree cleanup behavior in dev/workflow_lib/confirm_commands.py."
       ]
     },
     {
@@ -875,9 +875,9 @@
       "problem": "automatic commits can hide repository mutations from the user if they are introduced without a careful integration review of execute issue flows.",
       "solution_option": "inspect execute issue integration points and make a defensible decision about whether explicit commit automation is safe enough for runtime support.",
       "concrete_steps": [
-        "1. Audit execute issue flow and determine where an explicit commit hook could run without obscuring repository state changes.",
-        "2. Separate documentation-only guidance from actual CLI automation if automatic commits are too risky by default.",
-        "3. Define any explicit-flag preconditions and failure behavior if runtime commit support is warranted."
+        "1. Audit the current execute-issue workflow docs and task execution path to find where an explicit commit hook could run without hiding repository mutations from the user.",
+        "2. Decide whether any runtime hook belongs in CLI code or whether commit behavior should remain an explicit documented manual step.",
+        "3. If runtime support is warranted, define explicit flag gating, failure behavior, and safe interaction with dirty worktrees before any commit command is added."
       ]
     },
     {
@@ -887,9 +887,9 @@
       "problem": "users may assume child-issue-linked commits automatically appear as a rich aggregated stream on the parent feature issue, which GitHub does not reliably provide.",
       "solution_option": "document the realistic visibility limits for commit references, closing keywords, child issues, and parent feature issues so execution expectations stay accurate.",
       "concrete_steps": [
-        "1. Document what commit references and closing keywords do on child GitHub issues versus parent feature issues.",
-        "2. Clarify which visibility relationships are handled through issue hierarchy or linked PRs instead of commit aggregation.",
-        "3. Keep workflow guidance explicit about the limits of parent feature issue visibility for child-issue-linked commits."
+        "1. Document in workflow guidance what commit references and closing keywords affect on child GitHub issues versus parent feature issues.",
+        "2. Clarify that parent-child issue hierarchy and linked PR behavior are separate from commit aggregation and may not surface child commits on the feature issue.",
+        "3. Keep the final workflow text explicit about the limits of parent-feature visibility for child-issue-linked commits."
       ]
     },
     {
@@ -899,9 +899,9 @@
       "problem": "once a commit policy is chosen, runtime and documentation can drift unless the selected behavior is covered by tests or consistency checks.",
       "solution_option": "add runtime tests if commit automation is implemented or documentation consistency checks if the policy remains workflow guidance only.",
       "concrete_steps": [
-        "1. Add command-level tests for any explicit commit flag surface if runtime support is introduced.",
-        "2. Otherwise add workflow or documentation checks that keep the chosen commit policy and message format consistent.",
-        "3. Verify the repository guidance does not promise unsupported GitHub parent-feature commit aggregation."
+        "1. If runtime commit support is added, add command-level tests for the explicit flag surface and its blocked-state behavior.",
+        "2. Otherwise add documentation consistency checks that keep the chosen commit policy and message format aligned across execute workflows and related guidance.",
+        "3. Verify the repository docs never promise unsupported parent-feature GitHub commit aggregation behavior."
       ]
     },
     {
@@ -911,9 +911,9 @@
       "problem": "feature-level GitHub issue creation is currently hidden behind ambiguous materialize-oriented semantics, so the explicit publish contract cannot be introduced safely without first tracing the existing behavior.",
       "solution_option": "catalog the current feature issue create and sync paths, milestone handling, and local mapping side effects before renaming the command surface around publish semantics.",
       "concrete_steps": [
-        "1. Audit the current feature-level GitHub issue creation and sync handlers in dev/workflow_lib/feature_commands.py.",
-        "2. Trace how milestone assignment, dry-run behavior, and local feature issue mapping fields are currently handled.",
-        "3. Record which behaviors belong to feature issue publication and which ones belong to unrelated branch or materialization concerns."
+        "1. Audit the current feature-level GitHub issue creation path in dev/workflow_lib/feature_commands.py, especially `_handle_materialize_feature_action`, milestone resolution, and mapping updates.",
+        "2. Trace how ensure_github_milestone_exists, resolve_github_repository, gh_issue_create, and repeat-run skip logic are currently wired for feature issue publication.",
+        "3. Separate true feature-issue publication behavior from branch linkage and other materialize-oriented concerns so the new publish surface does not inherit unrelated side effects."
       ]
     },
     {
@@ -923,9 +923,9 @@
       "problem": "without one explicit contract, publish feature could inherit hidden materialize semantics and remain ambiguous about whether it creates, syncs, or skips feature issues.",
       "solution_option": "define publish feature as the explicit feature issue publication contract with deterministic create-only behavior, already-published handling, and milestone ownership rules.",
       "concrete_steps": [
-        "1. Specify what publish feature does for unpublished, already-published, and invalid feature targets.",
-        "2. Define dry-run versus write output fields so the user can tell when a GitHub issue would be created versus when publication is skipped.",
-        "3. Keep milestone assignment implicit from local ownership instead of requiring redundant milestone input."
+        "1. Define publish feature semantics for unpublished, already-published, and invalid feature targets around the current materialize feature implementation.",
+        "2. Specify dry-run versus write output fields that explicitly report GitHub issue publication rather than abstract materialization.",
+        "3. Keep milestone assignment implicit through DEV_MAP ownership and ensure_github_milestone_exists instead of adding redundant CLI input."
       ]
     },
     {
@@ -935,9 +935,9 @@
       "problem": "the runtime still exposes feature issue creation through materialize-oriented behavior, which makes command intent harder to read and weakens the local-versus-remote lifecycle split.",
       "solution_option": "add an explicit publish feature runtime path that creates the feature GitHub issue and records local mapping state with publish-oriented messaging.",
       "concrete_steps": [
-        "1. Add or route the canonical publish feature command through the existing feature issue creation primitives.",
-        "2. Keep branch linkage and unrelated materialization behavior separate from feature issue publication semantics.",
-        "3. Preserve deterministic local mapping updates and already-published repeat behavior during the rename."
+        "1. Add publish-oriented parser routing in dev/workflow_lib/cli.py and bind it to the existing feature-issue creation primitives in dev/workflow_lib/feature_commands.py.",
+        "2. Rename runtime messaging and command semantics around feature issue creation without pulling branch-linkage behavior into the publish command contract.",
+        "3. Preserve deterministic local mapping updates and already-published repeat behavior during the surface rename."
       ]
     },
     {
@@ -947,9 +947,9 @@
       "problem": "renaming the feature issue creation surface can silently regress dry-run output, milestone assignment, or repeat-run behavior unless it is covered directly by tests.",
       "solution_option": "add regression coverage for publish feature preview, first publication, and already-published repeat paths.",
       "concrete_steps": [
-        "1. Add dry-run tests for unpublished feature publication.",
-        "2. Add write-mode tests for first-time feature issue creation and local mapping persistence.",
-        "3. Add repeat-run tests for already-published feature issues so output remains deterministic."
+        "1. Add dry-run tests for unpublished feature publication through the new publish surface.",
+        "2. Add write-mode tests for first-time feature issue creation, milestone resolution, and DEV_MAP mapping persistence.",
+        "3. Add repeat-run tests for already-published feature issues so the renamed command keeps deterministic skip behavior."
       ]
     },
     {
@@ -959,9 +959,9 @@
       "problem": "child issue publication is currently tied to materialize wording and mixed feature-owned semantics, which makes it unclear how single-issue and feature-owned batch publication should behave.",
       "solution_option": "define explicit contracts for publish issue and publish issues --feature-id with deterministic create, skip, error, and parent-feature linkage behavior.",
       "concrete_steps": [
-        "1. Specify the command contract for one child issue publish and one feature-owned issue-batch publish flow.",
-        "2. Define how already-published child issues, missing parent feature issue mappings, and invalid owner scopes are handled.",
-        "3. Keep milestone lineage and parent-feature linkage expectations explicit in the contract."
+        "1. Define one explicit contract for publishing a single child issue and one for publishing all child issues owned by one feature through the current issue materialization engine.",
+        "2. Specify how already-published child issues, invalid owner scopes, and missing parent feature issue mappings are reported.",
+        "3. Keep milestone lineage and parent-feature linkage expectations explicit around gh_issue_create and gh_issue_add_sub_issue behavior."
       ]
     },
     {
@@ -971,9 +971,9 @@
       "problem": "there is no explicit single-command surface that clearly says it publishes one issue to GitHub while preserving local milestone ownership and mapping rules.",
       "solution_option": "implement publish issue as the canonical single-child-issue publication command with deterministic mapping updates and error handling.",
       "concrete_steps": [
-        "1. Add or route the canonical publish issue command through the existing issue creation logic.",
-        "2. Preserve milestone ownership from DEV_MAP without redundant user input.",
-        "3. Return deterministic payloads for created, skipped, and blocked issue publication attempts."
+        "1. Add publish-oriented routing for one child issue on top of the existing single-issue materialization path in dev/workflow_lib/feature_commands.py.",
+        "2. Preserve milestone ownership from DEV_MAP and ensure_github_milestone_exists without requiring extra CLI milestone input.",
+        "3. Return deterministic created, skipped, and blocked payloads for one selected issue publication."
       ]
     },
     {
@@ -983,9 +983,9 @@
       "problem": "publishing all child issues of a feature still depends on materialize-oriented behavior, which obscures batch scope and makes parent-feature linkage semantics harder to reason about.",
       "solution_option": "implement publish issues --feature-id as an explicit feature-owned issue-batch publication flow with predictable queue order and linkage behavior.",
       "concrete_steps": [
-        "1. Add feature-owned batch publication routing that selects child issues by feature ownership and execution order.",
-        "2. Keep milestone assignment and already-published skip behavior deterministic across the whole batch.",
-        "3. Define and implement how parent feature issue presence or absence affects child issue publication and linkage reporting."
+        "1. Add publish-oriented batch routing that selects child issues by feature ownership using the existing issue-set materialization logic.",
+        "2. Keep milestone assignment, queue ordering, and already-published skip behavior deterministic across the selected batch.",
+        "3. Define and implement how parent feature issue presence affects gh_issue_add_sub_issue linkage and batch reporting."
       ]
     },
     {
@@ -995,8 +995,8 @@
       "problem": "single-issue and batch publication flows can easily drift on create, skip, and parent-linkage behavior unless they are covered by direct regression tests.",
       "solution_option": "add command-level coverage for publish issue and publish issues batch behavior across normal and edge-case publication paths.",
       "concrete_steps": [
-        "1. Add success tests for one child issue publish and feature-owned issue-batch publish.",
-        "2. Add edge-case tests for already-published child issues, missing parent feature issue mappings, and invalid scope selection.",
+        "1. Add success tests for one child issue publish and feature-owned issue-batch publish through the renamed command surface.",
+        "2. Add edge-case tests for already-published child issues, missing parent feature issue mappings, invalid scope selection, and sub-issue linkage behavior.",
         "3. Verify deterministic output fields for created, skipped, selected, and blocked issue publication behavior."
       ]
     },
@@ -1007,9 +1007,9 @@
       "problem": "users currently see materialize-oriented examples that do not clearly communicate which commands create GitHub issues and which ones only manipulate local tracker state.",
       "solution_option": "rewrite CLI help and examples so publish feature, publish issue, and publish issues directly communicate GitHub publication side effects.",
       "concrete_steps": [
-        "1. Replace materialize-oriented examples with publish-oriented feature and issue examples in help output.",
-        "2. Make the local-registration versus remote-publication split explicit in command descriptions.",
-        "3. Keep help output compact while making the publish model discoverable without reading implementation details."
+        "1. Rewrite CLI help in dev/workflow_lib/cli.py and related parser descriptions so feature and issue GitHub creation examples use publish-oriented wording instead of materialize wording.",
+        "2. Make the local-registration versus remote-publication split explicit in parser descriptions and examples.",
+        "3. Keep help output compact while making the publish model discoverable without reading runtime internals."
       ]
     },
     {
@@ -1019,9 +1019,9 @@
       "problem": "workflow docs still describe local creation and remote GitHub issue creation through materialize language, which leaves the intended publication lifecycle unclear.",
       "solution_option": "rewrite workflow docs so local create flows and remote publish flows are clearly separated with milestone and parent/child publication guidance.",
       "concrete_steps": [
-        "1. Update create and publication workflows to describe local registration and GitHub publication as separate lifecycle steps.",
+        "1. Update workflow docs that currently describe local registration and GitHub creation through materialize language so they describe create and publish as separate lifecycle steps.",
         "2. Document milestone behavior and parent-feature versus child-issue publication paths in publish terminology.",
-        "3. Keep operator guidance aligned with the exact runtime command surfaces."
+        "3. Keep operator guidance aligned with the exact runtime command surfaces and output contracts."
       ]
     },
     {
@@ -1031,9 +1031,9 @@
       "problem": "if materialize remains the canonical wording in runtime or docs, the repository will expose two competing mental models for GitHub issue creation.",
       "solution_option": "remove materialize as the canonical publish path from runtime guidance and documentation while keeping any explicit migration notes accurate.",
       "concrete_steps": [
-        "1. Replace remaining canonical materialize wording for GitHub issue creation with publish-oriented terminology.",
-        "2. Keep any migration or compatibility notes explicit rather than leaving stale materialize examples in canonical docs.",
-        "3. Align runtime messages and repository docs on one publish-oriented model."
+        "1. Replace remaining canonical materialize wording for GitHub issue creation in runtime messages and repository docs with publish-oriented terminology.",
+        "2. Keep migration or compatibility notes explicit instead of leaving stale materialize examples in canonical guidance.",
+        "3. Align runtime messages, workflows, and feature plans on one publish-oriented model."
       ]
     },
     {
@@ -1043,9 +1043,9 @@
       "problem": "help output and workflow docs can drift back toward materialize wording unless the new publish-oriented command surface is covered by explicit checks.",
       "solution_option": "add consistency checks that keep help output and workflow documentation aligned on publish feature, publish issue, and publish issues commands.",
       "concrete_steps": [
-        "1. Add checks that compare documented examples and help output against the canonical publish commands.",
+        "1. Add checks that compare documented examples and help output against the canonical publish commands exposed in the parser tree.",
         "2. Verify no canonical docs still present materialize as the primary way to create GitHub issues.",
-        "3. Keep local-registration versus remote-publication terminology aligned across help and workflow docs."
+        "3. Keep local-registration versus remote-publication terminology aligned across help text and workflow docs."
       ]
     },
     {
@@ -1055,9 +1055,9 @@
       "problem": "FEATURE_PLANS currently has no authoritative milestone-level execution-order block, so there is no stable structure for recommended feature ordering across one milestone.",
       "solution_option": "define one canonical top-level block for milestone-scoped feature execution order, including section headings, row format, numbering, and empty-section behavior.",
       "concrete_steps": [
-        "1. Specify the exact top-level heading and per-milestone subsection format for the new execution-order block in FEATURE_PLANS.",
-        "2. Define the ordered row shape, including feature ID, feature title, and stable numbering semantics.",
-        "3. Decide whether empty milestone sections are omitted or preserved and document that behavior explicitly."
+        "1. Define the exact top-level heading and per-milestone subsection format to be inserted near the top of dev/FEATURE_PLANS.md.",
+        "2. Define the ordered row shape for one feature entry, including feature ID, feature title, and numbering semantics that remain parseable.",
+        "3. Decide and document whether empty milestone sections are removed or preserved after cleanup."
       ]
     },
     {
@@ -1067,8 +1067,8 @@
       "problem": "adding a new top-level block to FEATURE_PLANS can break plan parsing or linting unless the new structure is recognized and validated explicitly.",
       "solution_option": "extend parsing and lint logic so the milestone execution-order block is accepted when valid and rejected deterministically when malformed.",
       "concrete_steps": [
-        "1. Audit current plan parsing and lint paths that assume FEATURE_PLANS contains only feature sections.",
-        "2. Add structure-aware parsing and validation for the new milestone execution-order block.",
+        "1. Audit the current FEATURE_PLANS parsing and lint paths in dev/workflow_lib/feature_commands.py, especially section discovery, issue-order parsing, and plan-lint validation.",
+        "2. Add structure-aware parsing and validation so the new milestone execution-order block can coexist with feature sections without breaking `_find_h2_section_bounds` or plan-lint output.",
         "3. Keep malformed-block failures deterministic so planning errors remain actionable."
       ]
     },
@@ -1079,9 +1079,9 @@
       "problem": "if planning or delta payloads need to carry execution-order metadata, the repository needs one explicit contract instead of ad hoc inline handling.",
       "solution_option": "update relevant planning schema and delta contracts so milestone execution-order metadata can be represented explicitly where needed.",
       "concrete_steps": [
-        "1. Audit whether existing planning schema or delta payloads need to reference milestone execution-order metadata.",
-        "2. Extend the relevant schema or delta contracts only where execution-order data must be carried explicitly.",
-        "3. Keep the new contract minimal so execution-order metadata does not leak into unrelated planning surfaces."
+        "1. Audit whether planning schema or delta payloads such as dev/map/ISSUE_CREATE_INPUT_SCHEMA.md, sync_delta inputs, or tracker JSON contracts need explicit execution-order metadata.",
+        "2. Extend only the relevant schema or delta contracts where milestone execution-order data must be represented explicitly.",
+        "3. Keep the new metadata contract minimal so execution-order fields do not leak into unrelated planning surfaces."
       ]
     },
     {
@@ -1091,9 +1091,9 @@
       "problem": "without direct regression coverage, the new global execution-order block could silently break linting or drift into malformed states during later planning changes.",
       "solution_option": "add tests that lock valid structure handling and malformed-block rejection for the milestone execution-order block.",
       "concrete_steps": [
-        "1. Add tests for valid milestone execution-order block parsing and linting.",
-        "2. Add malformed-structure tests that verify deterministic lint or parser failures.",
-        "3. Verify feature plan sections remain valid when the new global block is present above them."
+        "1. Add tests for valid milestone execution-order block parsing and plan-lint behavior in dev/workflow_lib/feature_commands.py.",
+        "2. Add malformed-structure tests that verify deterministic lint or parser failures when the global block is broken.",
+        "3. Verify ordinary feature plan sections remain valid when the new global block is present above them."
       ]
     },
     {
@@ -1103,9 +1103,9 @@
       "problem": "milestone execution order should be planning-owned rather than registration-owned, but the repository needs one explicit rule for when features enter or move within the order block.",
       "solution_option": "define plan feature as the owner of execution-order entries and specify append, reorder, and replan behavior for milestone-scoped feature ordering.",
       "concrete_steps": [
-        "1. Define when plan feature inserts a new feature into the milestone execution-order block and when it should preserve existing order.",
-        "2. Decide whether default behavior is append-only, dependency-aware insertion, or explicit user-authored ordering.",
-        "3. Keep unplanned-but-created features out of the execution-order block by contract."
+        "1. Define in planning docs and runtime expectations when `plan feature` inserts a feature into the milestone execution-order block and when existing order must be preserved.",
+        "2. Decide whether the default behavior is append-only, dependency-aware insertion, or explicit user-authored ordering and tie that decision to one code path.",
+        "3. Keep unplanned-but-created features out of the execution-order block by contract and by runtime behavior."
       ]
     },
     {
@@ -1115,9 +1115,9 @@
       "problem": "once the new block exists, plan feature needs one deterministic path that creates or updates execution-order entries instead of leaving the block manual and unsynchronized.",
       "solution_option": "update plan feature flows so planned features are inserted or updated in the milestone execution-order block automatically and predictably.",
       "concrete_steps": [
-        "1. Update plan initialization or plan write flows so the milestone execution-order block is created or updated when a feature plan is authored.",
-        "2. Preserve deterministic behavior across repeat planning runs so existing execution-order entries are not duplicated.",
-        "3. Keep title changes and replan scenarios aligned with the chosen ownership rules."
+        "1. Update plan initialization or plan write flows in dev/workflow_lib/feature_commands.py so the milestone execution-order block is created or updated when one feature plan is authored.",
+        "2. Preserve deterministic behavior across repeat planning runs so execution-order entries are updated or preserved instead of duplicated.",
+        "3. Keep feature title changes and replan scenarios aligned with the chosen ownership rules."
       ]
     },
     {
@@ -1127,9 +1127,9 @@
       "problem": "planning sync and reconciliation paths can drift from authored milestone execution order if they do not understand the new global block and its metadata contract.",
       "solution_option": "extend sync or delta-driven planning flows so milestone execution-order maintenance stays consistent across authored and synchronized planning operations.",
       "concrete_steps": [
-        "1. Audit plan-sync or reconciliation paths that may need awareness of execution-order metadata.",
-        "2. Update the relevant sync or delta flow so execution-order entries remain aligned with feature planning state.",
-        "3. Avoid duplicating order-maintenance logic between authored plan flows and sync paths."
+        "1. Audit plan-sync, plan-task reconciliation, and delta-driven planning paths in dev/workflow_lib/feature_commands.py and related contracts for execution-order awareness.",
+        "2. Update the relevant sync or delta flow so milestone execution-order entries remain aligned with feature planning state after automated writes.",
+        "3. Avoid duplicating order-maintenance logic between authored plan flows and sync paths by reusing one helper."
       ]
     },
     {
@@ -1139,8 +1139,8 @@
       "problem": "execution-order maintenance can drift quickly under repeat planning or title changes if append and update behavior is not covered directly.",
       "solution_option": "add regression coverage that locks the chosen insertion rules and repeat-planning behavior for milestone execution order.",
       "concrete_steps": [
-        "1. Add tests for the first planned feature in a milestone and later appended features.",
-        "2. Add tests for repeat planning of an existing feature so ordering stays stable unless explicitly changed.",
+        "1. Add tests for the first planned feature in a milestone and later appended features in the new execution-order block.",
+        "2. Add tests for repeat planning of an existing feature so ordering stays stable unless explicitly changed by the chosen rule set.",
         "3. Add title-change coverage so displayed execution-order rows stay accurate without duplicating entries."
       ]
     },
@@ -1151,9 +1151,9 @@
       "problem": "once planning owns milestone execution-order entries, confirm feature needs one explicit rule for when and how those entries are removed during feature completion.",
       "solution_option": "define confirm feature cleanup semantics for milestone execution-order rows, including dry-run versus write reporting and empty-section behavior.",
       "concrete_steps": [
-        "1. Specify when confirm feature removes a feature row from the milestone execution-order block and what happens in dry-run mode.",
-        "2. Define how empty milestone sections are handled after the last planned feature is removed.",
-        "3. Keep execution-order cleanup aligned with other planning-artifact cleanup semantics."
+        "1. Define inside confirm semantics when `_handle_confirm_feature_done` removes one feature row from the milestone execution-order block and what preview fields are returned in dry-run mode.",
+        "2. Define how empty milestone sections are handled after the last planned feature is removed from that block.",
+        "3. Keep execution-order cleanup aligned with the rest of the FEATURE_PLANS cleanup semantics."
       ]
     },
     {
@@ -1163,8 +1163,8 @@
       "problem": "confirm feature currently has no runtime awareness of milestone execution-order entries, so completed features would remain in the recommended queue after confirmation.",
       "solution_option": "extend confirm feature cleanup so milestone execution-order entries are removed in the same write run as other planning and tracker cleanup artifacts.",
       "concrete_steps": [
-        "1. Add execution-order cleanup to the confirm feature write path using the finalized block structure and cleanup contract.",
-        "2. Remove the feature row in the same run as other planning artifact cleanup to avoid partial state.",
+        "1. Add milestone execution-order cleanup to `_handle_confirm_feature_done` using the finalized block structure and one helper in dev/workflow_lib/confirm_commands.py.",
+        "2. Remove the feature row in the same write run as other FEATURE_PLANS cleanup so confirm does not leave partial planning state behind.",
         "3. Keep empty-section handling and cleanup payload reporting deterministic."
       ]
     },
@@ -1175,8 +1175,8 @@
       "problem": "users will not understand when execution-order entries are created, maintained, and removed unless workflows and planning docs describe the new lifecycle explicitly.",
       "solution_option": "update planning and confirm docs so they explain milestone execution-order ownership, maintenance, and cleanup across the lifecycle.",
       "concrete_steps": [
-        "1. Update plan-feature and related docs to explain when a planned feature enters the milestone execution-order block.",
-        "2. Update confirm workflow guidance to explain when completed features are removed from the order block.",
+        "1. Update plan-feature and related planning docs to explain when a planned feature enters the milestone execution-order block.",
+        "2. Update confirm workflow guidance to explain when completed features are removed from that block during feature confirmation.",
         "3. Keep milestone planning semantics and execution-order wording aligned across workflow and protocol docs."
       ]
     },
@@ -1187,8 +1187,8 @@
       "problem": "milestone execution-order cleanup can regress on dry-run previews, write-mode deletion, or empty-section behavior unless the confirm flow is tested directly.",
       "solution_option": "add regression coverage for confirm feature cleanup of execution-order entries, including empty milestone-section handling and deterministic payloads.",
       "concrete_steps": [
-        "1. Add dry-run tests for execution-order cleanup preview fields on confirm feature.",
-        "2. Add write-mode tests for successful feature-row removal from the milestone execution-order block.",
+        "1. Add dry-run tests for execution-order cleanup preview fields returned from `_handle_confirm_feature_done`.",
+        "2. Add write-mode tests for successful feature-row removal from the milestone execution-order block in FEATURE_PLANS.",
         "3. Add empty-section tests so cleanup remains predictable when the last feature in a milestone is confirmed done."
       ]
     }

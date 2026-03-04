@@ -233,71 +233,71 @@
     },
     {
       "tasks": ["182", "187"],
-      "description": "Draft-aware lifecycle helpers must be shared between base status semantics and plan issue write behavior."
+      "description": "both touch Draft-state transitions in dev/workflow_lib/feature_commands.py, especially the planning status checks and the plan-issue write path; they overlap on one shared planning lifecycle model."
     },
     {
       "tasks": ["183", "184"],
-      "description": "Issue and feature validation should reuse one Gate 0 plan-block validation path instead of duplicating checks."
+      "description": "both need one shared Gate 0 validator over FEATURE_PLANS issue blocks in dev/workflow_lib/validate_commands.py and related parsing helpers; they overlap on validation logic reuse."
     },
     {
       "tasks": ["191", "192"],
-      "description": "Canonical plan and status commands share one CLI surface and should align on compact deterministic output behavior."
+      "description": "both change the top-level parser tree in dev/workflow_lib/cli.py and related routing in dev/workflow_lib/feature_commands.py; they overlap on one canonical planning/status command surface."
     },
     {
       "tasks": ["192", "194"],
-      "description": "Protocol docs must describe the exact compact status contract implemented by the runtime."
+      "description": "runtime status commands in dev/workflow_lib/cli.py and validate/feature routing must match the wording in .agents/protocols/feature-planning-protocol.md and related docs; they overlap on status-contract consistency."
     },
     {
       "tasks": ["191", "196"],
-      "description": "Workflow docs must reflect the exact canonical plan issue routing after legacy feature plan-issue removal."
+      "description": "top-level `plan issue` routing in dev/workflow_lib/cli.py and dev/workflow_lib/feature_commands.py must match .agents/workflows/plan-issue.md; they overlap on canonical issue-planning command wording."
     },
     {
       "tasks": ["198", "200"],
-      "description": "Feature-level cleanup implementation must follow the audited confirm sequencing and existing issue cleanup primitives."
+      "description": "both touch `_handle_confirm_feature_done` and the FEATURE_PLANS cleanup helpers in dev/workflow_lib/confirm_commands.py; they overlap on the concrete confirm cleanup sequence."
     },
     {
       "tasks": ["200", "203"],
-      "description": "Cascade runtime should reuse the strict feature cleanup helper instead of implementing separate feature-section deletion logic."
+      "description": "strict feature cleanup and cascade cleanup both need the same FEATURE_PLANS section-removal helpers in dev/workflow_lib/confirm_commands.py; they overlap on shared cleanup primitives."
     },
     {
       "tasks": ["202", "204"],
-      "description": "Workflow guidance and help text must reflect the exact explicit cascade flag and its subtree semantics."
+      "description": "the explicit cascade flag introduced in confirm command parsing must match .agents/workflows/confirm.md and runtime help text; they overlap on one concrete cascade command surface."
     },
     {
       "tasks": ["206", "208"],
-      "description": "Commit policy wording must stay aligned with the documented GitHub visibility limits for child issues and parent feature issues."
+      "description": "issue commit-policy wording and GitHub visibility guidance share the same execute-issue/confirm documentation surfaces; they overlap on one concrete commit-linkage contract."
     },
     {
       "tasks": ["211", "214"],
-      "description": "Feature and child-issue publication contracts must share one consistent model for create-only publication, repeat runs, and milestone ownership."
+      "description": "feature and child-issue publish contracts both depend on gh_issue_create, ensure_github_milestone_exists, and mapping semantics in dev/workflow_lib/feature_commands.py; they overlap on one publication contract model."
     },
     {
       "tasks": ["215", "216"],
-      "description": "Single-issue and feature-owned batch publication should reuse one publication engine and not duplicate issue creation or skip logic."
+      "description": "single-issue and batch publication both route through the issue materialization engine in dev/workflow_lib/feature_commands.py and GitHub adapter helpers; they overlap on shared issue-publication logic."
     },
     {
       "tasks": ["216", "219"],
-      "description": "Workflow docs must reflect the exact feature-owned issue-batch publication behavior implemented by the runtime."
+      "description": "feature-owned batch publication behavior in dev/workflow_lib/feature_commands.py must match the operator flow described in the workflow docs; they overlap on one concrete batch-publish contract."
     },
     {
       "tasks": ["218", "220"],
-      "description": "Help output and migration guidance must move together from materialize wording to publish wording to avoid mixed command models."
+      "description": "CLI parser help in dev/workflow_lib/cli.py and migration-facing docs both replace materialize wording with publish wording; they overlap on one concrete command-language migration."
     },
     {
       "tasks": ["223", "227"],
-      "description": "Plan-flow integration depends on one shared parser and lint understanding of the new milestone execution-order block."
+      "description": "execution-order maintenance in plan flows depends on the same FEATURE_PLANS parsing and lint helpers in dev/workflow_lib/feature_commands.py; they overlap on one concrete global-block parser contract."
     },
     {
       "tasks": ["224", "228"],
-      "description": "Any sync or delta integration must reuse the same execution-order metadata contract introduced at the structure level."
+      "description": "schema or delta metadata for execution-order entries and planning sync integration must share the same contract across sync_delta and planning write paths; they overlap on one execution-order metadata surface."
     },
     {
       "tasks": ["226", "230"],
-      "description": "Confirm cleanup semantics must align with the exact planning-ownership rules that govern when features enter the execution-order block."
+      "description": "planning ownership rules for inserting features into the milestone execution-order block must match the later confirm-removal contract; they overlap on one shared entry lifecycle."
     },
     {
       "tasks": ["231", "232"],
-      "description": "Workflow documentation must describe the same confirm cleanup behavior implemented for milestone execution-order entries."
+      "description": "confirm cleanup for milestone execution-order entries in dev/workflow_lib/confirm_commands.py must match the planning and confirm docs; they overlap on one concrete removal lifecycle."
     }
   ]
 }
