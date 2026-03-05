@@ -100,6 +100,26 @@
     {
       "tasks": ["230", "231", "232", "233"],
       "description": "F11 confirm cleanup and docs for milestone execution-order lifecycle"
+    },
+    {
+      "tasks": ["234"],
+      "description": "Expose canonical get-context CLI routing before collector implementation."
+    },
+    {
+      "tasks": ["235", "236"],
+      "description": "Implement feature and issue context payload collectors on shared tracker resolvers."
+    },
+    {
+      "tasks": ["237", "238"],
+      "description": "Align execution workflows/protocol with collector-first read contract."
+    },
+    {
+      "tasks": ["239"],
+      "description": "Lock CLI command-surface regressions in core help tests."
+    },
+    {
+      "tasks": ["240", "241"],
+      "description": "Lock payload and naming regression behavior for execution context commands."
     }
   ],
   "functional_blocks": [
@@ -180,6 +200,24 @@
       "tasks": ["222", "223", "224", "225", "226", "227", "228", "229", "230", "231", "232", "233"],
       "scope": "milestone-scoped feature execution-order structure, planning and sync maintenance, and confirm-time cleanup with lifecycle documentation.",
       "outcome": "FEATURE_PLANS gains one planning-owned milestone execution-order block that is maintained during feature planning and cleaned deterministically during feature confirmation."
+    },
+    {
+      "title": "Block F13-A: Context command runtime",
+      "tasks": ["234", "235", "236"],
+      "scope": "CLI routing, feature/issue context resolvers, plan-block extraction, task joins, and overlap intersection collectors.",
+      "outcome": "`workflow get context feature|issue` returns deterministic payloads with plan markdown, mapped task objects, and overlap intersections for selected scope."
+    },
+    {
+      "title": "Block F13-B: Execution workflow contract alignment",
+      "tasks": ["237", "238"],
+      "scope": "Execution workflow/protocol docs for feature and issue chains.",
+      "outcome": "Execution procedures require collector-first reads with explicit payload completeness checks before ordering or gate evaluation."
+    },
+    {
+      "title": "Block F13-C: Regression hardening",
+      "tasks": ["239", "240", "241"],
+      "scope": "CLI help regression checks, collector payload contract tests, and stale naming detection in execution workflow docs.",
+      "outcome": "CLI grammar, context payload shape, and canonical execution command strings remain stable under future command-surface refactors."
     }
   ],
   "overlaps": [
@@ -298,6 +336,30 @@
     {
       "tasks": ["231", "232"],
       "description": "confirm cleanup for milestone execution-order entries in dev/workflow_lib/confirm_commands.py must match the planning and confirm docs; they overlap on one concrete removal lifecycle."
+    },
+    {
+      "tasks": ["234", "239"],
+      "description": "both modify command-tree/help behavior in `dev/workflow_lib/cli.py` and CLI parser expectations in `tests/workflow/test_core.py`."
+    },
+    {
+      "tasks": ["235", "236"],
+      "description": "both share resolver/extractor primitives in `dev/workflow_lib/feature_commands.py` for plan-block parsing, task joins, and overlap filtering."
+    },
+    {
+      "tasks": ["235", "240"],
+      "description": "feature collector payload fields and error contracts are validated by payload regression tests in `tests/workflow/test_feature_lifecycle.py`."
+    },
+    {
+      "tasks": ["236", "240"],
+      "description": "issue collector owner-resolution and issue-block extraction logic is exercised by issue-scoped negative and success tests."
+    },
+    {
+      "tasks": ["237", "241"],
+      "description": "workflow command strings updated in `.agents/workflows/execute-feature.md` and `.agents/workflows/execute-issue.md` are guarded by naming-regression checks."
+    },
+    {
+      "tasks": ["238", "241"],
+      "description": "protocol wording for payload completeness in `.agents/protocols/task-execution-protocol.md` is validated by stale-name/contract regression assertions."
     }
   ]
 }

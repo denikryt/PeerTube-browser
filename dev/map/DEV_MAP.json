@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-05T22:17:41+02:00",
-  "task_count": 233,
+  "updated_at": "2026-03-05T22:49:04+02:00",
+  "task_count": 241,
   "milestones": [
     {
       "id": "M1",
@@ -2138,28 +2138,95 @@
               "id": "I1-F13-M1",
               "title": "Add canonical workflow get context feature|issue commands",
               "description": "Introduce canonical commands `workflow get context feature <feature_id>` and `workflow get context issue <issue_id>` that aggregate plan, task list, and overlap context.",
-              "status": "Pending",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "234",
+                  "title": "Add canonical CLI surface for get context feature|issue",
+                  "summary": "Introduce command routing for `workflow get context feature <id>` and `workflow get context issue <id>` with deterministic help and argument validation.",
+                  "status": "Planned",
+                  "date": "2026-03-05",
+                  "time": "22:49:04"
+                },
+                {
+                  "id": "235",
+                  "title": "Implement feature-scoped context collector payload",
+                  "summary": "Collect feature plan section, mapped task objects, and pipeline overlap intersections for one feature ID.",
+                  "status": "Planned",
+                  "date": "2026-03-05",
+                  "time": "22:49:04"
+                },
+                {
+                  "id": "236",
+                  "title": "Implement issue-scoped context collector payload",
+                  "summary": "Resolve owner feature+issue, extract exact issue-plan block, join issue tasks, and compute issue overlap intersections.",
+                  "status": "Planned",
+                  "date": "2026-03-05",
+                  "time": "22:49:04"
+                }
+              ]
             },
             {
               "id": "I2-F13-M1",
               "title": "Wire execute-feature workflow to workflow get context feature",
               "description": "Update execute-feature workflow to use `workflow get context feature <feature_id>` as the mandatory context source before task execution steps.",
-              "status": "Pending",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "237",
+                  "title": "Update execute-feature and execute-issue workflows to require context commands",
+                  "summary": "Replace manual multi-file read steps with mandatory `workflow get context ...` command usage in execution workflows.",
+                  "status": "Planned",
+                  "date": "2026-03-05",
+                  "time": "22:49:04"
+                },
+                {
+                  "id": "238",
+                  "title": "Align execution protocol wording with context-command read contract",
+                  "summary": "Add explicit read-contract wording so execution docs require non-empty plan block, mapped tasks, and overlap payload fields from context commands.",
+                  "status": "Planned",
+                  "date": "2026-03-05",
+                  "time": "22:49:04"
+                }
+              ]
             },
             {
               "id": "I3-F13-M1",
               "title": "Add post-reorg compatibility checks and regression coverage",
               "description": "Add regression checks for collector payload integrity and canonical post-reorg command naming surfaces.",
-              "status": "Pending",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "239",
+                  "title": "Add CLI regression coverage for get context command surface",
+                  "summary": "Extend workflow CLI tests to assert help/usage for the new get context command grammar and selectors.",
+                  "status": "Planned",
+                  "date": "2026-03-05",
+                  "time": "22:49:04"
+                },
+                {
+                  "id": "240",
+                  "title": "Add payload and negative-path tests for feature and issue context commands",
+                  "summary": "Add tests for successful payload shape and deterministic errors on unknown IDs or unresolved references.",
+                  "status": "Planned",
+                  "date": "2026-03-05",
+                  "time": "22:49:04"
+                },
+                {
+                  "id": "241",
+                  "title": "Add naming-regression checks for execute workflow command strings",
+                  "summary": "Protect execution docs/tests against legacy context-command wording drift after command-surface reorganization.",
+                  "status": "Planned",
+                  "date": "2026-03-05",
+                  "time": "22:49:04"
+                }
+              ]
             }
           ],
           "branch_name": null,

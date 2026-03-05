@@ -1191,6 +1191,110 @@
         "2. Add write-mode tests for successful feature-row removal from the milestone execution-order block in FEATURE_PLANS.",
         "3. Add empty-section tests so cleanup remains predictable when the last feature in a milestone is confirmed done."
       ]
+    },
+    {
+      "id": "234",
+      "marker": "[M1][F13]",
+      "title": "Add canonical CLI surface for get context feature|issue",
+      "problem": "Execution context retrieval is not exposed as canonical CLI commands; agents must infer context by manually scanning multiple trackers.",
+      "solution_option": "Add one explicit command surface for workflow get context feature|issue with deterministic argument parsing and output contract discovery via help.",
+      "concrete_steps": [
+        "Update dev/workflow_lib/cli.py command tree to register a get context router and keep command grammar deterministic for both feature and issue targets.",
+        "Add parser registration and argument validation wiring in dev/workflow_lib/feature_commands.py (or extracted command module) for feature <id> and issue <id> selectors.",
+        "Ensure CLI help output and parser errors for missing/invalid IDs are deterministic and machine-readable for scripted workflow usage.",
+        "Validate with targeted CLI help tests under tests/workflow/test_core.py for the new command surface."
+      ]
+    },
+    {
+      "id": "235",
+      "marker": "[M1][F13]",
+      "title": "Implement feature-scoped context collector payload",
+      "problem": "Feature execution currently depends on ad hoc manual reads of FEATURE_PLANS, TASK_LIST, TASK_EXECUTION_PIPELINE, and DEV_MAP, which is error-prone.",
+      "solution_option": "Implement one feature-scoped collector that resolves ownership, task joins, and overlap intersections in one deterministic payload.",
+      "concrete_steps": [
+        "Implement handler logic in dev/workflow_lib/feature_commands.py to resolve <feature_id> in DEV_MAP and gather feature issue/task ownership.",
+        "Reuse FEATURE_PLANS section extractors to return the full ## <feature_id> block as raw markdown payload field.",
+        "Load TASK_LIST.json via tracker_store helpers, join mapped task IDs to full task objects, and return unresolved-reference errors deterministically.",
+        "Load TASK_EXECUTION_PIPELINE.json, compute overlap rows where overlap task IDs intersect feature task set, and include matched IDs plus full overlap rows in response.",
+        "Add focused tests in tests/workflow/test_feature_lifecycle.py for payload fields: plan block, mapped tasks, and overlap intersections."
+      ]
+    },
+    {
+      "id": "236",
+      "marker": "[M1][F13]",
+      "title": "Implement issue-scoped context collector payload",
+      "problem": "Issue-chain execution has no dedicated collector; it lacks a canonical way to fetch only issue-relevant plan/task/overlap context.",
+      "solution_option": "Implement issue-scoped collector path that resolves owner feature, extracts exact issue-plan block, and returns issue-task overlap intersections.",
+      "concrete_steps": [
+        "Add issue resolver path in dev/workflow_lib/feature_commands.py to locate issue owner feature and validate uniqueness in DEV_MAP.",
+        "Extract exact issue plan block (### <issue_id> - ...) from owning feature section in dev/FEATURE_PLANS.md with deterministic missing-block errors.",
+        "Join issue task IDs to task-list objects from TASK_LIST.json and compute issue-scoped overlaps from TASK_EXECUTION_PIPELINE.json intersections.",
+        "Return compact JSON payload aligned with feature-scoped contract while preserving issue-specific fields (issue_id, owner feature_id).",
+        "Add tests for success and invalid issue ID failure paths in tests/workflow/test_feature_lifecycle.py."
+      ]
+    },
+    {
+      "id": "237",
+      "marker": "[M1][F13]",
+      "title": "Update execute-feature and execute-issue workflows to require context commands",
+      "problem": "Execution workflows still describe manual tracker reads, which can drift from the new canonical context command contract.",
+      "solution_option": "Rewrite execution workflow steps to require workflow get context feature|issue before ordering and gate checks.",
+      "concrete_steps": [
+        "Update .agents/workflows/execute-feature.md initialization/read steps to call workflow get context feature <feature_id> first.",
+        "Update .agents/workflows/execute-issue.md initialization/read steps to call workflow get context issue <issue_id> first.",
+        "Remove or reword manual multi-file read instructions that duplicate collector responsibilities.",
+        "Add explicit workflow examples using canonical command names and selectors only."
+      ]
+    },
+    {
+      "id": "238",
+      "marker": "[M1][F13]",
+      "title": "Align execution protocol wording with context-command read contract",
+      "problem": "Protocol read-order text does not explicitly define context-command payload completeness checks for execution flows.",
+      "solution_option": "Update protocol text so execution validates collector payload completeness before task execution begins.",
+      "concrete_steps": [
+        "Update .agents/protocols/task-execution-protocol.md read-order and standards wording to reference context-command usage for feature/issue chain preparation.",
+        "Add explicit completeness criteria in protocol text: non-empty relevant plan block, resolved mapped tasks in scope, and overlap payload field present.",
+        "Keep existing materialization and confirmation gates unchanged while clarifying that context collection is a mandatory pre-execution contract.",
+        "Cross-check protocol wording against .agents/workflows/execute-feature.md and .agents/workflows/execute-issue.md to avoid duplicated or conflicting instructions."
+      ]
+    },
+    {
+      "id": "239",
+      "marker": "[M1][F13]",
+      "title": "Add CLI regression coverage for get context command surface",
+      "problem": "Without regression tests, command-surface changes can silently break parser grammar or hide new context commands from help output.",
+      "solution_option": "Extend workflow CLI tests to assert discoverability and stable syntax for workflow get context feature|issue.",
+      "concrete_steps": [
+        "Extend tests/workflow/test_core.py to assert top-level help includes get and nested help includes context, feature, and issue selectors.",
+        "Add parser error coverage for missing required --id or invalid ID format as deterministic failures.",
+        "Ensure existing help assertions remain valid after command-tree updates and remove stale expectations tied to legacy naming."
+      ]
+    },
+    {
+      "id": "240",
+      "marker": "[M1][F13]",
+      "title": "Add payload and negative-path tests for feature and issue context commands",
+      "problem": "Context collectors need contract-level tests to prevent payload drift and to guarantee deterministic diagnostics for broken tracker states.",
+      "solution_option": "Add fixture-based tests for successful payload extraction and for invalid/missing context conditions.",
+      "concrete_steps": [
+        "Add feature-context tests in tests/workflow/test_feature_lifecycle.py for returned plan block, mapped task list entries, and overlap intersections.",
+        "Add issue-context tests validating owner resolution and exact issue-block extraction from feature plan sections.",
+        "Add negative tests for unknown feature/issue IDs and unresolved task references between DEV_MAP and TASK_LIST.",
+        "Assert error messages and exit codes are deterministic for CI and scripted agent use."
+      ]
+    },
+    {
+      "id": "241",
+      "marker": "[M1][F13]",
+      "title": "Add naming-regression checks for execute workflow command strings",
+      "problem": "Execution docs can regress to stale command names, causing agents to run obsolete context lookup flows.",
+      "solution_option": "Add checks that enforce canonical command strings in execution workflows and block reintroduction of legacy wording.",
+      "concrete_steps": [
+        "Add regression assertions in workflow tests/smoke checks that .agents/workflows/execute-feature.md references workflow get context feature.",
+        "Add regression assertions that .agents/workflows/execute-issue.md references workflow get context issue.",
+        "Add negative check patterns to fail CI when legacy context-command wording appears in execution workflow docs."
+      ]
     }
   ]
 }
