@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-04T04:43:23+02:00",
+  "updated_at": "2026-03-05T22:17:41+02:00",
   "task_count": 233,
   "milestones": [
     {
@@ -2117,6 +2117,46 @@
               "title": "Add docs, project-setup guidance, and regression coverage for GitHub metadata sync",
               "description": "Document label semantics, GitHub Project field requirements, fallback behavior when project metadata is unavailable, and add regression coverage that keeps metadata sync deterministic.",
               "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
+        },
+        {
+          "id": "F13-M1",
+          "title": "Execute-feature context collector command",
+          "description": "Add a canonical command that returns feature plan block, mapped task-list tasks, and pipeline overlap intersections for execute-feature workflow.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F13-M1",
+              "title": "Add canonical workflow get context feature|issue commands",
+              "description": "Introduce canonical commands `workflow get context feature <feature_id>` and `workflow get context issue <issue_id>` that aggregate plan, task list, and overlap context.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F13-M1",
+              "title": "Wire execute-feature workflow to workflow get context feature",
+              "description": "Update execute-feature workflow to use `workflow get context feature <feature_id>` as the mandatory context source before task execution steps.",
+              "status": "Pending",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F13-M1",
+              "title": "Add post-reorg compatibility checks and regression coverage",
+              "description": "Add regression checks for collector payload integrity and canonical post-reorg command naming surfaces.",
+              "status": "Pending",
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []

@@ -1231,3 +1231,128 @@ Canonical per-issue plan block format inside a feature section:
   1. document GitHub label and Project setup
   2. document runtime and fallback behavior
   3. add regression checks for metadata sync and docs consistency
+
+## F13-M1
+
+### Issue Execution Order
+1. `I1-F13-M1` - Add canonical `workflow get context feature <id>` and `workflow get context issue <id>` commands
+2. `I2-F13-M1` - Wire execute-feature workflow to use `workflow get context feature <id>` as the mandatory source
+3. `I3-F13-M1` - Add post-reorg compatibility checks and regression tests for renamed command/script surfaces
+
+### Dependencies
+- Hard dependency: this feature is implemented only after `F7-M1`, `F9-M1`, `F10-M1`, `F11-M1`, and `F12-M1` are completed and merged.
+- `F7-M1` is required first because planning/validation/status command surfaces are being reorganized and must be stable before this feature binds to them.
+- `F10-M1` and `F12-M1` are required first because publish-oriented naming and metadata-sync lifecycle become canonical command surfaces consumed by execution workflows.
+- `F11-M1` is required first because milestone-level execution-order planning structure affects how feature execution context is interpreted.
+- `F9-M1` is required first because confirm/cleanup semantics define which plan and tracker blocks are considered active and should be returned by the collector.
+- Runtime targets: `dev/workflow_lib/feature_commands.py`, `dev/workflow_lib/tracker_store.py`, `dev/workflow_lib/context.py`.
+- Workflow/protocol targets: `.agents/workflows/execute-feature.md`, `.agents/workflows/execute-task.md`, `.agents/protocols/task-execution-protocol.md`.
+- Tracking artifacts consumed by the collector: `dev/FEATURE_PLANS.md`, `dev/TASK_LIST.json`, `dev/TASK_EXECUTION_PIPELINE.json`, `dev/map/DEV_MAP.json`.
+
+### Decomposition
+1. Define canonical context commands under one namespace:
+   - `workflow get context feature <feature_id>`,
+   - `workflow get context issue <issue_id>`.
+2. Ensure `workflow get context feature <feature_id>` returns:
+   - full feature plan section block from `FEATURE_PLANS.md`,
+   - all mapped task objects from `TASK_LIST.json` for the feature issue chain resolved through `DEV_MAP.json`,
+   - overlap/intersection payload from `TASK_EXECUTION_PIPELINE.json` where overlap task IDs intersect with the feature task set.
+3. Ensure `workflow get context issue <issue_id>` returns explicit issue-scoped context:
+   - full issue plan block (`### <issue_id> - <issue_title>`) from the owning feature section in `FEATURE_PLANS.md`,
+   - all mapped task objects for that issue from `TASK_LIST.json` resolved via `DEV_MAP.json`,
+   - overlap/intersection payload from `TASK_EXECUTION_PIPELINE.json` where overlap task IDs intersect with the issue task set.
+4. Make `execute feature <id>` and `execute issue <id>` workflows consume the new context commands as mandatory read sources instead of manual multi-file scanning.
+5. Normalize command/help/workflow naming to the post-reorg canonical surfaces introduced by `F7/F10/F12` so the new context commands do not bind to legacy aliases.
+6. Add deterministic validation and regression checks for context integrity, intersection detection, and failure messages on missing/invalid IDs.
+
+### Issue/Task Decomposition Assessment
+- Feature scope is split into three issues because data-aggregation runtime, workflow contract wiring, and post-reorg hardening must be validated independently.
+- Minimal execution order:
+  1. implement canonical context collector payload,
+  2. make execute-feature workflow depend on it,
+  3. lock behavior with post-reorg compatibility/regression checks.
+- Expected commit-oriented split:
+  - `I1-F13-M1`: 3-4 commits (payload contract, extractor implementation, deterministic error behavior, unit tests)
+  - `I2-F13-M1`: 2-3 commits (workflow/protocol update, command-integration checks, output contract alignment)
+  - `I3-F13-M1`: 2-3 commits (post-reorg naming audit, migration notes, regression coverage)
+
+### I1-F13-M1 - Add canonical `workflow get context feature|issue <id>` commands
+
+#### Dependencies
+- `F7-M1` command-surface reorganization must be completed so this issue binds only to canonical plan/validate/status naming.
+- `F11-M1` milestone execution-order structure must be stabilized so feature plan parsing and section resolution are deterministic.
+- `dev/workflow_lib/feature_commands.py` — add the collector subcommand and shared resolvers.
+- `dev/workflow_lib/tracker_store.py` and `dev/workflow_lib/context.py` — load canonical tracker payloads and paths.
+- `dev/FEATURE_PLANS.md`, `dev/TASK_LIST.json`, `dev/TASK_EXECUTION_PIPELINE.json`, `dev/map/DEV_MAP.json` — primary data sources.
+
+#### Decomposition
+1. Define command contracts with compact deterministic JSON output:
+   - `workflow get context feature <feature_id>`
+   - `workflow get context issue <issue_id>`
+2. Resolve feature ownership and tasks from `DEV_MAP.json`, then join mapped task IDs with full task objects from `TASK_LIST.json`.
+3. Extract the full `## <feature_id>` block from `FEATURE_PLANS.md` as plain markdown text, including planned issue blocks.
+4. Compute overlap intersections from `TASK_EXECUTION_PIPELINE.json`:
+   - include overlap rows where `overlap.tasks ∩ feature_task_ids != empty`,
+   - return both matched IDs and the full overlap row to keep debugging actionable.
+5. Add issue-scoped collector path:
+   - resolve owning feature + issue from `DEV_MAP.json`,
+   - extract exact issue plan block from `FEATURE_PLANS.md`,
+   - join issue task IDs with `TASK_LIST.json`,
+   - compute issue-level overlap intersections from `TASK_EXECUTION_PIPELINE.json`.
+6. Add deterministic error contract for missing feature/issue, malformed tracker payloads, and unresolved mapped task IDs.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3-4 tasks
+  1. command registration and payload schema
+  2. feature-task resolution and task-list join
+  3. feature-plan block extraction and overlap-intersection collector
+  4. error handling and unit tests
+
+### I2-F13-M1 - Wire execute feature/issue workflows to consume `workflow get context ...`
+
+#### Dependencies
+- [I1-F13-M1](#i1-f13-m1--add-canonical-workflow-get-context-featureissue-id-commands) — collector output must exist first.
+- `F10-M1` publish command model and `F12-M1` metadata-sync lifecycle must be canonical before workflow wording is frozen.
+- `.agents/workflows/execute-feature.md` — execution procedure that currently describes manual multi-source reads.
+- `.agents/workflows/execute-issue.md` — issue execution procedure that also needs collector-first read flow.
+- `.agents/protocols/task-execution-protocol.md` and `.agents/workflows/execute-task.md` — read-order and per-task execution rules that must remain consistent.
+
+#### Decomposition
+1. Update execute-feature and execute-issue workflow steps so:
+   - `workflow get context feature <id>` is mandatory for feature-chain execution,
+   - `workflow get context issue <id>` is mandatory for issue-chain execution.
+2. Define one explicit check that collector output includes:
+   - non-empty relevant plan block (feature or issue),
+   - resolved mapped tasks for all pending tasks in scope,
+   - overlap intersections payload (empty list allowed, missing field not allowed).
+3. Keep materialization/status gates unchanged; only replace data acquisition mechanism.
+4. Add workflow examples with canonical command names only (no legacy aliases), including issue-scoped examples.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 2-3 tasks
+  1. workflow/protocol text update for feature + issue collector-first read order
+  2. execution gate checks against feature/issue collector payload completeness
+  3. docs consistency checks for canonical command examples
+
+### I3-F13-M1 - Add post-reorg compatibility checks and regression coverage
+
+#### Dependencies
+- `I1-F13-M1` and `I2-F13-M1` — runtime and workflow wiring must be complete first.
+- `F9-M1` confirm cleanup behavior must be finalized so tests assert only active artifacts.
+- `F10-M1`/`F12-M1` canonical naming and lifecycle must be finalized so tests reject stale command terms.
+- Test targets: `tests/workflow/test_core.py`, `tests/workflow/test_feature_lifecycle.py`, and any workflow smoke harness that validates command help/output.
+
+#### Decomposition
+1. Add regression tests for collector output fields and intersection correctness on representative feature fixtures.
+2. Add guard tests that fail on stale command names in execute-feature workflow instructions once post-reorg naming is active.
+3. Add negative tests:
+   - unknown feature ID,
+   - feature with unresolved task references in DEV_MAP vs TASK_LIST,
+   - malformed overlap row shape in pipeline payload.
+4. Add migration notes describing this feature as blocked until `F7/F9/F10/F11/F12` are done.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 2-3 tasks
+  1. runtime regression tests for collector payload and overlap intersections
+  2. naming-surface regression checks for post-reorg command vocabulary
+  3. negative/error-path coverage and migration-note consistency
