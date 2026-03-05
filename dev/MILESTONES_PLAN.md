@@ -54,50 +54,62 @@
 - Implement search page.
 - Implement video page with similar/up-next block.
 
-### Milestone 10. Local interaction baseline
+### Milestone 10. User account baseline
 
 - Implement authentication and session baseline.
+- Implement user registration.
+- Implement user profile and account state.
+- Implement single-user bootstrap without public registration flow.
+- Implement remote sign-in to Client instances from a locally deployed Client frontend.
+
+### Milestone 11. Local interaction baseline
+
+- Implement local-only Client mode where all user interactions are stored only in the Client database.
 - Implement likes/dislikes and local comments flow.
+- Implement disabling of ActivityPub delivery for likes and comments in local-only mode.
 - Persist local user actions and basic profile state.
 
-### Milestone 11. Discovery scope control
+### Milestone 12. Discovery scope control
 
 - Implement source/instance-scoped content selection.
 - Add crawler scope limitation controls.
 - Expose scope controls in Client UX.
 
-### Milestone 12. Federation foundation
+### Milestone 13. Federation foundation
 
 - Implement ActivityPub actor model.
 - Implement key lifecycle and request verification.
 - Add anti-replay, allowlist, idempotency, and safe protocol handling.
 
-### Milestone 13. Federated social delivery
+### Milestone 14. Federated social delivery
 
 - Implement outbox delivery queue and retries.
 - Process follows and incoming ActivityPub updates.
+- Implement migration from local-only mode to federated mode.
+- Implement authenticated proxying of user actions from local Client frontend to remote Client instance.
 - Send likes/comments to remote instances.
 - Add end-to-end federated flow tests.
 
-### Milestone 14. Production deployment and operations
+### Milestone 15. Production deployment and operations
 
 - Implement independent Engine and Client deployment.
+- Implement one-command personal Client deployment without domain, TLS, or ActivityPub setup.
 - Build a one-command production build/deploy path.
 - Implement migrations, backups, task queue, and robust single-host topology.
 
-### Milestone 15. Security and access controls
+### Milestone 16. Security and access controls
 
 - Implement rate limiting and service keys.
 - Implement admin permissions and restriction controls.
 - Add input/resource limits and client-side security hardening.
 
-### Milestone 16. Observability and moderation
+### Milestone 17. Observability and moderation
 
 - Add observability baseline.
 - Implement moderation tooling for Engine and Client.
 - Implement analytics and operator-facing dashboard surfaces.
 
-### Milestone 17. External product readiness
+### Milestone 18. External product readiness
 
 - Publish project presentation site.
 - Publish external-facing architecture and API documentation.

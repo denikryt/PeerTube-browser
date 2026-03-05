@@ -146,7 +146,21 @@
 
 24. Implement install / uninstall processes for Client (dev / prod).
 
-30. Migrate Client backend HTTP server from ThreadingHTTPServer to FastAPI (ASGI)
+25. Implement local-only Client mode where all user interactions are stored only in the Client database.
+
+26. Implement disabling of ActivityPub delivery for likes and comments in local-only mode.
+
+27. Implement single-user bootstrap without public registration flow.
+
+28. Implement migration from local-only mode to federated mode.
+
+29. Implement one-command personal Client deployment without domain, TLS, or ActivityPub setup.
+
+30. Implement remote sign-in to Client instances from a locally deployed Client frontend.
+
+31. Implement authenticated proxying of user actions from local Client frontend to remote Client instance.
+
+32. Migrate Client backend HTTP server from ThreadingHTTPServer to FastAPI (ASGI)
 ---
 
 ## PRESENTATION WEBSITE & DOCUMENTATION
