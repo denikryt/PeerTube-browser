@@ -607,7 +607,12 @@ def _handle_create_issue_action(args: Namespace, context: WorkflowContext) -> in
 def _handle_feature_plan_init(args: Namespace, context: WorkflowContext) -> int:
     """Initialize a feature plan section scaffold in FEATURE_PLANS."""
     feature_id, _ = _parse_feature_id(args.id)
-    _require_feature_exists(context, feature_id)
+    dev_map = _load_json(context.dev_map_path)
+    feature_ref = _find_feature(dev_map, feature_id)
+    if feature_ref is None:
+        raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
+    feature_node = feature_ref["feature"]
+    feature_title = str(feature_node.get("title", "")).strip() or feature_id
     plan_text = context.feature_plans_path.read_text(encoding="utf-8")
     if _find_h2_section_bounds(plan_text, feature_id) is not None:
         emit_json(
@@ -621,7 +626,7 @@ def _handle_feature_plan_init(args: Namespace, context: WorkflowContext) -> int:
         return 0
 
     if args.write:
-        scaffold = _build_feature_plan_scaffold(feature_id)
+        scaffold = _build_feature_plan_scaffold(feature_id=feature_id, feature_title=feature_title)
         suffix = "" if plan_text.endswith("\n") else "\n"
         updated_text = f"{plan_text}{suffix}\n{scaffold}"
         context.feature_plans_path.write_text(updated_text, encoding="utf-8")
@@ -2714,10 +2719,12 @@ def _find_h2_section_bounds(text: str, heading: str) -> tuple[int, int] | None:
     return None
 
 
-def _build_feature_plan_scaffold(feature_id: str) -> str:
+def _build_feature_plan_scaffold(feature_id: str, feature_title: str) -> str:
     """Build default feature plan markdown scaffold."""
+    normalized_feature_title = feature_title.strip() or feature_id
     return (
         f"## {feature_id}\n\n"
+        f"{normalized_feature_title}\n\n"
         "### Dependencies\n"
         "- TODO\n\n"
         "### Decomposition\n"

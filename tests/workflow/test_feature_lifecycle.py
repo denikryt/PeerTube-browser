@@ -32,6 +32,9 @@ def test_feature_success_chain(workflow, tmp_repo):
     # 3. feature plan-init
     res = workflow.run("feature", "plan-init", "--id", "F9-M1", "--write")
     assert res["action"] == "created"
+    feature_plans_text = (tmp_repo / "dev/FEATURE_PLANS.md").read_text(encoding="utf-8")
+    assert "## F9-M1" in feature_plans_text
+    assert "\nSmoke feature\n\n### Dependencies\n" in feature_plans_text
 
     # 4. feature plan-lint (should be valid immediately after init)
     res = workflow.run("feature", "plan-lint", "--id", "F9-M1")

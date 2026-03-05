@@ -80,6 +80,7 @@ Before executing CLI commands:
 ## Phase 5: Insert into FEATURE_PLANS.md
 
 1. Run: `python3 dev/workflow feature plan-init --id <feature_id>`
+   - `plan-init` auto-inserts one plain line with `<title>` from `dev/map/DEV_MAP.json` into the feature section scaffold (without `Title:` label).
 2. Open `dev/FEATURE_PLANS.md` and locate the newly created feature section.
 3. Insert all drafted dependencies, issue execution order, decomposition, and assessments.
 4. Ensure all issue-plan blocks follow the canonical format (see `FEATURE_PLANS.md` header).
