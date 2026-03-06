@@ -120,6 +120,34 @@
     {
       "tasks": ["240", "241"],
       "description": "Lock payload and naming regression behavior for execution context commands."
+    },
+    {
+      "tasks": ["242", "243", "244"],
+      "description": "Define and enforce strict Dependencies line format before parser and index work."
+    },
+    {
+      "tasks": ["245", "246", "247", "248"],
+      "description": "Add dependency index command surface, parser, scoped reads, and tests."
+    },
+    {
+      "tasks": ["249", "250", "251", "252"],
+      "description": "Introduce dedicated overlaps artifact, validation, and migration guards."
+    },
+    {
+      "tasks": ["253", "254", "255", "256"],
+      "description": "Implement overlap read/build/apply commands and workflow contract."
+    },
+    {
+      "tasks": ["257", "258", "259"],
+      "description": "Make plan-tasks consume dedicated overlap context and stop overlap writes."
+    },
+    {
+      "tasks": ["260", "261", "262"],
+      "description": "Clean overlap and dependency-index artifacts during confirm flows."
+    },
+    {
+      "tasks": ["263", "264", "265", "266"],
+      "description": "Migrate overlap storage out of pipeline and cut runtime over to overlaps-only."
     }
   ],
   "functional_blocks": [
@@ -218,6 +246,48 @@
       "tasks": ["239", "240", "241"],
       "scope": "CLI help regression checks, collector payload contract tests, and stale naming detection in execution workflow docs.",
       "outcome": "CLI grammar, context payload shape, and canonical execution command strings remain stable under future command-surface refactors."
+    },
+    {
+      "title": "Block F14-A: Strict dependency format contract",
+      "tasks": ["242", "243", "244"],
+      "scope": "Planning protocols, planning workflows, and FEATURE_PLANS linting for issue Dependencies blocks.",
+      "outcome": "Issue plan Dependencies sections use one strict token format that plan-lint validates deterministically before dependency indexing runs."
+    },
+    {
+      "title": "Block F14-B: Dependency index CLI and plan-block extraction",
+      "tasks": ["245", "246", "247", "248"],
+      "scope": "Plan command routing, Dependencies block parsing, scoped ISSUE_DEP_INDEX persistence, and related-issue discovery.",
+      "outcome": "Workflow plan commands can index dependency surfaces, show related issues, and return Dependencies-only plan blocks for one issue or feature scope."
+    },
+    {
+      "title": "Block F14-C: Dedicated overlaps contract",
+      "tasks": ["249", "250", "251", "252"],
+      "scope": "ISSUE_OVERLAPS artifact paths, JSON schema, runtime validation, and migration-aware legacy rejection.",
+      "outcome": "Issue-level overlaps have one dedicated file and validator contract that rejects malformed or legacy overlap payloads."
+    },
+    {
+      "title": "Block F14-D: Overlap build and apply workflow",
+      "tasks": ["253", "254", "255", "256"],
+      "scope": "Show/build/apply overlap commands, overlap draft generation, and agent workflow sequencing.",
+      "outcome": "Operators can read current overlaps, generate a draft overlap delta from dependency candidates, enrich it manually, and apply it through one validated command path."
+    },
+    {
+      "title": "Block F14-E: Plan-tasks overlap consumption",
+      "tasks": ["257", "258", "259"],
+      "scope": "Task decomposition runtime and workflow docs that consume overlap context without mutating overlap storage.",
+      "outcome": "Plan-tasks uses dedicated issue-overlap context as read-only planning input while leaving overlap authoring to the separate build/apply workflow."
+    },
+    {
+      "title": "Block F14-F: Confirm cleanup for overlaps and dependency index",
+      "tasks": ["260", "261", "262"],
+      "scope": "Issue and feature confirmation cleanup across ISSUE_OVERLAPS and ISSUE_DEP_INDEX artifacts.",
+      "outcome": "Confirm issue and confirm feature remove stale overlap and dependency-index records in the same deterministic cleanup run as other tracking artifacts."
+    },
+    {
+      "title": "Block F14-G: Overlaps-only storage migration",
+      "tasks": ["263", "264", "265", "266"],
+      "scope": "Legacy overlap migration, runtime cutover, schema cleanup, and regression hardening for dedicated overlap storage.",
+      "outcome": "Overlap operations migrate from TASK_EXECUTION_PIPELINE to ISSUE_OVERLAPS and continue running through dedicated overlaps-only contracts."
     }
   ],
   "overlaps": [
@@ -360,6 +430,38 @@
     {
       "tasks": ["238", "241"],
       "description": "protocol wording for payload completeness in `.agents/protocols/task-execution-protocol.md` is validated by stale-name/contract regression assertions."
+    },
+    {
+      "tasks": ["242", "243"],
+      "description": "Both touch planning contract enforcement in `.agents/protocols/feature-planning-protocol.md`, `.agents/workflows/plan-feature.md`, `.agents/workflows/plan-issue.md`, and lint helpers in `dev/workflow_lib/feature_commands.py`."
+    },
+    {
+      "tasks": ["245", "253"],
+      "description": "Both extend the `workflow plan` command tree in `dev/workflow_lib/cli.py` and parser registration in `dev/workflow_lib/feature_commands.py`."
+    },
+    {
+      "tasks": ["246", "247"],
+      "description": "Both depend on the same FEATURE_PLANS block extractors and issue/feature resolvers in `dev/workflow_lib/feature_commands.py` for Dependencies-only parsing."
+    },
+    {
+      "tasks": ["250", "255"],
+      "description": "Both share overlap persistence primitives in `dev/workflow_lib/tracker_json_contracts.py` and `dev/workflow_lib/tracker_store.py` for validating and writing ISSUE_OVERLAPS payloads."
+    },
+    {
+      "tasks": ["254", "256"],
+      "description": "Build-overlaps draft generation and workflow sequencing share the same command contract and temporary delta-file handoff described in `.agents/workflows/build-overlaps.md`."
+    },
+    {
+      "tasks": ["255", "258"],
+      "description": "Apply-overlaps becomes the dedicated overlap write path while plan-tasks stops overlap append writes; both touch overlap write ownership in `dev/workflow_lib/feature_commands.py` and related delta/persistence helpers."
+    },
+    {
+      "tasks": ["260", "264"],
+      "description": "Confirm cleanup and runtime cutover both depend on overlap reads moving to `dev/ISSUE_OVERLAPS.json` in `dev/workflow_lib/confirm_commands.py`, `dev/workflow_lib/context.py`, and `dev/workflow_lib/tracker_store.py`."
+    },
+    {
+      "tasks": ["263", "265"],
+      "description": "Pipeline-to-overlaps migration and pipeline contract cleanup both touch `dev/TASK_EXECUTION_PIPELINE.json`, `dev/map/TASK_EXECUTION_PIPELINE_JSON_SCHEMA.json`, and overlap-related workflow/protocol wording."
     }
   ]
 }

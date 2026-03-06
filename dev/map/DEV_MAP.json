@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-06T19:07:09+02:00",
-  "task_count": 241,
+  "updated_at": "2026-03-06T20:23:32+02:00",
+  "task_count": 266,
   "milestones": [
     {
       "id": "M1",
@@ -2245,64 +2245,271 @@
               "id": "I1-F14-M1",
               "title": "Add dependency index and plan-block extraction CLI",
               "description": "Add workflow commands to index dependencies from issue plans, show related issues, and return plan blocks by feature/issue ID.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "245",
+                  "title": "Register dependency-index CLI command surface",
+                  "summary": "Add canonical plan commands for indexing, related lookup, and plan-block retrieval.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "246",
+                  "title": "Implement Dependencies block parser and scoped index writer",
+                  "summary": "Parse issue Dependencies blocks and persist deterministic ISSUE_DEP_INDEX payloads.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "247",
+                  "title": "Implement show-related and get-plan-block handlers",
+                  "summary": "Return scoped candidate issue sets and exact Dependencies block payloads.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "248",
+                  "title": "Add regression coverage for dependency index commands",
+                  "summary": "Lock command parsing, scoped refresh, cleanup, and extraction contracts.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                }
+              ]
             },
             {
               "id": "I2-F14-M1",
               "title": "Introduce issue-level overlap schema and validators",
               "description": "Replace task-level overlaps with issue-level overlap records and enforce strict validation rules for dependency/conflict/shared_logic contracts.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "249",
+                  "title": "Add ISSUE_OVERLAPS file path and schema contract",
+                  "summary": "Introduce dedicated overlaps artifact wiring in workflow context and schema assets.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "250",
+                  "title": "Implement issue-overlap validators and store helpers",
+                  "summary": "Validate and persist issue-level overlap payloads through runtime helpers.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "251",
+                  "title": "Reject legacy pipeline overlap shape during overlaps validation",
+                  "summary": "Fail with migration guidance when old task-level overlap contracts are still used.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "252",
+                  "title": "Add regression coverage for issue-overlap schema rules",
+                  "summary": "Cover valid and invalid dependency, conflict, and shared_logic overlap records.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                }
+              ]
             },
             {
               "id": "I3-F14-M1",
               "title": "Add build/show/apply overlap commands",
               "description": "Implement CLI commands to read current overlaps, build scoped overlap deltas from candidate issues, and apply updates through parser-controlled writes.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "253",
+                  "title": "Add show-overlaps command for ISSUE_OVERLAPS reads",
+                  "summary": "Expose scoped overlap reads from the dedicated overlaps artifact.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "254",
+                  "title": "Implement build-overlaps draft generator",
+                  "summary": "Build deterministic overlap draft payloads from dependency index candidates.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "255",
+                  "title": "Implement apply-overlaps write path",
+                  "summary": "Validate and persist overlap delta payloads into ISSUE_OVERLAPS.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "256",
+                  "title": "Add build-overlaps workflow contract and end-to-end coverage",
+                  "summary": "Document CLI plus analysis sequence and cover the command chain with tests.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                }
+              ]
             },
             {
               "id": "I4-F14-M1",
               "title": "Integrate plan-tasks with issue-level overlaps",
               "description": "Make plan tasks consume prebuilt issue overlaps as planning constraints and stop append-only overlap updates from the old path.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "257",
+                  "title": "Load ISSUE_OVERLAPS planning context inside plan-tasks handlers",
+                  "summary": "Make decomposition handlers read issue-overlap constraints from the new artifact.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "258",
+                  "title": "Remove direct overlap append behavior from plan-tasks flow",
+                  "summary": "Stop treating plan-tasks delta writes as the source of truth for overlaps.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "259",
+                  "title": "Add regression coverage for overlaps-aware plan-tasks behavior",
+                  "summary": "Verify plan-tasks reads overlap context and no longer mutates overlaps directly.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                }
+              ]
             },
             {
               "id": "I5-F14-M1",
               "title": "Add confirm cleanup for issue-level overlaps and sequences",
               "description": "Ensure confirm issue/feature done cleans related overlap entries and issue/task sequence artifacts deterministically.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "260",
+                  "title": "Remove issue overlap entries during confirm cleanup",
+                  "summary": "Clean issue and feature overlap records when confirmation removes completed scope.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "261",
+                  "title": "Reuse dependency-index removal in confirm flows",
+                  "summary": "Trigger scoped dependency-index cleanup for confirmed issues and features.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "262",
+                  "title": "Add regression coverage for confirm overlap and index cleanup",
+                  "summary": "Cover dry-run and write-mode cleanup for issue and feature confirmation.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                }
+              ]
             },
             {
               "id": "I6-F14-M1",
               "title": "Refactor execution sequence model and migrate pipeline data",
               "description": "Replace global task execution sequence usage with issue execution sequence plus per-issue task sequence and migrate existing pipeline records.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "263",
+                  "title": "Implement migration from pipeline overlaps to ISSUE_OVERLAPS",
+                  "summary": "Extract legacy overlap rows into the dedicated overlaps artifact in deterministic order.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "264",
+                  "title": "Cut runtime overlap reads and writes over to ISSUE_OVERLAPS",
+                  "summary": "Switch command handlers and helpers to the new overlaps file as the only runtime source.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "265",
+                  "title": "Remove pipeline overlap ownership from schemas and workflow contracts",
+                  "summary": "Strip overlap storage responsibilities from pipeline schemas, protocols, and workflows.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "266",
+                  "title": "Add migration and overlaps-only cutover regression coverage",
+                  "summary": "Prove migration, no-op rerun, and post-cutover contract enforcement.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                }
+              ]
             },
             {
               "id": "I7-F14-M1",
               "title": "Enforce strict Dependencies format for planning parser compatibility",
               "description": "Define and enforce strict dependency line format in issue plans so dependency index parser can parse surfaces deterministically.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "242",
+                  "title": "Define strict Dependencies token format across planning docs",
+                  "summary": "Lock one canonical dependency-line format for issue plans and parser consumers.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "243",
+                  "title": "Enforce dependency-line validation in feature plan linting",
+                  "summary": "Reject free-form Dependencies rows and surface deterministic lint errors.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                },
+                {
+                  "id": "244",
+                  "title": "Add regression coverage for strict Dependencies validation",
+                  "summary": "Cover valid and invalid dependency-line formats in workflow tests.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "20:23:32"
+                }
+              ]
             }
           ],
           "branch_name": null,

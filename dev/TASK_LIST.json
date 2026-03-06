@@ -1295,6 +1295,306 @@
         "Add regression assertions that .agents/workflows/execute-issue.md references workflow get context issue.",
         "Add negative check patterns to fail CI when legacy context-command wording appears in execution workflow docs."
       ]
+    },
+    {
+      "id": "242",
+      "marker": "[M1][F14]",
+      "title": "Define strict Dependencies token format across planning docs",
+      "problem": "The new dependency index cannot parse issue Dependencies blocks deterministically while planning docs and workflows still allow free-form dependency prose.",
+      "solution_option": "Define one canonical dependency token format and wire that contract into planning protocol and workflow documentation before parser work starts.",
+      "concrete_steps": [
+        "Update .agents/protocols/feature-planning-protocol.md to require prefixed dependency lines such as file:, module:, function:, and class: plus optional | reason: suffix.",
+        "Update .agents/workflows/plan-feature.md and .agents/workflows/plan-issue.md so authored issue Dependencies blocks are expected to use the strict line format instead of free-form bullets.",
+        "Document parser-facing normalization rules in the same planning surfaces so later CLI commands can preserve display text while matching normalized lookup keys."
+      ]
+    },
+    {
+      "id": "243",
+      "marker": "[M1][F14]",
+      "title": "Enforce dependency-line validation in feature plan linting",
+      "problem": "Even with documented rules, planning artifacts will drift unless plan lint actively rejects unsupported dependency rows in issue blocks.",
+      "solution_option": "Extend FEATURE_PLANS lint logic in dev/workflow_lib/feature_commands.py to validate Dependencies rows and report exact offending issue/line contexts.",
+      "concrete_steps": [
+        "Audit the existing FEATURE_PLANS parsing and lint helpers in dev/workflow_lib/feature_commands.py that currently validate section shape and issue-block content.",
+        "Add dependency-line validation logic that scans issue #### Dependencies sections, accepts only supported prefixes and optional | reason: suffix, and rejects free-form prose deterministically.",
+        "Keep lint output actionable by including the issue ID and invalid dependency line content in the raised WorkflowCommandError or lint message path."
+      ]
+    },
+    {
+      "id": "244",
+      "marker": "[M1][F14]",
+      "title": "Add regression coverage for strict Dependencies validation",
+      "problem": "The dependency format contract will regress quickly without direct tests for both accepted and rejected dependency lines.",
+      "solution_option": "Add tests that lock the strict dependency token grammar and deterministic lint failures for malformed issue plans.",
+      "concrete_steps": [
+        "Extend workflow tests that exercise feature plan-lint to include valid issue Dependencies examples for file, module, function, and class rows.",
+        "Add failing cases for unsupported free-form dependency text, malformed symbol references, and missing prefixes.",
+        "Assert deterministic error wording so parser and workflow automation can rely on stable validation output."
+      ]
+    },
+    {
+      "id": "245",
+      "marker": "[M1][F14]",
+      "title": "Register dependency-index CLI command surface",
+      "problem": "The workflow has no canonical command surface for dependency indexing, related-issue discovery, or scoped Dependencies block retrieval.",
+      "solution_option": "Extend the workflow plan router with explicit command registration and selector validation for dependency-index operations.",
+      "concrete_steps": [
+        "Update dev/workflow_lib/cli.py and dev/workflow_lib/feature_commands.py plan router registration to add index-dependencies, show-related, and get-plan-block commands under workflow plan.",
+        "Define deterministic selector parsing for --feature-id, --issue-id, --all, and --remove-index combinations, including missing-selector and mixed-selector failures.",
+        "Keep CLI help output aligned with the new canonical commands so workflow docs can reference one stable command grammar."
+      ]
+    },
+    {
+      "id": "246",
+      "marker": "[M1][F14]",
+      "title": "Implement Dependencies block parser and scoped index writer",
+      "problem": "There is no runtime parser that can extract issue Dependencies blocks from FEATURE_PLANS and build a reusable dependency index artifact.",
+      "solution_option": "Reuse feature plan block parsing helpers and add deterministic dependency-surface extraction plus scoped ISSUE_DEP_INDEX write behavior.",
+      "concrete_steps": [
+        "Add helpers in dev/workflow_lib/feature_commands.py that resolve issue blocks inside dev/FEATURE_PLANS.md and extract only the #### Dependencies body for each targeted issue.",
+        "Normalize extracted dependency surfaces for lookup while preserving a human-readable display value in the output artifact written to dev/ISSUE_DEP_INDEX.json.",
+        "Implement scoped refresh and --remove-index behavior so feature- and issue-scoped index runs replace only their own records while leaving unrelated index data untouched."
+      ]
+    },
+    {
+      "id": "247",
+      "marker": "[M1][F14]",
+      "title": "Implement show-related and get-plan-block handlers",
+      "problem": "Overlap-building workflows still lack runtime handlers that can return candidate related issues and exact Dependencies-only plan blocks for scoped analysis.",
+      "solution_option": "Add command handlers that read the dependency index and feature plan sections to emit stable related-issue and Dependencies-block payloads.",
+      "concrete_steps": [
+        "Implement workflow plan show-related handlers that return issue candidates and matched dependency surfaces for one issue or grouped feature scope.",
+        "Implement workflow plan get-plan-block handlers that return only Dependencies content for one issue or all issue blocks under one feature.",
+        "Make missing feature, missing issue, and missing Dependencies block cases fail with deterministic command errors instead of empty silent output."
+      ]
+    },
+    {
+      "id": "248",
+      "marker": "[M1][F14]",
+      "title": "Add regression coverage for dependency index commands",
+      "problem": "Without direct command-level regression tests, the new dependency index flows can drift in selector behavior, scoped refresh semantics, or output shape.",
+      "solution_option": "Add focused workflow tests for parser success, scoped accumulation, cleanup mode, and Dependencies block extraction contracts.",
+      "concrete_steps": [
+        "Add tests for workflow plan index-dependencies covering feature scope, issue scope, --all, rerun refresh, and --remove-index cleanup behavior.",
+        "Add tests for workflow plan show-related so shared and non-shared dependency surfaces produce the expected candidate issue sets.",
+        "Add tests for workflow plan get-plan-block to lock exact Dependencies-only extraction and deterministic errors for missing selectors or missing blocks."
+      ]
+    },
+    {
+      "id": "249",
+      "marker": "[M1][F14]",
+      "title": "Add ISSUE_OVERLAPS file path and schema contract",
+      "problem": "The runtime context and schema layer only know about TASK_EXECUTION_PIPELINE, so there is no dedicated artifact contract for issue-level overlaps.",
+      "solution_option": "Introduce ISSUE_OVERLAPS as a first-class tracker artifact with its own schema path and canonical context wiring.",
+      "concrete_steps": [
+        "Extend dev/workflow_lib/context.py with canonical paths for dev/ISSUE_OVERLAPS.json and dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json.",
+        "Add the dedicated overlaps schema file under dev/map with top-level overlaps array and strict issue-level overlap field definitions.",
+        "Keep existing pipeline context intact for current runtime compatibility while establishing the new overlaps artifact as a parallel tracked file."
+      ]
+    },
+    {
+      "id": "250",
+      "marker": "[M1][F14]",
+      "title": "Implement issue-overlap validators and store helpers",
+      "problem": "Even with a schema file, runtime code still lacks validation and persistence helpers for dedicated issue-level overlap payloads.",
+      "solution_option": "Add overlap-specific build, load, validate, and write helpers in tracker_json_contracts.py and tracker_store.py.",
+      "concrete_steps": [
+        "Extend dev/workflow_lib/tracker_json_contracts.py with builders and validators for { \"overlaps\": [...] } payloads using issue IDs, overlap type, optional order, surface, and description.",
+        "Add load and write helpers in dev/workflow_lib/tracker_store.py that read and persist dev/ISSUE_OVERLAPS.json with deterministic shape checks.",
+        "Validate duplicate issue pairs, dependency-order consistency, and non-empty human-readable descriptions before any overlaps payload is accepted."
+      ]
+    },
+    {
+      "id": "251",
+      "marker": "[M1][F14]",
+      "title": "Reject legacy pipeline overlap shape during overlaps validation",
+      "problem": "Old task-level overlap rows in TASK_EXECUTION_PIPELINE can silently coexist with the new issue-level overlap model unless runtime validation blocks them explicitly.",
+      "solution_option": "Add migration-aware validation failures that reject legacy overlap shape when dedicated overlap commands or helpers are used.",
+      "concrete_steps": [
+        "Teach overlap validation paths in dev/workflow_lib/tracker_json_contracts.py and dev/workflow_lib/tracker_store.py to reject legacy task-level overlap records as unsupported input for the new artifact.",
+        "Return deterministic migration guidance that tells the operator to migrate overlap data instead of continuing with mixed formats.",
+        "Keep this rejection isolated to the new overlaps-file flow so current pipeline consumers can continue functioning until the cutover issue is implemented."
+      ]
+    },
+    {
+      "id": "252",
+      "marker": "[M1][F14]",
+      "title": "Add regression coverage for issue-overlap schema rules",
+      "problem": "The new overlaps contract has several semantic constraints that can regress without direct validator tests.",
+      "solution_option": "Add focused tests that cover valid and invalid issue overlap payloads end to end.",
+      "concrete_steps": [
+        "Add tests for valid dependency, conflict, and shared_logic overlap records, including dependency order handling.",
+        "Add failure coverage for duplicate issue pairs, missing descriptions, invalid issue ID format, and malformed dependency order.",
+        "Add migration-gate coverage proving legacy task-level overlap shapes are rejected by the new validation layer."
+      ]
+    },
+    {
+      "id": "253",
+      "marker": "[M1][F14]",
+      "title": "Add show-overlaps command for ISSUE_OVERLAPS reads",
+      "problem": "Agents currently have no canonical command to inspect the current dedicated overlaps artifact by feature, issue, or full scope.",
+      "solution_option": "Register and implement workflow plan show-overlaps so scoped overlap reads are available before overlap analysis and apply steps.",
+      "concrete_steps": [
+        "Add CLI registration and argument validation for workflow plan show-overlaps --feature-id <id> | --issue-id <id> | --all in the plan command tree.",
+        "Implement runtime filtering that reads dev/ISSUE_OVERLAPS.json and returns either all overlaps or only records touching the requested issue/feature scope.",
+        "Keep output deterministic so build-overlaps and manual review can rely on one stable overlap read payload."
+      ]
+    },
+    {
+      "id": "254",
+      "marker": "[M1][F14]",
+      "title": "Implement build-overlaps draft generator",
+      "problem": "The workflow still relies on manual overlap draft assembly; there is no runtime command that turns dependency-index candidates into an editable overlap draft payload.",
+      "solution_option": "Implement workflow plan build-overlaps as a draft generator that combines candidate pairs, matched surfaces, and existing overlap references without semantic classification.",
+      "concrete_steps": [
+        "Add a build-overlaps handler in dev/workflow_lib/feature_commands.py that loads related issues from ISSUE_DEP_INDEX and resolves their Dependencies-only plan blocks.",
+        "Compose a deterministic draft JSON payload containing candidate issue pairs, matched surfaces, and any existing overlap entries already present in dev/ISSUE_OVERLAPS.json.",
+        "Write the draft payload to the provided --delta-file path without inventing overlap type or description text, leaving the human analysis step explicit."
+      ]
+    },
+    {
+      "id": "255",
+      "marker": "[M1][F14]",
+      "title": "Implement apply-overlaps write path",
+      "problem": "After a draft is enriched by the agent, there is no canonical command that validates and persists the resulting issue-overlap payload into the dedicated artifact.",
+      "solution_option": "Add workflow plan apply-overlaps to load the enriched delta, validate it against the dedicated overlap contract, and persist the updated file.",
+      "concrete_steps": [
+        "Register workflow plan apply-overlaps --delta-file <path> and load the JSON payload through one dedicated overlaps validator path.",
+        "Use the new tracker store helpers to validate and write dev/ISSUE_OVERLAPS.json, returning deterministic counts and change reporting.",
+        "Keep the command isolated from plan-tasks append behavior so overlaps are written only through the new explicit apply path."
+      ]
+    },
+    {
+      "id": "256",
+      "marker": "[M1][F14]",
+      "title": "Add build-overlaps workflow contract and end-to-end coverage",
+      "problem": "The CLI commands alone are not enough; agents need one explicit workflow sequence and tests that keep command ordering and artifact flow stable.",
+      "solution_option": "Add a dedicated build-overlaps workflow doc and end-to-end regression coverage for the command chain.",
+      "concrete_steps": [
+        "Create .agents/workflows/build-overlaps.md with the exact sequence index-dependencies -> show-related -> get-plan-block -> show-overlaps -> build-overlaps -> agent analysis -> apply-overlaps.",
+        "Explain in the workflow which steps are CLI reads, which step produces the draft delta file, when human analysis happens, and which file is persisted by apply-overlaps.",
+        "Add workflow tests that cover the end-to-end command chain and deterministic draft/apply behavior."
+      ]
+    },
+    {
+      "id": "257",
+      "marker": "[M1][F14]",
+      "title": "Load ISSUE_OVERLAPS planning context inside plan-tasks handlers",
+      "problem": "Current plan-tasks handlers only know about TASK_EXECUTION_PIPELINE overlaps and cannot consume dedicated issue-overlap context during decomposition.",
+      "solution_option": "Teach plan-tasks runtime to load ISSUE_OVERLAPS and surface relevant issue-level overlap constraints before task decomposition is applied.",
+      "concrete_steps": [
+        "Audit _handle_feature_sync and related decomposition helpers in dev/workflow_lib/feature_commands.py to identify where overlap context is loaded or emitted today.",
+        "Add a read path that loads dev/ISSUE_OVERLAPS.json and filters overlap records relevant to the selected issue or feature scope before decomposition is synchronized.",
+        "Keep no-overlap cases valid so plan-tasks can proceed with an empty overlap set without raising errors."
+      ]
+    },
+    {
+      "id": "258",
+      "marker": "[M1][F14]",
+      "title": "Remove direct overlap append behavior from plan-tasks flow",
+      "problem": "The current decomposition sync contract still treats pipeline overlap append rows as part of plan-tasks writes, which conflicts with the new dedicated overlaps workflow.",
+      "solution_option": "Stop using plan-tasks delta payloads as an overlap write surface and update planning docs to make overlaps read-only input for decomposition.",
+      "concrete_steps": [
+        "Refactor dev/workflow_lib/feature_commands.py, dev/workflow_lib/tracking_writers.py, and related delta validation paths so plan-tasks no longer appends new overlap records as part of decomposition writes.",
+        "Update .agents/workflows/plan-tasks-for.md and related planning protocol wording so overlap generation is described as a separate build/apply workflow rather than part of the task-sync delta.",
+        "Keep existing execution-sequence and functional-block handling intact for now so this issue isolates the overlap-source change only."
+      ]
+    },
+    {
+      "id": "259",
+      "marker": "[M1][F14]",
+      "title": "Add regression coverage for overlaps-aware plan-tasks behavior",
+      "problem": "The cutover from overlap writes to overlap reads can regress silently unless plan-tasks behavior is tested explicitly.",
+      "solution_option": "Add tests that prove plan-tasks reads dedicated overlap context and no longer mutates overlap storage directly.",
+      "concrete_steps": [
+        "Extend tests/workflow/test_task_planning.py with fixtures that include dev/ISSUE_OVERLAPS.json for issue- and feature-scoped decomposition runs.",
+        "Assert that plan-tasks succeeds when overlap context exists, still succeeds when overlap context is empty, and does not append overlap rows as a side effect.",
+        "Keep task creation, Tasked status transitions, and current pipeline block writes covered so overlap changes do not break unrelated decomposition behavior."
+      ]
+    },
+    {
+      "id": "260",
+      "marker": "[M1][F14]",
+      "title": "Remove issue overlap entries during confirm cleanup",
+      "problem": "Confirm issue and confirm feature currently clean task list and pipeline state, but they do not remove dedicated issue-overlap records tied to completed scope.",
+      "solution_option": "Extend confirm cleanup helpers to prune ISSUE_OVERLAPS records for the confirmed issue or feature subtree in the same confirmation run.",
+      "concrete_steps": [
+        "Audit issue and feature confirmation paths in dev/workflow_lib/confirm_commands.py that already remove TASK_LIST and TASK_EXECUTION_PIPELINE artifacts.",
+        "Add overlap cleanup helpers that remove records from dev/ISSUE_OVERLAPS.json when either issue in the pair belongs to the confirmed scope.",
+        "Return deterministic dry-run and write-mode cleanup counts so confirmation output shows how many overlap rows were previewed or removed."
+      ]
+    },
+    {
+      "id": "261",
+      "marker": "[M1][F14]",
+      "title": "Reuse dependency-index removal in confirm flows",
+      "problem": "Dedicated overlap cleanup is incomplete if ISSUE_DEP_INDEX retains references to confirmed issues or features that were just removed from active planning scope.",
+      "solution_option": "Wire scoped dependency-index cleanup into confirm issue and confirm feature flows using the new removal semantics from the index command.",
+      "concrete_steps": [
+        "Expose a reusable dependency-index cleanup path that can remove one issue scope or one feature scope without rebuilding unrelated index data.",
+        "Invoke that cleanup from dev/workflow_lib/confirm_commands.py after issue or feature confirmation determines the final scope to remove.",
+        "Keep dry-run output explicit so confirm previews show both overlap cleanup and index cleanup effects before write mode is used."
+      ]
+    },
+    {
+      "id": "262",
+      "marker": "[M1][F14]",
+      "title": "Add regression coverage for confirm overlap and index cleanup",
+      "problem": "Confirmation-side cleanup can drift quickly because it spans multiple trackers and now also touches dedicated overlap and dependency-index artifacts.",
+      "solution_option": "Add issue- and feature-scoped confirm tests that lock overlap cleanup, index cleanup, and deterministic dry-run reporting.",
+      "concrete_steps": [
+        "Add tests for confirm issue done that verify overlap rows and dependency-index entries for the target issue are removed in write mode and previewed in dry-run mode.",
+        "Add tests for confirm feature done that verify all child-issue overlap rows and feature-scoped dependency-index entries are removed together.",
+        "Assert cleanup payload fields stay deterministic so later command automation can rely on stable confirm output."
+      ]
+    },
+    {
+      "id": "263",
+      "marker": "[M1][F14]",
+      "title": "Implement migration from pipeline overlaps to ISSUE_OVERLAPS",
+      "problem": "Existing overlap data still lives inside TASK_EXECUTION_PIPELINE, so the new overlaps-only model needs a deterministic migration path instead of a manual copy process.",
+      "solution_option": "Add a one-time migration routine that reads legacy pipeline overlap rows and writes the dedicated ISSUE_OVERLAPS artifact in stable order.",
+      "concrete_steps": [
+        "Implement a migration helper that reads overlap rows from dev/TASK_EXECUTION_PIPELINE.json and maps them into the new dev/ISSUE_OVERLAPS.json structure.",
+        "Preserve deterministic ordering and fail fast when legacy overlap rows cannot be mapped cleanly into the new issue-level contract.",
+        "Keep migration idempotent so rerunning it does not duplicate overlap records or corrupt the dedicated artifact."
+      ]
+    },
+    {
+      "id": "264",
+      "marker": "[M1][F14]",
+      "title": "Cut runtime overlap reads and writes over to ISSUE_OVERLAPS",
+      "problem": "Even after migration exists, runtime commands will continue reading and writing pipeline overlaps unless command handlers and helpers are switched over explicitly.",
+      "solution_option": "Update runtime overlap consumers and writers to use dev/ISSUE_OVERLAPS.json as the only active overlap source.",
+      "concrete_steps": [
+        "Audit overlap reads in dev/workflow_lib/tracker_store.py, dev/workflow_lib/context.py, dev/workflow_lib/feature_commands.py, and dev/workflow_lib/confirm_commands.py.",
+        "Switch overlap-related command handlers and helper functions to read and write dev/ISSUE_OVERLAPS.json instead of TASK_EXECUTION_PIPELINE overlap rows.",
+        "Keep non-overlap pipeline responsibilities intact so the cutover isolates overlap storage changes from execution-sequence and functional-block behavior."
+      ]
+    },
+    {
+      "id": "265",
+      "marker": "[M1][F14]",
+      "title": "Remove pipeline overlap ownership from schemas and workflow contracts",
+      "problem": "Docs and schemas will keep pointing agents at TASK_EXECUTION_PIPELINE unless overlap ownership is removed from those contracts after cutover.",
+      "solution_option": "Clean pipeline schemas, protocols, and workflow docs so overlaps are described only through the dedicated overlaps artifact and command flow.",
+      "concrete_steps": [
+        "Update dev/map/TASK_EXECUTION_PIPELINE_JSON_SCHEMA.json and any pipeline validation wording to remove overlap ownership after the dedicated file takes over.",
+        "Rewrite overlap-related workflow and protocol references in .agents/workflows and .agents/protocols that still direct agents to TASK_EXECUTION_PIPELINE for overlap operations.",
+        "Keep remaining pipeline contract wording limited to execution_sequence and functional_blocks so overlap ownership is not split across artifacts."
+      ]
+    },
+    {
+      "id": "266",
+      "marker": "[M1][F14]",
+      "title": "Add migration and overlaps-only cutover regression coverage",
+      "problem": "The cutover from pipeline overlaps to ISSUE_OVERLAPS spans migration, runtime reads, and contract cleanup, so regressions are likely without direct end-to-end tests.",
+      "solution_option": "Add focused migration and cutover tests that prove the repository uses dedicated overlap storage after migration.",
+      "concrete_steps": [
+        "Add tests for successful pipeline-to-overlaps migration, including deterministic ordering and no-op rerun behavior.",
+        "Add runtime tests that verify overlap commands and confirm cleanup paths read from dev/ISSUE_OVERLAPS.json after cutover.",
+        "Add contract-level tests or audits that fail if overlap operations still depend on TASK_EXECUTION_PIPELINE after the migration issue is completed."
+      ]
     }
   ]
 }
