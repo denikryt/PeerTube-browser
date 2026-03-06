@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-06T20:23:32+02:00",
+  "updated_at": "2026-03-06T20:31:31+02:00",
   "task_count": 266,
   "milestones": [
     {
@@ -2238,16 +2238,16 @@
           "description": "Introduce dependency indexing, related-issue discovery, issue-level overlap build/apply commands, and sequence model refactor for planning and execution flows.",
           "status": "Planned",
           "track": "System/Test",
-          "gh_issue_number": null,
-          "gh_issue_url": null,
+          "gh_issue_number": 144,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/144",
           "issues": [
             {
               "id": "I1-F14-M1",
               "title": "Add dependency index and plan-block extraction CLI",
               "description": "Add workflow commands to index dependencies from issue plans, show related issues, and return plan blocks by feature/issue ID.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 137,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/137",
               "tasks": [
                 {
                   "id": "245",
@@ -2288,8 +2288,8 @@
               "title": "Introduce issue-level overlap schema and validators",
               "description": "Replace task-level overlaps with issue-level overlap records and enforce strict validation rules for dependency/conflict/shared_logic contracts.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 138,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/138",
               "tasks": [
                 {
                   "id": "249",
@@ -2330,8 +2330,8 @@
               "title": "Add build/show/apply overlap commands",
               "description": "Implement CLI commands to read current overlaps, build scoped overlap deltas from candidate issues, and apply updates through parser-controlled writes.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 139,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/139",
               "tasks": [
                 {
                   "id": "253",
@@ -2372,8 +2372,8 @@
               "title": "Integrate plan-tasks with issue-level overlaps",
               "description": "Make plan tasks consume prebuilt issue overlaps as planning constraints and stop append-only overlap updates from the old path.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 140,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/140",
               "tasks": [
                 {
                   "id": "257",
@@ -2406,8 +2406,8 @@
               "title": "Add confirm cleanup for issue-level overlaps and sequences",
               "description": "Ensure confirm issue/feature done cleans related overlap entries and issue/task sequence artifacts deterministically.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 141,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/141",
               "tasks": [
                 {
                   "id": "260",
@@ -2440,8 +2440,8 @@
               "title": "Refactor execution sequence model and migrate pipeline data",
               "description": "Replace global task execution sequence usage with issue execution sequence plus per-issue task sequence and migrate existing pipeline records.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 142,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/142",
               "tasks": [
                 {
                   "id": "263",
@@ -2482,8 +2482,8 @@
               "title": "Enforce strict Dependencies format for planning parser compatibility",
               "description": "Define and enforce strict dependency line format in issue plans so dependency index parser can parse surfaces deterministically.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 143,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/143",
               "tasks": [
                 {
                   "id": "242",
@@ -2512,8 +2512,8 @@
               ]
             }
           ],
-          "branch_name": null,
-          "branch_url": null
+          "branch_name": "feature/F14-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F14-M1"
         }
       ],
       "non_feature_items": [
