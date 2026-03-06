@@ -66,7 +66,11 @@ Follow the **canonical structure** in `dev/FEATURE_PLANS.md` header section:
 
 2. Issue-level blocks (one per issue, for all issues whether existing or newly created):
    - `### <issue_id> - <issue_title>`
-   - `#### Dependencies` (filled per plan-issue guidelines)
+   - `#### Dependencies` using strict lines only:
+     `- file: ... | reason: ...`
+     `- module: ... | reason: ...`
+     `- function: ... | reason: ...`
+     `- class: ... | reason: ...`
    - `#### Decomposition` (filled per plan-issue guidelines)
    - `#### Issue/Task Decomposition Assessment` (filled per plan-issue guidelines)
 

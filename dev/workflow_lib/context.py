@@ -14,9 +14,13 @@ class WorkflowContext:
     dev_map_path: Path
     task_list_path: Path
     pipeline_path: Path
+    issue_overlaps_path: Path
+    issue_dependency_index_path: Path
     legacy_task_list_path: Path
     legacy_pipeline_path: Path
     feature_plans_path: Path
+    issue_overlaps_schema_path: Path
+    pipeline_schema_path: Path
 
 
 def build_default_context() -> WorkflowContext:
@@ -27,7 +31,11 @@ def build_default_context() -> WorkflowContext:
         dev_map_path=root_dir / "dev" / "map" / "DEV_MAP.json",
         task_list_path=root_dir / "dev" / "TASK_LIST.json",
         pipeline_path=root_dir / "dev" / "TASK_EXECUTION_PIPELINE.json",
+        issue_overlaps_path=root_dir / "dev" / "ISSUE_OVERLAPS.json",
+        issue_dependency_index_path=root_dir / "dev" / "ISSUE_DEP_INDEX.json",
         legacy_task_list_path=root_dir / "dev" / "TASK_LIST.md",
         legacy_pipeline_path=root_dir / "dev" / "TASK_EXECUTION_PIPELINE.md",
         feature_plans_path=root_dir / "dev" / "FEATURE_PLANS.md",
+        issue_overlaps_schema_path=root_dir / "dev" / "map" / "ISSUE_OVERLAPS_JSON_SCHEMA.json",
+        pipeline_schema_path=root_dir / "dev" / "map" / "TASK_EXECUTION_PIPELINE_JSON_SCHEMA.json",
     )

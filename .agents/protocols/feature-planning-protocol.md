@@ -29,7 +29,7 @@ Required input for `plan feature <id>`:
 - `feature_title`: short title.
 - `milestone_id`: target milestone (`M1..Mn`).
 - `dependencies`: task/feature/issue dependencies.
-- `overlaps`: affected tasks in `dev/TASK_EXECUTION_PIPELINE.json` (planning-only identification for `FEATURE_PLANS.md`, does not write to tracker).
+- `overlaps`: issue-overlap context from `dev/ISSUE_OVERLAPS.json` or identified overlap candidates for later overlap-build work.
 - `step_flow`: strict command sequence with per-step actions (`what to run`, `what script does`, `what executor does`, `step result`).
 - `issue_task_decomposition_assessment`: explicit assessment whether to split or not split; if split, minimal logical issues/tasks.
 
@@ -55,6 +55,11 @@ Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
 - mandatory issue-specific `#### Dependencies`,
 - mandatory issue-specific `#### Decomposition` with strict step flow,
 - mandatory issue-specific `#### Issue/Task Decomposition Assessment`,
+- mandatory `#### Dependencies` lines must use strict one-line tokens:
+  - `- file: <repo/path.ext> | reason: <text>`
+  - `- module: <module.name> | reason: <text>`
+  - `- function: <repo/path.ext>::<symbol> | reason: <text>`
+  - `- class: <repo/path.ext>::<ClassName> | reason: <text>`
 - `Issue Execution Order` is read-only for `plan-issue`; active issue row for the target issue must already exist.
 - content quality rule for `plan issue`: the plan block must be authored from the issue context (`title`, `description`, related workflow/code paths) and must not be left as a generic template/fallback stub.
 - forbidden for completed `plan issue` output:
@@ -85,7 +90,7 @@ Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
   - what to rename or move,
   - what to validate in tests, docs, or runtime behavior.
 - Generic task wording is not acceptable for `plan tasks`; decomposition must be anchored to real files, modules, handlers, schemas, commands, or tests discovered during code reading.
-- `overlaps` in `dev/TASK_EXECUTION_PIPELINE.json` must be derived from real shared code surfaces or dependency chains, not from high-level topic similarity alone.
+- issue-overlaps in `dev/ISSUE_OVERLAPS.json` must be derived from real shared code surfaces or dependency chains, not from high-level topic similarity alone.
 - Overlap descriptions may include a short generalized summary, but only after naming the concrete shared code surface or dependency chain that justifies the overlap.
 
 ## Section 3: Planning Quality Gates

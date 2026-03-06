@@ -32,6 +32,12 @@ Identify dependencies specifically for this issue:
 - Code paths, modules, or APIs this issue touches
 - Standards or protocols relevant to implementation (reference `.agents/protocols/`, `.agents/rules/`)
 
+Write `#### Dependencies` lines using strict one-line tokens only:
+- `- file: <repo/path.ext> | reason: <text>`
+- `- module: <module.name> | reason: <text>`
+- `- function: <repo/path.ext>::<symbol> | reason: <text>`
+- `- class: <repo/path.ext>::<ClassName> | reason: <text>`
+
 ### 2.2 Decomposition (Issue-Level Implementation Flow)
 
 Formulate the issue-level implementation plan following the **Planning Input Contract** in `.agents/protocols/feature-planning-protocol.md` Section 1.

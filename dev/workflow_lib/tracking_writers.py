@@ -53,7 +53,7 @@ def apply_pipeline_delta(
     delta_payload: dict[str, Any],
     update_pipeline: bool,
 ) -> tuple[dict[str, Any], dict[str, int]]:
-    """Append execution, block, and overlap records to pipeline JSON payload."""
+    """Append execution and block records to pipeline JSON payload."""
     if not delta_payload:
         return pipeline_payload, {"blocks_added": 0, "overlaps_added": 0, "sequence_rows_added": 0}
     if not update_pipeline:
@@ -74,13 +74,10 @@ def apply_pipeline_delta(
 
     execution_sequence = pipeline_payload.setdefault("execution_sequence", [])
     functional_blocks = pipeline_payload.setdefault("functional_blocks", [])
-    overlaps = pipeline_payload.setdefault("overlaps", [])
     if not isinstance(execution_sequence, list):
         raise WorkflowCommandError("Pipeline payload execution_sequence must be a list.", exit_code=4)
     if not isinstance(functional_blocks, list):
         raise WorkflowCommandError("Pipeline payload functional_blocks must be a list.", exit_code=4)
-    if not isinstance(overlaps, list):
-        raise WorkflowCommandError("Pipeline payload overlaps must be a list.", exit_code=4)
 
     appended_execution: list[dict[str, Any]] = []
     for item_index, item in enumerate(execution_items):
@@ -118,41 +115,12 @@ def apply_pipeline_delta(
         )
     functional_blocks.extend(appended_blocks)
 
-    appended_overlaps: list[dict[str, Any]] = []
-    for overlap_index, overlap in enumerate(overlap_items):
-        if not isinstance(overlap, dict):
-            raise WorkflowCommandError(
-                f"pipeline.overlaps_append[{overlap_index}] must be an object.",
-                exit_code=4,
-            )
-        overlap_tasks = _required_list_field(
-            overlap,
-            "tasks",
-            f"pipeline.overlaps_append[{overlap_index}]",
-        )
-        if len(overlap_tasks) != 2:
-            raise WorkflowCommandError(
-                f"pipeline.overlaps_append[{overlap_index}].tasks must contain exactly 2 task IDs.",
-                exit_code=4,
-            )
-        appended_overlaps.append(
-            {
-                "tasks": overlap_tasks,
-                "description": _required_string_field(
-                    overlap,
-                    "description",
-                    f"pipeline.overlaps_append[{overlap_index}]",
-                ),
-            }
-        )
-    overlaps.extend(appended_overlaps)
-
     pipeline_payload["schema_version"] = str(pipeline_payload.get("schema_version", "")).strip() or "1.0"
     return (
         pipeline_payload,
         {
             "blocks_added": len(appended_blocks),
-            "overlaps_added": len(appended_overlaps),
+            "overlaps_added": 0,
             "sequence_rows_added": len(appended_execution),
         },
     )

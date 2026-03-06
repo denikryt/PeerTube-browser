@@ -8,6 +8,12 @@ from typing import Any
 
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
+from .tracker_json_contracts import (
+    build_issue_dependency_index_contract_payload,
+    build_issue_overlaps_contract_payload,
+    validate_issue_dependency_index_contract_payload,
+    validate_issue_overlaps_contract_payload,
+)
 
 
 TASK_HEADING_PATTERN = re.compile(
@@ -51,8 +57,10 @@ def load_pipeline_payload(context: WorkflowContext) -> dict[str, Any]:
             raise WorkflowCommandError("TASK_EXECUTION_PIPELINE.json must contain execution_sequence list.", exit_code=4)
         if not isinstance(payload.get("functional_blocks"), list):
             raise WorkflowCommandError("TASK_EXECUTION_PIPELINE.json must contain functional_blocks list.", exit_code=4)
-        if not isinstance(payload.get("overlaps"), list):
-            raise WorkflowCommandError("TASK_EXECUTION_PIPELINE.json must contain overlaps list.", exit_code=4)
+        overlaps = payload.get("overlaps", [])
+        if not isinstance(overlaps, list):
+            raise WorkflowCommandError("TASK_EXECUTION_PIPELINE.json overlaps must be a list when provided.", exit_code=4)
+        payload["overlaps"] = overlaps
         return payload
     if context.legacy_pipeline_path.exists():
         markdown_text = context.legacy_pipeline_path.read_text(encoding="utf-8")
@@ -68,6 +76,42 @@ def load_pipeline_payload(context: WorkflowContext) -> dict[str, Any]:
 def write_pipeline_payload(context: WorkflowContext, payload: dict[str, Any]) -> None:
     """Persist pipeline payload to canonical JSON path."""
     _write_pipeline_json_file(context.pipeline_path, payload)
+
+
+def load_issue_overlaps_payload(context: WorkflowContext) -> dict[str, Any]:
+    """Load dedicated issue-overlaps payload or return an empty canonical structure."""
+    if context.issue_overlaps_path.exists():
+        payload = _load_json_file(context.issue_overlaps_path)
+        validate_issue_overlaps_contract_payload(payload, str(context.issue_overlaps_path))
+        return payload
+    return build_issue_overlaps_contract_payload([])
+
+
+def write_issue_overlaps_payload(context: WorkflowContext, payload: dict[str, Any]) -> None:
+    """Persist validated issue-overlaps payload to canonical JSON path."""
+    validate_issue_overlaps_contract_payload(payload, str(context.issue_overlaps_path))
+    _write_json_file(context.issue_overlaps_path, payload)
+
+
+def load_issue_dependency_index_payload(context: WorkflowContext) -> dict[str, Any]:
+    """Load dependency-index payload or return an empty canonical structure."""
+    if context.issue_dependency_index_path.exists():
+        payload = _load_json_file(context.issue_dependency_index_path)
+        validate_issue_dependency_index_contract_payload(payload, str(context.issue_dependency_index_path))
+        return payload
+    return build_issue_dependency_index_contract_payload(
+        {
+            "feature_scope": "all",
+            "by_issue": {},
+            "by_surface": {},
+        }
+    )
+
+
+def write_issue_dependency_index_payload(context: WorkflowContext, payload: dict[str, Any]) -> None:
+    """Persist validated dependency-index payload to canonical JSON path."""
+    validate_issue_dependency_index_contract_payload(payload, str(context.issue_dependency_index_path))
+    _write_json_file(context.issue_dependency_index_path, payload)
 
 
 def parse_task_list_markdown(task_list_text: str) -> dict[str, Any]:
@@ -180,12 +224,14 @@ def parse_pipeline_markdown(pipeline_text: str) -> dict[str, Any]:
                 }
             )
 
-    return {
+    payload = {
         "schema_version": "1.0",
         "execution_sequence": execution_sequence,
         "functional_blocks": functional_blocks,
-        "overlaps": overlaps,
     }
+    if overlaps:
+        payload["overlaps"] = overlaps
+    return payload
 
 
 def _extract_prefixed_line(lines: list[str], prefix: str) -> str:

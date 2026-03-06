@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://peertube-browser.local/schemas/issue-overlaps.json",
+  "title": "Workflow Issue Overlaps",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "overlaps"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "overlaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "issues",
+          "type",
+          "surface",
+          "description"
+        ],
+        "properties": {
+          "issues": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "string",
+              "pattern": "^I[0-9]+-F[0-9]+-M[0-9]+$"
+            }
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "dependency",
+              "conflict",
+              "shared_logic"
+            ]
+          },
+          "order": {
+            "type": "string",
+            "pattern": "^I[0-9]+-F[0-9]+-M[0-9]+->I[0-9]+-F[0-9]+-M[0-9]+$"
+          },
+          "surface": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

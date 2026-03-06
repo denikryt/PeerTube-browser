@@ -22,8 +22,12 @@ from .github_adapter import (
 )
 from .output import emit_json
 from .tracker_store import (
+    load_issue_dependency_index_payload,
+    load_issue_overlaps_payload,
     load_pipeline_payload,
     load_task_list_payload,
+    write_issue_dependency_index_payload,
+    write_issue_overlaps_payload,
     write_pipeline_payload,
     write_task_list_payload,
 )
@@ -518,7 +522,11 @@ def _confirm_one_issue_done(
             exit_code=4,
         )
 
-    cleanup_preview = _compute_tracker_cleanup_preview(context, set(child_task_ids))
+    cleanup_preview = _compute_tracker_cleanup_preview(
+        context,
+        set(child_task_ids),
+        issue_ids_to_remove={issue_id},
+    )
     feature_plan_cleanup_preview = _cleanup_feature_plan_issue_artifacts(
         feature_plans_path=context.feature_plans_path,
         feature_id=feature_id,
@@ -540,6 +548,7 @@ def _confirm_one_issue_done(
             context=context,
             dev_map=dev_map,
             task_ids_to_remove=set(child_task_ids),
+            issue_ids_to_remove={issue_id},
         )
         cleanup_result["feature_plans"] = feature_plan_cleanup_result
     else:
@@ -723,12 +732,24 @@ def _handle_confirm_feature_done(args: Namespace, context: WorkflowContext) -> i
                 task["status"] = "Done"
         feature_node["status"] = "Done"
 
-    cleanup_preview = _compute_tracker_cleanup_preview(context, set(all_task_ids))
+    all_issue_ids = {
+        str(issue_node.get("id", "")).strip()
+        for issue_node in issue_nodes
+        if str(issue_node.get("id", "")).strip()
+    }
+    cleanup_preview = _compute_tracker_cleanup_preview(
+        context,
+        set(all_task_ids),
+        issue_ids_to_remove=all_issue_ids,
+        feature_ids_to_remove={feature_id},
+    )
     if bool(args.write):
         cleanup_result = _apply_tracker_cleanup(
             context=context,
             dev_map=dev_map,
             task_ids_to_remove=set(all_task_ids),
+            issue_ids_to_remove=all_issue_ids,
+            feature_ids_to_remove={feature_id},
         )
     else:
         cleanup_result = cleanup_preview
@@ -832,13 +853,32 @@ def _handle_confirm_standalone_issue_done(args: Namespace, context: WorkflowCont
     return 0
 
 
-def _compute_tracker_cleanup_preview(context: WorkflowContext, task_ids_to_remove: set[str]) -> dict[str, Any]:
+def _compute_tracker_cleanup_preview(
+    context: WorkflowContext,
+    task_ids_to_remove: set[str],
+    *,
+    issue_ids_to_remove: set[str] | None = None,
+    feature_ids_to_remove: set[str] | None = None,
+) -> dict[str, Any]:
     """Compute cleanup counts for task-list and pipeline payloads without writes."""
     task_list_payload = load_task_list_payload(context)
     _, removed_task_entries = _remove_task_entries_from_task_list(task_list_payload, task_ids_to_remove)
     pipeline_payload = load_pipeline_payload(context)
     _, pipeline_cleanup = _cleanup_pipeline_for_completed_tasks(pipeline_payload, task_ids_to_remove)
+    issue_overlaps_payload = load_issue_overlaps_payload(context)
+    _, issue_overlap_cleanup = _cleanup_issue_overlaps_payload(
+        issue_overlaps_payload,
+        issue_ids_to_remove=issue_ids_to_remove or set(),
+    )
+    dep_index_payload = load_issue_dependency_index_payload(context)
+    _, dep_index_cleanup = _cleanup_issue_dependency_index_payload(
+        dep_index_payload,
+        issue_ids_to_remove=issue_ids_to_remove or set(),
+        feature_ids_to_remove=feature_ids_to_remove or set(),
+    )
     return {
+        "issue_dependency_index": dep_index_cleanup,
+        "issue_overlaps": issue_overlap_cleanup,
         "pipeline": pipeline_cleanup,
         "task_list_entries_removed": len(removed_task_entries),
     }
@@ -848,17 +888,35 @@ def _apply_tracker_cleanup(
     context: WorkflowContext,
     dev_map: dict[str, Any],
     task_ids_to_remove: set[str],
+    *,
+    issue_ids_to_remove: set[str] | None = None,
+    feature_ids_to_remove: set[str] | None = None,
 ) -> dict[str, Any]:
     """Apply DEV_MAP/task-list/pipeline completion cleanup in one write run."""
     task_list_payload = load_task_list_payload(context)
     updated_task_list, removed_task_entries = _remove_task_entries_from_task_list(task_list_payload, task_ids_to_remove)
     pipeline_payload = load_pipeline_payload(context)
     updated_pipeline, pipeline_cleanup = _cleanup_pipeline_for_completed_tasks(pipeline_payload, task_ids_to_remove)
+    issue_overlaps_payload = load_issue_overlaps_payload(context)
+    updated_issue_overlaps, issue_overlap_cleanup = _cleanup_issue_overlaps_payload(
+        issue_overlaps_payload,
+        issue_ids_to_remove=issue_ids_to_remove or set(),
+    )
+    dep_index_payload = load_issue_dependency_index_payload(context)
+    updated_dep_index, dep_index_cleanup = _cleanup_issue_dependency_index_payload(
+        dep_index_payload,
+        issue_ids_to_remove=issue_ids_to_remove or set(),
+        feature_ids_to_remove=feature_ids_to_remove or set(),
+    )
     _touch_updated_at(dev_map)
     _write_json(context.dev_map_path, dev_map)
     write_task_list_payload(context, updated_task_list)
     write_pipeline_payload(context, updated_pipeline)
+    write_issue_overlaps_payload(context, updated_issue_overlaps)
+    write_issue_dependency_index_payload(context, updated_dep_index)
     return {
+        "issue_dependency_index": dep_index_cleanup,
+        "issue_overlaps": issue_overlap_cleanup,
         "pipeline": pipeline_cleanup,
         "task_list_entries_removed": len(removed_task_entries),
     }
@@ -1007,6 +1065,87 @@ def _cleanup_overlap_items(items: list[Any], task_ids_to_remove: set[str]) -> tu
             }
         )
     return cleaned, removed_rows
+
+
+def _cleanup_issue_overlaps_payload(
+    payload: dict[str, Any],
+    *,
+    issue_ids_to_remove: set[str],
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Remove issue-overlap rows that reference removed issue IDs."""
+    overlaps = payload.get("overlaps", [])
+    if not isinstance(overlaps, list):
+        raise WorkflowCommandError("ISSUE_OVERLAPS payload overlaps must be a list for cleanup.", exit_code=4)
+    if not issue_ids_to_remove:
+        return payload, {"overlap_rows_removed": 0}
+    kept: list[dict[str, Any]] = []
+    removed_rows = 0
+    for item in overlaps:
+        if not isinstance(item, dict):
+            continue
+        issues = item.get("issues", [])
+        if not isinstance(issues, list):
+            continue
+        normalized_issue_ids = [str(issue_id).strip() for issue_id in issues if str(issue_id).strip()]
+        if any(issue_id in issue_ids_to_remove for issue_id in normalized_issue_ids):
+            removed_rows += 1
+            continue
+        kept.append(item)
+    payload["overlaps"] = kept
+    payload["schema_version"] = str(payload.get("schema_version", "")).strip() or "1.0"
+    return payload, {"overlap_rows_removed": removed_rows}
+
+
+def _cleanup_issue_dependency_index_payload(
+    payload: dict[str, Any],
+    *,
+    issue_ids_to_remove: set[str],
+    feature_ids_to_remove: set[str],
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Remove dependency-index records for closed issue or feature scope."""
+    by_issue = payload.get("by_issue", {})
+    by_surface = payload.get("by_surface", {})
+    if not isinstance(by_issue, dict) or not isinstance(by_surface, dict):
+        raise WorkflowCommandError("ISSUE_DEP_INDEX payload shape is invalid for cleanup.", exit_code=4)
+    if not issue_ids_to_remove and not feature_ids_to_remove:
+        return payload, {"issues_removed": 0, "surfaces_pruned": 0}
+
+    target_issue_ids = {
+        issue_id
+        for issue_id, entry in by_issue.items()
+        if issue_id in issue_ids_to_remove
+        or (
+            isinstance(entry, dict)
+            and str(entry.get("feature_id", "")).strip() in feature_ids_to_remove
+        )
+    }
+    issues_removed = 0
+    for issue_id in list(by_issue.keys()):
+        if issue_id in target_issue_ids:
+            by_issue.pop(issue_id, None)
+            issues_removed += 1
+
+    surfaces_pruned = 0
+    for surface_key in list(by_surface.keys()):
+        entry = by_surface[surface_key]
+        if not isinstance(entry, dict):
+            continue
+        issue_ids = entry.get("issue_ids", [])
+        if not isinstance(issue_ids, list):
+            continue
+        kept_issue_ids = [issue_id for issue_id in issue_ids if issue_id not in target_issue_ids]
+        if kept_issue_ids:
+            entry["issue_ids"] = kept_issue_ids
+            by_surface[surface_key] = entry
+            continue
+        by_surface.pop(surface_key, None)
+        surfaces_pruned += 1
+
+    payload["by_issue"] = dict(sorted(by_issue.items()))
+    payload["by_surface"] = dict(sorted(by_surface.items()))
+    payload["schema_version"] = str(payload.get("schema_version", "")).strip() or "1.0"
+    payload["feature_scope"] = str(payload.get("feature_scope", "")).strip() or "all"
+    return payload, {"issues_removed": issues_removed, "surfaces_pruned": surfaces_pruned}
 
 
 def _require_issue_github_mapping(issue_number: Any, issue_url: Any, label: str) -> None:

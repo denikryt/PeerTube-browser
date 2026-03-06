@@ -7,8 +7,7 @@
   "required": [
     "schema_version",
     "execution_sequence",
-    "functional_blocks",
-    "overlaps"
+    "functional_blocks"
   ],
   "properties": {
     "schema_version": {

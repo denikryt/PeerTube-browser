@@ -1392,9 +1392,10 @@ Issue-level overlaps-only planning workflow
 ### I7-F14-M1 - Enforce strict Dependencies format for planning parser compatibility
 
 #### Dependencies
-- `.agents/protocols/feature-planning-protocol.md` and `.agents/rules/feature-planning.md` as canonical owners of planning content requirements.
-- `.agents/workflows/plan-feature.md` and `.agents/workflows/plan-issue.md` where the format must be required explicitly in planning steps.
-- `dev/workflow_lib/feature_commands.py` plan-lint flow to enforce the strict format in issue `Dependencies` sections.
+- file: .agents/protocols/feature-planning-protocol.md | reason: canonical owner of planning content requirements
+- file: .agents/workflows/plan-feature.md | reason: feature-planning workflow must require strict dependency lines
+- file: .agents/workflows/plan-issue.md | reason: issue-planning workflow must require strict dependency lines
+- function: dev/workflow_lib/feature_commands.py::_handle_feature_plan_lint | reason: plan-lint must enforce dependency-line format in issue blocks
 
 #### Decomposition
 1. Define strict one-line dependency token format for issue `#### Dependencies` entries:
@@ -1417,10 +1418,10 @@ Issue-level overlaps-only planning workflow
 ### I1-F14-M1 - Add dependency index and plan-block extraction CLI
 
 #### Dependencies
-- [I7-F14-M1](#i7-f14-m1--enforce-strict-dependencies-format-for-planning-parser-compatibility) because index parser stability depends on strict dependency-line format.
-- `dev/workflow_lib/cli.py` command tree for new `workflow plan index-dependencies`, `workflow plan show-related`, and plan-block retrieval commands.
-- `dev/FEATURE_PLANS.md` as parsing source for issue `Dependencies` blocks.
-- Existing feature/issue ID resolvers in `dev/workflow_lib/feature_commands.py`.
+- module: dev.workflow_lib.feature_commands | reason: existing feature and issue resolvers plus new plan command handlers live here
+- file: dev/workflow_lib/cli.py | reason: command tree must expose index-dependencies, show-related, and get-plan-block
+- file: dev/FEATURE_PLANS.md | reason: issue Dependencies blocks are the parser input source
+- module: dev.workflow_lib.context | reason: dependency index artifact path must become part of canonical workflow context
 
 #### Decomposition
 1. Add command registration for canonical CLI commands in router:
@@ -1492,9 +1493,9 @@ Issue-level overlaps-only planning workflow
 ### I2-F14-M1 - Introduce issue-level overlap schema and validators
 
 #### Dependencies
-- `dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json` for canonical overlap shape.
-- `dev/workflow_lib/tracker_json_contracts.py` for runtime validation.
-- `dev/ISSUE_OVERLAPS.json` as dedicated overlap storage.
+- file: dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json | reason: canonical machine-readable overlap shape lives here
+- module: dev.workflow_lib.tracker_json_contracts | reason: runtime overlap validation must mirror schema rules
+- file: dev/ISSUE_OVERLAPS.json | reason: dedicated overlap storage artifact must replace pipeline overlap ownership
 
 #### Decomposition
 1. Define strict issue-level overlap JSON contract in schema:
@@ -1541,10 +1542,10 @@ Issue-level overlaps-only planning workflow
 ### I3-F14-M1 - Add build/show/apply overlap commands
 
 #### Dependencies
-- [I1-F14-M1](#i1-f14-m1--add-dependency-index-and-plan-block-extraction-cli) for candidate discovery and block retrieval.
-- [I2-F14-M1](#i2-f14-m1--introduce-issue-level-overlap-schema-and-validators) for validated overlap shape.
-- Overlaps read/write helpers in `dev/workflow_lib/tracker_store.py`.
-- New agent workflow contract file `.agents/workflows/build-overlaps.md` to define command sequence and analysis requirements.
+- module: dev.workflow_lib.feature_commands | reason: candidate discovery, draft generation, and apply handlers are implemented here
+- module: dev.workflow_lib.tracker_store | reason: overlap reads and writes need dedicated helpers for ISSUE_OVERLAPS
+- file: .agents/workflows/build-overlaps.md | reason: agent workflow must define the exact CLI plus analysis sequence
+- file: dev/ISSUE_DEP_INDEX.json | reason: build-overlaps needs indexed related-issue candidates before draft generation
 
 #### Decomposition
 1. Add canonical command `workflow plan show-overlaps --feature-id <id> | --issue-id <id> | --all` to read overlaps from `dev/ISSUE_OVERLAPS.json`.
@@ -1578,9 +1579,9 @@ Issue-level overlaps-only planning workflow
 ### I4-F14-M1 - Integrate plan-tasks with issue-level overlaps
 
 #### Dependencies
-- [I3-F14-M1](#i3-f14-m1--add-buildshowapply-overlap-commands) for overlap artifact generation/apply cycle.
-- `dev/workflow_lib/feature_commands.py` decomposition flow (`plan tasks for feature|issue|issues`).
-- `.agents/workflows/plan-tasks-for.md` planning procedure text.
+- function: dev/workflow_lib/feature_commands.py::_handle_feature_sync | reason: plan-tasks runtime integration happens in the shared decomposition handler
+- file: .agents/workflows/plan-tasks-for.md | reason: workflow must state that overlaps are read-only planning input
+- file: dev/ISSUE_OVERLAPS.json | reason: plan-tasks must load overlap context from the dedicated artifact only
 
 #### Decomposition
 1. Update plan-tasks flow to read issue-overlaps as planning constraints before task decomposition apply.
@@ -1598,9 +1599,9 @@ Issue-level overlaps-only planning workflow
 ### I5-F14-M1 - Add confirm cleanup for issue-level overlaps and dependency index
 
 #### Dependencies
-- `dev/workflow_lib/confirm_commands.py` issue/feature completion paths.
-- New issue-level overlap storage from [I2-F14-M1](#i2-f14-m1--introduce-issue-level-overlap-schema-and-validators).
-- Dependency index behavior from [I1-F14-M1](#i1-f14-m1--add-dependency-index-and-plan-block-extraction-cli).
+- module: dev.workflow_lib.confirm_commands | reason: confirm issue and confirm feature cleanup paths live here
+- file: dev/ISSUE_OVERLAPS.json | reason: completion cleanup must prune stale issue-overlap records
+- file: dev/ISSUE_DEP_INDEX.json | reason: completion cleanup must remove indexed dependency surfaces for closed scope
 
 #### Decomposition
 1. Update `confirm issue done` cleanup to remove overlap entries referencing the confirmed issue.
@@ -1620,9 +1621,10 @@ Issue-level overlaps-only planning workflow
 ### I6-F14-M1 - Migrate overlaps storage from pipeline block to dedicated overlaps file
 
 #### Dependencies
-- Existing overlap records inside `dev/TASK_EXECUTION_PIPELINE.json`.
-- New overlaps schema from [I2-F14-M1](#i2-f14-m1--introduce-issue-level-overlap-schema-and-validators).
-- Runtime readers/writers from [I3-F14-M1](#i3-f14-m1--add-buildshowapply-overlap-commands) and [I4-F14-M1](#i4-f14-m1--integrate-plan-tasks-with-issue-level-overlaps).
+- file: dev/TASK_EXECUTION_PIPELINE.json | reason: legacy overlap rows must be migrated out of the pipeline artifact
+- file: dev/ISSUE_OVERLAPS.json | reason: migrated overlap rows need one dedicated destination artifact
+- file: dev/map/TASK_EXECUTION_PIPELINE_JSON_SCHEMA.json | reason: pipeline contract must drop overlap ownership after cutover
+- file: .agents/workflows/build-overlaps.md | reason: workflow contract must point to overlaps-only storage after migration
 
 #### Decomposition
 1. Add one-time migration routine to extract overlap entries from `dev/TASK_EXECUTION_PIPELINE.json` and write them into `dev/ISSUE_OVERLAPS.json` in new schema.

@@ -19,8 +19,8 @@ description: Feature planning and decomposition policy
 11. Successful local issue-to-task decomposition transitions the selected issue nodes to `Tasked`.
 12. Before `plan tasks for feature <feature_id>` or `plan tasks for issue <issue_id>`, the agent must read the current code relevant to the scoped issues; task decomposition may not be written from plan text alone.
 13. Tasks created during `plan tasks` must describe concrete code changes and validations, including what to remove, add, modify, rename, move, or test.
-14. Overlap entries added to `dev/TASK_EXECUTION_PIPELINE.json` during `plan tasks` must be justified by actual shared code surfaces or dependency chains observed in the codebase.
-15. Overlap descriptions may include a short generalized summary only if they also state the concrete code-level basis for that overlap.
+14. Issue-overlap entries added to `dev/ISSUE_OVERLAPS.json` must be justified by actual shared code surfaces or dependency chains observed in the codebase.
+15. Issue-overlap descriptions may include a short generalized summary only if they also state the concrete code-level basis for that overlap.
 16. `create feature` is registration-only; it must not auto-run planning, task decomposition, materialization, or execution commands.
 17. Materialized GitHub issue bodies must remain issue-focused and must not include local process/protocol instructions or boilerplate sections such as `Work issue for ...`, `Source of truth`, or `Notes`.
 18. Before `execute task <id>`, `execute issue <issue_id>`, or `execute feature <feature_id>`, every parent `Issue` in scope must already be mapped with non-null `gh_issue_number` and `gh_issue_url`.

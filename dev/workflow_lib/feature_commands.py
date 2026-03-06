@@ -26,10 +26,23 @@ from .github_adapter import (
 from .markdown_parser import parse_feature_issue_template
 from .output import emit_json
 from .sync_delta import load_sync_delta, resolve_sync_delta_references
-from .tracker_store import load_pipeline_payload, load_task_list_payload, write_pipeline_payload, write_task_list_payload
+from .tracker_store import (
+    load_issue_dependency_index_payload,
+    load_issue_overlaps_payload,
+    load_pipeline_payload,
+    load_task_list_payload,
+    write_issue_dependency_index_payload,
+    write_issue_overlaps_payload,
+    write_pipeline_payload,
+    write_task_list_payload,
+)
 from .tracker_json_contracts import (
+    build_issue_dependency_index_contract_payload,
+    build_issue_overlaps_contract_payload,
     build_pipeline_contract_payload,
     build_task_list_contract_payload,
+    validate_issue_dependency_index_contract_payload,
+    validate_issue_overlaps_contract_payload,
     validate_pipeline_contract_payload,
     validate_task_list_contract_payload,
 )
@@ -62,6 +75,10 @@ REQUIRED_ISSUE_PLAN_SUBHEADINGS = (
 ISSUE_PLANNING_ACTIVE_STATUSES = {"Pending", "Planned", "Tasked"}
 ISSUE_TERMINAL_STATUSES = {"Done", "Rejected"}
 ISSUE_ALLOWED_PLANNING_STATUSES = ISSUE_PLANNING_ACTIVE_STATUSES | ISSUE_TERMINAL_STATUSES
+DEPENDENCY_LINE_PATTERN = re.compile(
+    r"^-\s+(?P<kind>file|module|function|class):\s+(?P<target>[^|]+?)(?:\s+\|\s+reason:\s+(?P<reason>.+))?$"
+)
+DEPENDENCY_LOOKUP_TOKEN_PATTERN = re.compile(r"`([^`]+)`")
 
 
 def register_feature_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -289,6 +306,64 @@ def register_plan_router(subparsers: argparse._SubParsersAction[argparse.Argumen
         help="Plan and decompose workflow entities.",
     )
     plan_subparsers = plan_parser.add_subparsers(dest="plan_command", required=True)
+
+    index_dependencies_parser = plan_subparsers.add_parser(
+        "index-dependencies",
+        help="Build or clean the issue dependency index from FEATURE_PLANS.",
+    )
+    _register_scope_selector_args(index_dependencies_parser, allow_all=True)
+    index_dependencies_parser.add_argument(
+        "--remove-index",
+        action="store_true",
+        help="Remove indexed rows for the selected scope instead of rebuilding them.",
+    )
+    index_dependencies_parser.add_argument("--write", action="store_true", help="Persist dependency index changes.")
+    index_dependencies_parser.set_defaults(handler=_handle_plan_index_dependencies)
+
+    show_related_parser = plan_subparsers.add_parser(
+        "show-related",
+        help="Show issue candidates that share indexed dependency surfaces.",
+    )
+    _register_scope_selector_args(show_related_parser, allow_all=False)
+    show_related_parser.set_defaults(handler=_handle_plan_show_related)
+
+    get_plan_block_parser = plan_subparsers.add_parser(
+        "get-plan-block",
+        help="Return Dependencies-only plan blocks for one issue or feature scope.",
+    )
+    _register_scope_selector_args(get_plan_block_parser, allow_all=False)
+    get_plan_block_parser.set_defaults(handler=_handle_plan_get_plan_block)
+
+    show_overlaps_parser = plan_subparsers.add_parser(
+        "show-overlaps",
+        help="Show dedicated issue-overlap records for one scope or all scopes.",
+    )
+    _register_scope_selector_args(show_overlaps_parser, allow_all=True)
+    show_overlaps_parser.set_defaults(handler=_handle_plan_show_overlaps)
+
+    build_overlaps_parser = plan_subparsers.add_parser(
+        "build-overlaps",
+        help="Build draft issue-overlap delta payload for one feature or issue scope.",
+    )
+    _register_scope_selector_args(build_overlaps_parser, allow_all=False)
+    build_overlaps_parser.add_argument("--delta-file", required=True, help="Path to write draft overlap payload.")
+    build_overlaps_parser.set_defaults(handler=_handle_plan_build_overlaps)
+
+    apply_overlaps_parser = plan_subparsers.add_parser(
+        "apply-overlaps",
+        help="Validate and persist issue-overlap payload from a delta file.",
+    )
+    apply_overlaps_parser.add_argument("--delta-file", required=True, help="Path to overlap payload JSON file.")
+    apply_overlaps_parser.add_argument("--write", action="store_true", help="Persist overlap changes.")
+    apply_overlaps_parser.set_defaults(handler=_handle_plan_apply_overlaps)
+
+    migrate_overlaps_parser = plan_subparsers.add_parser(
+        "migrate-overlaps",
+        help="Clear legacy pipeline overlap rows after moving overlap ownership to ISSUE_OVERLAPS.",
+    )
+    migrate_overlaps_parser.add_argument("--write", action="store_true", help="Persist pipeline cleanup.")
+    migrate_overlaps_parser.set_defaults(handler=_handle_plan_migrate_overlaps)
+
     tasks_parser = plan_subparsers.add_parser(
         "tasks",
         help="Task decomposition operations.",
@@ -734,6 +809,315 @@ def _handle_feature_plan_issue(args: Namespace, context: WorkflowContext) -> int
     return 0
 
 
+def _handle_plan_index_dependencies(args: Namespace, context: WorkflowContext) -> int:
+    """Build or clean scoped dependency-index payload from FEATURE_PLANS issue blocks."""
+    selector = _resolve_scope_selector(args=args, allow_all=True)
+    if selector["scope_type"] == "all":
+        raise WorkflowCommandError(
+            "index-dependencies currently supports --feature-id or --issue-id only.",
+            exit_code=4,
+        )
+
+    dev_map = _load_json(context.dev_map_path)
+    current_payload = load_issue_dependency_index_payload(context)
+    by_issue = dict(current_payload.get("by_issue", {}))
+    by_surface = dict(current_payload.get("by_surface", {}))
+    target_issue_ids: set[str] = set()
+    target_feature_ids: set[str] = set()
+
+    if selector["scope_type"] == "feature":
+        feature_ref = _find_feature(dev_map, selector["scope_id"])
+        if feature_ref is None:
+            raise WorkflowCommandError(f"Feature {selector['scope_id']} not found in DEV_MAP.", exit_code=4)
+        target_feature_ids.add(selector["scope_id"])
+        for issue_node in _collect_feature_issue_nodes(feature_ref["feature"]):
+            target_issue_ids.add(str(issue_node.get("id", "")).strip())
+    else:
+        issue_ref = _resolve_issue_owner_feature(dev_map, selector["scope_id"])
+        target_issue_ids.add(selector["scope_id"])
+        target_feature_ids.add(issue_ref["feature_id"])
+
+    removed_issue_ids = sorted(target_issue_ids & set(by_issue.keys()))
+    for issue_id in removed_issue_ids:
+        by_issue.pop(issue_id, None)
+    for surface_key in list(by_surface.keys()):
+        entry = by_surface[surface_key]
+        issue_ids = [issue_id for issue_id in entry.get("issue_ids", []) if issue_id not in target_issue_ids]
+        if issue_ids:
+            entry["issue_ids"] = sorted(issue_ids)
+            by_surface[surface_key] = entry
+        else:
+            by_surface.pop(surface_key, None)
+
+    issues_reindexed = 0
+    surfaces_added = 0
+    surfaces_updated = 0
+    surfaces_removed = 0
+    if not bool(args.remove_index):
+        scoped_payload = _build_dependency_index_for_scope(
+            context=context,
+            dev_map=dev_map,
+            scope_type=selector["scope_type"],
+            scope_id=selector["scope_id"],
+        )
+        scoped_by_issue = scoped_payload.get("by_issue", {})
+        scoped_by_surface = scoped_payload.get("by_surface", {})
+        issues_reindexed = len(scoped_by_issue)
+        existing_surface_keys = set(by_surface.keys())
+        for issue_id, entry in scoped_by_issue.items():
+            by_issue[issue_id] = entry
+        for surface_key, entry in scoped_by_surface.items():
+            if surface_key in by_surface:
+                surfaces_updated += 1
+            else:
+                surfaces_added += 1
+            by_surface[surface_key] = entry
+        surfaces_removed = len(existing_surface_keys - set(by_surface.keys()))
+
+    updated_payload = build_issue_dependency_index_contract_payload(
+        {
+            "feature_scope": selector["scope_id"],
+            "by_issue": dict(sorted(by_issue.items())),
+            "by_surface": dict(sorted(by_surface.items())),
+        }
+    )
+    validate_issue_dependency_index_contract_payload(updated_payload, "plan.index-dependencies")
+    changed = updated_payload != current_payload
+    if bool(args.write) and changed:
+        write_issue_dependency_index_payload(context, updated_payload)
+
+    emit_json(
+        {
+            "action": "removed" if bool(args.remove_index) else ("updated" if changed else "unchanged"),
+            "changed": changed,
+            "command": "plan.index-dependencies",
+            "issues_reindexed": issues_reindexed,
+            "issues_removed": len(removed_issue_ids),
+            "scope_id": selector["scope_id"],
+            "scope_type": selector["scope_type"],
+            "surfaces_added": surfaces_added,
+            "surfaces_pruned": surfaces_removed,
+            "surfaces_removed": surfaces_removed,
+            "surfaces_updated": surfaces_updated,
+            "write": bool(args.write),
+        }
+    )
+    return 0
+
+
+def _handle_plan_show_related(args: Namespace, context: WorkflowContext) -> int:
+    """Show issue candidates that share one or more indexed dependency surfaces."""
+    selector = _resolve_scope_selector(args=args, allow_all=False)
+    current_payload = load_issue_dependency_index_payload(context)
+    by_issue = current_payload.get("by_issue", {})
+    by_surface = current_payload.get("by_surface", {})
+
+    if selector["scope_type"] == "issue":
+        issue_id = selector["scope_id"]
+        issue_entry = by_issue.get(issue_id)
+        if not isinstance(issue_entry, dict):
+            raise WorkflowCommandError(
+                f"Issue {issue_id} is missing from ISSUE_DEP_INDEX; run index-dependencies first.",
+                exit_code=4,
+            )
+        related: dict[str, set[str]] = {}
+        for surface in issue_entry.get("surfaces", []):
+            surface_key = _normalize_dependency_surface(surface)
+            bucket = by_surface.get(surface_key, {})
+            for candidate_issue_id in bucket.get("issue_ids", []):
+                if candidate_issue_id == issue_id:
+                    continue
+                related.setdefault(candidate_issue_id, set()).add(surface)
+        emit_json(
+            {
+                "command": "plan.show-related",
+                "issue_id": issue_id,
+                "related_issues": [
+                    {
+                        "issue_id": candidate_issue_id,
+                        "matched_surfaces": sorted(surfaces, key=_normalize_dependency_surface),
+                    }
+                    for candidate_issue_id, surfaces in sorted(related.items())
+                ],
+            }
+        )
+        return 0
+
+    dev_map = _load_json(context.dev_map_path)
+    feature_ref = _find_feature(dev_map, selector["scope_id"])
+    if feature_ref is None:
+        raise WorkflowCommandError(f"Feature {selector['scope_id']} not found in DEV_MAP.", exit_code=4)
+    issue_ids = [str(issue.get("id", "")).strip() for issue in _collect_feature_issue_nodes(feature_ref["feature"])]
+    pair_matches: list[dict[str, Any]] = []
+    for index, left_issue_id in enumerate(issue_ids):
+        left_entry = by_issue.get(left_issue_id)
+        if not isinstance(left_entry, dict):
+            continue
+        left_surfaces = set(left_entry.get("surfaces", []))
+        for right_issue_id in issue_ids[index + 1 :]:
+            right_entry = by_issue.get(right_issue_id)
+            if not isinstance(right_entry, dict):
+                continue
+            matched_surfaces = sorted(left_surfaces & set(right_entry.get("surfaces", [])), key=_normalize_dependency_surface)
+            if not matched_surfaces:
+                continue
+            pair_matches.append(
+                {
+                    "issues": [left_issue_id, right_issue_id],
+                    "matched_surfaces": matched_surfaces,
+                }
+            )
+    emit_json(
+        {
+            "command": "plan.show-related",
+            "feature_id": selector["scope_id"],
+            "related_pairs": pair_matches,
+        }
+    )
+    return 0
+
+
+def _handle_plan_get_plan_block(args: Namespace, context: WorkflowContext) -> int:
+    """Return Dependencies-only plan block content for one issue or feature scope."""
+    selector = _resolve_scope_selector(args=args, allow_all=False)
+    dev_map = _load_json(context.dev_map_path)
+    if selector["scope_type"] == "issue":
+        issue_ref = _resolve_issue_owner_feature(dev_map, selector["scope_id"])
+        section_lines = _extract_feature_section_lines(context.feature_plans_path, issue_ref["feature_id"])
+        dependency_lines = _extract_issue_dependencies_block_lines(section_lines, selector["scope_id"])
+        emit_json(
+            {
+                "command": "plan.get-plan-block",
+                "feature_id": issue_ref["feature_id"],
+                "issue_id": selector["scope_id"],
+                "dependencies": "\n".join(dependency_lines),
+            }
+        )
+        return 0
+
+    feature_ref = _find_feature(dev_map, selector["scope_id"])
+    if feature_ref is None:
+        raise WorkflowCommandError(f"Feature {selector['scope_id']} not found in DEV_MAP.", exit_code=4)
+    section_lines = _extract_feature_section_lines(context.feature_plans_path, selector["scope_id"])
+    blocks: list[dict[str, str]] = []
+    for issue_node in _collect_feature_issue_nodes(feature_ref["feature"]):
+        issue_id = str(issue_node.get("id", "")).strip()
+        dependency_lines = _extract_issue_dependencies_block_lines(section_lines, issue_id)
+        blocks.append({"issue_id": issue_id, "dependencies": "\n".join(dependency_lines)})
+    emit_json(
+        {
+            "command": "plan.get-plan-block",
+            "feature_id": selector["scope_id"],
+            "blocks": blocks,
+        }
+    )
+    return 0
+
+
+def _handle_plan_show_overlaps(args: Namespace, context: WorkflowContext) -> int:
+    """Return dedicated issue-overlap rows for one scope or all scopes."""
+    selector = _resolve_scope_selector(args=args, allow_all=True)
+    payload = load_issue_overlaps_payload(context)
+    overlaps = payload.get("overlaps", [])
+    if selector["scope_type"] == "all":
+        filtered = overlaps
+    elif selector["scope_type"] == "issue":
+        filtered = [item for item in overlaps if selector["scope_id"] in item.get("issues", [])]
+    else:
+        dev_map = _load_json(context.dev_map_path)
+        feature_ref = _find_feature(dev_map, selector["scope_id"])
+        if feature_ref is None:
+            raise WorkflowCommandError(f"Feature {selector['scope_id']} not found in DEV_MAP.", exit_code=4)
+        feature_issue_ids = {
+            str(issue.get("id", "")).strip()
+            for issue in _collect_feature_issue_nodes(feature_ref["feature"])
+        }
+        filtered = [
+            item
+            for item in overlaps
+            if any(issue_id in feature_issue_ids for issue_id in item.get("issues", []))
+        ]
+    emit_json(
+        {
+            "command": "plan.show-overlaps",
+            "overlaps": filtered,
+            "scope_id": selector["scope_id"],
+            "scope_type": selector["scope_type"],
+        }
+    )
+    return 0
+
+
+def _handle_plan_build_overlaps(args: Namespace, context: WorkflowContext) -> int:
+    """Build draft overlap delta payload from dependency-index candidates."""
+    selector = _resolve_scope_selector(args=args, allow_all=False)
+    current_index = load_issue_dependency_index_payload(context)
+    current_overlaps = load_issue_overlaps_payload(context).get("overlaps", [])
+    if selector["scope_type"] == "issue":
+        related_payload = _build_related_issue_draft(current_index, selector["scope_id"])
+    else:
+        dev_map = _load_json(context.dev_map_path)
+        feature_ref = _find_feature(dev_map, selector["scope_id"])
+        if feature_ref is None:
+            raise WorkflowCommandError(f"Feature {selector['scope_id']} not found in DEV_MAP.", exit_code=4)
+        related_payload = _build_feature_related_pairs_draft(current_index, feature_ref["feature"])
+    draft_payload = {
+        "scope_type": selector["scope_type"],
+        "scope_id": selector["scope_id"],
+        "candidates": related_payload,
+        "existing_overlaps": current_overlaps,
+        "overlaps": [],
+    }
+    Path(args.delta_file).write_text(f"{json.dumps(draft_payload, indent=2, ensure_ascii=False)}\n", encoding="utf-8")
+    emit_json(
+        {
+            "candidate_count": len(related_payload),
+            "command": "plan.build-overlaps",
+            "delta_file": str(Path(args.delta_file)),
+            "scope_id": selector["scope_id"],
+            "scope_type": selector["scope_type"],
+        }
+    )
+    return 0
+
+
+def _handle_plan_apply_overlaps(args: Namespace, context: WorkflowContext) -> int:
+    """Validate and optionally persist overlap payload from a delta file."""
+    payload = _load_json(Path(args.delta_file))
+    overlaps_payload = build_issue_overlaps_contract_payload(payload.get("overlaps", []))
+    validate_issue_overlaps_contract_payload(overlaps_payload, "plan.apply-overlaps")
+    if bool(args.write):
+        write_issue_overlaps_payload(context, overlaps_payload)
+    emit_json(
+        {
+            "command": "plan.apply-overlaps",
+            "overlap_count": len(overlaps_payload.get("overlaps", [])),
+            "write": bool(args.write),
+        }
+    )
+    return 0
+
+
+def _handle_plan_migrate_overlaps(args: Namespace, context: WorkflowContext) -> int:
+    """Clear legacy pipeline overlap rows once ISSUE_OVERLAPS becomes canonical."""
+    pipeline_payload = load_pipeline_payload(context)
+    legacy_overlaps = pipeline_payload.get("overlaps", [])
+    if not isinstance(legacy_overlaps, list):
+        raise WorkflowCommandError("TASK_EXECUTION_PIPELINE overlaps must be a list when provided.", exit_code=4)
+    result = {
+        "command": "plan.migrate-overlaps",
+        "legacy_pipeline_overlap_count": len(legacy_overlaps),
+        "write": bool(args.write),
+        "action": "would-clear-legacy-pipeline-overlaps",
+    }
+    if bool(args.write):
+        pipeline_payload["overlaps"] = []
+        write_pipeline_payload(context, pipeline_payload)
+        result["action"] = "cleared-legacy-pipeline-overlaps"
+    emit_json(result)
+    return 0
+
+
 def _handle_plan_tasks_for_feature(args: Namespace, context: WorkflowContext) -> int:
     """Handle `plan tasks for feature` command by forwarding to decomposition engine."""
     feature_id, _ = _parse_feature_id(args.id)
@@ -840,6 +1224,17 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         for issue in feature_node.get("issues", [])
         if isinstance(issue, dict) and str(issue.get("id", "")).strip()
     }
+    scoped_issue_ids = {
+        str(issue_payload.get("id", "")).strip()
+        for issue_payload in issue_payloads
+        if isinstance(issue_payload, dict) and str(issue_payload.get("id", "")).strip()
+    }
+    issue_overlaps_payload = load_issue_overlaps_payload(context)
+    scoped_issue_overlaps = [
+        overlap
+        for overlap in issue_overlaps_payload.get("overlaps", [])
+        if any(issue_id in scoped_issue_ids for issue_id in overlap.get("issues", []))
+    ]
     issue_execution_order_sync = _sync_issue_execution_order_for_new_issues(
         feature_plans_path=context.feature_plans_path,
         feature_id=feature_id,
@@ -865,7 +1260,9 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         payload=task_list_contract_payload,
         location="plan.tasks.for.task_list_contract",
     )
-    pipeline_contract_payload = build_pipeline_contract_payload(resolved_delta.get("pipeline", {}))
+    pipeline_delta_payload = dict(resolved_delta.get("pipeline", {}))
+    pipeline_delta_payload["overlaps_append"] = []
+    pipeline_contract_payload = build_pipeline_contract_payload(pipeline_delta_payload)
     validate_pipeline_contract_payload(
         payload=pipeline_contract_payload,
         location="plan.tasks.for.pipeline_contract",
@@ -881,7 +1278,7 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
     pipeline_payload = load_pipeline_payload(context)
     updated_pipeline_payload, pipeline_counts = apply_pipeline_delta(
         pipeline_payload=pipeline_payload,
-        delta_payload=resolved_delta.get("pipeline", {}),
+        delta_payload=pipeline_delta_payload,
         update_pipeline=bool(args.update_pipeline),
     )
 
@@ -906,6 +1303,7 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
             "feature_id": feature_id,
             "issue_id_filter": issue_id_filter,
             "issue_id_queue": issue_id_queue,
+            "issue_overlap_context_count": len(scoped_issue_overlaps),
             "issue_execution_order_sync": issue_execution_order_sync,
             "issue_description_backfill": issue_description_backfill,
             "issue_planning_status_reconciliation": issue_planning_status_reconciliation,
@@ -2757,6 +3155,232 @@ def _extract_feature_plan_section(feature_plans_path: Path, feature_id: str) -> 
     return "\n".join(lines[start_line:end_line]) + "\n"
 
 
+def _register_scope_selector_args(
+    parser: argparse.ArgumentParser,
+    *,
+    allow_all: bool,
+) -> None:
+    """Register common feature/issue/all selector flags for plan subcommands."""
+    parser.add_argument("--feature-id", help="Feature ID selector.")
+    parser.add_argument("--issue-id", help="Issue ID selector.")
+    if allow_all:
+        parser.add_argument("--all", action="store_true", help="Select all indexed scopes.")
+
+
+def _resolve_scope_selector(
+    *,
+    args: Namespace,
+    allow_all: bool,
+) -> dict[str, Any]:
+    """Normalize and validate feature/issue/all selector combination."""
+    raw_feature_id = str(getattr(args, "feature_id", "") or "").strip()
+    raw_issue_id = str(getattr(args, "issue_id", "") or "").strip()
+    use_all = bool(getattr(args, "all", False)) if allow_all else False
+    selected_count = int(bool(raw_feature_id)) + int(bool(raw_issue_id)) + int(use_all)
+    if selected_count != 1:
+        allowed = "--feature-id, --issue-id"
+        if allow_all:
+            allowed += ", --all"
+        raise WorkflowCommandError(f"Select exactly one scope via {allowed}.", exit_code=4)
+    if raw_feature_id:
+        feature_id, _ = _parse_feature_id(raw_feature_id)
+        return {"scope_type": "feature", "scope_id": feature_id}
+    if raw_issue_id:
+        issue_id, _, _ = _parse_issue_id(raw_issue_id)
+        return {"scope_type": "issue", "scope_id": issue_id}
+    return {"scope_type": "all", "scope_id": "all"}
+
+
+def _extract_feature_section_lines(feature_plans_path: Path, feature_id: str) -> list[str]:
+    """Return one feature section as split lines."""
+    return _extract_feature_plan_section(feature_plans_path, feature_id).splitlines()
+
+
+def _extract_issue_dependencies_block_lines(section_lines: list[str], issue_id: str) -> list[str]:
+    """Extract raw issue Dependencies block lines for one issue plan block."""
+    bounds = _find_issue_plan_block_bounds(section_lines, issue_id)
+    if bounds is None:
+        raise WorkflowCommandError(f"Issue plan block for {issue_id} not found in FEATURE_PLANS.", exit_code=4)
+    start_index, end_index = bounds
+    subheadings: dict[str, tuple[int, int]] = {}
+    ordered_subheadings: list[tuple[str, int]] = []
+    for index in range(start_index + 1, end_index):
+        match = SECTION_H4_PATTERN.match(section_lines[index])
+        if match is None:
+            continue
+        heading = match.group(1).strip()
+        ordered_subheadings.append((heading, index))
+    for index, (heading, line_index) in enumerate(ordered_subheadings):
+        block_end = end_index
+        if index + 1 < len(ordered_subheadings):
+            block_end = ordered_subheadings[index + 1][1]
+        subheadings[heading] = (line_index + 1, block_end)
+    if "Dependencies" not in subheadings:
+        raise WorkflowCommandError(f"Issue plan block {issue_id} is missing `#### Dependencies` section.", exit_code=4)
+    dep_start, dep_end = subheadings["Dependencies"]
+    dependency_lines = [line.rstrip() for line in section_lines[dep_start:dep_end] if line.strip()]
+    if not dependency_lines:
+        raise WorkflowCommandError(f"Issue plan block {issue_id} has empty `#### Dependencies` content.", exit_code=4)
+    return dependency_lines
+
+
+def _parse_dependency_line(raw_line: str, *, issue_id: str) -> dict[str, str]:
+    """Parse one canonical dependency line from an issue Dependencies block."""
+    stripped = raw_line.strip()
+    match = DEPENDENCY_LINE_PATTERN.fullmatch(stripped)
+    if match is None:
+        raise WorkflowCommandError(
+            f"Issue plan block {issue_id} has invalid dependency line {stripped!r}; "
+            "use `- file: ...`, `- module: ...`, `- function: ...`, or `- class: ...`.",
+            exit_code=4,
+        )
+    kind = match.group("kind").strip()
+    target = match.group("target").strip()
+    reason = str(match.group("reason") or "").strip()
+    if not target:
+        raise WorkflowCommandError(
+            f"Issue plan block {issue_id} has dependency line without target: {stripped!r}.",
+            exit_code=4,
+        )
+    return {
+        "kind": kind,
+        "target": target,
+        "reason": reason,
+        "surface": f"{kind}: {target}",
+    }
+
+
+def _normalize_dependency_surface(surface: str) -> str:
+    """Normalize one dependency surface string for deterministic lookups."""
+    return re.sub(r"\s+", " ", str(surface).strip().lower())
+
+
+def _collect_issue_dependency_entries(
+    *,
+    issue_id: str,
+    section_lines: list[str],
+) -> list[dict[str, str]]:
+    """Collect parsed dependency entries for one issue plan block."""
+    entries: list[dict[str, str]] = []
+    for raw_line in _extract_issue_dependencies_block_lines(section_lines, issue_id):
+        entries.append(_parse_dependency_line(raw_line, issue_id=issue_id))
+    return entries
+
+
+def _build_related_issue_draft(index_payload: dict[str, Any], issue_id: str) -> list[dict[str, Any]]:
+    """Build candidate related-issue records for one issue scope."""
+    by_issue = index_payload.get("by_issue", {})
+    by_surface = index_payload.get("by_surface", {})
+    issue_entry = by_issue.get(issue_id)
+    if not isinstance(issue_entry, dict):
+        raise WorkflowCommandError(
+            f"Issue {issue_id} is missing from ISSUE_DEP_INDEX; run index-dependencies first.",
+            exit_code=4,
+        )
+    related: dict[str, set[str]] = {}
+    for surface in issue_entry.get("surfaces", []):
+        bucket = by_surface.get(_normalize_dependency_surface(surface), {})
+        for candidate_issue_id in bucket.get("issue_ids", []):
+            if candidate_issue_id == issue_id:
+                continue
+            related.setdefault(candidate_issue_id, set()).add(surface)
+    return [
+        {
+            "issues": [issue_id, candidate_issue_id],
+            "matched_surfaces": sorted(surfaces, key=_normalize_dependency_surface),
+        }
+        for candidate_issue_id, surfaces in sorted(related.items())
+    ]
+
+
+def _build_feature_related_pairs_draft(index_payload: dict[str, Any], feature_node: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build candidate issue-pair records for one feature scope."""
+    issue_ids = [str(issue.get("id", "")).strip() for issue in _collect_feature_issue_nodes(feature_node)]
+    by_issue = index_payload.get("by_issue", {})
+    pairs: list[dict[str, Any]] = []
+    for index, left_issue_id in enumerate(issue_ids):
+        left_entry = by_issue.get(left_issue_id)
+        if not isinstance(left_entry, dict):
+            continue
+        left_surfaces = set(left_entry.get("surfaces", []))
+        for right_issue_id in issue_ids[index + 1 :]:
+            right_entry = by_issue.get(right_issue_id)
+            if not isinstance(right_entry, dict):
+                continue
+            matched_surfaces = sorted(left_surfaces & set(right_entry.get("surfaces", [])), key=_normalize_dependency_surface)
+            if not matched_surfaces:
+                continue
+            pairs.append({"issues": [left_issue_id, right_issue_id], "matched_surfaces": matched_surfaces})
+    return pairs
+
+
+def _collect_feature_issue_nodes(feature_node: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return normalized issue node list for one feature node."""
+    issues = feature_node.get("issues", [])
+    if not isinstance(issues, list):
+        raise WorkflowCommandError("Feature issue list is invalid in DEV_MAP.", exit_code=4)
+    return [issue for issue in issues if isinstance(issue, dict) and str(issue.get("id", "")).strip()]
+
+
+def _build_dependency_index_for_scope(
+    *,
+    context: WorkflowContext,
+    dev_map: dict[str, Any],
+    scope_type: str,
+    scope_id: str,
+) -> dict[str, Any]:
+    """Build deterministic dependency index payload for one selected scope."""
+    by_issue: dict[str, dict[str, Any]] = {}
+    by_surface: dict[str, dict[str, Any]] = {}
+    if scope_type == "feature":
+        feature_ref = _find_feature(dev_map, scope_id)
+        if feature_ref is None:
+            raise WorkflowCommandError(f"Feature {scope_id} not found in DEV_MAP.", exit_code=4)
+        feature_id = scope_id
+        issue_nodes = _collect_feature_issue_nodes(feature_ref["feature"])
+        section_lines = _extract_feature_section_lines(context.feature_plans_path, feature_id)
+    elif scope_type == "issue":
+        issue_ref = _resolve_issue_owner_feature(dev_map, scope_id)
+        feature_id = issue_ref["feature_id"]
+        issue_nodes = [issue_ref["issue"]]
+        section_lines = _extract_feature_section_lines(context.feature_plans_path, feature_id)
+    else:
+        raise WorkflowCommandError(f"Unsupported dependency-index scope {scope_type!r}.", exit_code=4)
+
+    for issue_node in issue_nodes:
+        issue_id = str(issue_node.get("id", "")).strip()
+        issue_status = str(issue_node.get("status", "")).strip() or "Pending"
+        entries = _collect_issue_dependency_entries(issue_id=issue_id, section_lines=section_lines)
+        surfaces = [entry["surface"] for entry in entries]
+        by_issue[issue_id] = {
+            "surfaces": sorted(surfaces, key=_normalize_dependency_surface),
+            "feature_id": feature_id,
+            "status": issue_status,
+        }
+        for surface in surfaces:
+            surface_key = _normalize_dependency_surface(surface)
+            bucket = by_surface.setdefault(
+                surface_key,
+                {
+                    "surface": surface,
+                    "issue_ids": [],
+                },
+            )
+            if issue_id not in bucket["issue_ids"]:
+                bucket["issue_ids"].append(issue_id)
+
+    for bucket in by_surface.values():
+        bucket["issue_ids"] = sorted(bucket["issue_ids"])
+
+    return build_issue_dependency_index_contract_payload(
+        {
+            "feature_scope": scope_id,
+            "by_issue": dict(sorted(by_issue.items())),
+            "by_surface": dict(sorted(by_surface.items())),
+        }
+    )
+
+
 def _upsert_issue_plan_block_in_section(
     *,
     section_lines: list[str],
@@ -3413,6 +4037,9 @@ def _lint_one_issue_plan_block(lines: list[str], start_index: int, end_index: in
                 f"Issue plan block {issue_id} section {heading!r} must contain non-empty content.",
                 exit_code=4,
             )
+        if heading == "Dependencies":
+            for raw_line in content_lines:
+                _parse_dependency_line(raw_line, issue_id=issue_id)
 
 
 def _collect_issue_planning_status_mismatches(

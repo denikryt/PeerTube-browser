@@ -82,21 +82,43 @@ def test_plan_tasks_success_chain(workflow, tmp_repo):
     plans_path = tmp_repo / "dev/FEATURE_PLANS.md"
     plans_content = """# Feature Plans
 ## F9-M1
+### Dependencies
+- file: dev/workflow_lib/feature_commands.py | reason: smoke planning surface
+
+### Decomposition
+1. Build smoke issue plan and sync task decomposition.
+
 ### Issue Execution Order
 1. `I1-F9-M1` - Smoke issue
 
+### Issue/Task Decomposition Assessment
+- task_count = 0
+
 ### I1-F9-M1 - Smoke issue
 #### Dependencies
-- smoke
+- file: dev/workflow_lib/feature_commands.py | reason: smoke workflow entrypoint
 #### Decomposition
 1. smoke
+#### Issue/Task Decomposition Assessment
+- task_count = 0
 """
     plans_path.write_text(plans_content, encoding="utf-8")
 
     # 4. Promote to 'Planned' using empty delta
     empty_delta_path = tmp_repo / "dev/empty_delta.json"
     empty_delta_path.write_text("{}", encoding="utf-8")
-    res = workflow.run("plan", "tasks", "for", "feature", "--id", "F9-M1", "--delta-file", str(empty_delta_path), "--write")
+    res = workflow.run(
+        "plan",
+        "tasks",
+        "for",
+        "feature",
+        "--id",
+        "F9-M1",
+        "--delta-file",
+        str(empty_delta_path),
+        "--write",
+        "--update-pipeline",
+    )
     assert "I1-F9-M1" in res["issue_planning_status_reconciliation"]["reconciled_issue_ids"]
 
     # Verify status in DEV_MAP
@@ -141,15 +163,21 @@ def test_batch_issue_planning(workflow, tmp_repo):
     plans = (
         "# Feature Plans\n"
         "## F1-M1\n"
+        "### Dependencies\n"
+        "- file: dev/workflow_lib/feature_commands.py | reason: batch planning surface\n\n"
+        "### Decomposition\n"
+        "1. Build both issue plans before task sync.\n\n"
         "### Issue Execution Order\n"
         "1. `I1-F1-M1` - I1\n"
         "2. `I2-F1-M1` - I2\n\n"
-        "### `I1-F1-M1` - I1\n"
-        "#### Dependencies\n- None\n"
+        "### Issue/Task Decomposition Assessment\n"
+        "- task_count = 0\n\n"
+        "### I1-F1-M1 - I1\n"
+        "#### Dependencies\n- file: dev/workflow_lib/feature_commands.py | reason: batch issue one\n"
         "#### Decomposition\n- T1\n"
         "#### Issue/Task Decomposition Assessment\n- OK\n\n"
-        "### `I2-F1-M1` - I2\n"
-        "#### Dependencies\n- None\n"
+        "### I2-F1-M1 - I2\n"
+        "#### Dependencies\n- file: dev/workflow_lib/tracker_store.py | reason: batch issue two\n"
         "#### Decomposition\n- T2\n"
         "#### Issue/Task Decomposition Assessment\n- OK\n"
     )

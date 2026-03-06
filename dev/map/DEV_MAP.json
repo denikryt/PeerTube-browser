@@ -2236,7 +2236,7 @@
           "id": "F14-M1",
           "title": "Issue-level overlap indexing and planning workflow",
           "description": "Introduce dependency indexing, related-issue discovery, issue-level overlap build/apply commands, and sequence model refactor for planning and execution flows.",
-          "status": "Planned",
+          "status": "Approved",
           "track": "System/Test",
           "gh_issue_number": 144,
           "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/144",
