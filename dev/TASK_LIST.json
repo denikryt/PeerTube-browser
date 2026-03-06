@@ -1595,6 +1595,58 @@
         "Add runtime tests that verify overlap commands and confirm cleanup paths read from dev/ISSUE_OVERLAPS.json after cutover.",
         "Add contract-level tests or audits that fail if overlap operations still depend on TASK_EXECUTION_PIPELINE after the migration issue is completed."
       ]
+    },
+    {
+      "id": "267",
+      "marker": "[M1][F14]",
+      "title": "Remove execution-plan and task execution runtime reads of TASK_EXECUTION_PIPELINE",
+      "problem": "Feature execution order and task execution preparation still read TASK_EXECUTION_PIPELINE.json, so runtime behavior remains coupled to an artifact that the new overlaps-only model no longer wants to keep.",
+      "solution_option": "Refactor feature execution-plan ordering and execute-task preparation to derive order and context from FEATURE_PLANS issue order, DEV_MAP issue/task ownership, TASK_LIST task definitions, and ISSUE_OVERLAPS issue-level constraints instead of any pipeline file.",
+      "concrete_steps": [
+        "Update dev/workflow_lib/feature_commands.py to remove load_pipeline_payload-based ordering from feature execution-plan and derive stable task order from FEATURE_PLANS issue order plus DEV_MAP issue/task order only.",
+        "Remove TASK_EXECUTION_PIPELINE-specific flags, branches, and helper calls from feature execution-plan output/contracts where they are no longer meaningful after pipeline removal.",
+        "Update .agents/workflows/execute-feature.md and .agents/workflows/execute-task.md so execution read order no longer requires TASK_EXECUTION_PIPELINE.json and instead points to DEV_MAP, TASK_LIST, FEATURE_PLANS issue order, and ISSUE_OVERLAPS.",
+        "Run targeted tests covering execution-plan and task execution preparation when dev/TASK_EXECUTION_PIPELINE.json is missing."
+      ]
+    },
+    {
+      "id": "268",
+      "marker": "[M1][F14]",
+      "title": "Remove pipeline cleanup and tracker runtime dependencies",
+      "problem": "Confirm flows, validation commands, tracker store helpers, and sync/runtime utilities still load or mutate pipeline payloads, so pipeline removal would currently break cleanup and repository validation paths.",
+      "solution_option": "Eliminate pipeline-specific cleanup/store/validation behavior and make tracker runtime valid with TASK_LIST, DEV_MAP, ISSUE_OVERLAPS, and ISSUE_DEP_INDEX as the only active workflow artifacts.",
+      "concrete_steps": [
+        "Refactor dev/workflow_lib/confirm_commands.py to remove load_pipeline_payload/write_pipeline_payload cleanup work and replace pipeline cleanup counters with pipeline-free deterministic cleanup output.",
+        "Remove obsolete pipeline loader/writer usage from dev/workflow_lib/tracker_store.py, dev/workflow_lib/validate_commands.py, and any helper that still treats TASK_EXECUTION_PIPELINE as a canonical runtime artifact.",
+        "Update dev/workflow_lib/tracking_writers.py, dev/workflow_lib/sync_delta.py, and related contract helpers so sync/apply flows no longer accept or require pipeline execution_sequence/functional_blocks payloads.",
+        "Add validation checks proving workflow runtime still succeeds when no TASK_EXECUTION_PIPELINE file exists in the repo."
+      ]
+    },
+    {
+      "id": "269",
+      "marker": "[M1][F14]",
+      "title": "Remove TASK_EXECUTION_PIPELINE contracts from schemas, docs, and workflows",
+      "problem": "Schema files, protocol docs, workflow docs, and rules still describe TASK_EXECUTION_PIPELINE as an active runtime tracker, which conflicts with the intended overlaps-only model and will mislead future planning and execution changes.",
+      "solution_option": "Delete or neutralize obsolete pipeline-specific schema/rule/workflow references and rewrite contracts around the remaining canonical artifacts only.",
+      "concrete_steps": [
+        "Remove or retire dev/map/TASK_EXECUTION_PIPELINE_JSON_SCHEMA.json and any context/runtime path wiring that still exposes it as an active contract.",
+        "Update .agents/protocols/task-execution-protocol.md, .agents/protocols/feature-planning-protocol.md, .agents/rules/pipeline-constraints.md, .agents/rules/tracking-state.md, and related workflow docs to remove TASK_EXECUTION_PIPELINE from read order, cleanup, validation, and planning ownership language.",
+        "Update dev/FEATURE_PLANS.md references inside F14-M1 issue blocks if needed so the plan no longer claims pipeline remains part of the final runtime model.",
+        "Verify no workflow help text or command contract still tells the user that TASK_EXECUTION_PIPELINE is required."
+      ]
+    },
+    {
+      "id": "270",
+      "marker": "[M1][F14]",
+      "title": "Add regression coverage for pipeline-free workflow runtime",
+      "problem": "Without explicit regression coverage, pipeline removal can silently break plan-tasks, execution-plan, confirm, validate, and feature lifecycle flows that were historically initialized with TASK_EXECUTION_PIPELINE fixtures.",
+      "solution_option": "Add focused workflow tests that build minimal repo state without TASK_EXECUTION_PIPELINE and prove all surviving canonical commands continue to work correctly.",
+      "concrete_steps": [
+        "Update tests/workflow/test_task_planning.py, tests/workflow/test_overlap_commands.py, tests/workflow/test_feature_lifecycle.py, and other affected workflow suites to stop creating TASK_EXECUTION_PIPELINE fixtures where runtime no longer needs them.",
+        "Add regression tests for feature execution-plan, confirm cleanup, and validate flows when the pipeline file is absent and only ISSUE_OVERLAPS/ISSUE_DEP_INDEX remain.",
+        "Add negative tests ensuring removed pipeline-specific contracts/flags fail deterministically when invoked after cutover, if those entrypoints still exist.",
+        "Run the targeted workflow test suite covering planning, execution-plan, confirm, and feature lifecycle scenarios after pipeline-free cutover."
+      ]
     }
   ]
 }

@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-06T20:31:31+02:00",
-  "task_count": 266,
+  "updated_at": "2026-03-07T00:12:07+02:00",
+  "task_count": 270,
   "milestones": [
     {
       "id": "M1",
@@ -2508,6 +2508,48 @@
                   "status": "Planned",
                   "date": "2026-03-06",
                   "time": "20:23:32"
+                }
+              ]
+            },
+            {
+              "id": "I8-F14-M1",
+              "title": "Remove TASK_EXECUTION_PIPELINE from workflow runtime entirely",
+              "description": "Eliminate remaining runtime reads, cleanup paths, schema contracts, and workflow references tied to TASK_EXECUTION_PIPELINE so overlaps/index artifacts and existing tracker state fully replace it.",
+              "status": "Tasked",
+              "gh_issue_number": 145,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/145",
+              "tasks": [
+                {
+                  "id": "267",
+                  "title": "Remove execution-plan and task execution runtime reads of TASK_EXECUTION_PIPELINE",
+                  "summary": "Switch feature execution planning and execution-prep flows to canonical sources that do not require pipeline artifacts.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "21:36:32"
+                },
+                {
+                  "id": "268",
+                  "title": "Remove pipeline cleanup and tracker runtime dependencies",
+                  "summary": "Cut confirm cleanup, tracker store, and validator/runtime code paths that still require pipeline payloads.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "21:36:32"
+                },
+                {
+                  "id": "269",
+                  "title": "Remove TASK_EXECUTION_PIPELINE contracts from schemas, docs, and workflows",
+                  "summary": "Delete obsolete schema/rule/workflow references so runtime contracts no longer describe pipeline ownership.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "21:36:32"
+                },
+                {
+                  "id": "270",
+                  "title": "Add regression coverage for pipeline-free workflow runtime",
+                  "summary": "Prove planning, execution-plan, confirm, and validation flows work when TASK_EXECUTION_PIPELINE is absent.",
+                  "status": "Planned",
+                  "date": "2026-03-06",
+                  "time": "21:36:32"
                 }
               ]
             }

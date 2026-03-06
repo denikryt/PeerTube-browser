@@ -1369,6 +1369,7 @@ Issue-level overlaps-only planning workflow
 5. `I4-F14-M1` - Integrate plan-tasks with issue-level overlaps
 6. `I5-F14-M1` - Add confirm cleanup for issue-level overlaps and dependency index
 7. `I6-F14-M1` - Migrate overlaps storage from pipeline block to dedicated overlaps file
+8. `I8-F14-M1` - Remove TASK_EXECUTION_PIPELINE from workflow runtime entirely
 
 ### Dependencies
 - Depends on completion and stabilization of `F13-M1` context-command work because overlap-build workflow reuses issue/feature plan-block extraction and scoped planning surfaces.
@@ -1385,9 +1386,9 @@ Issue-level overlaps-only planning workflow
 6. Migrate all affected CLI and agent workflows (`plan-tasks`, `build-overlaps`, `confirm`, related read paths) to overlaps-only sources and explicitly remove overlap reads/writes via `TASK_EXECUTION_PIPELINE`.
 
 ### Issue/Task Decomposition Assessment
-- Scope requires seven sequential issues because dependency-format standardization, command-surface additions, schema/data-model changes, runtime integration, cleanup rules, and storage migration are independent risk surfaces.
-- Minimal order is strict: I7 -> I1 -> I2 -> I3 -> I4 -> I5 -> I6.
-- Expected outcome: planning and execution flows use scoped issue-level architectural context and a dedicated overlaps storage path, without rescanning full `FEATURE_PLANS` on every decomposition run.
+- Scope requires eight sequential issues because dependency-format standardization, command-surface additions, schema/data-model changes, runtime integration, cleanup rules, storage migration, and full pipeline removal are independent risk surfaces.
+- Minimal order is strict: I7 -> I1 -> I2 -> I3 -> I4 -> I5 -> I6 -> I8.
+- Expected outcome: planning and execution flows use scoped issue-level architectural context and dedicated overlaps/index artifacts, with no runtime dependency on `TASK_EXECUTION_PIPELINE`.
 
 ### I7-F14-M1 - Enforce strict Dependencies format for planning parser compatibility
 
@@ -1643,3 +1644,44 @@ Issue-level overlaps-only planning workflow
   2. runtime cutover to overlaps-only storage
   3. workflow/docs + CLI cutover from pipeline overlap operations
   4. pipeline contract cleanup and migration/regression coverage
+
+### I8-F14-M1 - Remove TASK_EXECUTION_PIPELINE from workflow runtime entirely
+
+#### Dependencies
+- file: dev/TASK_EXECUTION_PIPELINE.json | reason: legacy runtime artifact must stop being a required tracker input anywhere in workflow execution
+- file: dev/map/TASK_EXECUTION_PIPELINE_JSON_SCHEMA.json | reason: schema becomes obsolete once runtime ownership is removed
+- module: dev.workflow_lib.feature_commands | reason: execution-plan and plan-tasks runtime paths still reference pipeline reads
+- module: dev.workflow_lib.confirm_commands | reason: confirm cleanup still cleans sequence/block remnants from pipeline
+- module: dev.workflow_lib.tracker_store | reason: canonical tracker loaders still expose pipeline payload as runtime input
+- file: .agents/protocols/task-execution-protocol.md | reason: execution read order and workflow contracts still mention pipeline
+- file: .agents/workflows/execute-feature.md | reason: feature execution order still resolves through pipeline first
+- file: .agents/workflows/execute-task.md | reason: task execution workflow still reads pipeline for ordering rows
+
+#### Decomposition
+1. Audit and remove all remaining runtime reads of `dev/TASK_EXECUTION_PIPELINE.json`:
+   - execution planning,
+   - task execution preparation,
+   - confirm cleanup,
+   - tracker store/runtime contracts.
+2. Replace pipeline-backed sequencing with surviving sources only:
+   - feature issue order from `dev/FEATURE_PLANS.md`,
+   - task ownership/order from `dev/map/DEV_MAP.json` and `dev/TASK_LIST.json`,
+   - issue-level architectural constraints from `dev/ISSUE_OVERLAPS.json`.
+3. Remove pipeline-specific writer/validator/schema code paths:
+   - stop requiring pipeline payload during sync/apply flows,
+   - delete obsolete pipeline schema/runtime validation contracts,
+   - make tracker operations valid when no pipeline artifact exists.
+4. Update confirm/reject/runtime cleanup contracts so they no longer read or mutate pipeline rows and instead operate only on active canonical artifacts.
+5. Update agent rules/protocols/workflows to fully remove `TASK_EXECUTION_PIPELINE` from read order, execution order, cleanup language, and planning references.
+6. Add regression coverage for:
+   - execution-plan without pipeline file,
+   - execute-task/execute-feature preparation without pipeline file,
+   - confirm cleanup without pipeline file,
+   - sync and tracker reads when pipeline artifact is absent.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 4 tasks
+  1. remove runtime read dependencies on pipeline artifact
+  2. replace sequencing/cleanup behavior with remaining canonical sources
+  3. remove obsolete schema/store/writer contracts and workflow references
+  4. add regression coverage for pipeline-free runtime behavior
