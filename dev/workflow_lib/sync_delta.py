@@ -1,4 +1,4 @@
-"""Provide sync-delta parsing and task-id allocation helpers."""
+"""Provide sync-delta parsing and task-id allocation helpers for task-list sync."""
 
 from __future__ import annotations
 
@@ -24,12 +24,12 @@ def load_sync_delta(delta_path: Path) -> dict[str, Any]:
         raise WorkflowCommandError(f"Invalid JSON in sync delta {delta_path}: {error}", exit_code=4) from error
     if not isinstance(payload, dict):
         raise WorkflowCommandError("Sync delta root must be a JSON object.", exit_code=4)
-    allowed = {"issues", "task_list_entries", "pipeline"}
+    allowed = {"issues", "task_list_entries"}
     unknown = sorted(key for key in payload if key not in allowed)
     if unknown:
         joined = ", ".join(unknown)
         raise WorkflowCommandError(
-            f"Sync delta contains unsupported top-level key(s): {joined}. Allowed: issues, task_list_entries, pipeline.",
+            f"Sync delta contains unsupported top-level key(s): {joined}. Allowed: issues, task_list_entries.",
             exit_code=4,
         )
     return payload
@@ -77,64 +77,6 @@ def resolve_sync_delta_references(
             entry.get("id"),
             f"task_list_entries[{entry_index}].id",
         )
-
-    pipeline_payload = resolved.get("pipeline", {})
-    if pipeline_payload and not isinstance(pipeline_payload, dict):
-        raise WorkflowCommandError("pipeline payload must be an object.", exit_code=4)
-    for item_index, item in enumerate(pipeline_payload.get("execution_sequence_append", [])):
-        if not isinstance(item, dict):
-            raise WorkflowCommandError(
-                f"pipeline.execution_sequence_append[{item_index}] must be an object.",
-                exit_code=4,
-            )
-        tasks = item.get("tasks")
-        if not isinstance(tasks, list) or not tasks:
-            raise WorkflowCommandError(
-                f"pipeline.execution_sequence_append[{item_index}].tasks must be a non-empty list.",
-                exit_code=4,
-            )
-        item["tasks"] = [
-            collect_reference(
-                task_ref,
-                f"pipeline.execution_sequence_append[{item_index}].tasks[{task_index}]",
-            )
-            for task_index, task_ref in enumerate(tasks)
-        ]
-    for block_index, block in enumerate(pipeline_payload.get("functional_blocks_append", [])):
-        if not isinstance(block, dict):
-            raise WorkflowCommandError(
-                f"pipeline.functional_blocks_append[{block_index}] must be an object.",
-                exit_code=4,
-            )
-        tasks = block.get("tasks")
-        if not isinstance(tasks, list) or not tasks:
-            raise WorkflowCommandError(
-                f"pipeline.functional_blocks_append[{block_index}].tasks must be a non-empty list.",
-                exit_code=4,
-            )
-        block["tasks"] = [
-            collect_reference(
-                task_ref,
-                f"pipeline.functional_blocks_append[{block_index}].tasks[{task_index}]",
-            )
-            for task_index, task_ref in enumerate(tasks)
-        ]
-    for overlap_index, overlap in enumerate(pipeline_payload.get("overlaps_append", [])):
-        if not isinstance(overlap, dict):
-            raise WorkflowCommandError(f"pipeline.overlaps_append[{overlap_index}] must be an object.", exit_code=4)
-        tasks = overlap.get("tasks")
-        if not isinstance(tasks, list) or len(tasks) != 2:
-            raise WorkflowCommandError(
-                f"pipeline.overlaps_append[{overlap_index}].tasks must be a list with exactly 2 task references.",
-                exit_code=4,
-            )
-        overlap["tasks"] = [
-            collect_reference(
-                task_ref,
-                f"pipeline.overlaps_append[{overlap_index}].tasks[{task_index}]",
-            )
-            for task_index, task_ref in enumerate(tasks)
-        ]
 
     if tokens_in_order and not allocate_task_ids:
         joined = ", ".join(tokens_in_order)
@@ -198,10 +140,3 @@ def replace_task_reference_tokens(payload: dict[str, Any], token_to_id: dict[str
         task_id = str(entry.get("id", ""))
         if task_id in token_to_id:
             entry["id"] = token_to_id[task_id]
-    pipeline_payload = payload.get("pipeline", {})
-    for item in pipeline_payload.get("execution_sequence_append", []):
-        item["tasks"] = [token_to_id.get(task_id, task_id) for task_id in item.get("tasks", [])]
-    for block in pipeline_payload.get("functional_blocks_append", []):
-        block["tasks"] = [token_to_id.get(task_id, task_id) for task_id in block.get("tasks", [])]
-    for overlap in pipeline_payload.get("overlaps_append", []):
-        overlap["tasks"] = [token_to_id.get(task_id, task_id) for task_id in overlap.get("tasks", [])]

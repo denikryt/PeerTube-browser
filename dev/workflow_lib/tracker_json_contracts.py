@@ -8,7 +8,6 @@ from .errors import WorkflowCommandError
 
 
 TASK_LIST_CONTRACT_VERSION = "1.0"
-PIPELINE_CONTRACT_VERSION = "1.0"
 ISSUE_OVERLAPS_CONTRACT_VERSION = "1.0"
 ISSUE_DEP_INDEX_CONTRACT_VERSION = "1.0"
 
@@ -26,20 +25,6 @@ def build_task_list_contract_payload(entries: list[dict[str, Any]], expected_mar
         "schema_version": TASK_LIST_CONTRACT_VERSION,
         "tasks": normalized_tasks,
     }
-
-
-def build_pipeline_contract_payload(pipeline_payload: dict[str, Any]) -> dict[str, Any]:
-    """Build canonical pipeline JSON payload from sync pipeline section."""
-    payload = {
-        "schema_version": PIPELINE_CONTRACT_VERSION,
-        "execution_sequence": pipeline_payload.get("execution_sequence_append", []),
-        "functional_blocks": pipeline_payload.get("functional_blocks_append", []),
-    }
-    overlaps = pipeline_payload.get("overlaps_append")
-    if overlaps is not None:
-        payload["overlaps"] = overlaps
-    return payload
-
 
 def build_issue_overlaps_contract_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
     """Build canonical issue-overlaps JSON payload."""
@@ -82,63 +67,6 @@ def validate_task_list_contract_payload(payload: dict[str, Any], location: str) 
         _require_non_empty_string(task, "problem", f"{location}.tasks[{task_index}]")
         _require_non_empty_string(task, "solution_option", f"{location}.tasks[{task_index}]")
         _require_non_empty_string_list(task, "concrete_steps", f"{location}.tasks[{task_index}]")
-
-
-def validate_pipeline_contract_payload(payload: dict[str, Any], location: str) -> None:
-    """Validate pipeline JSON payload shape and required fields."""
-    schema_version = str(payload.get("schema_version", "")).strip()
-    if schema_version != PIPELINE_CONTRACT_VERSION:
-        raise WorkflowCommandError(
-            f"{location}: unsupported pipeline schema_version {schema_version!r}; "
-            f"expected {PIPELINE_CONTRACT_VERSION}.",
-            exit_code=4,
-        )
-
-    execution_sequence = payload.get("execution_sequence")
-    if not isinstance(execution_sequence, list):
-        raise WorkflowCommandError(f"{location}: execution_sequence must be a list.", exit_code=4)
-    for item_index, item in enumerate(execution_sequence):
-        if not isinstance(item, dict):
-            raise WorkflowCommandError(
-                f"{location}: execution_sequence[{item_index}] must be an object.",
-                exit_code=4,
-            )
-        _require_non_empty_string_list(item, "tasks", f"{location}.execution_sequence[{item_index}]")
-        description = item.get("description")
-        if description is not None and not isinstance(description, str):
-            raise WorkflowCommandError(
-                f"{location}: execution_sequence[{item_index}].description must be a string when provided.",
-                exit_code=4,
-            )
-
-    functional_blocks = payload.get("functional_blocks")
-    if not isinstance(functional_blocks, list):
-        raise WorkflowCommandError(f"{location}: functional_blocks must be a list.", exit_code=4)
-    for block_index, block in enumerate(functional_blocks):
-        if not isinstance(block, dict):
-            raise WorkflowCommandError(
-                f"{location}: functional_blocks[{block_index}] must be an object.",
-                exit_code=4,
-            )
-        _require_non_empty_string(block, "title", f"{location}.functional_blocks[{block_index}]")
-        _require_non_empty_string_list(block, "tasks", f"{location}.functional_blocks[{block_index}]")
-        _require_non_empty_string(block, "scope", f"{location}.functional_blocks[{block_index}]")
-        _require_non_empty_string(block, "outcome", f"{location}.functional_blocks[{block_index}]")
-
-    overlaps = payload.get("overlaps", [])
-    if not isinstance(overlaps, list):
-        raise WorkflowCommandError(f"{location}: overlaps must be a list when provided.", exit_code=4)
-    for overlap_index, overlap in enumerate(overlaps):
-        if not isinstance(overlap, dict):
-            raise WorkflowCommandError(f"{location}: overlaps[{overlap_index}] must be an object.", exit_code=4)
-        tasks = _require_non_empty_string_list(overlap, "tasks", f"{location}.overlaps[{overlap_index}]")
-        if len(tasks) != 2:
-            raise WorkflowCommandError(
-                f"{location}: overlaps[{overlap_index}].tasks must contain exactly 2 task IDs.",
-                exit_code=4,
-            )
-        _require_non_empty_string(overlap, "description", f"{location}.overlaps[{overlap_index}]")
-
 
 def validate_issue_overlaps_contract_payload(payload: dict[str, Any], location: str) -> None:
     """Validate dedicated issue-overlaps payload shape and pair semantics."""

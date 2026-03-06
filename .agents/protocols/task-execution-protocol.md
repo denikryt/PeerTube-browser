@@ -16,7 +16,8 @@ If any procedural detail differs across docs, the corresponding `.agents/workflo
 
 1. Read in strict order before coding:
    - exact task text in `dev/TASK_LIST.json`,
-   - `dev/TASK_EXECUTION_PIPELINE.json`,
+   - `dev/ISSUE_OVERLAPS.json`,
+   - `dev/FEATURE_PLANS.md` (issue execution order / issue plan context),
    - `dev/map/DEV_MAP.json` context for the target task set and ownership markers,
    - this file (`.agents/protocols/task-execution-protocol.md`).
 

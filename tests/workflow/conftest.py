@@ -25,7 +25,6 @@ def tmp_repo(tmp_path):
     
     # Create empty docs for features
     (repo_dir / "dev/TASK_LIST.md").write_text("# Task List\n")
-    (repo_dir / "dev/TASK_EXECUTION_PIPELINE.md").write_text("# Task Execution Pipeline\n")
     (repo_dir / "dev/FEATURE_PLANS.md").write_text("# Feature Plans\n")
     
     # Initialize git

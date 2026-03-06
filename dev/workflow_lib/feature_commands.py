@@ -29,24 +29,20 @@ from .sync_delta import load_sync_delta, resolve_sync_delta_references
 from .tracker_store import (
     load_issue_dependency_index_payload,
     load_issue_overlaps_payload,
-    load_pipeline_payload,
     load_task_list_payload,
     write_issue_dependency_index_payload,
     write_issue_overlaps_payload,
-    write_pipeline_payload,
     write_task_list_payload,
 )
 from .tracker_json_contracts import (
     build_issue_dependency_index_contract_payload,
     build_issue_overlaps_contract_payload,
-    build_pipeline_contract_payload,
     build_task_list_contract_payload,
     validate_issue_dependency_index_contract_payload,
     validate_issue_overlaps_contract_payload,
-    validate_pipeline_contract_payload,
     validate_task_list_contract_payload,
 )
-from .tracking_writers import apply_pipeline_delta, apply_task_list_delta
+from .tracking_writers import apply_task_list_delta
 
 
 FEATURE_ID_PATTERN = re.compile(r"^F(?P<feature_num>\d+)-M(?P<milestone_num>\d+)$")
@@ -128,12 +124,7 @@ def register_feature_router(subparsers: argparse._SubParsersAction[argparse.Argu
         action="store_true",
         help="Filter to pending tasks only.",
     )
-    execution_plan_parser.add_argument(
-        "--from-pipeline",
-        action="store_true",
-        help="Apply pipeline ordering before issue-local order.",
-    )
-    execution_plan_parser.set_defaults(only_pending=True, from_pipeline=True)
+    execution_plan_parser.set_defaults(only_pending=True)
     execution_plan_parser.set_defaults(handler=_handle_feature_execution_plan)
 
 
@@ -391,11 +382,6 @@ def register_plan_router(subparsers: argparse._SubParsersAction[argparse.Argumen
         action="store_true",
         help="Allocate numeric IDs from DEV_MAP task_count for token IDs ($token).",
     )
-    feature_parser.add_argument(
-        "--update-pipeline",
-        action="store_true",
-        help="Apply pipeline section updates from the delta payload.",
-    )
     feature_parser.set_defaults(handler=_handle_plan_tasks_for_feature)
 
     issue_parser = for_subparsers.add_parser(
@@ -413,11 +399,6 @@ def register_plan_router(subparsers: argparse._SubParsersAction[argparse.Argumen
         "--allocate-task-ids",
         action="store_true",
         help="Allocate numeric IDs from DEV_MAP task_count for token IDs ($token).",
-    )
-    issue_parser.add_argument(
-        "--update-pipeline",
-        action="store_true",
-        help="Apply pipeline section updates from the delta payload.",
     )
     issue_parser.set_defaults(handler=_handle_plan_tasks_for_issue)
 
@@ -441,11 +422,6 @@ def register_plan_router(subparsers: argparse._SubParsersAction[argparse.Argumen
         "--allocate-task-ids",
         action="store_true",
         help="Allocate numeric IDs from DEV_MAP task_count for token IDs ($token).",
-    )
-    issues_parser.add_argument(
-        "--update-pipeline",
-        action="store_true",
-        help="Apply pipeline section updates from the delta payload.",
     )
     issues_parser.set_defaults(handler=_handle_plan_tasks_for_issues)
 
@@ -1099,23 +1075,11 @@ def _handle_plan_apply_overlaps(args: Namespace, context: WorkflowContext) -> in
 
 
 def _handle_plan_migrate_overlaps(args: Namespace, context: WorkflowContext) -> int:
-    """Clear legacy pipeline overlap rows once ISSUE_OVERLAPS becomes canonical."""
-    pipeline_payload = load_pipeline_payload(context)
-    legacy_overlaps = pipeline_payload.get("overlaps", [])
-    if not isinstance(legacy_overlaps, list):
-        raise WorkflowCommandError("TASK_EXECUTION_PIPELINE overlaps must be a list when provided.", exit_code=4)
-    result = {
-        "command": "plan.migrate-overlaps",
-        "legacy_pipeline_overlap_count": len(legacy_overlaps),
-        "write": bool(args.write),
-        "action": "would-clear-legacy-pipeline-overlaps",
-    }
-    if bool(args.write):
-        pipeline_payload["overlaps"] = []
-        write_pipeline_payload(context, pipeline_payload)
-        result["action"] = "cleared-legacy-pipeline-overlaps"
-    emit_json(result)
-    return 0
+    """Reject retired migration command once pipeline runtime has been removed."""
+    raise WorkflowCommandError(
+        "plan migrate-overlaps is retired because TASK_EXECUTION_PIPELINE is no longer a runtime artifact.",
+        exit_code=4,
+    )
 
 
 def _handle_plan_tasks_for_feature(args: Namespace, context: WorkflowContext) -> int:
@@ -1260,26 +1224,12 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         payload=task_list_contract_payload,
         location="plan.tasks.for.task_list_contract",
     )
-    pipeline_delta_payload = dict(resolved_delta.get("pipeline", {}))
-    pipeline_delta_payload["overlaps_append"] = []
-    pipeline_contract_payload = build_pipeline_contract_payload(pipeline_delta_payload)
-    validate_pipeline_contract_payload(
-        payload=pipeline_contract_payload,
-        location="plan.tasks.for.pipeline_contract",
-    )
 
     task_list_payload = load_task_list_payload(context)
     updated_task_list_payload, task_list_count = apply_task_list_delta(
         task_list_payload=task_list_payload,
         entries=resolved_delta.get("task_list_entries", []),
         expected_marker=expected_marker,
-    )
-
-    pipeline_payload = load_pipeline_payload(context)
-    updated_pipeline_payload, pipeline_counts = apply_pipeline_delta(
-        pipeline_payload=pipeline_payload,
-        delta_payload=pipeline_delta_payload,
-        update_pipeline=bool(args.update_pipeline),
     )
 
     task_count_before = int(dev_map.get("task_count", 0))
@@ -1289,7 +1239,6 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         _touch_updated_at(dev_map)
         _write_json(context.dev_map_path, dev_map)
         write_task_list_payload(context, updated_task_list_payload)
-        write_pipeline_payload(context, updated_pipeline_payload)
 
     emit_json(
         {
@@ -1307,13 +1256,9 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
             "issue_execution_order_sync": issue_execution_order_sync,
             "issue_description_backfill": issue_description_backfill,
             "issue_planning_status_reconciliation": issue_planning_status_reconciliation,
-            "pipeline_blocks_added": pipeline_counts["blocks_added"],
-            "pipeline_execution_rows_added": pipeline_counts["sequence_rows_added"],
-            "pipeline_overlaps_added": pipeline_counts["overlaps_added"],
             "task_count_after": allocation["task_count_after"] if bool(args.write) else task_count_before,
             "task_count_before": task_count_before,
             "task_list_entries_added": task_list_count,
-            "update_pipeline": bool(args.update_pipeline),
             "write": bool(args.write),
         }
     )
@@ -1749,10 +1694,6 @@ def _handle_feature_execution_plan(args: Namespace, context: WorkflowContext) ->
     feature_node = feature_ref["feature"]
     feature_status = str(feature_node.get("status", ""))
 
-    ordered_tasks = _collect_feature_tasks(feature_node, only_pending=bool(args.only_pending))
-    if bool(args.from_pipeline):
-        pipeline_order = _parse_pipeline_execution_order(load_pipeline_payload(context))
-        ordered_tasks = _apply_pipeline_order(ordered_tasks, pipeline_order)
     section_text = _extract_feature_plan_section(context.feature_plans_path, feature_id)
     issue_order_state = _resolve_issue_execution_order_state(
         section_text=section_text,
@@ -1760,13 +1701,14 @@ def _handle_feature_execution_plan(args: Namespace, context: WorkflowContext) ->
         feature_node=feature_node,
         require_issue_order_for_active=False,
     )
+    ordered_tasks = _collect_feature_tasks(feature_node, only_pending=bool(args.only_pending))
+    ordered_tasks = _apply_issue_execution_order(ordered_tasks, issue_order_state["rows"])
 
     emit_json(
         {
             "command": "feature.execution-plan",
             "feature_id": feature_id,
             "feature_status": feature_status,
-            "from_pipeline": bool(args.from_pipeline),
             "issue_execution_order": issue_order_state["rows"],
             "next_issue_from_plan_order": issue_order_state["next_issue"],
             "only_pending": bool(args.only_pending),
@@ -4148,37 +4090,20 @@ def _collect_feature_tasks(feature_node: dict[str, Any], only_pending: bool) -> 
     return collected
 
 
-def _parse_pipeline_execution_order(pipeline_payload: dict[str, Any]) -> list[str]:
-    """Parse task IDs from pipeline execution sequence payload."""
-    execution_sequence = pipeline_payload.get("execution_sequence", [])
-    if not isinstance(execution_sequence, list):
-        return []
-    ordered_ids: list[str] = []
-    seen: set[str] = set()
-    for item in execution_sequence:
-        if not isinstance(item, dict):
-            continue
-        for token in item.get("tasks", []):
-            candidate = str(token).strip()
-            if TASK_ID_PATTERN.fullmatch(candidate) is None:
-                continue
-            if candidate in seen:
-                continue
-            ordered_ids.append(candidate)
-            seen.add(candidate)
-    return ordered_ids
-
-
-def _apply_pipeline_order(tasks: list[dict[str, str]], pipeline_order: list[str]) -> list[dict[str, str]]:
-    """Sort tasks by pipeline sequence, then by original issue/task order."""
-    order_index = {task_id: index for index, task_id in enumerate(pipeline_order)}
-    decorated: list[tuple[int, int, int, dict[str, str]]] = []
-    fallback_start = len(order_index) + 1
+def _apply_issue_execution_order(
+    tasks: list[dict[str, str]],
+    ordered_issue_rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Sort tasks by feature plan Issue Execution Order, then keep original task order inside each issue."""
+    issue_order_index = {
+        str(row.get("id", "")).strip(): index
+        for index, row in enumerate(ordered_issue_rows)
+        if str(row.get("id", "")).strip()
+    }
+    fallback_start = len(issue_order_index) + 1
+    decorated: list[tuple[int, int, dict[str, str]]] = []
     for original_index, task in enumerate(tasks):
-        task_id = task.get("id", "")
-        if task_id in order_index:
-            decorated.append((0, order_index[task_id], original_index, task))
-        else:
-            decorated.append((1, fallback_start + original_index, original_index, task))
-    decorated.sort(key=lambda item: (item[0], item[1], item[2]))
-    return [item[3] for item in decorated]
+        issue_id = str(task.get("issue_id", "")).strip()
+        decorated.append((issue_order_index.get(issue_id, fallback_start + original_index), original_index, task))
+    decorated.sort(key=lambda item: (item[0], item[1]))
+    return [item[2] for item in decorated]

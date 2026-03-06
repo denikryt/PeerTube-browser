@@ -1,7 +1,7 @@
 description: Generate or update a feature plan in FEATURE_PLANS.md for a given <feature_id>
 ---
 > [!NOTE]
-> This is a **planning-only** command. It does NOT write to or modify `dev/TASK_EXECUTION_PIPELINE.json`.
+> This is a **planning-only** command. It does NOT write to runtime trackers such as `dev/TASK_LIST.json`, `dev/ISSUE_OVERLAPS.json`, or `dev/ISSUE_DEP_INDEX.json`.
 > 
 > This command focuses on **feature-level planning**: reads the feature from DEV_MAP, identifies related issues, and creates plans for each.
 > - **If feature has existing issues**: plan each issue individually → eventually use `plan issue <issue_id>` for deeper planning

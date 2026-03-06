@@ -1,4 +1,4 @@
-"""Provide JSON tracker writer helpers for task list and execution pipeline."""
+"""Provide JSON tracker writer helpers for task list payloads."""
 
 from __future__ import annotations
 
@@ -46,85 +46,6 @@ def apply_task_list_delta(
         tasks.extend(appended_entries)
     task_list_payload["schema_version"] = str(task_list_payload.get("schema_version", "")).strip() or "1.0"
     return task_list_payload, len(appended_entries)
-
-
-def apply_pipeline_delta(
-    pipeline_payload: dict[str, Any],
-    delta_payload: dict[str, Any],
-    update_pipeline: bool,
-) -> tuple[dict[str, Any], dict[str, int]]:
-    """Append execution and block records to pipeline JSON payload."""
-    if not delta_payload:
-        return pipeline_payload, {"blocks_added": 0, "overlaps_added": 0, "sequence_rows_added": 0}
-    if not update_pipeline:
-        raise WorkflowCommandError(
-            "Delta contains pipeline payload but --update-pipeline was not provided.",
-            exit_code=4,
-        )
-
-    execution_items = delta_payload.get("execution_sequence_append", [])
-    block_items = delta_payload.get("functional_blocks_append", [])
-    overlap_items = delta_payload.get("overlaps_append", [])
-    if not isinstance(execution_items, list):
-        raise WorkflowCommandError("pipeline.execution_sequence_append must be a list.", exit_code=4)
-    if not isinstance(block_items, list):
-        raise WorkflowCommandError("pipeline.functional_blocks_append must be a list.", exit_code=4)
-    if not isinstance(overlap_items, list):
-        raise WorkflowCommandError("pipeline.overlaps_append must be a list.", exit_code=4)
-
-    execution_sequence = pipeline_payload.setdefault("execution_sequence", [])
-    functional_blocks = pipeline_payload.setdefault("functional_blocks", [])
-    if not isinstance(execution_sequence, list):
-        raise WorkflowCommandError("Pipeline payload execution_sequence must be a list.", exit_code=4)
-    if not isinstance(functional_blocks, list):
-        raise WorkflowCommandError("Pipeline payload functional_blocks must be a list.", exit_code=4)
-
-    appended_execution: list[dict[str, Any]] = []
-    for item_index, item in enumerate(execution_items):
-        if not isinstance(item, dict):
-            raise WorkflowCommandError(
-                f"pipeline.execution_sequence_append[{item_index}] must be an object.",
-                exit_code=4,
-            )
-        tasks = _required_list_field(item, "tasks", f"pipeline.execution_sequence_append[{item_index}]")
-        description = str(item.get("description", "")).strip()
-        normalized_item: dict[str, Any] = {"tasks": tasks}
-        if description:
-            normalized_item["description"] = description
-        appended_execution.append(normalized_item)
-    execution_sequence.extend(appended_execution)
-
-    appended_blocks: list[dict[str, Any]] = []
-    for block_index, block in enumerate(block_items):
-        if not isinstance(block, dict):
-            raise WorkflowCommandError(
-                f"pipeline.functional_blocks_append[{block_index}] must be an object.",
-                exit_code=4,
-            )
-        appended_blocks.append(
-            {
-                "title": _required_string_field(block, "title", f"pipeline.functional_blocks_append[{block_index}]"),
-                "tasks": _required_list_field(block, "tasks", f"pipeline.functional_blocks_append[{block_index}]"),
-                "scope": _required_string_field(block, "scope", f"pipeline.functional_blocks_append[{block_index}]"),
-                "outcome": _required_string_field(
-                    block,
-                    "outcome",
-                    f"pipeline.functional_blocks_append[{block_index}]",
-                ),
-            }
-        )
-    functional_blocks.extend(appended_blocks)
-
-    pipeline_payload["schema_version"] = str(pipeline_payload.get("schema_version", "")).strip() or "1.0"
-    return (
-        pipeline_payload,
-        {
-            "blocks_added": len(appended_blocks),
-            "overlaps_added": 0,
-            "sequence_rows_added": len(appended_execution),
-        },
-    )
-
 
 def _normalize_task_list_entry(task_id: str, marker: str, entry: dict[str, Any], entry_index: int) -> dict[str, Any]:
     """Normalize one task-list entry into canonical JSON structure."""

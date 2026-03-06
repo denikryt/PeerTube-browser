@@ -48,36 +48,6 @@ def write_task_list_payload(context: WorkflowContext, payload: dict[str, Any]) -
     """Persist task-list payload to canonical JSON path."""
     _write_json_file(context.task_list_path, payload)
 
-
-def load_pipeline_payload(context: WorkflowContext) -> dict[str, Any]:
-    """Load pipeline payload from JSON file or fallback Markdown source."""
-    if context.pipeline_path.exists():
-        payload = _load_json_file(context.pipeline_path)
-        if not isinstance(payload.get("execution_sequence"), list):
-            raise WorkflowCommandError("TASK_EXECUTION_PIPELINE.json must contain execution_sequence list.", exit_code=4)
-        if not isinstance(payload.get("functional_blocks"), list):
-            raise WorkflowCommandError("TASK_EXECUTION_PIPELINE.json must contain functional_blocks list.", exit_code=4)
-        overlaps = payload.get("overlaps", [])
-        if not isinstance(overlaps, list):
-            raise WorkflowCommandError("TASK_EXECUTION_PIPELINE.json overlaps must be a list when provided.", exit_code=4)
-        payload["overlaps"] = overlaps
-        return payload
-    if context.legacy_pipeline_path.exists():
-        markdown_text = context.legacy_pipeline_path.read_text(encoding="utf-8")
-        return parse_pipeline_markdown(markdown_text)
-    return {
-        "schema_version": "1.0",
-        "execution_sequence": [],
-        "functional_blocks": [],
-        "overlaps": [],
-    }
-
-
-def write_pipeline_payload(context: WorkflowContext, payload: dict[str, Any]) -> None:
-    """Persist pipeline payload to canonical JSON path."""
-    _write_pipeline_json_file(context.pipeline_path, payload)
-
-
 def load_issue_overlaps_payload(context: WorkflowContext) -> dict[str, Any]:
     """Load dedicated issue-overlaps payload or return an empty canonical structure."""
     if context.issue_overlaps_path.exists():
@@ -149,90 +119,6 @@ def parse_task_list_markdown(task_list_text: str) -> dict[str, Any]:
         )
 
     return {"schema_version": "1.0", "tasks": tasks}
-
-
-def parse_pipeline_markdown(pipeline_text: str) -> dict[str, Any]:
-    """Parse legacy pipeline markdown into canonical JSON payload shape."""
-    lines = pipeline_text.splitlines()
-    sequence_bounds = _find_section_bounds(lines, "### Execution sequence")
-    blocks_bounds = _find_section_bounds(lines, "### Functional blocks")
-    overlaps_bounds = _find_section_bounds(lines, "### Cross-task overlaps and dependencies")
-
-    execution_sequence: list[dict[str, Any]] = []
-    if sequence_bounds is not None:
-        start, end = sequence_bounds
-        for line in lines[start + 1 : end]:
-            match = EXECUTION_LINE_PATTERN.match(line.strip())
-            if match is None:
-                continue
-            body = match.group("body")
-            task_ids = _extract_task_ids_from_text(body)
-            if not task_ids:
-                continue
-            description_match = re.search(r"\((?P<description>[^()]+)\)\s*$", body)
-            item: dict[str, Any] = {"tasks": task_ids}
-            if description_match is not None:
-                item["description"] = description_match.group("description").strip()
-            execution_sequence.append(item)
-
-    functional_blocks: list[dict[str, Any]] = []
-    if blocks_bounds is not None:
-        start, end = blocks_bounds
-        index = start + 1
-        while index < end:
-            title_match = BLOCK_TITLE_PATTERN.match(lines[index].strip())
-            if title_match is None:
-                index += 1
-                continue
-            title = title_match.group("title").strip()
-            tasks: list[str] = []
-            scope = ""
-            outcome = ""
-            index += 1
-            while index < end and BLOCK_TITLE_PATTERN.match(lines[index].strip()) is None:
-                raw_line = lines[index].strip()
-                if raw_line.startswith("- Tasks:"):
-                    tokens = BOLD_TOKEN_PATTERN.findall(raw_line)
-                    if tokens:
-                        tasks = [token.strip() for token in tokens[0].split("->") if token.strip()]
-                elif raw_line.startswith("- Scope:"):
-                    scope = raw_line.split(":", 1)[1].strip()
-                elif raw_line.startswith("- Outcome:"):
-                    outcome = raw_line.split(":", 1)[1].strip()
-                index += 1
-            if title and tasks:
-                functional_blocks.append(
-                    {
-                        "title": title,
-                        "tasks": tasks,
-                        "scope": scope or "Legacy pipeline block scope.",
-                        "outcome": outcome or "Legacy pipeline block outcome.",
-                    }
-                )
-
-    overlaps: list[dict[str, Any]] = []
-    if overlaps_bounds is not None:
-        start, end = overlaps_bounds
-        for line in lines[start + 1 : end]:
-            match = OVERLAP_LINE_PATTERN.match(line.strip())
-            if match is None:
-                continue
-            overlaps.append(
-                {
-                    "tasks": [match.group("left").strip(), match.group("right").strip()],
-                    "description": match.group("description").strip(),
-                }
-            )
-
-    payload = {
-        "schema_version": "1.0",
-        "execution_sequence": execution_sequence,
-        "functional_blocks": functional_blocks,
-    }
-    if overlaps:
-        payload["overlaps"] = overlaps
-    return payload
-
 
 def _extract_prefixed_line(lines: list[str], prefix: str) -> str:
     """Extract one line suffix by markdown prefix."""
@@ -347,39 +233,3 @@ def _load_json_file(path: Any) -> dict[str, Any]:
 def _write_json_file(path: Any, payload: dict[str, Any]) -> None:
     """Persist one JSON file with stable formatting."""
     path.write_text(f"{json.dumps(payload, indent=2, ensure_ascii=False)}\n", encoding="utf-8")
-
-
-def _write_pipeline_json_file(path: Any, payload: dict[str, Any]) -> None:
-    """Persist pipeline JSON with single-line task arrays for readability."""
-    formatted = json.dumps(payload, indent=2, ensure_ascii=False)
-    path.write_text(f"{_inline_tasks_arrays(formatted)}\n", encoding="utf-8")
-
-
-def _inline_tasks_arrays(formatted_json: str) -> str:
-    """Collapse every JSON `tasks` array block into one line."""
-    lines = formatted_json.splitlines()
-    rendered: list[str] = []
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        if line.strip() != '"tasks": [':
-            rendered.append(line)
-            index += 1
-            continue
-
-        indent = line[: len(line) - len(line.lstrip())]
-        values: list[str] = []
-        index += 1
-        while index < len(lines):
-            current = lines[index]
-            stripped = current.strip()
-            if stripped.startswith("]"):
-                trailing = "," if stripped.endswith(",") else ""
-                rendered.append(f'{indent}"tasks": [{", ".join(values)}]{trailing}')
-                index += 1
-                break
-            item = stripped[:-1].strip() if stripped.endswith(",") else stripped
-            if item:
-                values.append(item)
-            index += 1
-    return "\n".join(rendered)

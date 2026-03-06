@@ -20,5 +20,5 @@ description: Persist local Issue -> Task decomposition across trackers
 // turbo
 8. Run: `python3 dev/workflow plan tasks --feature-id <feature_id>` OR `python3 dev/workflow plan tasks --issue-id <issue_id> ...`
 
-9. Review the synced tasks in `dev/TASK_LIST.json` and `dev/TASK_EXECUTION_PIPELINE.json` to ensure `concrete_steps`, markers, and task-order rows reflect the actual code-informed decomposition.
+9. Review the synced tasks in `dev/TASK_LIST.json` and `dev/map/DEV_MAP.json` to ensure `concrete_steps`, markers, and issue/task ownership reflect the actual code-informed decomposition.
 10. Stop and use `notify_user` with `BlockedOnUser=true` to await explicitly synced local decomposition review.

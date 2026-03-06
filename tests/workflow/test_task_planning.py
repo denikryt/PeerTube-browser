@@ -62,12 +62,7 @@ def test_plan_tasks_success_chain(workflow, tmp_repo):
                 "solution_option": "Execute flow.",
                 "concrete_steps": ["Run command."]
             }
-        ],
-        "pipeline": {
-            "execution_sequence_append": [{"tasks": ["$t1"], "description": "smoke-chain"}],
-            "functional_blocks_append": [{"title": "Smoke block", "tasks": ["$t1"], "scope": "Smoke flow.", "outcome": "Success."}],
-            "overlaps_append": []
-        }
+        ]
     }
     delta_path = tmp_repo / "dev/sync_delta.json"
     delta_path.write_text(json.dumps(delta, indent=2), encoding="utf-8")
@@ -117,7 +112,6 @@ def test_plan_tasks_success_chain(workflow, tmp_repo):
         "--delta-file",
         str(empty_delta_path),
         "--write",
-        "--update-pipeline",
     )
     assert "I1-F9-M1" in res["issue_planning_status_reconciliation"]["reconciled_issue_ids"]
 
@@ -126,7 +120,7 @@ def test_plan_tasks_success_chain(workflow, tmp_repo):
     assert updated_map["milestones"][0]["features"][0]["issues"][0]["status"] == "Planned"
 
     # 5. Run full 'plan tasks' and verify 'Tasked'
-    res = workflow.run("plan", "tasks", "for", "feature", "--id", "F9-M1", "--delta-file", str(delta_path), "--write", "--allocate-task-ids", "--update-pipeline")
+    res = workflow.run("plan", "tasks", "for", "feature", "--id", "F9-M1", "--delta-file", str(delta_path), "--write", "--allocate-task-ids")
     assert res["action"] == "planned-tasks"
     assert res["task_count_after"] == 1
     
@@ -191,17 +185,12 @@ def test_batch_issue_planning(workflow, tmp_repo):
         "task_list_entries": [
             {"id": "$t1", "title": "T1", "problem": "P", "solution_option": "S", "concrete_steps": ["C"]},
             {"id": "$t2", "title": "T2", "problem": "P", "solution_option": "S", "concrete_steps": ["C"]}
-        ],
-        "pipeline": {
-            "execution_sequence_append": [{"tasks": ["$t1", "$t2"], "description": "batch"}],
-            "functional_blocks_append": [{"title": "B", "tasks": ["$t1", "$t2"], "scope": "S", "outcome": "O"}],
-            "overlaps_append": []
-        }
+        ]
     }
     delta_path = tmp_repo / "dev/batch_delta.json"
     delta_path.write_text(json.dumps(delta), encoding="utf-8")
     
-    res = workflow.run("plan", "tasks", "for", "issues", "--issue-id", "I1-F1-M1", "--issue-id", "I2-F1-M1", "--delta-file", str(delta_path), "--write", "--allocate-task-ids", "--update-pipeline")
+    res = workflow.run("plan", "tasks", "for", "issues", "--issue-id", "I1-F1-M1", "--issue-id", "I2-F1-M1", "--delta-file", str(delta_path), "--write", "--allocate-task-ids")
     assert res["dev_map_tasks_upserted"] == 2
     
     updated_map = json.loads((tmp_repo / "dev/map/DEV_MAP.json").read_text())

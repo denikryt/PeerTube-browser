@@ -24,11 +24,9 @@ from .output import emit_json
 from .tracker_store import (
     load_issue_dependency_index_payload,
     load_issue_overlaps_payload,
-    load_pipeline_payload,
     load_task_list_payload,
     write_issue_dependency_index_payload,
     write_issue_overlaps_payload,
-    write_pipeline_payload,
     write_task_list_payload,
 )
 
@@ -644,11 +642,6 @@ def _build_confirm_issue_post_check(
         "feature_plan_issue_order_row_absent": not bool(feature_plan_probe.get("issue_order_row_would_be_removed", False)),
         "issue_found": issue_ref is not None,
         "issue_status_done": issue_status_done,
-        "pipeline_refs_absent": (
-            int(task_cleanup_probe["pipeline"]["execution_rows_removed"]) == 0
-            and int(task_cleanup_probe["pipeline"]["blocks_removed"]) == 0
-            and int(task_cleanup_probe["pipeline"]["overlap_rows_removed"]) == 0
-        ),
         "task_list_entries_absent": int(task_cleanup_probe["task_list_entries_removed"]) == 0,
     }
 
@@ -860,11 +853,9 @@ def _compute_tracker_cleanup_preview(
     issue_ids_to_remove: set[str] | None = None,
     feature_ids_to_remove: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Compute cleanup counts for task-list and pipeline payloads without writes."""
+    """Compute cleanup counts for active tracker payloads without pipeline artifacts."""
     task_list_payload = load_task_list_payload(context)
     _, removed_task_entries = _remove_task_entries_from_task_list(task_list_payload, task_ids_to_remove)
-    pipeline_payload = load_pipeline_payload(context)
-    _, pipeline_cleanup = _cleanup_pipeline_for_completed_tasks(pipeline_payload, task_ids_to_remove)
     issue_overlaps_payload = load_issue_overlaps_payload(context)
     _, issue_overlap_cleanup = _cleanup_issue_overlaps_payload(
         issue_overlaps_payload,
@@ -879,7 +870,6 @@ def _compute_tracker_cleanup_preview(
     return {
         "issue_dependency_index": dep_index_cleanup,
         "issue_overlaps": issue_overlap_cleanup,
-        "pipeline": pipeline_cleanup,
         "task_list_entries_removed": len(removed_task_entries),
     }
 
@@ -892,11 +882,9 @@ def _apply_tracker_cleanup(
     issue_ids_to_remove: set[str] | None = None,
     feature_ids_to_remove: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Apply DEV_MAP/task-list/pipeline completion cleanup in one write run."""
+    """Apply DEV_MAP/task-list/overlap/index completion cleanup in one write run."""
     task_list_payload = load_task_list_payload(context)
     updated_task_list, removed_task_entries = _remove_task_entries_from_task_list(task_list_payload, task_ids_to_remove)
-    pipeline_payload = load_pipeline_payload(context)
-    updated_pipeline, pipeline_cleanup = _cleanup_pipeline_for_completed_tasks(pipeline_payload, task_ids_to_remove)
     issue_overlaps_payload = load_issue_overlaps_payload(context)
     updated_issue_overlaps, issue_overlap_cleanup = _cleanup_issue_overlaps_payload(
         issue_overlaps_payload,
@@ -911,13 +899,11 @@ def _apply_tracker_cleanup(
     _touch_updated_at(dev_map)
     _write_json(context.dev_map_path, dev_map)
     write_task_list_payload(context, updated_task_list)
-    write_pipeline_payload(context, updated_pipeline)
     write_issue_overlaps_payload(context, updated_issue_overlaps)
     write_issue_dependency_index_payload(context, updated_dep_index)
     return {
         "issue_dependency_index": dep_index_cleanup,
         "issue_overlaps": issue_overlap_cleanup,
-        "pipeline": pipeline_cleanup,
         "task_list_entries_removed": len(removed_task_entries),
     }
 
@@ -945,126 +931,6 @@ def _remove_task_entries_from_task_list(
     task_list_payload["tasks"] = kept_tasks
     task_list_payload["schema_version"] = str(task_list_payload.get("schema_version", "")).strip() or "1.0"
     return task_list_payload, removed_ids
-
-
-def _cleanup_pipeline_for_completed_tasks(
-    pipeline_payload: dict[str, Any],
-    task_ids_to_remove: set[str],
-) -> tuple[dict[str, Any], dict[str, int]]:
-    """Remove completed task references from pipeline sequence, blocks, and overlaps."""
-    if not task_ids_to_remove:
-        return (
-            pipeline_payload,
-            {
-                "blocks_removed": 0,
-                "execution_rows_removed": 0,
-                "overlap_rows_removed": 0,
-            },
-        )
-
-    execution_sequence = pipeline_payload.get("execution_sequence", [])
-    functional_blocks = pipeline_payload.get("functional_blocks", [])
-    overlaps = pipeline_payload.get("overlaps", [])
-    if not isinstance(execution_sequence, list):
-        raise WorkflowCommandError("Pipeline payload execution_sequence must be a list for cleanup.", exit_code=4)
-    if not isinstance(functional_blocks, list):
-        raise WorkflowCommandError("Pipeline payload functional_blocks must be a list for cleanup.", exit_code=4)
-    if not isinstance(overlaps, list):
-        raise WorkflowCommandError("Pipeline payload overlaps must be a list for cleanup.", exit_code=4)
-
-    cleaned_sequence, execution_rows_removed = _cleanup_sequence_items(execution_sequence, task_ids_to_remove)
-    cleaned_blocks, blocks_removed = _cleanup_functional_blocks(functional_blocks, task_ids_to_remove)
-    cleaned_overlaps, overlap_rows_removed = _cleanup_overlap_items(overlaps, task_ids_to_remove)
-
-    pipeline_payload["execution_sequence"] = cleaned_sequence
-    pipeline_payload["functional_blocks"] = cleaned_blocks
-    pipeline_payload["overlaps"] = cleaned_overlaps
-    pipeline_payload["schema_version"] = str(pipeline_payload.get("schema_version", "")).strip() or "1.0"
-    return (
-        pipeline_payload,
-        {
-            "blocks_removed": blocks_removed,
-            "execution_rows_removed": execution_rows_removed,
-            "overlap_rows_removed": overlap_rows_removed,
-        },
-    )
-
-
-def _cleanup_sequence_items(items: list[Any], task_ids_to_remove: set[str]) -> tuple[list[dict[str, Any]], int]:
-    """Remove completed task IDs from execution-sequence items."""
-    cleaned: list[dict[str, Any]] = []
-    removed_rows = 0
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        raw_tasks = item.get("tasks", [])
-        if not isinstance(raw_tasks, list):
-            continue
-        normalized_tasks = [str(task_id).strip() for task_id in raw_tasks if str(task_id).strip()]
-        remaining_task_ids = [task_id for task_id in normalized_tasks if task_id not in task_ids_to_remove]
-        if not remaining_task_ids:
-            removed_rows += 1
-            continue
-        cleaned_item: dict[str, Any] = {"tasks": remaining_task_ids}
-        description = str(item.get("description", "")).strip()
-        if description:
-            cleaned_item["description"] = description
-        cleaned.append(cleaned_item)
-    return cleaned, removed_rows
-
-
-def _cleanup_functional_blocks(blocks: list[Any], task_ids_to_remove: set[str]) -> tuple[list[dict[str, Any]], int]:
-    """Remove completed task IDs from functional blocks and drop empty blocks."""
-    cleaned: list[dict[str, Any]] = []
-    removed_blocks = 0
-    for block in blocks:
-        if not isinstance(block, dict):
-            continue
-        raw_tasks = block.get("tasks", [])
-        if not isinstance(raw_tasks, list):
-            continue
-        filtered_tokens = [
-            str(token).strip()
-            for token in raw_tasks
-            if str(token).strip() and str(token).strip() not in task_ids_to_remove
-        ]
-        if not filtered_tokens:
-            removed_blocks += 1
-            continue
-        cleaned.append(
-            {
-                "title": str(block.get("title", "")).strip(),
-                "tasks": filtered_tokens,
-                "scope": str(block.get("scope", "")).strip(),
-                "outcome": str(block.get("outcome", "")).strip(),
-            }
-        )
-    return cleaned, removed_blocks
-
-
-def _cleanup_overlap_items(items: list[Any], task_ids_to_remove: set[str]) -> tuple[list[dict[str, Any]], int]:
-    """Remove overlap rows that reference completed task IDs."""
-    cleaned: list[dict[str, Any]] = []
-    removed_rows = 0
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        raw_tasks = item.get("tasks", [])
-        if not isinstance(raw_tasks, list):
-            continue
-        overlap_tasks = [str(task_id).strip() for task_id in raw_tasks if str(task_id).strip()]
-        if any(task_id in task_ids_to_remove for task_id in overlap_tasks):
-            removed_rows += 1
-            continue
-        if len(overlap_tasks) != 2:
-            continue
-        cleaned.append(
-            {
-                "tasks": overlap_tasks,
-                "description": str(item.get("description", "")).strip(),
-            }
-        )
-    return cleaned, removed_rows
 
 
 def _cleanup_issue_overlaps_payload(

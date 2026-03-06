@@ -14,8 +14,8 @@ If any procedural detail differs across docs, the corresponding `.agents/workflo
 
 ## Section 0: Planning Prerequisites
 
-- `plan feature <id>` and `plan issue <issue_id>` are **Drafting** phases. They produce artifacts in `dev/FEATURE_PLANS.md` but do NOT modify the active pipeline or trackers.
-- `plan tasks for feature <id>` and `plan tasks for issue <issue_id>` are **Enforcement/Write** phases. They are the sole owners of active synchronization across `dev/TASK_LIST.json` and `dev/TASK_EXECUTION_PIPELINE.json`.
+- `plan feature <id>` and `plan issue <issue_id>` are **Drafting** phases. They produce artifacts in `dev/FEATURE_PLANS.md` but do NOT modify active runtime trackers.
+- `plan tasks for feature <id>` and `plan tasks for issue <issue_id>` are **Enforcement/Write** phases. They synchronize local task decomposition into `dev/TASK_LIST.json` and `dev/map/DEV_MAP.json`.
 - `plan tasks for issue <issue_id>` is allowed only after a valid issue-plan block exists in `dev/FEATURE_PLANS.md` that meets the quality requirements defined in this protocol.
 - A plan must define the implementation direction; task decomposition is a separate subsequent step.
 - Task decomposition is code-informed work: before authoring tasks or overlaps, the agent must read the current code, runtime handlers, schemas, workflows, and tests relevant to the issue scope.

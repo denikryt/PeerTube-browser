@@ -14,7 +14,7 @@ from typing import Any
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
 from .output import emit_json
-from .tracker_store import load_pipeline_payload, load_task_list_payload
+from .tracker_store import load_task_list_payload
 
 
 FEATURE_ID_PATTERN = re.compile(r"^F(?P<feature_num>\d+)-M(?P<milestone_num>\d+)$")
@@ -100,7 +100,7 @@ def _normalize_feature_filter(raw_feature: str | None) -> str | None:
 
 
 def _run_tracking_validation(context: WorkflowContext, feature_id: str | None) -> dict[str, list[str]]:
-    """Validate tracker consistency across DEV_MAP/TASK_LIST/PIPELINE."""
+    """Validate tracker consistency across DEV_MAP and TASK_LIST."""
     errors: list[str] = []
     warnings: list[str] = []
     dev_map = _load_json(context.dev_map_path)
@@ -145,34 +145,6 @@ def _run_tracking_validation(context: WorkflowContext, feature_id: str | None) -
 
     task_count_errors = _validate_task_count(dev_map, all_tasks)
     errors.extend(task_count_errors)
-
-    pipeline_payload = load_pipeline_payload(context)
-    pipeline_task_ids = _parse_pipeline_execution_task_ids(pipeline_payload)
-    unknown_pipeline_task_ids = sorted(task_id for task_id in pipeline_task_ids if task_id not in all_tasks)
-    for unknown_id in unknown_pipeline_task_ids:
-        warnings.append(f"Pipeline execution sequence references task id {unknown_id} that is outside current DEV_MAP.")
-
-    scoped_task_ids = set(scoped_tasks.keys())
-    if feature_id is not None:
-        missing_scoped_pending = sorted(
-            task_id
-            for task_id, ownership in scoped_tasks.items()
-            if ownership.status != "Done" and task_id not in pipeline_task_ids
-        )
-        for missing_task_id in missing_scoped_pending:
-            errors.append(f"Pending feature task {missing_task_id} is missing from pipeline execution sequence.")
-
-    done_in_pipeline = sorted(
-        task_id
-        for task_id in pipeline_task_ids
-        if task_id in all_tasks and all_tasks[task_id].status == "Done" and (feature_id is None or task_id in scoped_task_ids)
-    )
-    for done_task_id in done_in_pipeline:
-        errors.append(f"Pipeline execution sequence contains completed task {done_task_id}.")
-
-    missing_outcome_blocks = _find_functional_blocks_without_outcome(pipeline_payload)
-    for block_title in missing_outcome_blocks:
-        errors.append(f"Pipeline functional block '{block_title}' is missing an Outcome line.")
 
     return {"errors": errors, "warnings": warnings}
 
@@ -337,39 +309,3 @@ def _validate_task_count(dev_map: dict[str, Any], ownership: dict[str, DevMapTas
             errors.append(f"Task {task_id} exceeds task_count={task_count}.")
     return errors
 
-
-def _parse_pipeline_execution_task_ids(pipeline_payload: dict[str, Any]) -> list[str]:
-    """Parse task IDs from pipeline execution sequence payload."""
-    execution_items = pipeline_payload.get("execution_sequence", [])
-    if not isinstance(execution_items, list):
-        return []
-    ordered: list[str] = []
-    seen: set[str] = set()
-    for item in execution_items:
-        if not isinstance(item, dict):
-            continue
-        for raw_task_id in item.get("tasks", []):
-            task_id = str(raw_task_id).strip()
-            if TASK_ID_PATTERN.fullmatch(task_id) is None:
-                continue
-            if task_id in seen:
-                continue
-            seen.add(task_id)
-            ordered.append(task_id)
-    return ordered
-
-
-def _find_functional_blocks_without_outcome(pipeline_payload: dict[str, Any]) -> list[str]:
-    """Return functional block titles that do not define a non-empty outcome."""
-    blocks = pipeline_payload.get("functional_blocks", [])
-    if not isinstance(blocks, list):
-        return []
-    missing: list[str] = []
-    for block in blocks:
-        if not isinstance(block, dict):
-            continue
-        title = str(block.get("title", "")).strip() or "(untitled block)"
-        outcome = str(block.get("outcome", "")).strip()
-        if not outcome:
-            missing.append(title)
-    return missing

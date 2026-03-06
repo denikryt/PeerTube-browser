@@ -54,10 +54,6 @@ def _write_minimal_repo_state(tmp_repo):
     }
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
     (tmp_repo / "dev/TASK_LIST.json").write_text('{"schema_version":"1.0","tasks":[]}\n', encoding="utf-8")
-    (tmp_repo / "dev/TASK_EXECUTION_PIPELINE.json").write_text(
-        '{"schema_version":"1.0","execution_sequence":[],"functional_blocks":[],"overlaps":[]}\n',
-        encoding="utf-8",
-    )
     (tmp_repo / "dev/ISSUE_OVERLAPS.json").write_text(
         '{"schema_version":"1.0","overlaps":[]}\n',
         encoding="utf-8",
@@ -159,49 +155,19 @@ def test_apply_and_show_issue_overlaps(workflow, tmp_repo):
     assert show_result["overlaps"][0]["issues"] == ["I1-F14-M1", "I2-F14-M1"]
 
 
-def test_pipeline_schema_accepts_missing_overlap_field(workflow, tmp_repo):
-    """Pipeline reads must stay valid when overlaps are omitted after cutover."""
+def test_execution_plan_does_not_require_pipeline_file(workflow, tmp_repo):
+    """Execution planning must work without TASK_EXECUTION_PIPELINE after cutover."""
     _write_minimal_repo_state(tmp_repo)
-    pipeline_path = tmp_repo / "dev/TASK_EXECUTION_PIPELINE.json"
-    pipeline_path.write_text(
-        json.dumps(
-            {
-                "schema_version": "1.0",
-                "execution_sequence": [],
-                "functional_blocks": [],
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    result = workflow.run("feature", "execution-plan", "--id", "F14-M1", "--only-pending", "--from-pipeline")
+    result = workflow.run("feature", "execution-plan", "--id", "F14-M1", "--only-pending")
     assert result["feature_id"] == "F14-M1"
 
 
-def test_migrate_overlaps_clears_legacy_pipeline_rows(workflow, tmp_repo):
-    """Migration command should clear legacy task-level overlap rows from pipeline storage."""
+def test_migrate_overlaps_is_retired_after_pipeline_cutover(workflow, tmp_repo):
+    """Legacy pipeline migration command should fail deterministically after cutover."""
     _write_minimal_repo_state(tmp_repo)
-    pipeline_path = tmp_repo / "dev/TASK_EXECUTION_PIPELINE.json"
-    pipeline_path.write_text(
-        json.dumps(
-            {
-                "schema_version": "1.0",
-                "execution_sequence": [],
-                "functional_blocks": [],
-                "overlaps": [{"tasks": ["1", "2"], "description": "legacy overlap"}],
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    result = workflow.run("plan", "migrate-overlaps", "--write")
-    assert result["action"] == "cleared-legacy-pipeline-overlaps"
-    assert result["legacy_pipeline_overlap_count"] == 1
-
-    updated = json.loads(pipeline_path.read_text(encoding="utf-8"))
-    assert updated["overlaps"] == []
+    with pytest.raises(pytest.fail.Exception) as excinfo:
+        workflow.run("plan", "migrate-overlaps", "--write")
+    assert "retired" in str(excinfo.value)
 
 
 def test_confirm_issue_cleans_issue_overlaps_and_dependency_index(workflow, tmp_repo):
@@ -229,19 +195,6 @@ def test_confirm_issue_cleans_issue_overlaps_and_dependency_index(workflow, tmp_
                         "concrete_steps": ["Confirm issue and prune trackers."],
                     }
                 ],
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    (tmp_repo / "dev/TASK_EXECUTION_PIPELINE.json").write_text(
-        json.dumps(
-            {
-                "schema_version": "1.0",
-                "execution_sequence": [{"tasks": ["1"], "description": "single"}],
-                "functional_blocks": [{"title": "Block", "tasks": ["1"], "scope": "Scope", "outcome": "Outcome"}],
-                "overlaps": [],
             },
             indent=2,
         )
@@ -310,10 +263,6 @@ def test_confirm_issue_cleans_issue_overlaps_and_dependency_index(workflow, tmp_
 
     task_list = json.loads((tmp_repo / "dev/TASK_LIST.json").read_text(encoding="utf-8"))
     assert task_list["tasks"] == []
-
-    pipeline = json.loads((tmp_repo / "dev/TASK_EXECUTION_PIPELINE.json").read_text(encoding="utf-8"))
-    assert pipeline["execution_sequence"] == []
-    assert pipeline["functional_blocks"] == []
 
     issue_overlaps = json.loads((tmp_repo / "dev/ISSUE_OVERLAPS.json").read_text(encoding="utf-8"))
     assert issue_overlaps["overlaps"] == []

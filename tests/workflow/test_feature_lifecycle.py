@@ -61,10 +61,6 @@ def test_feature_create_accepts_markdown_input(workflow, tmp_repo):
     }
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
     (tmp_repo / "dev/TASK_LIST.json").write_text('{"schema_version":"1.0","tasks":[]}\n', encoding="utf-8")
-    (tmp_repo / "dev/TASK_EXECUTION_PIPELINE.json").write_text(
-        '{"schema_version":"1.0","execution_sequence":[],"functional_blocks":[],"overlaps":[]}\n',
-        encoding="utf-8",
-    )
 
     draft_path = tmp_repo / "tmp_feature_input.md"
     draft_path.write_text("# Draft feature title\nFeature description from markdown.\n", encoding="utf-8")
@@ -120,10 +116,6 @@ def test_feature_create_issue_accepts_markdown_input(workflow, tmp_repo):
     }
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
     (tmp_repo / "dev/TASK_LIST.json").write_text('{"schema_version":"1.0","tasks":[]}\n', encoding="utf-8")
-    (tmp_repo / "dev/TASK_EXECUTION_PIPELINE.json").write_text(
-        '{"schema_version":"1.0","execution_sequence":[],"functional_blocks":[],"overlaps":[]}\n',
-        encoding="utf-8",
-    )
 
     draft_path = tmp_repo / "tmp_issue_input.md"
     draft_path.write_text("# Draft issue title\nIssue description from markdown.\n", encoding="utf-8")
@@ -272,10 +264,6 @@ def test_feature_create_input_truncates_description_at_next_heading(workflow, tm
     }
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
     (tmp_repo / "dev/TASK_LIST.json").write_text('{"schema_version":"1.0","tasks":[]}\n', encoding="utf-8")
-    (tmp_repo / "dev/TASK_EXECUTION_PIPELINE.json").write_text(
-        '{"schema_version":"1.0","execution_sequence":[],"functional_blocks":[],"overlaps":[]}\n',
-        encoding="utf-8",
-    )
     draft_path = tmp_repo / "sectioned_input.md"
     draft_path.write_text(
         "### Title from heading\nFirst description block.\n\n# Extra heading\nIgnored section.\n",
@@ -319,10 +307,6 @@ def test_feature_create_input_empty_description_returns_warning(workflow, tmp_re
     }
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
     (tmp_repo / "dev/TASK_LIST.json").write_text('{"schema_version":"1.0","tasks":[]}\n', encoding="utf-8")
-    (tmp_repo / "dev/TASK_EXECUTION_PIPELINE.json").write_text(
-        '{"schema_version":"1.0","execution_sequence":[],"functional_blocks":[],"overlaps":[]}\n',
-        encoding="utf-8",
-    )
     draft_path = tmp_repo / "title_only.md"
     draft_path.write_text("# Title only\n", encoding="utf-8")
 

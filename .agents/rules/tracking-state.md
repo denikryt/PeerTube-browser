@@ -10,7 +10,7 @@ description: Task state management and tracking rules
 2. Do not move entries from `dev/TASK_LIST.json` to any completed/done list until explicit user confirmation is received.
 3. Keep implemented tasks in their current state (not completed) while awaiting user verification.
 4. Keep wording/style consistent with existing entries in tracking artifacts.
-5. Keep `dev/TASK_LIST.json`, `dev/TASK_EXECUTION_PIPELINE.json`, and `.agents/protocols/task-execution-protocol.md` consistent when adding/updating tasks.
+5. Keep `dev/TASK_LIST.json`, `dev/map/DEV_MAP.json`, and `.agents/protocols/task-execution-protocol.md` consistent when adding/updating tasks.
 6. `confirm issue <issue_id> done` must not cascade unfinished child tasks to `Done` without additional explicit user confirmation.
 7. `confirm feature <feature_id> done` is full-subtree confirmation for the feature and its mapped child issues/tasks.
 8. `confirm standalone-issue <si_id> done` is allowed only when all mapped child tasks are already confirmed done.
