@@ -2679,6 +2679,15 @@
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []
+            },
+            {
+              "id": "I13-F14-M1",
+              "title": "Fix scoped dependency-index reconcile for shared surfaces",
+              "description": "Make issue-scoped and feature-scoped dependency index refresh preserve shared-surface reverse lookups instead of dropping unrelated issue memberships from by_surface buckets.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F14-M1",

@@ -1366,6 +1366,7 @@ Issue-level overlaps-only planning workflow
 2. `I10-F14-M1` - Add Expected Behaviour block to planning contracts
 3. `I11-F14-M1` - Simplify ISSUE_DEP_INDEX format to minimal normalized lookup structure
 4. `I12-F14-M1` - Move issue execution order from FEATURE_PLANS into ISSUE_OVERLAPS
+5. `I13-F14-M1` - Fix scoped dependency-index reconcile for shared surfaces
 
 ### Dependencies
 - Depends on completion and stabilization of `F13-M1` context-command work because overlap-build workflow reuses issue/feature plan-block extraction and scoped planning surfaces.
@@ -1382,9 +1383,9 @@ Issue-level overlaps-only planning workflow
 6. Migrate all affected CLI and agent workflows (`plan-tasks`, `build-overlaps`, `confirm`, related read paths) to overlaps-only sources and explicitly remove overlap reads/writes via `TASK_EXECUTION_PIPELINE`.
 
 ### Issue/Task Decomposition Assessment
-- Feature scope now has four remaining active issues (`I9-F14-M1`, `I10-F14-M1`, `I11-F14-M1`, `I12-F14-M1`); previous issues are already complete and stay documented below only as historical plan records until feature-section cleanup, planning-contract updates, dependency-index simplification, and issue-order storage migration are finished.
-- Current active execution order is `I9 -> I10 -> I11 -> I12`.
-- Expected outcome: completed feature confirmation removes the obsolete feature section from `FEATURE_PLANS.md` deterministically, future planning contracts include an explicit expected-behaviour block that downstream workflows can use as runtime intent context, dependency-index storage stays minimal enough to review without repeated path noise, and issue execution sequencing moves fully into `ISSUE_OVERLAPS` instead of remaining duplicated in `FEATURE_PLANS`.
+- Feature scope now has five remaining active issues (`I9-F14-M1`, `I10-F14-M1`, `I11-F14-M1`, `I12-F14-M1`, `I13-F14-M1`); previous issues are already complete and stay documented below only as historical plan records until feature-section cleanup, planning-contract updates, dependency-index simplification, issue-order storage migration, and scoped index reconcile fixes are finished.
+- Current active execution order is `I9 -> I10 -> I11 -> I12 -> I13`.
+- Expected outcome: completed feature confirmation removes the obsolete feature section from `FEATURE_PLANS.md` deterministically, future planning contracts include an explicit expected-behaviour block that downstream workflows can use as runtime intent context, dependency-index storage stays minimal enough to review without repeated path noise, issue execution sequencing moves fully into `ISSUE_OVERLAPS` instead of remaining duplicated in `FEATURE_PLANS`, and scoped dependency-index refresh stays consistent for both issue and feature lookups.
 
 ### I7-F14-M1 - Enforce strict Dependencies format for planning parser compatibility
 
@@ -1852,3 +1853,37 @@ Issue-level overlaps-only planning workflow
   3. update build-overlaps to rebuild canonical issue order from dependency overlaps
   4. cut execution workflows over to the overlaps-owned issue order
   5. add migration and regression coverage
+
+### I13-F14-M1 - Fix scoped dependency-index reconcile for shared surfaces
+
+#### Dependencies
+- file: dev/ISSUE_DEP_INDEX.json | reason: bug manifests in reverse-lookup buckets losing unrelated issue memberships after scoped refresh
+- module: dev.workflow_lib.feature_commands | reason: `index-dependencies` and `show-related` handlers own the scoped refresh and issue-level related lookup behavior
+- module: dev.workflow_lib.tracker_store | reason: dependency-index load/write path must preserve a consistent canonical payload after scoped updates
+- module: dev.workflow_lib.tracker_json_contracts | reason: runtime contract must remain valid while reconcile semantics change under shared-surface buckets
+- file: .agents/workflows/build-overlaps.md | reason: overlap workflow relies on `show-related --issue-id` and currently misbehaves when scoped refresh corrupts reverse lookups
+- file: tests/workflow/test_overlap_commands.py | reason: regression coverage must lock issue-scoped and feature-scoped related lookups against the same indexed truth
+
+#### Decomposition
+1. Fix scoped `index-dependencies` reconcile behavior for `by_surface` buckets:
+   - when refreshing one issue or one feature scope, remove only the selected issue IDs from existing reverse-lookup buckets,
+   - keep unrelated issue memberships intact for shared surfaces,
+   - reinsert refreshed issue memberships into existing buckets instead of replacing whole buckets with scoped payload data.
+2. Align issue-scoped and feature-scoped related lookup semantics:
+   - `show-related --issue-id` and `show-related --feature-id` must report the same shared-surface reality for overlapping issues,
+   - reverse-lookup results must stay consistent immediately after `--issue-id` refresh, `--feature-id` refresh, and cleanup mode runs.
+3. Preserve deterministic index maintenance behavior:
+   - remove empty buckets only when no issues remain on that surface,
+   - keep `issue_ids` sorted after reconcile,
+   - keep `changed`, `surfaces_added`, `surfaces_updated`, and `surfaces_pruned` counters meaningful after partial updates.
+4. Add regression coverage for the bug pattern:
+   - issue-scoped refresh on a surface already used by other issues must preserve those other issue IDs in `by_surface`,
+   - `show-related --issue-id` must still find shared-surface peers after scoped refresh,
+   - feature-scoped and issue-scoped refresh must converge to equivalent index state for the same data.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3-4 tasks
+  1. fix `index-dependencies` reconcile semantics for shared-surface reverse buckets
+  2. align `show-related` issue-scope behavior with feature-scope truth
+  3. keep deterministic counters and cleanup behavior stable
+  4. add regression coverage for scoped refresh consistency
