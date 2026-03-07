@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-08T00:45:41+02:00",
-  "task_count": 281,
+  "updated_at": "2026-03-08T01:43:53+02:00",
+  "task_count": 290,
   "milestones": [
     {
       "id": "M1",
@@ -2675,19 +2675,93 @@
               "id": "I12-F14-M1",
               "title": "Move issue execution order from FEATURE_PLANS into ISSUE_OVERLAPS",
               "description": "Remove Issue Execution Order from FEATURE_PLANS entirely and make ISSUE_OVERLAPS own the global issue execution order that build-overlaps updates from overlap dependencies.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "282",
+                  "title": "Remove FEATURE_PLANS Issue Execution Order from planning contracts and lint",
+                  "summary": "Stop requiring or generating feature-level Issue Execution Order blocks in planning docs, plan lint, and plan scaffolds.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "01:43:53"
+                },
+                {
+                  "id": "283",
+                  "title": "Add canonical issue execution order block to ISSUE_OVERLAPS contract and storage",
+                  "summary": "Extend ISSUE_OVERLAPS schema, validators, and store helpers with a deterministic global issue-order payload.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "01:43:53"
+                },
+                {
+                  "id": "284",
+                  "title": "Make build-overlaps derive and persist global issue order from dependency overlaps",
+                  "summary": "Teach overlap build/apply flow to rebuild issue sequencing from dependency overlap edges and reject ambiguous order.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "01:43:53"
+                },
+                {
+                  "id": "285",
+                  "title": "Cut execute-feature and execute-issues over to overlaps-backed issue order",
+                  "summary": "Remove execution-order reads from FEATURE_PLANS and resolve feature or package issue order from ISSUE_OVERLAPS instead.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "01:43:53"
+                },
+                {
+                  "id": "286",
+                  "title": "Add migration and regression coverage for overlaps-owned issue sequencing",
+                  "summary": "Cover legacy FEATURE_PLANS order cleanup, overlaps schema validation, execution order derivation, and cycle failures.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "01:43:53"
+                }
+              ]
             },
             {
               "id": "I13-F14-M1",
               "title": "Fix scoped dependency-index reconcile for shared surfaces",
               "description": "Make issue-scoped and feature-scoped dependency index refresh preserve shared-surface reverse lookups instead of dropping unrelated issue memberships from by_surface buckets.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "287",
+                  "title": "Fix scoped dep-index reconcile so by_surface preserves unrelated issue memberships",
+                  "summary": "Update scoped index refresh to remove and reinsert only selected issue IDs instead of replacing shared-surface buckets wholesale.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "01:43:53"
+                },
+                {
+                  "id": "288",
+                  "title": "Align issue-scoped related lookup with feature-scoped shared-surface truth",
+                  "summary": "Make show-related issue scope read the reconciled reverse index consistently after issue and feature refresh paths.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "01:43:53"
+                },
+                {
+                  "id": "289",
+                  "title": "Stabilize dep-index counters and cleanup semantics after partial refresh",
+                  "summary": "Keep pruning, ordering, and change counters deterministic while scoped reconcile stops corrupting shared buckets.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "01:43:53"
+                },
+                {
+                  "id": "290",
+                  "title": "Add regression coverage for shared-surface scoped dep-index refresh",
+                  "summary": "Lock the bug pattern with tests for issue refresh, feature refresh, and show-related consistency over shared surfaces.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "01:43:53"
+                }
+              ]
             }
           ],
           "branch_name": "feature/F14-M1",

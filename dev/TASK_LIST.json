@@ -1427,6 +1427,114 @@
         "Add assertions for duplicate-surface collapse within one issue and stable ordering of surface_keys and by_surface issue arrays.",
         "Cover both migration of old verbose payloads and deterministic failures for invalid hybrid payloads."
       ]
+    },
+    {
+      "id": "282",
+      "marker": "[M1][F14]",
+      "title": "Remove FEATURE_PLANS Issue Execution Order from planning contracts and lint",
+      "problem": "dev/FEATURE_PLANS.md and the current planning contract still treat ### Issue Execution Order as part of the feature plan structure, so issue sequencing remains split between feature plans and overlaps runtime.",
+      "solution_option": "Update planning protocols, workflows, and feature-plan lint/parsing in dev/workflow_lib/feature_commands.py so feature plans stay valid without Issue Execution Order and future planning flows stop creating that block.",
+      "concrete_steps": [
+        "Patch .agents/protocols/feature-planning-protocol.md, .agents/workflows/plan-feature.md, and any planning examples so feature plans no longer require or emit ### Issue Execution Order.",
+        "Update ISSUE_EXECUTION_ORDER_HEADING, required-section checks, and any feature-plan parsing/lint helpers in dev/workflow_lib/feature_commands.py that currently expect issue-order rows inside FEATURE_PLANS.",
+        "Adjust existing dev/FEATURE_PLANS.md feature sections or touched scaffolds so future edits do not reintroduce the legacy issue-order block."
+      ]
+    },
+    {
+      "id": "283",
+      "marker": "[M1][F14]",
+      "title": "Add canonical issue execution order block to ISSUE_OVERLAPS contract and storage",
+      "problem": "dev/ISSUE_OVERLAPS.json currently stores only pair overlaps, so there is no canonical runtime-owned place to persist the global issue execution order after removing it from FEATURE_PLANS.",
+      "solution_option": "Extend dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json, dev/workflow_lib/tracker_json_contracts.py, and dev/workflow_lib/tracker_store.py with a deterministic top-level issue-order block that runtime commands can load and validate.",
+      "concrete_steps": [
+        "Define the new issue-order shape in dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json, including ordered issue IDs and any minimal derivation metadata needed for validation or debugging.",
+        "Update build_issue_overlaps_contract_payload and validate_issue_overlaps_contract_payload in dev/workflow_lib/tracker_json_contracts.py so the overlaps payload enforces the new issue-order contract alongside pair overlaps.",
+        "Patch load_issue_overlaps_payload and write_issue_overlaps_payload in dev/workflow_lib/tracker_store.py so empty/default payloads and persisted files use the expanded overlaps schema deterministically."
+      ]
+    },
+    {
+      "id": "284",
+      "marker": "[M1][F14]",
+      "title": "Make build-overlaps derive and persist global issue order from dependency overlaps",
+      "problem": "build-overlaps currently writes only pair rows, so dependency overlaps with explicit order do not update one canonical issue sequence for later execution workflows.",
+      "solution_option": "Teach overlap build/apply logic in dev/workflow_lib/feature_commands.py to derive dependency edges from overlap pairs, rebuild the affected global order in ISSUE_OVERLAPS, and fail on cycles or contradictory order.",
+      "concrete_steps": [
+        "Inspect build-overlaps, show-overlaps, and apply-overlaps handlers in dev/workflow_lib/feature_commands.py and add one derivation path from type=dependency plus order into a canonical ordered issue list.",
+        "Ensure apply-overlaps persists both pair overlaps and the recalculated issue-order block in dev/ISSUE_OVERLAPS.json instead of leaving sequence maintenance to manual edits.",
+        "Add deterministic failure behavior for cycles, missing dependency endpoints, or ambiguous dependency graphs so the workflow refuses to write a broken issue order."
+      ]
+    },
+    {
+      "id": "285",
+      "marker": "[M1][F14]",
+      "title": "Cut execute-feature and execute-issues over to overlaps-backed issue order",
+      "problem": "Feature and multi-issue execution still depend on order logic outside ISSUE_OVERLAPS, which leaves runtime sequencing inconsistent with the overlaps workflow that is supposed to own issue ordering.",
+      "solution_option": "Refactor execution readers and docs so execute feature and execute issues resolve issue order from ISSUE_OVERLAPS and no longer read Issue Execution Order from FEATURE_PLANS.",
+      "concrete_steps": [
+        "Update execution-order resolution in dev/workflow_lib/feature_commands.py so feature execution-plan and related helpers load canonical issue order from dev/ISSUE_OVERLAPS.json.",
+        "Revise .agents/workflows/execute-feature.md, .agents/workflows/execute-issues.md, and .agents/protocols/task-execution-protocol.md so execution sequencing is documented as overlaps-owned rather than plan-text-owned.",
+        "Remove any remaining fallback or wording that treats FEATURE_PLANS issue-order rows or user-provided package order as the authoritative source when overlaps-backed sequencing exists."
+      ]
+    },
+    {
+      "id": "286",
+      "marker": "[M1][F14]",
+      "title": "Add migration and regression coverage for overlaps-owned issue sequencing",
+      "problem": "Removing issue-order blocks from FEATURE_PLANS and moving sequence ownership into overlaps changes stored data, runtime behavior, and validation surfaces, so regressions are likely without explicit migration and test coverage.",
+      "solution_option": "Add migration handling for legacy issue-order rows plus tests that lock the new overlaps-owned sequencing behavior end to end.",
+      "concrete_steps": [
+        "Implement or document one conversion path that maps legacy FEATURE_PLANS.md issue-order rows into the new ISSUE_OVERLAPS issue-order block when touched by the cutover.",
+        "Extend workflow tests, especially tests/workflow/test_overlap_commands.py and any execution-plan coverage, so feature plans without Issue Execution Order remain valid and overlaps schema validation covers the new order block.",
+        "Add failure cases for cycles or contradictory dependency overlaps and assertions that execute-feature or execute-issues read the same overlaps-owned order after apply-overlaps."
+      ]
+    },
+    {
+      "id": "287",
+      "marker": "[M1][F14]",
+      "title": "Fix scoped dep-index reconcile so by_surface preserves unrelated issue memberships",
+      "problem": "plan index-dependencies --issue-id ... currently rewrites by_surface buckets as if the selected issue were the only owner of a shared surface, which drops unrelated issue IDs and corrupts reverse lookups.",
+      "solution_option": "Patch scoped reconcile in dev/workflow_lib/feature_commands.py so refresh first removes only selected issue IDs from old buckets, then reinserts them into existing buckets without overwriting unrelated memberships.",
+      "concrete_steps": [
+        "Inspect the scoped update path in dev/workflow_lib/feature_commands.py that handles plan index-dependencies writes and identify where shared-surface buckets are replaced instead of membership-edited.",
+        "Change the reconcile flow so issue-scoped and feature-scoped refreshes remove only the selected issue IDs from by_surface, prune buckets only when empty, and then reinsert refreshed issue memberships.",
+        "Keep dev/workflow_lib/tracker_store.py contract usage intact so the resulting payload still validates and writes through the canonical dep-index helpers."
+      ]
+    },
+    {
+      "id": "288",
+      "marker": "[M1][F14]",
+      "title": "Align issue-scoped related lookup with feature-scoped shared-surface truth",
+      "problem": "After a scoped dep-index refresh, show-related --issue-id can return no peers even when show-related --feature-id still shows real shared surfaces, so overlap candidate discovery becomes inconsistent.",
+      "solution_option": "Refactor related-issue lookup in dev/workflow_lib/feature_commands.py so issue-scoped and feature-scoped views converge on the same shared-surface reality after scoped refreshes.",
+      "concrete_steps": [
+        "Trace _handle_plan_show_related, _build_related_issue_draft, and _build_feature_related_pairs_draft in dev/workflow_lib/feature_commands.py against the current dep-index shape and reconcile logic.",
+        "Ensure issue-scoped lookup reads the reconciled reverse index correctly after issue-level or feature-level refresh and returns matched surfaces for preserved shared buckets.",
+        "Verify the overlap-build workflow assumptions in .agents/workflows/build-overlaps.md remain valid once issue-scoped candidate discovery stops diverging from feature-scoped lookup."
+      ]
+    },
+    {
+      "id": "289",
+      "marker": "[M1][F14]",
+      "title": "Stabilize dep-index counters and cleanup semantics after partial refresh",
+      "problem": "Changing scoped reconcile semantics can silently skew changed, surfaces_added, surfaces_updated, and surfaces_pruned counters or leave cleanup behavior nondeterministic.",
+      "solution_option": "Audit partial-refresh bookkeeping in dev/workflow_lib/feature_commands.py so counters, pruning, and ordering still describe real state changes after shared buckets are preserved.",
+      "concrete_steps": [
+        "Review the index-maintenance counters emitted by plan index-dependencies in dev/workflow_lib/feature_commands.py and adjust them for remove-then-reinsert reconcile semantics.",
+        "Keep issue_ids sorted in every by_surface bucket after partial refresh and remove buckets only when no issue IDs remain attached to that surface.",
+        "Confirm cleanup-mode and repeated refresh runs remain idempotent and do not inflate counter values when the scoped issue set already matches on-disk state."
+      ]
+    },
+    {
+      "id": "290",
+      "marker": "[M1][F14]",
+      "title": "Add regression coverage for shared-surface scoped dep-index refresh",
+      "problem": "The current dep-index bug will reappear unless tests lock the exact pattern where issue-scoped refresh over a shared surface must preserve other issue IDs and keep related lookup consistent.",
+      "solution_option": "Extend workflow overlap tests to cover issue refresh, feature refresh, show-related consistency, and deterministic reverse-bucket state after shared-surface updates.",
+      "concrete_steps": [
+        "Add or update fixtures in tests/workflow/test_overlap_commands.py so at least three issues share one surface and one issue is reindexed independently.",
+        "Assert plan index-dependencies --issue-id ... preserves other issue IDs in by_surface and that show-related --issue-id ... still finds the shared-surface peers after refresh.",
+        "Add a matching feature-scoped refresh assertion proving both refresh modes converge to the same dep-index state and related-issue results for equivalent data."
+      ]
     }
   ]
 }
