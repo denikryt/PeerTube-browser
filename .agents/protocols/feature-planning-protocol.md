@@ -92,6 +92,7 @@ Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
 - Generic task wording is not acceptable for `plan tasks`; decomposition must be anchored to real files, modules, handlers, schemas, commands, or tests discovered during code reading.
 - issue-overlaps in `dev/ISSUE_OVERLAPS.json` must be derived from real shared code surfaces or dependency chains, not from high-level topic similarity alone.
 - Overlap descriptions may include a short generalized summary, but only after naming the concrete shared code surface or dependency chain that justifies the overlap.
+- For `build overlaps` workflows, explicitly requested issue/feature IDs define only the **seed scope** for discovery. Final overlap output must cover all real intersections found through related-issue discovery from that seed scope, not only the inner pairs among the originally named IDs.
 
 ## Section 3: Planning Quality Gates
 
