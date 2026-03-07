@@ -27,13 +27,14 @@ If any procedural detail differs across docs, the corresponding `.agents/workflo
 - **Materialization Gate**: execution is blocked until the parent execution container is materialized on GitHub.
 - **Requirement Closure**: every stated requirement in the exact task text must be explicitly re-checked before reporting results.
 - **No Auto-Completion**: implementation completion and tracker completion are separate states; completion remains confirmation-gated.
-- **Chain Execution Rule**: feature/issue/bundle execution must run sequentially in dependency order and stop on the first blocking failure.
+- **Chain Execution Rule**: feature/issue/issues/bundle execution must run sequentially in dependency order and stop on the first blocking failure.
+- **Multi-Issue Package Rule**: `execute issues <issue_id>, <issue_id>, ...` means execute the listed issues as one package in the exact user-provided order; do not reorder unless the user explicitly changes the sequence.
 
 ## Section 3: Execution gates
 
 ### Task / Issue / Feature execution
 
-- Before `execute task <id>`, `execute issue <issue_id>`, or `execute feature <feature_id>`, every parent `Issue` in scope must have non-null `gh_issue_number` and `gh_issue_url` in `dev/map/DEV_MAP.json`.
+- Before `execute task <id>`, `execute issue <issue_id>`, `execute issues <issue_id>, <issue_id>, ...`, or `execute feature <feature_id>`, every parent `Issue` in scope must have non-null `gh_issue_number` and `gh_issue_url` in `dev/map/DEV_MAP.json`.
 
 ### Standalone execution
 

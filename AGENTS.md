@@ -19,6 +19,7 @@ When you receive text matching these patterns, it IS a command:
 - `create feature` → `.agents/workflows/create-feature.md`
 - `execute feature {ID}` → `.agents/workflows/execute-feature.md`
 - `execute issue {ID}` → `.agents/workflows/execute-issue.md`
+- `execute issues {ID[, ID...]}` → `.agents/workflows/execute-issues.md`
 - `execute task {ID}` → `.agents/workflows/execute-task.md`
 - `materialize feature {ID}` → `.agents/workflows/materialize-feature.md`
 - `confirm` → `.agents/workflows/confirm.md`
