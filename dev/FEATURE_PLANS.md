@@ -1365,6 +1365,7 @@ Issue-level overlaps-only planning workflow
 1. `I9-F14-M1` - Remove feature plan section on confirm feature done
 2. `I10-F14-M1` - Add Expected Behaviour block to planning contracts
 3. `I11-F14-M1` - Simplify ISSUE_DEP_INDEX format to minimal normalized lookup structure
+4. `I12-F14-M1` - Move issue execution order from FEATURE_PLANS into ISSUE_OVERLAPS
 
 ### Dependencies
 - Depends on completion and stabilization of `F13-M1` context-command work because overlap-build workflow reuses issue/feature plan-block extraction and scoped planning surfaces.
@@ -1381,9 +1382,9 @@ Issue-level overlaps-only planning workflow
 6. Migrate all affected CLI and agent workflows (`plan-tasks`, `build-overlaps`, `confirm`, related read paths) to overlaps-only sources and explicitly remove overlap reads/writes via `TASK_EXECUTION_PIPELINE`.
 
 ### Issue/Task Decomposition Assessment
-- Feature scope now has three remaining active issues (`I9-F14-M1`, `I10-F14-M1`, `I11-F14-M1`); previous issues are already complete and stay documented below only as historical plan records until feature-section cleanup, planning-contract updates, and dependency-index simplification are finished.
-- Current active execution order is `I9 -> I10 -> I11`.
-- Expected outcome: completed feature confirmation removes the obsolete feature section from `FEATURE_PLANS.md` deterministically, future planning contracts include an explicit expected-behaviour block that downstream workflows can use as runtime intent context, and dependency-index storage stays minimal enough to review without repeated path noise.
+- Feature scope now has four remaining active issues (`I9-F14-M1`, `I10-F14-M1`, `I11-F14-M1`, `I12-F14-M1`); previous issues are already complete and stay documented below only as historical plan records until feature-section cleanup, planning-contract updates, dependency-index simplification, and issue-order storage migration are finished.
+- Current active execution order is `I9 -> I10 -> I11 -> I12`.
+- Expected outcome: completed feature confirmation removes the obsolete feature section from `FEATURE_PLANS.md` deterministically, future planning contracts include an explicit expected-behaviour block that downstream workflows can use as runtime intent context, dependency-index storage stays minimal enough to review without repeated path noise, and issue execution sequencing moves fully into `ISSUE_OVERLAPS` instead of remaining duplicated in `FEATURE_PLANS`.
 
 ### I7-F14-M1 - Enforce strict Dependencies format for planning parser compatibility
 
@@ -1800,3 +1801,54 @@ Issue-level overlaps-only planning workflow
   2. index writer normalization and deduplication behavior
   3. consumer updates for `show-related` and overlap-build workflow
   4. migration plus regression coverage
+
+### I12-F14-M1 - Move issue execution order from FEATURE_PLANS into ISSUE_OVERLAPS
+
+#### Dependencies
+- file: dev/FEATURE_PLANS.md | reason: legacy `Issue Execution Order` block must be removed from feature plans and no longer generated in new planning flows
+- file: dev/ISSUE_OVERLAPS.json | reason: target artifact must gain one global issue execution order block that becomes the canonical runtime source
+- file: dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json | reason: overlaps schema must define the new global order shape and validation rules
+- module: dev.workflow_lib.feature_commands | reason: plan lint, build-overlaps, and execution-order readers must stop using feature-plan order blocks and read/write the overlaps-owned order instead
+- module: dev.workflow_lib.tracker_json_contracts | reason: runtime validation must enforce the new issue-order contract inside ISSUE_OVERLAPS
+- module: dev.workflow_lib.tracker_store | reason: overlaps load/write helpers must persist the global issue execution order deterministically
+- file: .agents/workflows/build-overlaps.md | reason: build-overlaps must update the global issue execution order whenever dependency overlaps imply sequencing changes
+- file: .agents/workflows/execute-feature.md | reason: feature execution workflow must stop reading `Issue Execution Order` from FEATURE_PLANS
+- file: .agents/workflows/execute-issues.md | reason: multi-issue package execution should derive order from overlap-backed issue sequencing instead of user-order or FEATURE_PLANS blocks
+- file: .agents/protocols/feature-planning-protocol.md | reason: planning contract must stop requiring or generating `Issue Execution Order` inside FEATURE_PLANS
+- file: .agents/protocols/task-execution-protocol.md | reason: execution contract must document ISSUE_OVERLAPS as the canonical source for issue sequencing
+
+#### Decomposition
+1. Remove issue-order ownership from `FEATURE_PLANS` planning contracts:
+   - stop requiring `### Issue Execution Order` in feature plans,
+   - update plan-init / plan-lint / plan-issue expectations so feature plans remain valid without that block,
+   - stop creating the block in future planning workflows and templates.
+2. Add one canonical global issue-order block to `dev/ISSUE_OVERLAPS.json`:
+   - define deterministic shape for ordered issue IDs and optional metadata about how the order was derived,
+   - keep it global so feature execution and multi-issue execution can read one canonical source,
+   - validate ordering entries against real issue IDs from `DEV_MAP`.
+3. Make `build-overlaps` responsible for updating issue execution order:
+   - derive dependency edges from overlap rows with `type=dependency` and `order`,
+   - rebuild the affected global issue-order block during overlap apply/build workflow,
+   - fail deterministically on dependency cycles or unresolved ordering contradictions instead of writing ambiguous order.
+4. Migrate execution workflows and runtime readers to the overlaps-owned order:
+   - `execute feature` reads issue execution order from `ISSUE_OVERLAPS`,
+   - `execute issues` resolves the selected issue subset against the global overlaps-backed order,
+   - any remaining fallback to `FEATURE_PLANS` issue-order blocks is removed.
+5. Add migration and cleanup behavior:
+   - existing `Issue Execution Order` blocks in `FEATURE_PLANS.md` become legacy and are removed when touched by the new planning/runtime cutover,
+   - introduce one deterministic conversion path from current feature-plan issue-order rows into the new overlaps-owned global order,
+   - reject future plan changes that try to reintroduce feature-level issue-order blocks after the cutover.
+6. Add regression coverage for:
+   - feature plans without `Issue Execution Order`,
+   - overlap-schema validation for the new global order block,
+   - build-overlaps updating order from dependency overlaps,
+   - execute-feature and execute-issues reading the overlaps-owned order,
+   - cycle/ambiguity failure behavior.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 4-5 tasks
+  1. remove feature-plan issue-order requirement from planning contracts and lint
+  2. add global issue-order schema and storage to ISSUE_OVERLAPS
+  3. update build-overlaps to rebuild canonical issue order from dependency overlaps
+  4. cut execution workflows over to the overlaps-owned issue order
+  5. add migration and regression coverage

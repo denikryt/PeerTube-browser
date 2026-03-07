@@ -2670,6 +2670,15 @@
                   "time": "00:40:51"
                 }
               ]
+            },
+            {
+              "id": "I12-F14-M1",
+              "title": "Move issue execution order from FEATURE_PLANS into ISSUE_OVERLAPS",
+              "description": "Remove Issue Execution Order from FEATURE_PLANS entirely and make ISSUE_OVERLAPS own the global issue execution order that build-overlaps updates from overlap dependencies.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F14-M1",
