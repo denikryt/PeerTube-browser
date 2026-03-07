@@ -1362,14 +1362,7 @@ Canonical per-issue plan block format inside a feature section:
 Issue-level overlaps-only planning workflow
 
 ### Issue Execution Order
-1. `I7-F14-M1` - Enforce strict Dependencies format for planning parser compatibility
-2. `I1-F14-M1` - Add dependency index and plan-block extraction CLI
-3. `I2-F14-M1` - Introduce dedicated overlaps file schema and validators
-4. `I3-F14-M1` - Add build/show/apply overlap commands
-5. `I4-F14-M1` - Integrate plan-tasks with issue-level overlaps
-6. `I5-F14-M1` - Add confirm cleanup for issue-level overlaps and dependency index
-7. `I6-F14-M1` - Migrate overlaps storage from pipeline block to dedicated overlaps file
-8. `I8-F14-M1` - Remove TASK_EXECUTION_PIPELINE from workflow runtime entirely
+1. `I9-F14-M1` - Remove feature plan section on confirm feature done
 
 ### Dependencies
 - Depends on completion and stabilization of `F13-M1` context-command work because overlap-build workflow reuses issue/feature plan-block extraction and scoped planning surfaces.
@@ -1386,9 +1379,9 @@ Issue-level overlaps-only planning workflow
 6. Migrate all affected CLI and agent workflows (`plan-tasks`, `build-overlaps`, `confirm`, related read paths) to overlaps-only sources and explicitly remove overlap reads/writes via `TASK_EXECUTION_PIPELINE`.
 
 ### Issue/Task Decomposition Assessment
-- Scope requires eight sequential issues because dependency-format standardization, command-surface additions, schema/data-model changes, runtime integration, cleanup rules, storage migration, and full pipeline removal are independent risk surfaces.
-- Minimal order is strict: I7 -> I1 -> I2 -> I3 -> I4 -> I5 -> I6 -> I8.
-- Expected outcome: planning and execution flows use scoped issue-level architectural context and dedicated overlaps/index artifacts, with no runtime dependency on `TASK_EXECUTION_PIPELINE`.
+- Feature scope now has one remaining active issue (`I9-F14-M1`); previous issues are already complete and stay documented below only as historical plan records until feature-section cleanup is fixed.
+- Current active execution order is `I9` only.
+- Expected outcome: completed feature confirmation removes the obsolete feature section from `FEATURE_PLANS.md` deterministically, so no historical issue blocks remain after `confirm feature done`.
 
 ### I7-F14-M1 - Enforce strict Dependencies format for planning parser compatibility
 
@@ -1685,3 +1678,32 @@ Issue-level overlaps-only planning workflow
   2. replace sequencing/cleanup behavior with remaining canonical sources
   3. remove obsolete schema/store/writer contracts and workflow references
   4. add regression coverage for pipeline-free runtime behavior
+
+### I9-F14-M1 - Remove feature plan section on confirm feature done
+
+#### Dependencies
+- module: dev.workflow_lib.confirm_commands | reason: confirm feature completion flow owns FEATURE_PLANS cleanup behavior
+- file: dev/FEATURE_PLANS.md | reason: feature-level section removal must delete the full `## F*-M*` block after feature confirmation
+- function: dev/workflow_lib.confirm_commands::_handle_confirm_feature_done | reason: feature confirmation path currently updates trackers but leaves the feature plan section behind
+- function: dev/workflow_lib.confirm_commands::_cleanup_feature_plan_issue_artifacts | reason: existing cleanup helper already removes issue rows/blocks and likely needs feature-level companion logic
+
+#### Decomposition
+1. Add feature-level FEATURE_PLANS cleanup helper that removes the full `## <feature_id>` section, including:
+   - feature title line,
+   - `Issue Execution Order`,
+   - feature dependencies/decomposition/assessment,
+   - all child issue plan blocks within that section.
+2. Integrate that helper into `confirm feature done` preview and write paths so cleanup output reports whether the feature section would be removed or was removed.
+3. Keep issue-level cleanup behavior unchanged:
+   - `confirm issue done` still removes only issue row/block,
+   - `confirm feature done` removes the entire feature section in one step.
+4. Add regression coverage for:
+   - preview mode reporting feature-section cleanup,
+   - write mode removing the feature section from `FEATURE_PLANS.md`,
+   - no-op behavior when the feature section is already absent.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 2-3 tasks
+  1. feature-level FEATURE_PLANS cleanup helper
+  2. confirm feature integration and cleanup output contract
+  3. regression coverage for preview/write/no-op behavior

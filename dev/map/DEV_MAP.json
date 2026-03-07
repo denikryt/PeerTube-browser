@@ -2552,6 +2552,15 @@
                   "time": "21:36:32"
                 }
               ]
+            },
+            {
+              "id": "I9-F14-M1",
+              "title": "Remove feature plan section on confirm feature done",
+              "description": "Ensure confirm feature done removes the full feature section from FEATURE_PLANS so confirmed features do not leave obsolete plan blocks behind.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F14-M1",
