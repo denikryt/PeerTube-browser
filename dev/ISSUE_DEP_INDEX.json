@@ -1,6 +1,296 @@
 {
   "schema_version": "1.0",
-  "feature_scope": "all",
-  "by_issue": {},
-  "by_surface": {}
+  "feature_scope": "F14-M1",
+  "by_issue": {
+    "I1-F14-M1": {
+      "surfaces": [
+        "file: dev/FEATURE_PLANS.md",
+        "file: dev/workflow_lib/cli.py",
+        "module: dev.workflow_lib.context",
+        "module: dev.workflow_lib.feature_commands"
+      ],
+      "feature_id": "F14-M1",
+      "status": "Done"
+    },
+    "I10-F14-M1": {
+      "surfaces": [
+        "file: .agents/protocols/feature-planning-protocol.md",
+        "file: .agents/workflows/build-overlaps.md",
+        "file: .agents/workflows/plan-feature.md",
+        "file: .agents/workflows/plan-issue.md",
+        "file: .agents/workflows/plan-tasks-for.md",
+        "file: dev/FEATURE_PLANS.md",
+        "module: dev.workflow_lib.confirm_commands",
+        "module: dev.workflow_lib.feature_commands"
+      ],
+      "feature_id": "F14-M1",
+      "status": "Planned"
+    },
+    "I11-F14-M1": {
+      "surfaces": [
+        "file: .agents/workflows/build-overlaps.md",
+        "file: dev/FEATURE_PLANS.md",
+        "file: dev/ISSUE_DEP_INDEX.json",
+        "module: dev.workflow_lib.feature_commands",
+        "module: dev.workflow_lib.tracker_json_contracts",
+        "module: dev.workflow_lib.tracker_store"
+      ],
+      "feature_id": "F14-M1",
+      "status": "Planned"
+    },
+    "I2-F14-M1": {
+      "surfaces": [
+        "file: dev/ISSUE_OVERLAPS.json",
+        "file: dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json",
+        "module: dev.workflow_lib.tracker_json_contracts"
+      ],
+      "feature_id": "F14-M1",
+      "status": "Done"
+    },
+    "I3-F14-M1": {
+      "surfaces": [
+        "file: .agents/workflows/build-overlaps.md",
+        "file: dev/ISSUE_DEP_INDEX.json",
+        "module: dev.workflow_lib.feature_commands",
+        "module: dev.workflow_lib.tracker_store"
+      ],
+      "feature_id": "F14-M1",
+      "status": "Done"
+    },
+    "I4-F14-M1": {
+      "surfaces": [
+        "file: .agents/workflows/plan-tasks-for.md",
+        "file: dev/ISSUE_OVERLAPS.json",
+        "function: dev/workflow_lib/feature_commands.py::_handle_feature_sync"
+      ],
+      "feature_id": "F14-M1",
+      "status": "Done"
+    },
+    "I5-F14-M1": {
+      "surfaces": [
+        "file: dev/ISSUE_DEP_INDEX.json",
+        "file: dev/ISSUE_OVERLAPS.json",
+        "module: dev.workflow_lib.confirm_commands"
+      ],
+      "feature_id": "F14-M1",
+      "status": "Done"
+    },
+    "I6-F14-M1": {
+      "surfaces": [
+        "file: .agents/workflows/build-overlaps.md",
+        "file: dev/ISSUE_OVERLAPS.json",
+        "file: dev/map/TASK_EXECUTION_PIPELINE_JSON_SCHEMA.json",
+        "file: dev/TASK_EXECUTION_PIPELINE.json"
+      ],
+      "feature_id": "F14-M1",
+      "status": "Done"
+    },
+    "I7-F14-M1": {
+      "surfaces": [
+        "file: .agents/protocols/feature-planning-protocol.md",
+        "file: .agents/workflows/plan-feature.md",
+        "file: .agents/workflows/plan-issue.md",
+        "function: dev/workflow_lib/feature_commands.py::_handle_feature_plan_lint"
+      ],
+      "feature_id": "F14-M1",
+      "status": "Done"
+    },
+    "I8-F14-M1": {
+      "surfaces": [
+        "file: .agents/protocols/task-execution-protocol.md",
+        "file: .agents/workflows/execute-feature.md",
+        "file: .agents/workflows/execute-task.md",
+        "file: dev/map/TASK_EXECUTION_PIPELINE_JSON_SCHEMA.json",
+        "file: dev/TASK_EXECUTION_PIPELINE.json",
+        "module: dev.workflow_lib.confirm_commands",
+        "module: dev.workflow_lib.feature_commands",
+        "module: dev.workflow_lib.tracker_store"
+      ],
+      "feature_id": "F14-M1",
+      "status": "Done"
+    },
+    "I9-F14-M1": {
+      "surfaces": [
+        "file: dev/FEATURE_PLANS.md",
+        "function: dev/workflow_lib.confirm_commands::_cleanup_feature_plan_issue_artifacts",
+        "function: dev/workflow_lib.confirm_commands::_handle_confirm_feature_done",
+        "module: dev.workflow_lib.confirm_commands"
+      ],
+      "feature_id": "F14-M1",
+      "status": "Planned"
+    }
+  },
+  "by_surface": {
+    "file: .agents/protocols/feature-planning-protocol.md": {
+      "surface": "file: .agents/protocols/feature-planning-protocol.md",
+      "issue_ids": [
+        "I10-F14-M1",
+        "I7-F14-M1"
+      ]
+    },
+    "file: .agents/protocols/task-execution-protocol.md": {
+      "surface": "file: .agents/protocols/task-execution-protocol.md",
+      "issue_ids": [
+        "I8-F14-M1"
+      ]
+    },
+    "file: .agents/workflows/build-overlaps.md": {
+      "surface": "file: .agents/workflows/build-overlaps.md",
+      "issue_ids": [
+        "I10-F14-M1",
+        "I11-F14-M1",
+        "I3-F14-M1",
+        "I6-F14-M1"
+      ]
+    },
+    "file: .agents/workflows/execute-feature.md": {
+      "surface": "file: .agents/workflows/execute-feature.md",
+      "issue_ids": [
+        "I8-F14-M1"
+      ]
+    },
+    "file: .agents/workflows/execute-task.md": {
+      "surface": "file: .agents/workflows/execute-task.md",
+      "issue_ids": [
+        "I8-F14-M1"
+      ]
+    },
+    "file: .agents/workflows/plan-feature.md": {
+      "surface": "file: .agents/workflows/plan-feature.md",
+      "issue_ids": [
+        "I10-F14-M1",
+        "I7-F14-M1"
+      ]
+    },
+    "file: .agents/workflows/plan-issue.md": {
+      "surface": "file: .agents/workflows/plan-issue.md",
+      "issue_ids": [
+        "I10-F14-M1",
+        "I7-F14-M1"
+      ]
+    },
+    "file: .agents/workflows/plan-tasks-for.md": {
+      "surface": "file: .agents/workflows/plan-tasks-for.md",
+      "issue_ids": [
+        "I10-F14-M1",
+        "I4-F14-M1"
+      ]
+    },
+    "file: dev/feature_plans.md": {
+      "surface": "file: dev/FEATURE_PLANS.md",
+      "issue_ids": [
+        "I1-F14-M1",
+        "I10-F14-M1",
+        "I11-F14-M1",
+        "I9-F14-M1"
+      ]
+    },
+    "file: dev/issue_dep_index.json": {
+      "surface": "file: dev/ISSUE_DEP_INDEX.json",
+      "issue_ids": [
+        "I11-F14-M1",
+        "I3-F14-M1",
+        "I5-F14-M1"
+      ]
+    },
+    "file: dev/issue_overlaps.json": {
+      "surface": "file: dev/ISSUE_OVERLAPS.json",
+      "issue_ids": [
+        "I2-F14-M1",
+        "I4-F14-M1",
+        "I5-F14-M1",
+        "I6-F14-M1"
+      ]
+    },
+    "file: dev/map/issue_overlaps_json_schema.json": {
+      "surface": "file: dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json",
+      "issue_ids": [
+        "I2-F14-M1"
+      ]
+    },
+    "file: dev/map/task_execution_pipeline_json_schema.json": {
+      "surface": "file: dev/map/TASK_EXECUTION_PIPELINE_JSON_SCHEMA.json",
+      "issue_ids": [
+        "I6-F14-M1",
+        "I8-F14-M1"
+      ]
+    },
+    "file: dev/task_execution_pipeline.json": {
+      "surface": "file: dev/TASK_EXECUTION_PIPELINE.json",
+      "issue_ids": [
+        "I6-F14-M1",
+        "I8-F14-M1"
+      ]
+    },
+    "file: dev/workflow_lib/cli.py": {
+      "surface": "file: dev/workflow_lib/cli.py",
+      "issue_ids": [
+        "I1-F14-M1"
+      ]
+    },
+    "function: dev/workflow_lib.confirm_commands::_cleanup_feature_plan_issue_artifacts": {
+      "surface": "function: dev/workflow_lib.confirm_commands::_cleanup_feature_plan_issue_artifacts",
+      "issue_ids": [
+        "I9-F14-M1"
+      ]
+    },
+    "function: dev/workflow_lib.confirm_commands::_handle_confirm_feature_done": {
+      "surface": "function: dev/workflow_lib.confirm_commands::_handle_confirm_feature_done",
+      "issue_ids": [
+        "I9-F14-M1"
+      ]
+    },
+    "function: dev/workflow_lib/feature_commands.py::_handle_feature_plan_lint": {
+      "surface": "function: dev/workflow_lib/feature_commands.py::_handle_feature_plan_lint",
+      "issue_ids": [
+        "I7-F14-M1"
+      ]
+    },
+    "function: dev/workflow_lib/feature_commands.py::_handle_feature_sync": {
+      "surface": "function: dev/workflow_lib/feature_commands.py::_handle_feature_sync",
+      "issue_ids": [
+        "I4-F14-M1"
+      ]
+    },
+    "module: dev.workflow_lib.confirm_commands": {
+      "surface": "module: dev.workflow_lib.confirm_commands",
+      "issue_ids": [
+        "I10-F14-M1",
+        "I5-F14-M1",
+        "I8-F14-M1",
+        "I9-F14-M1"
+      ]
+    },
+    "module: dev.workflow_lib.context": {
+      "surface": "module: dev.workflow_lib.context",
+      "issue_ids": [
+        "I1-F14-M1"
+      ]
+    },
+    "module: dev.workflow_lib.feature_commands": {
+      "surface": "module: dev.workflow_lib.feature_commands",
+      "issue_ids": [
+        "I1-F14-M1",
+        "I10-F14-M1",
+        "I11-F14-M1",
+        "I3-F14-M1",
+        "I8-F14-M1"
+      ]
+    },
+    "module: dev.workflow_lib.tracker_json_contracts": {
+      "surface": "module: dev.workflow_lib.tracker_json_contracts",
+      "issue_ids": [
+        "I11-F14-M1",
+        "I2-F14-M1"
+      ]
+    },
+    "module: dev.workflow_lib.tracker_store": {
+      "surface": "module: dev.workflow_lib.tracker_store",
+      "issue_ids": [
+        "I11-F14-M1",
+        "I3-F14-M1",
+        "I8-F14-M1"
+      ]
+    }
+  }
 }

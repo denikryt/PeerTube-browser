@@ -1,4 +1,24 @@
 {
   "schema_version": "1.0",
-  "overlaps": []
+  "overlaps": [
+    {
+      "issues": [
+        "I9-F14-M1",
+        "I10-F14-M1"
+      ],
+      "type": "dependency",
+      "order": "I9-F14-M1->I10-F14-M1",
+      "surface": "module: dev.workflow_lib.confirm_commands",
+      "description": "why: I9 defines the feature-level FEATURE_PLANS cleanup behavior that must remain correct before I10 extends plan-block structure with Expected Behaviour; impact: if I10 lands first, confirm feature cleanup can miss newly introduced plan content or require immediate rework; action: finish and verify feature-section cleanup in confirm flow before updating planning contracts and lint around Expected Behaviour."
+    },
+    {
+      "issues": [
+        "I10-F14-M1",
+        "I11-F14-M1"
+      ],
+      "type": "shared_logic",
+      "surface": "module: dev.workflow_lib.feature_commands",
+      "description": "why: I10 and I11 both change planning-context contracts consumed by feature_commands, including how plan sections are parsed and how downstream planning workflows read intent versus dependency-index data; impact: changing index shape without aligning it to the new Expected Behaviour contract can create mismatched parser assumptions and noisy overlap-build inputs; action: keep parser and command updates aligned so Expected Behaviour remains plan-context input while ISSUE_DEP_INDEX stays a minimal normalized lookup artifact."
+    }
+  ]
 }
