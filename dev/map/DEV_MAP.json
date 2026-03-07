@@ -2561,6 +2561,15 @@
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []
+            },
+            {
+              "id": "I10-F14-M1",
+              "title": "Add Expected Behaviour block to planning contracts",
+              "description": "Introduce a mandatory Expected Behaviour block in feature and issue plans so planning records capture intended runtime behavior, target files or scripts, and observable end-state for downstream planning and conflict avoidance.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F14-M1",

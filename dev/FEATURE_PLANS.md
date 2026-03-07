@@ -1363,6 +1363,7 @@ Issue-level overlaps-only planning workflow
 
 ### Issue Execution Order
 1. `I9-F14-M1` - Remove feature plan section on confirm feature done
+2. `I10-F14-M1` - Add Expected Behaviour block to planning contracts
 
 ### Dependencies
 - Depends on completion and stabilization of `F13-M1` context-command work because overlap-build workflow reuses issue/feature plan-block extraction and scoped planning surfaces.
@@ -1379,9 +1380,9 @@ Issue-level overlaps-only planning workflow
 6. Migrate all affected CLI and agent workflows (`plan-tasks`, `build-overlaps`, `confirm`, related read paths) to overlaps-only sources and explicitly remove overlap reads/writes via `TASK_EXECUTION_PIPELINE`.
 
 ### Issue/Task Decomposition Assessment
-- Feature scope now has one remaining active issue (`I9-F14-M1`); previous issues are already complete and stay documented below only as historical plan records until feature-section cleanup is fixed.
-- Current active execution order is `I9` only.
-- Expected outcome: completed feature confirmation removes the obsolete feature section from `FEATURE_PLANS.md` deterministically, so no historical issue blocks remain after `confirm feature done`.
+- Feature scope now has two remaining active issues (`I9-F14-M1`, `I10-F14-M1`); previous issues are already complete and stay documented below only as historical plan records until feature-section cleanup and planning-contract updates are finished.
+- Current active execution order is `I9 -> I10`.
+- Expected outcome: completed feature confirmation removes the obsolete feature section from `FEATURE_PLANS.md` deterministically, and future planning contracts include an explicit expected-behaviour block that downstream workflows can use as runtime intent context.
 
 ### I7-F14-M1 - Enforce strict Dependencies format for planning parser compatibility
 
@@ -1707,3 +1708,51 @@ Issue-level overlaps-only planning workflow
   1. feature-level FEATURE_PLANS cleanup helper
   2. confirm feature integration and cleanup output contract
   3. regression coverage for preview/write/no-op behavior
+
+### I10-F14-M1 - Add Expected Behaviour block to planning contracts
+
+#### Dependencies
+- file: .agents/protocols/feature-planning-protocol.md | reason: planning contract must define the new mandatory block and its purpose
+- file: .agents/workflows/plan-feature.md | reason: feature planning workflow must require and preserve Expected Behaviour content
+- file: .agents/workflows/plan-issue.md | reason: issue planning workflow must require issue-level Expected Behaviour content
+- file: .agents/workflows/plan-tasks-for.md | reason: task decomposition workflow must consume Expected Behaviour as intent context instead of relying only on decomposition prose
+- file: .agents/workflows/build-overlaps.md | reason: overlap analysis guidance must check Expected Behaviour so generated overlaps do not contradict declared runtime intent
+- module: dev.workflow_lib.feature_commands | reason: plan linting and plan-block handling must recognize the new section and enforce non-empty content
+- module: dev.workflow_lib.confirm_commands | reason: feature and issue plan cleanup helpers must continue to remove full plan blocks even after the new section is inserted
+- file: dev/FEATURE_PLANS.md | reason: canonical plan templates and existing F14 issue plans need the new block shape reflected
+
+#### Decomposition
+1. Define a new planning section `Expected Behaviour` for feature and issue plans:
+   - describe the intended end-state behavior in plain language,
+   - name the runtime files/modules/scripts where the behavior must exist,
+   - state what outcome should be observable after implementation,
+   - keep the block distinct from implementation steps in `Decomposition`,
+   - keep the block concrete enough that another workflow can infer the target runtime surface without rereading the full issue prose.
+2. Update planning protocols/workflows so new feature plans and issue plans require `Expected Behaviour` as a mandatory non-empty block.
+3. Extend linting and plan parsing so:
+   - missing `Expected Behaviour` is rejected,
+   - empty/generic filler text is rejected under strict lint,
+   - downstream commands can read that block as intent context without conflicting with `Dependencies` or `Decomposition`,
+   - section extraction remains deterministic when both feature-level and issue-level `Expected Behaviour` blocks are present.
+4. Update downstream planning guidance so the block is considered during task planning / overlap reasoning:
+   - use it as desired behavior context,
+   - avoid generating tasks or overlaps that contradict the declared expected outcome,
+   - keep behavior intent aligned with runtime touchpoints named in the block,
+   - make plan-tasks and build-overlaps workflows explicitly read the block before producing task text or overlap descriptions.
+5. Define the expected authoring format for the block so it stays parseable and useful:
+   - `Target behaviour:` what the system should do after implementation,
+   - `Observable outcome:` what a reviewer/operator should be able to see or verify,
+   - `Runtime surfaces:` concrete files/modules/scripts/functions where the behaviour must exist,
+   - `Constraints:` optional non-goals or behavior boundaries that downstream planning must not violate.
+6. Add regression coverage for:
+   - valid feature-level and issue-level Expected Behaviour blocks,
+   - missing-block lint failures,
+   - strict lint failures for placeholder/generic behavior text,
+   - parser extraction/read-order stability when the new block is present.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3-4 tasks
+  1. planning protocol/workflow contract update plus canonical block format
+  2. feature/issue plan lint + parser support
+  3. downstream task-planning and overlap-guidance integration
+  4. regression coverage
