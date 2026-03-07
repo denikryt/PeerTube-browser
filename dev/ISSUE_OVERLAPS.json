@@ -19,6 +19,51 @@
       "type": "shared_logic",
       "surface": "module: dev.workflow_lib.feature_commands",
       "description": "why: I10 and I11 both change planning-context contracts consumed by feature_commands, including how plan sections are parsed and how downstream planning workflows read intent versus dependency-index data; impact: changing index shape without aligning it to the new Expected Behaviour contract can create mismatched parser assumptions and noisy overlap-build inputs; action: keep parser and command updates aligned so Expected Behaviour remains plan-context input while ISSUE_DEP_INDEX stays a minimal normalized lookup artifact."
+    },
+    {
+      "issues": [
+        "I10-F14-M1",
+        "I12-F14-M1"
+      ],
+      "type": "shared_logic",
+      "surface": "module: dev.workflow_lib.feature_commands",
+      "description": "why: I10 and I12 both rewrite planning contracts and parser expectations in feature_commands, with I10 adding Expected Behaviour requirements and I12 removing Issue Execution Order ownership from FEATURE_PLANS; impact: changing one without aligning the other can leave plan linting and section extraction expecting incompatible feature-plan structure; action: update planning protocol and feature_commands plan parsing in one coherent pass so Expected Behaviour stays required while issue sequencing moves out of FEATURE_PLANS."
+    },
+    {
+      "issues": [
+        "I10-F14-M1",
+        "I13-F14-M1"
+      ],
+      "type": "shared_logic",
+      "surface": "module: dev.workflow_lib.feature_commands",
+      "description": "why: I10 and I13 both change planning and overlap-discovery orchestration in feature_commands, with I10 extending plan-context parsing and I13 fixing scoped dependency-index reconcile plus issue-level related lookup behavior used by overlap workflows; impact: if these changes diverge, build-overlaps can read inconsistent planning context versus candidate discovery results; action: keep feature_commands updates aligned so Expected Behaviour parsing and related-issue discovery continue to feed one coherent overlap-build pipeline."
+    },
+    {
+      "issues": [
+        "I11-F14-M1",
+        "I12-F14-M1"
+      ],
+      "type": "shared_logic",
+      "surface": "module: dev.workflow_lib.tracker_json_contracts",
+      "description": "why: I11 and I12 both change tracker serialization and validation contracts, with I11 minimizing ISSUE_DEP_INDEX and I12 extending ISSUE_OVERLAPS to own global issue execution order; impact: unsynchronized contract changes can break loader, validator, and command assumptions across tracker_store and feature_commands; action: align contract updates, defaults, and migration paths so reduced dep-index storage and overlaps-owned sequencing cut over together without mixed legacy fields."
+    },
+    {
+      "issues": [
+        "I11-F14-M1",
+        "I13-F14-M1"
+      ],
+      "type": "shared_logic",
+      "surface": "module: dev.workflow_lib.tracker_store",
+      "description": "why: I11 and I13 both modify dependency-index persistence semantics through tracker_store and related contracts, with I11 simplifying the dep-index payload and I13 fixing scoped reconcile of shared-surface reverse buckets; impact: implementing one without the other can leave the reduced dep-index format logically inconsistent after partial refresh operations; action: update tracker_store, tracker_json_contracts, and feature_commands together so minimal payload shape and scoped reconcile behavior remain compatible."
+    },
+    {
+      "issues": [
+        "I12-F14-M1",
+        "I13-F14-M1"
+      ],
+      "type": "shared_logic",
+      "surface": "module: dev.workflow_lib.feature_commands",
+      "description": "why: I12 and I13 both modify overlap-build and dependency-index orchestration in feature_commands, with I12 moving issue sequencing to ISSUE_OVERLAPS and I13 fixing scoped dependency-index reconcile semantics that related-issue discovery depends on; impact: changing sequencing storage without keeping related-issue lookup consistent can make build-overlaps derive incomplete or unstable execution-order inputs; action: update feature_commands, tracker_json_contracts, and tracker_store together so scoped dep-index refresh stays consistent while ISSUE_OVERLAPS becomes the canonical issue-order source."
     }
   ]
 }
