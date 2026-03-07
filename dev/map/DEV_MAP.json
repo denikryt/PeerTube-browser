@@ -2570,6 +2570,15 @@
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []
+            },
+            {
+              "id": "I11-F14-M1",
+              "title": "Simplify ISSUE_DEP_INDEX format to minimal normalized lookup structure",
+              "description": "Replace the current noisy dependency index payload with a minimal normalized structure that stores only normalized surface keys and reverse issue lookups, without duplicated display paths or repeated metadata.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": "feature/F14-M1",

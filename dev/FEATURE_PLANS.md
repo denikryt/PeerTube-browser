@@ -1364,6 +1364,7 @@ Issue-level overlaps-only planning workflow
 ### Issue Execution Order
 1. `I9-F14-M1` - Remove feature plan section on confirm feature done
 2. `I10-F14-M1` - Add Expected Behaviour block to planning contracts
+3. `I11-F14-M1` - Simplify ISSUE_DEP_INDEX format to minimal normalized lookup structure
 
 ### Dependencies
 - Depends on completion and stabilization of `F13-M1` context-command work because overlap-build workflow reuses issue/feature plan-block extraction and scoped planning surfaces.
@@ -1380,9 +1381,9 @@ Issue-level overlaps-only planning workflow
 6. Migrate all affected CLI and agent workflows (`plan-tasks`, `build-overlaps`, `confirm`, related read paths) to overlaps-only sources and explicitly remove overlap reads/writes via `TASK_EXECUTION_PIPELINE`.
 
 ### Issue/Task Decomposition Assessment
-- Feature scope now has two remaining active issues (`I9-F14-M1`, `I10-F14-M1`); previous issues are already complete and stay documented below only as historical plan records until feature-section cleanup and planning-contract updates are finished.
-- Current active execution order is `I9 -> I10`.
-- Expected outcome: completed feature confirmation removes the obsolete feature section from `FEATURE_PLANS.md` deterministically, and future planning contracts include an explicit expected-behaviour block that downstream workflows can use as runtime intent context.
+- Feature scope now has three remaining active issues (`I9-F14-M1`, `I10-F14-M1`, `I11-F14-M1`); previous issues are already complete and stay documented below only as historical plan records until feature-section cleanup, planning-contract updates, and dependency-index simplification are finished.
+- Current active execution order is `I9 -> I10 -> I11`.
+- Expected outcome: completed feature confirmation removes the obsolete feature section from `FEATURE_PLANS.md` deterministically, future planning contracts include an explicit expected-behaviour block that downstream workflows can use as runtime intent context, and dependency-index storage stays minimal enough to review without repeated path noise.
 
 ### I7-F14-M1 - Enforce strict Dependencies format for planning parser compatibility
 
@@ -1756,3 +1757,46 @@ Issue-level overlaps-only planning workflow
   2. feature/issue plan lint + parser support
   3. downstream task-planning and overlap-guidance integration
   4. regression coverage
+
+### I11-F14-M1 - Simplify ISSUE_DEP_INDEX format to minimal normalized lookup structure
+
+#### Dependencies
+- file: dev/ISSUE_DEP_INDEX.json | reason: target artifact must be reduced to normalized issue-to-surface and surface-to-issue lookup data only
+- module: dev.workflow_lib.feature_commands | reason: index-dependencies and show-related command handlers own the build/read contracts for the index
+- module: dev.workflow_lib.tracker_json_contracts | reason: runtime validation must enforce the new minimal shape and reject legacy noisy payloads after cutover
+- module: dev.workflow_lib.tracker_store | reason: load/write helpers must persist the reduced structure deterministically
+- file: .agents/workflows/build-overlaps.md | reason: overlap workflow must continue to rely on the simplified index contract without assuming display-path duplicates or issue metadata snapshots
+- file: dev/FEATURE_PLANS.md | reason: issue planning guidance should stop implying that index artifact stores human-readable duplicates beyond what commands actually need
+
+#### Decomposition
+1. Redefine the dependency-index artifact shape as minimal normalized lookup storage:
+   - top-level scope metadata becomes `scope_type` plus `scope_id`,
+   - `by_issue` stores only `surface_keys`,
+   - `by_surface` stores only normalized surface-key to issue-id arrays,
+   - remove repeated display strings and per-issue metadata that can be resolved from `DEV_MAP` at read time.
+2. Update `workflow plan index-dependencies` writer behavior so generated payloads are deterministic and quiet:
+   - normalize every extracted surface to one canonical key form,
+   - deduplicate repeated surfaces within the same issue before write,
+   - sort `surface_keys` and reverse lookup issue arrays stably,
+   - skip writes when the minimized payload is byte-equivalent to the existing file.
+3. Update index consumers to read the simplified contract without reconstructing old fields:
+   - `show-related` uses normalized reverse lookup only,
+   - overlap-build workflow receives normalized matched surfaces from the index and reads human context from issue plan blocks instead of duplicated display strings in the index,
+   - any feature/issue scope filtering uses `scope_type` and `scope_id` rather than overloaded `feature_scope`.
+4. Update schema/validation and migration behavior:
+   - validate `scope_type`, `scope_id`, `by_issue`, and `by_surface` strictly,
+   - reject legacy payloads that still contain duplicated `surface`, `feature_id`, `status`, or `surfaces` fields after the cutover,
+   - provide one migration path that rewrites existing index files into the reduced shape.
+5. Add regression coverage for:
+   - normalized minimal payload generation,
+   - duplicate-surface collapse inside one issue,
+   - stable ordering of `surface_keys` and reverse-lookup issue arrays,
+   - `show-related` behavior against the reduced schema,
+   - migration/rejection behavior for old verbose index payloads.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3-4 tasks
+  1. schema and runtime contract change for reduced index shape
+  2. index writer normalization and deduplication behavior
+  3. consumer updates for `show-related` and overlap-build workflow
+  4. migration plus regression coverage
