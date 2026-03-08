@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-08T01:58:47+02:00",
+  "updated_at": "2026-03-08T02:40:53+02:00",
   "task_count": 290,
   "milestones": [
     {
@@ -2557,7 +2557,7 @@
               "id": "I9-F14-M1",
               "title": "Remove feature plan section on confirm feature done",
               "description": "Ensure confirm feature done removes the full feature section from FEATURE_PLANS so confirmed features do not leave obsolete plan blocks behind.",
-              "status": "Tasked",
+              "status": "Done",
               "gh_issue_number": 146,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/146",
               "tasks": [
@@ -2565,7 +2565,7 @@
                   "id": "271",
                   "title": "Add feature-section cleanup helper for confirm feature",
                   "summary": "Implement FEATURE_PLANS section removal for full feature confirmation instead of issue-only block cleanup.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "00:40:51"
                 },
@@ -2573,7 +2573,7 @@
                   "id": "272",
                   "title": "Wire feature cleanup into confirm feature preview and write paths",
                   "summary": "Update confirm feature done flow and cleanup output so feature-level section removal is reported and applied deterministically.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "00:40:51"
                 },
@@ -2581,7 +2581,7 @@
                   "id": "273",
                   "title": "Add regression coverage for feature section cleanup on confirm",
                   "summary": "Cover preview, write, and no-op confirm feature cleanup behavior in workflow tests.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "00:40:51"
                 }
@@ -2591,7 +2591,7 @@
               "id": "I10-F14-M1",
               "title": "Add Expected Behaviour block to planning contracts",
               "description": "Introduce a mandatory Expected Behaviour block in feature and issue plans so planning records capture intended runtime behavior, target files or scripts, and observable end-state for downstream planning and conflict avoidance.",
-              "status": "Tasked",
+              "status": "Done",
               "gh_issue_number": 147,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/147",
               "tasks": [
@@ -2599,7 +2599,7 @@
                   "id": "274",
                   "title": "Add Expected Behaviour contract to planning docs and templates",
                   "summary": "Update planning protocol and workflow docs so feature and issue plans require a concrete Expected Behaviour block.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "00:40:51"
                 },
@@ -2607,7 +2607,7 @@
                   "id": "275",
                   "title": "Extend plan lint and plan parsing for Expected Behaviour sections",
                   "summary": "Teach feature planning validation and section extraction to require non-empty Expected Behaviour content for feature and issue blocks.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "00:40:51"
                 },
@@ -2615,7 +2615,7 @@
                   "id": "276",
                   "title": "Thread Expected Behaviour through task-planning and overlap guidance",
                   "summary": "Update planning workflows and command guidance so Expected Behaviour is read as intent context during task decomposition and overlap analysis.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "00:40:51"
                 },
@@ -2623,7 +2623,7 @@
                   "id": "277",
                   "title": "Add regression tests for Expected Behaviour planning contract",
                   "summary": "Cover valid blocks, missing-block failures, placeholder-text rejection, and stable parser behavior.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "00:40:51"
                 }
@@ -2633,7 +2633,7 @@
               "id": "I11-F14-M1",
               "title": "Simplify ISSUE_DEP_INDEX format to minimal normalized lookup structure",
               "description": "Replace the current noisy dependency index payload with a minimal normalized structure that stores only normalized surface keys and reverse issue lookups, without duplicated display paths or repeated metadata.",
-              "status": "Tasked",
+              "status": "Done",
               "gh_issue_number": 148,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/148",
               "tasks": [
@@ -2641,7 +2641,7 @@
                   "id": "278",
                   "title": "Redefine ISSUE_DEP_INDEX schema and validators for minimal shape",
                   "summary": "Replace verbose dependency-index fields with normalized scope metadata, by_issue surface_keys, and by_surface issue arrays.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "00:40:51"
                 },
@@ -2649,7 +2649,7 @@
                   "id": "279",
                   "title": "Cut index-dependencies and show-related over to reduced dep-index payload",
                   "summary": "Update dependency indexing, lookup helpers, and related-issue commands to read and write the simplified index contract.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "00:40:51"
                 },
@@ -2657,7 +2657,7 @@
                   "id": "280",
                   "title": "Add dep-index migration and default payload cutover",
                   "summary": "Support rewriting existing ISSUE_DEP_INDEX payloads into the reduced format and make empty/default loads use the new shape.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "00:40:51"
                 },
@@ -2665,7 +2665,7 @@
                   "id": "281",
                   "title": "Add regression coverage for reduced ISSUE_DEP_INDEX contract",
                   "summary": "Lock normalization, deduplication, stable ordering, consumer behavior, and legacy-payload rejection with tests.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "00:40:51"
                 }
@@ -2675,7 +2675,7 @@
               "id": "I12-F14-M1",
               "title": "Move issue execution order from FEATURE_PLANS into ISSUE_OVERLAPS",
               "description": "Remove Issue Execution Order from FEATURE_PLANS entirely and make ISSUE_OVERLAPS own the global issue execution order that build-overlaps updates from overlap dependencies.",
-              "status": "Tasked",
+              "status": "Done",
               "gh_issue_number": 149,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/149",
               "tasks": [
@@ -2683,7 +2683,7 @@
                   "id": "282",
                   "title": "Remove FEATURE_PLANS Issue Execution Order from planning contracts and lint",
                   "summary": "Stop requiring or generating feature-level Issue Execution Order blocks in planning docs, plan lint, and plan scaffolds.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "01:43:53"
                 },
@@ -2691,7 +2691,7 @@
                   "id": "283",
                   "title": "Add canonical issue execution order block to ISSUE_OVERLAPS contract and storage",
                   "summary": "Extend ISSUE_OVERLAPS schema, validators, and store helpers with a deterministic global issue-order payload.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "01:43:53"
                 },
@@ -2699,7 +2699,7 @@
                   "id": "284",
                   "title": "Make build-overlaps derive and persist global issue order from dependency overlaps",
                   "summary": "Teach overlap build/apply flow to rebuild issue sequencing from dependency overlap edges and reject ambiguous order.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "01:43:53"
                 },
@@ -2707,7 +2707,7 @@
                   "id": "285",
                   "title": "Cut execute-feature and execute-issues over to overlaps-backed issue order",
                   "summary": "Remove execution-order reads from FEATURE_PLANS and resolve feature or package issue order from ISSUE_OVERLAPS instead.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "01:43:53"
                 },
@@ -2715,7 +2715,7 @@
                   "id": "286",
                   "title": "Add migration and regression coverage for overlaps-owned issue sequencing",
                   "summary": "Cover legacy FEATURE_PLANS order cleanup, overlaps schema validation, execution order derivation, and cycle failures.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "01:43:53"
                 }
@@ -2725,7 +2725,7 @@
               "id": "I13-F14-M1",
               "title": "Fix scoped dependency-index reconcile for shared surfaces",
               "description": "Make issue-scoped and feature-scoped dependency index refresh preserve shared-surface reverse lookups instead of dropping unrelated issue memberships from by_surface buckets.",
-              "status": "Tasked",
+              "status": "Done",
               "gh_issue_number": 150,
               "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/150",
               "tasks": [
@@ -2733,7 +2733,7 @@
                   "id": "287",
                   "title": "Fix scoped dep-index reconcile so by_surface preserves unrelated issue memberships",
                   "summary": "Update scoped index refresh to remove and reinsert only selected issue IDs instead of replacing shared-surface buckets wholesale.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "01:43:53"
                 },
@@ -2741,7 +2741,7 @@
                   "id": "288",
                   "title": "Align issue-scoped related lookup with feature-scoped shared-surface truth",
                   "summary": "Make show-related issue scope read the reconciled reverse index consistently after issue and feature refresh paths.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "01:43:53"
                 },
@@ -2749,7 +2749,7 @@
                   "id": "289",
                   "title": "Stabilize dep-index counters and cleanup semantics after partial refresh",
                   "summary": "Keep pruning, ordering, and change counters deterministic while scoped reconcile stops corrupting shared buckets.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "01:43:53"
                 },
@@ -2757,7 +2757,7 @@
                   "id": "290",
                   "title": "Add regression coverage for shared-surface scoped dep-index refresh",
                   "summary": "Lock the bug pattern with tests for issue refresh, feature refresh, and show-related consistency over shared surfaces.",
-                  "status": "Planned",
+                  "status": "Done",
                   "date": "2026-03-08",
                   "time": "01:43:53"
                 }
