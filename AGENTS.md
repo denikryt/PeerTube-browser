@@ -18,6 +18,7 @@ When you receive text matching these patterns, it IS a command:
 - `plan tasks for {ID}` → `.agents/workflows/plan-tasks-for.md`
 - `create feature` → `.agents/workflows/create-feature.md`
 - `execute feature {ID}` → `.agents/workflows/execute-feature.md`
+- `execute features {ID[, ID...]}` → `.agents/workflows/execute-features.md`
 - `execute issue {ID}` → `.agents/workflows/execute-issue.md`
 - `execute issues {ID[, ID...]}` → `.agents/workflows/execute-issues.md`
 - `execute task {ID}` → `.agents/workflows/execute-task.md`
