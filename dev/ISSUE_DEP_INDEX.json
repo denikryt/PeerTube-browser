@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1",
   "scope_type": "feature",
-  "scope_id": "F16-M1",
+  "scope_id": "F17-M1",
   "by_issue": {
     "I1-F15-M1": {
       "surface_keys": [
@@ -19,6 +19,14 @@
         "file: `.agents/workflows/plan-feature.md`",
         "file: `.agents/workflows/plan-issue.md`",
         "file: `dev/feature_plans.md`"
+      ]
+    },
+    "I1-F17-M1": {
+      "surface_keys": [
+        "file: `.agents/workflows/build-overlaps.md`",
+        "file: `dev/issue_overlaps.json`",
+        "file: `dev/map/issue_overlaps_json_schema.json`",
+        "file: `dev/workflow_lib/feature_commands.py`"
       ]
     },
     "I2-F15-M1": {
@@ -40,6 +48,14 @@
         "function: `_render_feature_plan_section`"
       ]
     },
+    "I2-F17-M1": {
+      "surface_keys": [
+        "file: `dev/map/dev_map.json`",
+        "file: `dev/map/issue_overlaps_json_schema.json`",
+        "file: `dev/workflow_lib/feature_commands.py`",
+        "file: `dev/workflow_lib/tracker_json_contracts.py`"
+      ]
+    },
     "I3-F16-M1": {
       "surface_keys": [
         "file: `.agents/protocols/feature-planning-protocol.md`",
@@ -48,12 +64,24 @@
         "file: `tests/workflow/test_overlap_commands.py`",
         "file: `tests/workflow/test_task_planning.py`"
       ]
+    },
+    "I3-F17-M1": {
+      "surface_keys": [
+        "file: `.agents/workflows/build-overlaps.md`",
+        "file: `dev/issue_overlaps.json`",
+        "file: `dev/workflow_lib/feature_commands.py`",
+        "file: `tests/workflow/test_overlap_commands.py`"
+      ]
     }
   },
   "by_surface": {
     "file: `.agents/protocols/feature-planning-protocol.md`": [
       "I1-F16-M1",
       "I3-F16-M1"
+    ],
+    "file: `.agents/workflows/build-overlaps.md`": [
+      "I1-F17-M1",
+      "I3-F17-M1"
     ],
     "file: `.agents/workflows/plan-feature.md`": [
       "I1-F16-M1"
@@ -69,15 +97,30 @@
       "I2-F16-M1",
       "I3-F16-M1"
     ],
+    "file: `dev/issue_overlaps.json`": [
+      "I1-F17-M1",
+      "I3-F17-M1"
+    ],
     "file: `dev/map/dev_map.json`": [
-      "I1-F15-M1"
+      "I1-F15-M1",
+      "I2-F17-M1"
+    ],
+    "file: `dev/map/issue_overlaps_json_schema.json`": [
+      "I1-F17-M1",
+      "I2-F17-M1"
     ],
     "file: `dev/workflow_lib/confirm_commands.py`": [
       "I1-F15-M1",
       "I2-F15-M1"
     ],
     "file: `dev/workflow_lib/feature_commands.py`": [
-      "I2-F16-M1"
+      "I1-F17-M1",
+      "I2-F16-M1",
+      "I2-F17-M1",
+      "I3-F17-M1"
+    ],
+    "file: `dev/workflow_lib/tracker_json_contracts.py`": [
+      "I2-F17-M1"
     ],
     "file: `tests/workflow/test_feature_lifecycle.py`": [
       "I2-F15-M1",
@@ -85,7 +128,8 @@
     ],
     "file: `tests/workflow/test_overlap_commands.py`": [
       "I2-F15-M1",
-      "I3-F16-M1"
+      "I3-F16-M1",
+      "I3-F17-M1"
     ],
     "file: `tests/workflow/test_task_planning.py`": [
       "I3-F16-M1"

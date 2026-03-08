@@ -2,12 +2,47 @@
   "schema_version": "1.1",
   "issue_execution_order": {
     "ordered_issue_ids": [
+      "I7-F4-M1",
+      "I9-F4-M1",
+      "I13-F4-M1",
+      "I32-F4-M1",
+      "I33-F4-M1",
+      "I34-F4-M1",
+      "I1-F5-M1",
+      "I2-F5-M1",
+      "I3-F5-M1",
+      "I4-F5-M1",
+      "I5-F5-M1",
+      "I6-F5-M1",
+      "I7-F5-M1",
+      "I8-F5-M1",
+      "I1-F7-M1",
+      "I2-F7-M1",
+      "I3-F7-M1",
+      "I4-F7-M1",
+      "I1-F9-M1",
+      "I2-F9-M1",
+      "I3-F9-M1",
+      "I1-F10-M1",
+      "I2-F10-M1",
+      "I3-F10-M1",
+      "I1-F11-M1",
+      "I2-F11-M1",
+      "I3-F11-M1",
+      "I1-F12-M1",
+      "I2-F12-M1",
+      "I3-F12-M1",
+      "I1-F13-M1",
+      "I2-F13-M1",
       "I3-F13-M1",
       "I1-F15-M1",
       "I2-F15-M1",
       "I1-F16-M1",
       "I2-F16-M1",
-      "I3-F16-M1"
+      "I3-F16-M1",
+      "I1-F17-M1",
+      "I2-F17-M1",
+      "I3-F17-M1"
     ]
   },
   "overlaps": [
@@ -50,6 +85,36 @@
       "order": "I2-F16-M1->I3-F16-M1",
       "surface": "file: dev/FEATURE_PLANS.md",
       "description": "why: I3 must migrate stored plans and fixture expectations to the exact runtime lint/scaffold behavior produced by I2; impact: migrating plans before the new enforcement lands would create temporary shapes that still fail plan-lint or require a second migration pass; action: update runtime enforcement first, then normalize FEATURE_PLANS and add regression coverage."
+    },
+    {
+      "issues": [
+        "I1-F17-M1",
+        "I2-F17-M1"
+      ],
+      "type": "dependency",
+      "order": "I1-F17-M1->I2-F17-M1",
+      "surface": "file: dev/workflow_lib/feature_commands.py",
+      "description": "why: I2 changes apply-overlaps validation and full-block write semantics inside the same command handlers whose workflow responsibilities are defined in I1; impact: implementing runtime validation first would hard-code behavior before the full-snapshot contract and CLI responsibility split are finalized; action: lock the workflow contract before changing apply semantics."
+    },
+    {
+      "issues": [
+        "I1-F17-M1",
+        "I3-F17-M1"
+      ],
+      "type": "dependency",
+      "order": "I1-F17-M1->I3-F17-M1",
+      "surface": "file: .agents/workflows/build-overlaps.md",
+      "description": "why: I3 rewrites overlap procedures and regression coverage around the workflow contract declared in I1; impact: helper and doc alignment would drift if the full-snapshot responsibility model is not defined first; action: define the canonical overlap workflow before updating docs, scope reads, and regression guidance."
+    },
+    {
+      "issues": [
+        "I2-F17-M1",
+        "I3-F17-M1"
+      ],
+      "type": "dependency",
+      "order": "I2-F17-M1->I3-F17-M1",
+      "surface": "file: dev/workflow_lib/feature_commands.py",
+      "description": "why: I3 aligns read/build helpers and tests with the exact validation and apply behavior implemented in I2; impact: workflow docs and regression fixtures would encode stale semantics if helper alignment lands before final apply rules are implemented; action: finish full-block validation and write behavior before updating overlap workflows and coverage."
     }
   ]
 }
