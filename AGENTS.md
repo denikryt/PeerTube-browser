@@ -11,7 +11,7 @@
 
 ## KNOWN COMMANDS
 
-When you receive text matching these patterns, it IS a command:
+When you receive text matching these patterns, it IS a workflow command:
 
 - `plan feature {ID}` → `.agents/workflows/plan-feature.md`
 - `plan issue {ID}` → `.agents/workflows/plan-issue.md`
@@ -37,8 +37,17 @@ When you recognize a KNOWN COMMAND:
 3. Do not skip steps
 4. Do not use subagents unless workflow explicitly requires it
 5. Do not make independent decisions
-6. If a known command has already activated execution for a specific issue/feature in the current session, subsequent direct user follow-up instructions inside that same scope should be treated as execution continuations, not blocked for missing repeated execute commands.
+6. If a known command has already activated execution for a specific issue or feature in the current session, subsequent direct user follow-up instructions inside that same scope should be treated as execution continuations, not blocked for missing repeated execute commands.
 
+---
+
+## DIRECT USER REQUESTS
+
+1. A direct and explicit user request to modify code, config, docs, or files is a valid execution trigger even when it is not written in a workflow-command format.
+2. Examples include requests such as "fix this", "add this", "remove that", "change this", "rewrite this", "implement this", or equivalent phrasing in any language.
+3. Such direct requests authorize local implementation work unless blocked by a higher-priority safety rule or by a workflow that the user explicitly invoked.
+4. Workflow commands remain required when the user wants a workflow-governed operation such as planning, tracked execution, confirmation, rejection, or other `.agents/workflows/` procedures.
+5. If the user request is analytical, exploratory, or ambiguous rather than a clear request to change something, treat it as non-execution.
 
 ---
 
