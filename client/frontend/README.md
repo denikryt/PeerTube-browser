@@ -20,6 +20,7 @@ npm run build
 ```
 
 ## Local About Overrides
-- Default production source is `client/frontend/dev-pages/about.template.html`.
+- Default source is `client/frontend/about.template.html`.
 - Local developer overrides can be placed in:
-  - `client/frontend/dev-pages/about.html`
+  - `client/frontend/about.html`
+- Production build always emits `/about.html`. If `client/frontend/about.html` does not exist, Vite temporarily materializes it from `client/frontend/about.template.html` during the build.
