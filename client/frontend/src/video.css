@@ -89,6 +89,21 @@ body {
   transform: translateY(-1px);
 }
 
+.nav-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  padding: 0.45rem;
+}
+
+.nav-link-icon svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: currentColor;
+  display: block;
+}
+
 .video-main {
   padding: 0 3rem 3rem;
   display: grid;

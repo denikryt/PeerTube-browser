@@ -83,6 +83,19 @@ body {
   transform: translateY(-1px);
 }
 
+.nav-link-icon {
+  justify-content: center;
+  width: 2.5rem;
+  padding: 0.45rem;
+}
+
+.nav-link-icon svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: currentColor;
+  display: block;
+}
+
 .videos-main {
   padding: 0 3rem 3rem;
   display: flex;
