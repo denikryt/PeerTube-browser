@@ -1281,3 +1281,143 @@ Canonical per-issue plan block format inside a feature section:
   1. plan storage migration
   2. fixture/test update
   3. protocol-lint consistency regression checks
+
+## F17-M1
+
+### Expected Behaviour
+- Overlap workflow moves to one explicit model: the agent prepares a full editable draft snapshot for `ISSUE_OVERLAPS.json`, including both `overlaps` and `issue_execution_order`, instead of relying on ambiguous partial-delta apply semantics.
+- Scope discovery remains local to the requested feature or issue, but final apply writes a complete validated global block so unrelated existing overlap pairs remain intact unless the draft changes them explicitly.
+- `issue_execution_order` becomes an explicitly edited field in the final draft rather than a hidden side effect of `apply-overlaps`, while CLI validation ensures that the provided order is structurally valid and semantically consistent with dependency overlaps.
+- Workflow docs and regression coverage make the roles clear: CLI commands discover context and validate/apply the final snapshot, while the agent prepares and edits the full draft between those stages.
+
+### Dependencies
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — owns `show-related`, `get-plan-block`, `build-overlaps`, `show-overlaps`, and `apply-overlaps`, so the overlap workflow contract and write semantics must be updated there.
+- [dev/workflow_lib/tracker_json_contracts.py](dev/workflow_lib/tracker_json_contracts.py) and [dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json](dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json) — canonical overlap payload shape and validation rules that must be extended to support full-draft validation and explicit order semantics.
+- [dev/ISSUE_OVERLAPS.json](dev/ISSUE_OVERLAPS.json) — target global tracker whose full-block ownership, preservation rules, and apply semantics must become explicit and auditable.
+- [.agents/workflows/build-overlaps.md](.agents/workflows/build-overlaps.md) — current workflow still describes delta-oriented overlap drafting and needs to be rewritten around full snapshot preparation and CLI validation/apply.
+- [tests/workflow/test_overlap_commands.py](tests/workflow/test_overlap_commands.py) — overlap workflow behavior, scope filtering, and apply semantics need regression coverage once the new contract is introduced.
+
+### Decomposition
+1. Define one canonical overlap workflow contract:
+   - scope-specific commands discover candidates and issue-plan context,
+   - the agent prepares a full editable draft snapshot from current global overlap state plus scoped updates,
+   - final apply validates and writes the entire block instead of performing hidden partial replacement or implicit merge.
+2. Align runtime validation and apply semantics with that contract:
+   - schema validation and semantic validation live in CLI,
+   - draft preparation remains agent-driven,
+   - `issue_execution_order` is validated as an explicit field supplied in the final draft.
+3. Lock the workflow with docs and tests:
+   - update build/apply overlap workflow guidance,
+   - cover preservation of unrelated pairs,
+   - cover invalid orders, duplicate pairs, pair/order mismatch, and scope-read behavior.
+
+### Issue/Task Decomposition Assessment
+- Feature scope is split into three issues because workflow contract, runtime enforcement, and regression/documentation work are closely connected but should be landed in a controlled sequence.
+- Minimal execution order:
+  1. define the canonical overlap workflow and responsibility split,
+  2. implement full-draft validation and write semantics,
+  3. align helper commands, docs, and regression coverage.
+- Expected split:
+  - `I1-F17-M1`: workflow contract and command-surface definition
+  - `I2-F17-M1`: runtime validation/apply semantics
+  - `I3-F17-M1`: workflow/doc/test alignment
+
+### I1-F17-M1 - Define full-snapshot overlap workflow contract and CLI responsibilities
+
+#### Expected Behaviour
+- The repository has one explicit overlap workflow contract that says exactly which steps are CLI-owned and which steps are agent-owned.
+- Discovery commands remain scoped to the requested feature or issue, while final overlap editing is performed against a full global draft snapshot.
+- The overlap contract explicitly states that the agent edits `issue_execution_order` in the draft and that CLI validation/apply treats that order as input to be checked rather than silently recomputed.
+
+#### Dependencies
+- file: `.agents/workflows/build-overlaps.md` | reason: this workflow must be rewritten so it describes full-snapshot draft preparation instead of ambiguous delta-only semantics.
+- file: `dev/workflow_lib/feature_commands.py` | reason: command responsibilities for overlap discovery, readback, and apply must match the documented workflow contract.
+- file: `dev/ISSUE_OVERLAPS.json` | reason: the contract needs to define full-block ownership and preservation of unrelated overlap pairs.
+- file: `dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json` | reason: the workflow contract must stay compatible with the canonical overlap payload shape and explicit order field.
+
+#### Decomposition
+1. Define the canonical overlap workflow steps:
+   - discovery through `index-dependencies`, `show-related`, and issue-plan extraction,
+   - agent-prepared full draft snapshot from current global state,
+   - CLI validation and full-block apply.
+2. Define responsibility boundaries:
+   - CLI owns discovery helpers, validation, and final write,
+   - the agent owns draft preparation, pair classification, pair updates, and explicit `issue_execution_order` editing.
+3. Define full-snapshot preservation semantics:
+   - existing unrelated pairs stay in the draft unless explicitly changed,
+   - pair identity is tracked by canonical issue pair key,
+   - final apply consumes a complete snapshot rather than an implicit merge patch.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3 implementation tasks
+  1. workflow contract rewrite
+  2. command responsibility mapping
+  3. full-snapshot preservation and pair-key semantics
+
+### I2-F17-M1 - Implement full-block overlap apply validation and write semantics
+
+#### Expected Behaviour
+- `apply-overlaps` accepts a full draft snapshot, validates it thoroughly, and writes the entire `ISSUE_OVERLAPS.json` block only when both schema and semantic checks pass.
+- Validation rejects malformed payloads, duplicate pair keys, pair/order mismatches, unknown issue IDs, and contradictory `issue_execution_order` before any file mutation happens.
+- Final write semantics are explicit: the CLI persists exactly the validated full draft block and does not perform hidden scope replacement or hidden order recomputation.
+
+#### Dependencies
+- file: `dev/workflow_lib/feature_commands.py` | reason: `_handle_plan_apply_overlaps` currently derives order implicitly and must be updated to validate and persist a full supplied snapshot.
+- file: `dev/workflow_lib/tracker_json_contracts.py` | reason: overlap payload validation must cover full-draft shape, duplicate pair keys, and explicit order semantics.
+- file: `dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json` | reason: schema requirements must match the final draft payload that `apply-overlaps` expects.
+- file: `dev/map/DEV_MAP.json` | reason: semantic validation must confirm that overlap issue IDs referenced in the draft actually exist in the active tracker state.
+
+#### Decomposition
+1. Update overlap payload contract for full-draft apply:
+   - require full top-level overlap block shape in the apply input,
+   - validate explicit `issue_execution_order` supplied in the draft,
+   - keep pair/order shape deterministic and schema-backed.
+2. Implement semantic validation before write:
+   - reject duplicate canonical pair keys,
+   - reject `order` values that do not reference the same issue pair,
+   - reject unknown issue IDs and invalid order/member relationships,
+   - reject contradictory or cyclic dependency ordering when applicable.
+3. Implement explicit full-block write semantics:
+   - persist the validated draft block exactly as supplied,
+   - do not replace only one scope silently,
+   - do not recompute `issue_execution_order` behind the agent’s back during apply.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3-4 implementation tasks
+  1. schema/contract update for full apply payload
+  2. semantic validation rules
+  3. full-block write behavior
+  4. negative-path verification
+
+### I3-F17-M1 - Align overlap build/read workflows and regression coverage with snapshot apply
+
+#### Expected Behaviour
+- Overlap helper commands and workflow docs clearly support the new model: scoped discovery, agent-prepared full snapshot, CLI validation, and full-block apply.
+- `show-overlaps` and related overlap-read helpers report state consistently for feature and issue scopes so the agent can prepare the draft without hidden filtering surprises.
+- Regression coverage protects unrelated-pair preservation, feature-scope reads, and invalid full-draft apply behavior from future drift.
+
+#### Dependencies
+- file: `.agents/workflows/build-overlaps.md` | reason: the procedural workflow must describe the new full-snapshot preparation and validation/apply sequence end to end.
+- file: `dev/workflow_lib/feature_commands.py` | reason: overlap read/build helpers and scope filtering must match the rewritten workflow and final apply model.
+- file: `tests/workflow/test_overlap_commands.py` | reason: overlap workflow regressions should be locked in one place, including feature-scope reads and full-draft apply semantics.
+- file: `dev/ISSUE_OVERLAPS.json` | reason: tests need representative global overlap state to prove unrelated-pair preservation and explicit order handling.
+
+#### Decomposition
+1. Align overlap read/build workflow guidance:
+   - rewrite procedural docs around full draft preparation,
+   - document agent-owned draft editing and CLI-owned validation/apply,
+   - make explicit that final draft contains the full overlap block.
+2. Align overlap helper behavior where needed:
+   - ensure feature-scope reads return the overlaps actually owned by that feature subtree,
+   - keep build helpers compatible with agent-driven full draft preparation,
+   - avoid helper behavior that suggests hidden merge or scope replacement semantics.
+3. Add regression coverage for the redesigned workflow:
+   - preserve unrelated existing pairs when applying a new full draft,
+   - fail on duplicate pairs, invalid issue IDs, invalid order references, and contradictory order,
+   - cover feature-scope and issue-scope overlap reads under the new model.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3 implementation tasks
+  1. workflow/doc alignment
+  2. helper/read-path alignment
+  3. regression coverage for full-draft apply and scope reads

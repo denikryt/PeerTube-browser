@@ -2837,6 +2837,46 @@
           ],
           "branch_name": null,
           "branch_url": null
+        },
+        {
+          "id": "F17-M1",
+          "title": "Redesign overlap workflow around full draft snapshots and validated apply",
+          "description": "Redesign the overlap workflow so agents prepare a full `ISSUE_OVERLAPS.json` draft snapshot from current global state plus scoped overlap edits, keep `issue_execution_order` explicitly editable in that draft, and rely on CLI validation plus full-block apply semantics for final persistence.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F17-M1",
+              "title": "Define full-snapshot overlap workflow contract and CLI responsibilities",
+              "description": "Define the canonical overlap workflow around a full editable draft snapshot, agent-prepared overlap updates, manual `issue_execution_order`, and CLI-owned validation/apply responsibilities instead of implicit partial-delta semantics.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F17-M1",
+              "title": "Implement full-block overlap apply validation and write semantics",
+              "description": "Make overlap apply validate a full draft snapshot by schema and semantic rules, preserve global state prepared by the agent, and write the complete `ISSUE_OVERLAPS.json` block without destructive hidden scope replacement.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F17-M1",
+              "title": "Align overlap build/read workflows and regression coverage with snapshot apply",
+              "description": "Update overlap-oriented workflows, helper commands, and tests so discovery remains scoped, draft preparation stays agent-driven, and validation/apply behavior is consistently documented and regression-protected.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
         }
       ],
       "non_feature_items": [
