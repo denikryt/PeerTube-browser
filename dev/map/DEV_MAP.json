@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-08T04:56:19+02:00",
+  "updated_at": "2026-03-08T05:03:25+02:00",
   "task_count": 314,
   "milestones": [
     {
@@ -2773,16 +2773,16 @@
           "description": "Add `reject feature --id <feature_id>` so feature rejection mirrors feature confirmation cleanup: cascade through child issues and task artifacts, remove local feature and issue planning artifacts when present, clean dependency and overlap indexes, set feature and child issue statuses to `Rejected`, and apply the same GitHub rejection semantics already used by `reject issue`.",
           "status": "Planned",
           "track": "System/Test",
-          "gh_issue_number": null,
-          "gh_issue_url": null,
+          "gh_issue_number": 151,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/151",
           "issues": [
             {
               "id": "I1-F15-M1",
               "title": "Add reject feature command and local subtree cleanup",
               "description": "Implement `reject feature` with deterministic preview/write behavior that marks the feature and child issues as `Rejected` while removing feature-owned task, plan, overlap, and dependency artifacts through one feature-level cleanup flow.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 154,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/154",
               "tasks": [
                 {
                   "id": "301",
@@ -2815,8 +2815,8 @@
               "title": "Add GitHub rejection cascade and regression coverage for reject feature",
               "description": "Extend feature rejection so mapped child issues and the mapped feature issue receive the same rejection-marker and close behavior as `reject issue`, then lock the new feature-level reject flow with workflow docs and regression coverage.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 155,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/155",
               "tasks": [
                 {
                   "id": "304",
@@ -2845,8 +2845,8 @@
               ]
             }
           ],
-          "branch_name": null,
-          "branch_url": null
+          "branch_name": "feature/F15-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F15-M1"
         },
         {
           "id": "F16-M1",
@@ -2854,16 +2854,16 @@
           "description": "Make the planning protocol the single source of truth for `FEATURE_PLANS.md`, reduce feature-level plan sections to `Expected Behaviour` only, remove `FEATURE_PLANS` header boilerplate, align lint and plan scaffolds to the new contract, migrate existing plan sections, and lock the contract with regression checks.",
           "status": "Planned",
           "track": "System/Test",
-          "gh_issue_number": null,
-          "gh_issue_url": null,
+          "gh_issue_number": 152,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/152",
           "issues": [
             {
               "id": "I1-F16-M1",
               "title": "Define canonical planning contract and storage-only FEATURE_PLANS structure",
               "description": "Rewrite the formal planning protocol and workflows so the protocol becomes the only source of truth for plan structure, `FEATURE_PLANS.md` becomes storage-only, and feature blocks are defined as `Expected Behaviour` only while issue blocks keep the detailed canonical structure.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 156,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/156",
               "tasks": [
                 {
                   "id": "307",
@@ -2888,8 +2888,8 @@
               "title": "Align lint and plan generation with the simplified feature-block contract",
               "description": "Update planning runtime enforcement and plan scaffolds so `feature plan-lint` and `plan-init` require only feature-level `Expected Behaviour`, keep full issue-block validation, and support headerless `FEATURE_PLANS.md` storage.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 157,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/157",
               "tasks": [
                 {
                   "id": "309",
@@ -2922,8 +2922,8 @@
               "title": "Migrate existing plans and add consistency regression coverage",
               "description": "Normalize existing `FEATURE_PLANS.md` sections to the new feature-level contract, remove obsolete boilerplate, and add tests that prove protocol, lint, and fixtures stay aligned without drift.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 158,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/158",
               "tasks": [
                 {
                   "id": "312",
@@ -2952,8 +2952,8 @@
               ]
             }
           ],
-          "branch_name": null,
-          "branch_url": null
+          "branch_name": "feature/F16-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F16-M1"
         },
         {
           "id": "F17-M1",
@@ -2961,16 +2961,16 @@
           "description": "Redesign the overlap workflow so agents prepare a full `ISSUE_OVERLAPS.json` draft snapshot from current global state plus scoped overlap edits, keep `issue_execution_order` explicitly editable in that draft, and rely on CLI validation plus full-block apply semantics for final persistence.",
           "status": "Planned",
           "track": "System/Test",
-          "gh_issue_number": null,
-          "gh_issue_url": null,
+          "gh_issue_number": 153,
+          "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/153",
           "issues": [
             {
               "id": "I1-F17-M1",
               "title": "Define full-snapshot overlap workflow contract and CLI responsibilities",
               "description": "Define the canonical overlap workflow around a full editable draft snapshot, agent-prepared overlap updates, manual `issue_execution_order`, and CLI-owned validation/apply responsibilities instead of implicit partial-delta semantics.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 159,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/159",
               "tasks": [
                 {
                   "id": "291",
@@ -2995,8 +2995,8 @@
               "title": "Implement full-block overlap apply validation and write semantics",
               "description": "Make overlap apply validate a full draft snapshot by schema and semantic rules, preserve global state prepared by the agent, and write the complete `ISSUE_OVERLAPS.json` block without destructive hidden scope replacement.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 160,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/160",
               "tasks": [
                 {
                   "id": "293",
@@ -3029,8 +3029,8 @@
               "title": "Align overlap build/read workflows and regression coverage with snapshot apply",
               "description": "Update overlap-oriented workflows, helper commands, and tests so discovery remains scoped, draft preparation stays agent-driven, and validation/apply behavior is consistently documented and regression-protected.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 161,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/161",
               "tasks": [
                 {
                   "id": "296",
@@ -3063,8 +3063,8 @@
               "title": "Limit issue execution order to dependency-overlap participants only",
               "description": "Stop populating `issue_execution_order.ordered_issue_ids` with active issues that do not participate in any dependency overlap, so the global order reflects only the dependency graph represented in `ISSUE_OVERLAPS.json` instead of unrelated tracker noise.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 162,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/162",
               "tasks": [
                 {
                   "id": "299",
@@ -3085,8 +3085,8 @@
               ]
             }
           ],
-          "branch_name": null,
-          "branch_url": null
+          "branch_name": "feature/F17-M1",
+          "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F17-M1"
         }
       ],
       "non_feature_items": [
