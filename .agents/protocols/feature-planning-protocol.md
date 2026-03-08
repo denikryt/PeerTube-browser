@@ -41,9 +41,9 @@ Required input for `plan issue <issue_id>`:
 - `issue_task_decomposition_assessment`: explicit minimal-sufficient split decision for this issue.
 
 Required output in `dev/FEATURE_PLANS.md`:
+- `Expected Behaviour` section for the feature with target runtime outcome, observable result, touched runtime surfaces, and constraints,
 - dependencies section for the feature,
 - decomposition section with strict step-by-step flow,
-- `Issue Execution Order` block with ordered active issue rows (`<issue_id>` - `<issue_title>`),
 - `Issue/Task Decomposition Assessment`,
 - draft decomposition (`Feature -> Issue(s) -> Task(s)`) only if splitting is actually needed.
 
@@ -52,6 +52,7 @@ Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
 - exactly one canonical issue-plan block under the parent feature section for the target issue id,
   - heading format: `### <issue_id> - <issue_title>` (one issue per block),
   - only `####` headings are allowed inside that block.
+- mandatory issue-specific `#### Expected Behaviour` with concrete runtime outcome, observable result, touched runtime surfaces, and constraints,
 - mandatory issue-specific `#### Dependencies`,
 - mandatory issue-specific `#### Decomposition` with strict step flow,
 - mandatory issue-specific `#### Issue/Task Decomposition Assessment`,
@@ -60,7 +61,6 @@ Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
   - `- module: <module.name> | reason: <text>`
   - `- function: <repo/path.ext>::<symbol> | reason: <text>`
   - `- class: <repo/path.ext>::<ClassName> | reason: <text>`
-- `Issue Execution Order` is read-only for `plan-issue`; active issue row for the target issue must already exist.
 - content quality rule for `plan issue`: the plan block must be authored from the issue context (`title`, `description`, related workflow/code paths) and must not be left as a generic template/fallback stub.
 - forbidden for completed `plan issue` output:
   - generic placeholder decomposition such as `Implement issue scope and produce executable task updates.`.
@@ -101,6 +101,7 @@ Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
 Checklist:
 - `#### Decomposition` uses numbered top-level steps (`1.`, `2.`, ...) and each step has concrete sub-points with implementation actions.
 - Every decomposition step states expected result/output (not only action wording).
+- `Expected Behaviour` exists and is concrete rather than placeholder text.
 - For CLI/automation changes, decomposition explicitly includes:
   - input contract,
   - output contract,

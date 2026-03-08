@@ -52,9 +52,10 @@ def load_issue_overlaps_payload(context: WorkflowContext) -> dict[str, Any]:
     """Load dedicated issue-overlaps payload or return an empty canonical structure."""
     if context.issue_overlaps_path.exists():
         payload = _load_json_file(context.issue_overlaps_path)
+        payload = _migrate_issue_overlaps_payload(payload)
         validate_issue_overlaps_contract_payload(payload, str(context.issue_overlaps_path))
         return payload
-    return build_issue_overlaps_contract_payload([])
+    return build_issue_overlaps_contract_payload([], {"ordered_issue_ids": []})
 
 
 def write_issue_overlaps_payload(context: WorkflowContext, payload: dict[str, Any]) -> None:
@@ -63,15 +64,27 @@ def write_issue_overlaps_payload(context: WorkflowContext, payload: dict[str, An
     _write_json_file(context.issue_overlaps_path, payload)
 
 
+def _migrate_issue_overlaps_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Upgrade legacy overlaps payloads to include the canonical issue-order block."""
+    if "issue_execution_order" in payload:
+        return payload
+    return build_issue_overlaps_contract_payload(
+        payload.get("overlaps", []),
+        {"ordered_issue_ids": []},
+    )
+
+
 def load_issue_dependency_index_payload(context: WorkflowContext) -> dict[str, Any]:
     """Load dependency-index payload or return an empty canonical structure."""
     if context.issue_dependency_index_path.exists():
         payload = _load_json_file(context.issue_dependency_index_path)
+        payload = _migrate_issue_dependency_index_payload(payload)
         validate_issue_dependency_index_contract_payload(payload, str(context.issue_dependency_index_path))
         return payload
     return build_issue_dependency_index_contract_payload(
         {
-            "feature_scope": "all",
+            "scope_type": "all",
+            "scope_id": "all",
             "by_issue": {},
             "by_surface": {},
         }
@@ -82,6 +95,70 @@ def write_issue_dependency_index_payload(context: WorkflowContext, payload: dict
     """Persist validated dependency-index payload to canonical JSON path."""
     validate_issue_dependency_index_contract_payload(payload, str(context.issue_dependency_index_path))
     _write_json_file(context.issue_dependency_index_path, payload)
+
+
+def _migrate_issue_dependency_index_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite legacy verbose dependency-index payloads into the reduced canonical shape."""
+    if "scope_type" in payload and "scope_id" in payload:
+        return payload
+    if "feature_scope" not in payload:
+        return payload
+
+    by_issue = payload.get("by_issue", {})
+    migrated_by_issue: dict[str, dict[str, Any]] = {}
+    if isinstance(by_issue, dict):
+        for issue_id, entry in by_issue.items():
+            if not isinstance(entry, dict):
+                continue
+            surfaces = entry.get("surface_keys", entry.get("surfaces", []))
+            if not isinstance(surfaces, list):
+                continue
+            migrated_by_issue[str(issue_id)] = {
+                "surface_keys": sorted(
+                    {
+                        str(surface).strip()
+                        for surface in surfaces
+                        if isinstance(surface, str) and str(surface).strip()
+                    }
+                )
+            }
+
+    by_surface = payload.get("by_surface", {})
+    migrated_by_surface: dict[str, list[str]] = {}
+    if isinstance(by_surface, dict):
+        for surface_key, entry in by_surface.items():
+            issue_ids: list[str] = []
+            if isinstance(entry, dict):
+                raw_issue_ids = entry.get("issue_ids", [])
+            else:
+                raw_issue_ids = entry
+            if isinstance(raw_issue_ids, list):
+                issue_ids = sorted(
+                    {
+                        str(issue_id).strip()
+                        for issue_id in raw_issue_ids
+                        if isinstance(issue_id, str) and str(issue_id).strip()
+                    }
+                )
+            if issue_ids:
+                migrated_by_surface[str(surface_key)] = issue_ids
+
+    raw_scope_id = str(payload.get("feature_scope", "all")).strip() or "all"
+    if raw_scope_id == "all":
+        scope_type = "all"
+    elif raw_scope_id.startswith("I"):
+        scope_type = "issue"
+    else:
+        scope_type = "feature"
+
+    return build_issue_dependency_index_contract_payload(
+        {
+            "scope_type": scope_type,
+            "scope_id": raw_scope_id,
+            "by_issue": dict(sorted(migrated_by_issue.items())),
+            "by_surface": dict(sorted(migrated_by_surface.items())),
+        }
+    )
 
 
 def parse_task_list_markdown(task_list_text: str) -> dict[str, Any]:

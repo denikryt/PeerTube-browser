@@ -6,12 +6,30 @@
   "additionalProperties": false,
   "required": [
     "schema_version",
+    "issue_execution_order",
     "overlaps"
   ],
   "properties": {
     "schema_version": {
       "type": "string",
-      "const": "1.0"
+      "const": "1.1"
+    },
+    "issue_execution_order": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordered_issue_ids"
+      ],
+      "properties": {
+        "ordered_issue_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^I[0-9]+-F[0-9]+-M[0-9]+$"
+          },
+          "uniqueItems": true
+        }
+      }
     },
     "overlaps": {
       "type": "array",

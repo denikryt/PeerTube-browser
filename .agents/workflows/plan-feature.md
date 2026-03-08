@@ -59,13 +59,14 @@ Follow the **canonical structure** in `dev/FEATURE_PLANS.md` header section:
 
 1. Feature-level block:
    - `## <feature_id>`
-   - `### Issue Execution Order` (list all issues in execution order: both existing and newly created in Phase 2b)
+   - `### Expected Behaviour`
    - `### Dependencies`
    - `### Decomposition`
    - `### Issue/Task Decomposition Assessment`
 
 2. Issue-level blocks (one per issue, for all issues whether existing or newly created):
    - `### <issue_id> - <issue_title>`
+   - `#### Expected Behaviour` describing target runtime outcome, observable result, touched runtime surfaces, and constraints
    - `#### Dependencies` using strict lines only:
      `- file: ... | reason: ...`
      `- module: ... | reason: ...`
@@ -86,9 +87,11 @@ Before executing CLI commands:
 1. Run: `python3 dev/workflow feature plan-init --id <feature_id>`
    - `plan-init` auto-inserts one plain line with `<title>` from `dev/map/DEV_MAP.json` into the feature section scaffold (without `Title:` label).
 2. Open `dev/FEATURE_PLANS.md` and locate the newly created feature section.
-3. Insert all drafted dependencies, issue execution order, decomposition, and assessments.
-4. Ensure all issue-plan blocks follow the canonical format (see `FEATURE_PLANS.md` header).
-5. If agent-generated markdown drafts are part of the workflow, keep the schema reference centralized in `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md` instead of duplicating format rules inline.
+3. Insert all drafted `Expected Behaviour`, dependencies, decomposition, and assessments.
+4. Do not create or maintain `### Issue Execution Order` in `FEATURE_PLANS.md`; issue sequencing is owned by `dev/ISSUE_OVERLAPS.json`.
+5. Ensure `Expected Behaviour` exists for the feature block and every issue block before linting.
+6. Ensure all issue-plan blocks follow the canonical format (see `FEATURE_PLANS.md` header).
+7. If agent-generated markdown drafts are part of the workflow, keep the schema reference centralized in `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md` instead of duplicating format rules inline.
 
 ## Phase 6: Validate and Finalize
 

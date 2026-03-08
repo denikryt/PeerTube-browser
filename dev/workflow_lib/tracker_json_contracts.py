@@ -8,8 +8,8 @@ from .errors import WorkflowCommandError
 
 
 TASK_LIST_CONTRACT_VERSION = "1.0"
-ISSUE_OVERLAPS_CONTRACT_VERSION = "1.0"
-ISSUE_DEP_INDEX_CONTRACT_VERSION = "1.0"
+ISSUE_OVERLAPS_CONTRACT_VERSION = "1.1"
+ISSUE_DEP_INDEX_CONTRACT_VERSION = "1.1"
 
 
 def build_task_list_contract_payload(entries: list[dict[str, Any]], expected_marker: str) -> dict[str, Any]:
@@ -26,10 +26,16 @@ def build_task_list_contract_payload(entries: list[dict[str, Any]], expected_mar
         "tasks": normalized_tasks,
     }
 
-def build_issue_overlaps_contract_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
+def build_issue_overlaps_contract_payload(
+    entries: list[dict[str, Any]],
+    issue_execution_order: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Build canonical issue-overlaps JSON payload."""
     return {
         "schema_version": ISSUE_OVERLAPS_CONTRACT_VERSION,
+        "issue_execution_order": issue_execution_order
+        if isinstance(issue_execution_order, dict)
+        else {"ordered_issue_ids": []},
         "overlaps": entries,
     }
 
@@ -38,7 +44,8 @@ def build_issue_dependency_index_contract_payload(payload: dict[str, Any]) -> di
     """Build canonical dependency-index payload with stable top-level keys."""
     return {
         "schema_version": ISSUE_DEP_INDEX_CONTRACT_VERSION,
-        "feature_scope": payload.get("feature_scope", "all"),
+        "scope_type": payload.get("scope_type", "all"),
+        "scope_id": payload.get("scope_id", "all"),
         "by_issue": payload.get("by_issue", {}),
         "by_surface": payload.get("by_surface", {}),
     }
@@ -81,6 +88,26 @@ def validate_issue_overlaps_contract_payload(payload: dict[str, Any], location: 
     overlaps = payload.get("overlaps")
     if not isinstance(overlaps, list):
         raise WorkflowCommandError(f"{location}: overlaps must be a list.", exit_code=4)
+
+    issue_execution_order = payload.get("issue_execution_order")
+    if not isinstance(issue_execution_order, dict):
+        raise WorkflowCommandError(f"{location}.issue_execution_order must be an object.", exit_code=4)
+    ordered_issue_ids = _require_non_empty_string_list_or_empty(
+        issue_execution_order,
+        "ordered_issue_ids",
+        f"{location}.issue_execution_order",
+    )
+    if len(ordered_issue_ids) != len(set(ordered_issue_ids)):
+        raise WorkflowCommandError(
+            f"{location}.issue_execution_order.ordered_issue_ids must not contain duplicates.",
+            exit_code=4,
+        )
+    for issue_index, issue_id in enumerate(ordered_issue_ids):
+        if not _looks_like_issue_id(issue_id):
+            raise WorkflowCommandError(
+                f"{location}.issue_execution_order.ordered_issue_ids[{issue_index}] uses invalid issue ID format.",
+                exit_code=4,
+            )
 
     seen_pairs: set[tuple[str, str]] = set()
     allowed_types = {"dependency", "conflict", "shared_logic"}
@@ -139,7 +166,13 @@ def validate_issue_dependency_index_contract_payload(payload: dict[str, Any], lo
             f"expected {ISSUE_DEP_INDEX_CONTRACT_VERSION}.",
             exit_code=4,
         )
-    _require_non_empty_string(payload, "feature_scope", location)
+    scope_type = _require_non_empty_string(payload, "scope_type", location)
+    if scope_type not in {"all", "feature", "issue"}:
+        raise WorkflowCommandError(
+            f"{location}.scope_type must be one of: all, feature, issue.",
+            exit_code=4,
+        )
+    _require_non_empty_string(payload, "scope_id", location)
 
     by_issue = payload.get("by_issue")
     if not isinstance(by_issue, dict):
@@ -149,18 +182,23 @@ def validate_issue_dependency_index_contract_payload(payload: dict[str, Any], lo
             raise WorkflowCommandError(f"{location}.by_issue[{issue_id!r}] must be an object.", exit_code=4)
         if not _looks_like_issue_id(str(issue_id)):
             raise WorkflowCommandError(f"{location}.by_issue contains invalid issue ID key {issue_id!r}.", exit_code=4)
-        _require_non_empty_string_list(entry, "surfaces", f"{location}.by_issue[{issue_id!r}]")
-        _require_non_empty_string(entry, "feature_id", f"{location}.by_issue[{issue_id!r}]")
-        _require_non_empty_string(entry, "status", f"{location}.by_issue[{issue_id!r}]")
+        if any(key in entry for key in ("surfaces", "feature_id", "status")):
+            raise WorkflowCommandError(
+                f"{location}.by_issue[{issue_id!r}] contains legacy fields; use only surface_keys.",
+                exit_code=4,
+            )
+        _require_non_empty_string_list(entry, "surface_keys", f"{location}.by_issue[{issue_id!r}]")
 
     by_surface = payload.get("by_surface")
     if not isinstance(by_surface, dict):
         raise WorkflowCommandError(f"{location}.by_surface must be an object.", exit_code=4)
     for surface_key, entry in by_surface.items():
-        if not isinstance(entry, dict):
-            raise WorkflowCommandError(f"{location}.by_surface[{surface_key!r}] must be an object.", exit_code=4)
-        _require_non_empty_string(entry, "surface", f"{location}.by_surface[{surface_key!r}]")
-        issue_ids = _require_non_empty_string_list(entry, "issue_ids", f"{location}.by_surface[{surface_key!r}]")
+        if isinstance(entry, dict):
+            raise WorkflowCommandError(
+                f"{location}.by_surface[{surface_key!r}] contains legacy object form; use a list of issue IDs.",
+                exit_code=4,
+            )
+        issue_ids = _require_non_empty_string_list({"issue_ids": entry}, "issue_ids", f"{location}.by_surface[{surface_key!r}]")
         for issue_index, issue_id in enumerate(issue_ids):
             if not _looks_like_issue_id(issue_id):
                 raise WorkflowCommandError(
@@ -182,6 +220,19 @@ def _require_non_empty_string_list(payload: dict[str, Any], key: str, location: 
     raw_value = payload.get(key)
     if not isinstance(raw_value, list) or not raw_value:
         raise WorkflowCommandError(f"{location}.{key} must be a non-empty list.", exit_code=4)
+    normalized: list[str] = []
+    for index, item in enumerate(raw_value):
+        if not isinstance(item, str) or not item.strip():
+            raise WorkflowCommandError(f"{location}.{key}[{index}] must be a non-empty string.", exit_code=4)
+        normalized.append(item)
+    return normalized
+
+
+def _require_non_empty_string_list_or_empty(payload: dict[str, Any], key: str, location: str) -> list[str]:
+    """Read one optional list[str] value that may be empty but not malformed."""
+    raw_value = payload.get(key)
+    if not isinstance(raw_value, list):
+        raise WorkflowCommandError(f"{location}.{key} must be a list.", exit_code=4)
     normalized: list[str] = []
     for index, item in enumerate(raw_value):
         if not isinstance(item, str) or not item.strip():

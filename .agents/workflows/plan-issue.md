@@ -63,6 +63,16 @@ State clearly:
 - What must be done next before task decomposition, if the issue is still plan-only
 - Or, if task decomposition already exists, the explicit task count and per-task scope
 
+### 2.4 Expected Behaviour
+
+Draft `#### Expected Behaviour` before `#### Dependencies`.
+
+It must describe:
+- target runtime behavior,
+- observable outcome,
+- runtime files/modules/functions affected,
+- constraints or invariants that must remain true.
+
 ## Phase 3: Quality Verification
 
 Before executing CLI commands:
@@ -78,10 +88,11 @@ Before executing CLI commands:
 
 2. Open `dev/FEATURE_PLANS.md` and verify the generated block:
    - Heading format: `### <issue_id> - <issue_title>` (✓)
-   - Allowed inner headings: only `#### Dependencies`, `#### Decomposition`, `#### Issue/Task Decomposition Assessment` (✓)
-   - All three inner headings are present (✓)
+   - Allowed inner headings: only `#### Expected Behaviour`, `#### Dependencies`, `#### Decomposition`, `#### Issue/Task Decomposition Assessment` (✓)
+   - All four inner headings are present (✓)
 
-3. Insert your drafted plan content into the three sections:
+3. Insert your drafted plan content into the four sections:
+   - `#### Expected Behaviour`: paste the concrete runtime outcome description
    - `#### Dependencies`: paste issue-level dependencies
    - `#### Decomposition`: paste numbered implementation steps
    - `#### Issue/Task Decomposition Assessment`: paste explicit assessment

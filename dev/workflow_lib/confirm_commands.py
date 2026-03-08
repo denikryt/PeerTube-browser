@@ -736,7 +736,18 @@ def _handle_confirm_feature_done(args: Namespace, context: WorkflowContext) -> i
         issue_ids_to_remove=all_issue_ids,
         feature_ids_to_remove={feature_id},
     )
+    feature_plan_cleanup_preview = _cleanup_feature_plan_feature_section(
+        feature_plans_path=context.feature_plans_path,
+        feature_id=feature_id,
+        write=False,
+    )
+    cleanup_preview["feature_plans"] = feature_plan_cleanup_preview
     if bool(args.write):
+        feature_plan_cleanup_result = _cleanup_feature_plan_feature_section(
+            feature_plans_path=context.feature_plans_path,
+            feature_id=feature_id,
+            write=True,
+        )
         cleanup_result = _apply_tracker_cleanup(
             context=context,
             dev_map=dev_map,
@@ -744,6 +755,7 @@ def _handle_confirm_feature_done(args: Namespace, context: WorkflowContext) -> i
             issue_ids_to_remove=all_issue_ids,
             feature_ids_to_remove={feature_id},
         )
+        cleanup_result["feature_plans"] = feature_plan_cleanup_result
     else:
         cleanup_result = cleanup_preview
 
@@ -938,12 +950,21 @@ def _cleanup_issue_overlaps_payload(
     *,
     issue_ids_to_remove: set[str],
 ) -> tuple[dict[str, Any], dict[str, int]]:
-    """Remove issue-overlap rows that reference removed issue IDs."""
+    """Remove overlap rows and issue-order IDs that reference removed issue IDs."""
     overlaps = payload.get("overlaps", [])
     if not isinstance(overlaps, list):
         raise WorkflowCommandError("ISSUE_OVERLAPS payload overlaps must be a list for cleanup.", exit_code=4)
+    issue_execution_order = payload.get("issue_execution_order", {})
+    if not isinstance(issue_execution_order, dict):
+        raise WorkflowCommandError("ISSUE_OVERLAPS payload issue_execution_order must be an object for cleanup.", exit_code=4)
+    ordered_issue_ids = issue_execution_order.get("ordered_issue_ids", [])
+    if not isinstance(ordered_issue_ids, list):
+        raise WorkflowCommandError(
+            "ISSUE_OVERLAPS payload issue_execution_order.ordered_issue_ids must be a list for cleanup.",
+            exit_code=4,
+        )
     if not issue_ids_to_remove:
-        return payload, {"overlap_rows_removed": 0}
+        return payload, {"overlap_rows_removed": 0, "issue_order_ids_removed": 0}
     kept: list[dict[str, Any]] = []
     removed_rows = 0
     for item in overlaps:
@@ -957,9 +978,18 @@ def _cleanup_issue_overlaps_payload(
             removed_rows += 1
             continue
         kept.append(item)
+    kept_ordered_issue_ids = [
+        issue_id
+        for issue_id in ordered_issue_ids
+        if str(issue_id).strip() not in issue_ids_to_remove
+    ]
     payload["overlaps"] = kept
-    payload["schema_version"] = str(payload.get("schema_version", "")).strip() or "1.0"
-    return payload, {"overlap_rows_removed": removed_rows}
+    payload["issue_execution_order"] = {"ordered_issue_ids": kept_ordered_issue_ids}
+    payload["schema_version"] = str(payload.get("schema_version", "")).strip() or "1.1"
+    return payload, {
+        "overlap_rows_removed": removed_rows,
+        "issue_order_ids_removed": len(ordered_issue_ids) - len(kept_ordered_issue_ids),
+    }
 
 
 def _cleanup_issue_dependency_index_payload(
@@ -982,7 +1012,7 @@ def _cleanup_issue_dependency_index_payload(
         if issue_id in issue_ids_to_remove
         or (
             isinstance(entry, dict)
-            and str(entry.get("feature_id", "")).strip() in feature_ids_to_remove
+            and any(_issue_belongs_to_feature_id(issue_id, feature_id) for feature_id in feature_ids_to_remove)
         )
     }
     issues_removed = 0
@@ -994,24 +1024,28 @@ def _cleanup_issue_dependency_index_payload(
     surfaces_pruned = 0
     for surface_key in list(by_surface.keys()):
         entry = by_surface[surface_key]
-        if not isinstance(entry, dict):
+        if not isinstance(entry, list):
             continue
-        issue_ids = entry.get("issue_ids", [])
-        if not isinstance(issue_ids, list):
-            continue
-        kept_issue_ids = [issue_id for issue_id in issue_ids if issue_id not in target_issue_ids]
+        kept_issue_ids = [issue_id for issue_id in entry if issue_id not in target_issue_ids]
         if kept_issue_ids:
-            entry["issue_ids"] = kept_issue_ids
-            by_surface[surface_key] = entry
+            by_surface[surface_key] = kept_issue_ids
             continue
         by_surface.pop(surface_key, None)
         surfaces_pruned += 1
 
     payload["by_issue"] = dict(sorted(by_issue.items()))
     payload["by_surface"] = dict(sorted(by_surface.items()))
-    payload["schema_version"] = str(payload.get("schema_version", "")).strip() or "1.0"
-    payload["feature_scope"] = str(payload.get("feature_scope", "")).strip() or "all"
+    payload["schema_version"] = str(payload.get("schema_version", "")).strip() or "1.1"
+    payload["scope_type"] = str(payload.get("scope_type", "")).strip() or "all"
+    payload["scope_id"] = str(payload.get("scope_id", "")).strip() or "all"
     return payload, {"issues_removed": issues_removed, "surfaces_pruned": surfaces_pruned}
+
+
+def _issue_belongs_to_feature_id(issue_id: str, feature_id: str) -> bool:
+    """Return True when one issue ID belongs to the selected feature ID suffix."""
+    normalized_issue_id = str(issue_id).strip().upper()
+    normalized_feature_id = str(feature_id).strip().upper()
+    return bool(normalized_issue_id) and bool(normalized_feature_id) and normalized_issue_id.endswith(f"-{normalized_feature_id}")
 
 
 def _require_issue_github_mapping(issue_number: Any, issue_url: Any, label: str) -> None:
@@ -1234,6 +1268,41 @@ def _cleanup_feature_plan_issue_artifacts(
         "order_block_found": _find_issue_execution_order_heading(section_lines) is not None,
         "updated": updated if write else False,
         "would_update": updated,
+    }
+
+
+def _cleanup_feature_plan_feature_section(
+    feature_plans_path: Path,
+    feature_id: str,
+    write: bool,
+) -> dict[str, Any]:
+    """Remove one full feature section from FEATURE_PLANS by feature ID."""
+    text = feature_plans_path.read_text(encoding="utf-8")
+    bounds = _find_h2_section_bounds(text, feature_id)
+    if bounds is None:
+        return {
+            "attempted": False,
+            "feature_section_found": False,
+            "feature_section_removed": False,
+            "feature_section_would_be_removed": False,
+            "updated": False,
+            "would_update": False,
+        }
+
+    lines = text.splitlines()
+    start_line, end_line = bounds
+    del lines[start_line:end_line]
+    while start_line < len(lines) and not lines[start_line].strip():
+        del lines[start_line]
+    if write:
+        feature_plans_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {
+        "attempted": True,
+        "feature_section_found": True,
+        "feature_section_removed": bool(write),
+        "feature_section_would_be_removed": True,
+        "updated": bool(write),
+        "would_update": True,
     }
 
 

@@ -59,11 +59,13 @@ ISSUE_PLAN_BLOCK_HEADING_PATTERN = re.compile(
 )
 CANONICAL_ISSUE_PLAN_BLOCK_HEADING_PATTERN = re.compile(r"^###\s+(?P<issue_id>I\d+-F\d+-M\d+)\s+-\s+(?P<issue_title>.+\S)\s*$")
 REQUIRED_PLAN_HEADINGS = (
+    "Expected Behaviour",
     "Dependencies",
     "Decomposition",
     "Issue/Task Decomposition Assessment",
 )
 REQUIRED_ISSUE_PLAN_SUBHEADINGS = (
+    "Expected Behaviour",
     "Dependencies",
     "Decomposition",
     "Issue/Task Decomposition Assessment",
@@ -705,7 +707,7 @@ def _handle_feature_plan_lint(args: Namespace, context: WorkflowContext) -> int:
         strict=bool(args.strict),
         feature_id=feature_id,
         feature_node=feature_ref["feature"],
-        require_issue_order_for_active=True,
+        require_issue_order_for_active=False,
     )
     emit_json(
         {
@@ -759,11 +761,6 @@ def _handle_feature_plan_issue(args: Namespace, context: WorkflowContext) -> int
         issue_id=issue_id,
         strict=bool(args.strict),
     )
-    _enforce_plan_issue_order_row_presence(
-        section_lines=updated_section_lines,
-        issue_id=issue_id,
-        issue_status=str(issue_node.get("status", "")).strip(),
-    )
     if bool(args.write) and plan_block_updated:
         feature_plans_lines[section_start:section_end] = updated_section_lines
         context.feature_plans_path.write_text("\n".join(feature_plans_lines) + "\n", encoding="utf-8")
@@ -814,21 +811,21 @@ def _handle_plan_index_dependencies(args: Namespace, context: WorkflowContext) -
         target_feature_ids.add(issue_ref["feature_id"])
 
     removed_issue_ids = sorted(target_issue_ids & set(by_issue.keys()))
+    surfaces_added = 0
+    surfaces_updated = 0
+    surfaces_removed = 0
     for issue_id in removed_issue_ids:
         by_issue.pop(issue_id, None)
     for surface_key in list(by_surface.keys()):
         entry = by_surface[surface_key]
-        issue_ids = [issue_id for issue_id in entry.get("issue_ids", []) if issue_id not in target_issue_ids]
+        issue_ids = [issue_id for issue_id in entry if issue_id not in target_issue_ids]
         if issue_ids:
-            entry["issue_ids"] = sorted(issue_ids)
-            by_surface[surface_key] = entry
+            by_surface[surface_key] = sorted(issue_ids)
         else:
             by_surface.pop(surface_key, None)
+            surfaces_removed += 1
 
     issues_reindexed = 0
-    surfaces_added = 0
-    surfaces_updated = 0
-    surfaces_removed = 0
     if not bool(args.remove_index):
         scoped_payload = _build_dependency_index_for_scope(
             context=context,
@@ -839,20 +836,20 @@ def _handle_plan_index_dependencies(args: Namespace, context: WorkflowContext) -
         scoped_by_issue = scoped_payload.get("by_issue", {})
         scoped_by_surface = scoped_payload.get("by_surface", {})
         issues_reindexed = len(scoped_by_issue)
-        existing_surface_keys = set(by_surface.keys())
         for issue_id, entry in scoped_by_issue.items():
             by_issue[issue_id] = entry
         for surface_key, entry in scoped_by_surface.items():
             if surface_key in by_surface:
                 surfaces_updated += 1
+                by_surface[surface_key] = sorted(set(by_surface[surface_key]) | set(entry))
             else:
                 surfaces_added += 1
-            by_surface[surface_key] = entry
-        surfaces_removed = len(existing_surface_keys - set(by_surface.keys()))
+                by_surface[surface_key] = sorted(entry)
 
     updated_payload = build_issue_dependency_index_contract_payload(
         {
-            "feature_scope": selector["scope_id"],
+            "scope_type": selector["scope_type"],
+            "scope_id": selector["scope_id"],
             "by_issue": dict(sorted(by_issue.items())),
             "by_surface": dict(sorted(by_surface.items())),
         }
@@ -897,13 +894,12 @@ def _handle_plan_show_related(args: Namespace, context: WorkflowContext) -> int:
                 exit_code=4,
             )
         related: dict[str, set[str]] = {}
-        for surface in issue_entry.get("surfaces", []):
-            surface_key = _normalize_dependency_surface(surface)
-            bucket = by_surface.get(surface_key, {})
-            for candidate_issue_id in bucket.get("issue_ids", []):
+        for surface_key in issue_entry.get("surface_keys", []):
+            bucket = by_surface.get(surface_key, [])
+            for candidate_issue_id in bucket:
                 if candidate_issue_id == issue_id:
                     continue
-                related.setdefault(candidate_issue_id, set()).add(surface)
+                related.setdefault(candidate_issue_id, set()).add(surface_key)
         emit_json(
             {
                 "command": "plan.show-related",
@@ -929,12 +925,12 @@ def _handle_plan_show_related(args: Namespace, context: WorkflowContext) -> int:
         left_entry = by_issue.get(left_issue_id)
         if not isinstance(left_entry, dict):
             continue
-        left_surfaces = set(left_entry.get("surfaces", []))
+        left_surfaces = set(left_entry.get("surface_keys", []))
         for right_issue_id in issue_ids[index + 1 :]:
             right_entry = by_issue.get(right_issue_id)
             if not isinstance(right_entry, dict):
                 continue
-            matched_surfaces = sorted(left_surfaces & set(right_entry.get("surfaces", [])), key=_normalize_dependency_surface)
+            matched_surfaces = sorted(left_surfaces & set(right_entry.get("surface_keys", [])), key=_normalize_dependency_surface)
             if not matched_surfaces:
                 continue
             pair_matches.append(
@@ -1060,7 +1056,15 @@ def _handle_plan_build_overlaps(args: Namespace, context: WorkflowContext) -> in
 def _handle_plan_apply_overlaps(args: Namespace, context: WorkflowContext) -> int:
     """Validate and optionally persist overlap payload from a delta file."""
     payload = _load_json(Path(args.delta_file))
-    overlaps_payload = build_issue_overlaps_contract_payload(payload.get("overlaps", []))
+    dev_map = _load_json(context.dev_map_path)
+    issue_execution_order = _build_global_issue_execution_order(
+        dev_map=dev_map,
+        overlaps=payload.get("overlaps", []),
+    )
+    overlaps_payload = build_issue_overlaps_contract_payload(
+        payload.get("overlaps", []),
+        issue_execution_order,
+    )
     validate_issue_overlaps_contract_payload(overlaps_payload, "plan.apply-overlaps")
     if bool(args.write):
         write_issue_overlaps_payload(context, overlaps_payload)
@@ -1199,13 +1203,12 @@ def _handle_feature_sync(args: Namespace, context: WorkflowContext) -> int:
         for overlap in issue_overlaps_payload.get("overlaps", [])
         if any(issue_id in scoped_issue_ids for issue_id in overlap.get("issues", []))
     ]
-    issue_execution_order_sync = _sync_issue_execution_order_for_new_issues(
-        feature_plans_path=context.feature_plans_path,
-        feature_id=feature_id,
-        created_issue_ids=issue_counts["created_issue_ids"],
-        issue_title_by_id=issue_title_by_id,
-        write=bool(args.write),
-    )
+    issue_execution_order_sync = {
+        "added_issue_ids": [],
+        "attempted": False,
+        "block_created": False,
+        "updated": False,
+    }
     issue_planning_status_reconciliation = _reconcile_feature_issue_planning_statuses(
         feature_plans_path=context.feature_plans_path,
         feature_id=feature_id,
@@ -1694,12 +1697,11 @@ def _handle_feature_execution_plan(args: Namespace, context: WorkflowContext) ->
     feature_node = feature_ref["feature"]
     feature_status = str(feature_node.get("status", ""))
 
-    section_text = _extract_feature_plan_section(context.feature_plans_path, feature_id)
-    issue_order_state = _resolve_issue_execution_order_state(
-        section_text=section_text,
+    issue_order_state = _resolve_issue_execution_order_from_overlaps(
+        context=context,
+        dev_map=dev_map,
         feature_id=feature_id,
         feature_node=feature_node,
-        require_issue_order_for_active=False,
     )
     ordered_tasks = _collect_feature_tasks(feature_node, only_pending=bool(args.only_pending))
     ordered_tasks = _apply_issue_execution_order(ordered_tasks, issue_order_state["rows"])
@@ -3065,6 +3067,8 @@ def _build_feature_plan_scaffold(feature_id: str, feature_title: str) -> str:
     return (
         f"## {feature_id}\n\n"
         f"{normalized_feature_title}\n\n"
+        "### Expected Behaviour\n"
+        "- TODO\n\n"
         "### Dependencies\n"
         "- TODO\n\n"
         "### Decomposition\n"
@@ -3220,12 +3224,12 @@ def _build_related_issue_draft(index_payload: dict[str, Any], issue_id: str) -> 
             exit_code=4,
         )
     related: dict[str, set[str]] = {}
-    for surface in issue_entry.get("surfaces", []):
-        bucket = by_surface.get(_normalize_dependency_surface(surface), {})
-        for candidate_issue_id in bucket.get("issue_ids", []):
+    for surface_key in issue_entry.get("surface_keys", []):
+        bucket = by_surface.get(surface_key, [])
+        for candidate_issue_id in bucket:
             if candidate_issue_id == issue_id:
                 continue
-            related.setdefault(candidate_issue_id, set()).add(surface)
+            related.setdefault(candidate_issue_id, set()).add(surface_key)
     return [
         {
             "issues": [issue_id, candidate_issue_id],
@@ -3244,12 +3248,12 @@ def _build_feature_related_pairs_draft(index_payload: dict[str, Any], feature_no
         left_entry = by_issue.get(left_issue_id)
         if not isinstance(left_entry, dict):
             continue
-        left_surfaces = set(left_entry.get("surfaces", []))
+        left_surfaces = set(left_entry.get("surface_keys", []))
         for right_issue_id in issue_ids[index + 1 :]:
             right_entry = by_issue.get(right_issue_id)
             if not isinstance(right_entry, dict):
                 continue
-            matched_surfaces = sorted(left_surfaces & set(right_entry.get("surfaces", [])), key=_normalize_dependency_surface)
+            matched_surfaces = sorted(left_surfaces & set(right_entry.get("surface_keys", [])), key=_normalize_dependency_surface)
             if not matched_surfaces:
                 continue
             pairs.append({"issues": [left_issue_id, right_issue_id], "matched_surfaces": matched_surfaces})
@@ -3273,7 +3277,7 @@ def _build_dependency_index_for_scope(
 ) -> dict[str, Any]:
     """Build deterministic dependency index payload for one selected scope."""
     by_issue: dict[str, dict[str, Any]] = {}
-    by_surface: dict[str, dict[str, Any]] = {}
+    by_surface: dict[str, list[str]] = {}
     if scope_type == "feature":
         feature_ref = _find_feature(dev_map, scope_id)
         if feature_ref is None:
@@ -3294,29 +3298,22 @@ def _build_dependency_index_for_scope(
         issue_status = str(issue_node.get("status", "")).strip() or "Pending"
         entries = _collect_issue_dependency_entries(issue_id=issue_id, section_lines=section_lines)
         surfaces = [entry["surface"] for entry in entries]
+        surface_keys = sorted({_normalize_dependency_surface(surface) for surface in surfaces})
         by_issue[issue_id] = {
-            "surfaces": sorted(surfaces, key=_normalize_dependency_surface),
-            "feature_id": feature_id,
-            "status": issue_status,
+            "surface_keys": surface_keys,
         }
-        for surface in surfaces:
-            surface_key = _normalize_dependency_surface(surface)
-            bucket = by_surface.setdefault(
-                surface_key,
-                {
-                    "surface": surface,
-                    "issue_ids": [],
-                },
-            )
-            if issue_id not in bucket["issue_ids"]:
-                bucket["issue_ids"].append(issue_id)
+        for surface_key in surface_keys:
+            bucket = by_surface.setdefault(surface_key, [])
+            if issue_id not in bucket:
+                bucket.append(issue_id)
 
-    for bucket in by_surface.values():
-        bucket["issue_ids"] = sorted(bucket["issue_ids"])
+    for surface_key, issue_ids in list(by_surface.items()):
+        by_surface[surface_key] = sorted(issue_ids)
 
     return build_issue_dependency_index_contract_payload(
         {
-            "feature_scope": scope_id,
+            "scope_type": scope_type,
+            "scope_id": scope_id,
             "by_issue": dict(sorted(by_issue.items())),
             "by_surface": dict(sorted(by_surface.items())),
         }
@@ -3353,6 +3350,7 @@ def _upsert_issue_plan_block_in_section(
 def _build_issue_plan_block_lines(*, issue_id: str, issue_title: str, issue_node: dict[str, Any]) -> list[str]:
     """Build canonical issue-plan markdown block lines for one issue node."""
     normalized_title = issue_title.strip() or issue_id
+    issue_description = str(issue_node.get("description", "")).strip()
     tasks = issue_node.get("tasks", [])
     task_items = [task for task in tasks if isinstance(task, dict)] if isinstance(tasks, list) else []
     task_ids = [str(task.get("id", "")).strip() for task in task_items if str(task.get("id", "")).strip()]
@@ -3367,6 +3365,9 @@ def _build_issue_plan_block_lines(*, issue_id: str, issue_title: str, issue_node
     task_ids_line = ", ".join(task_ids) if task_ids else "none"
     return [
         f"### {issue_id} - {normalized_title}",
+        "",
+        "#### Expected Behaviour",
+        issue_description or "- TODO",
         "",
         "#### Dependencies",
         f"- DEV_MAP issue node `{issue_id}` and mapped workflow tasks.",
@@ -3451,9 +3452,9 @@ def _lint_plan_issue_block_scoped(section_lines: list[str], issue_id: str, stric
     if not strict:
         return
     content_lines = _filter_section_content(section_lines[start_index + 1 : end_index])
-    if any("TODO" in line.upper() or "TBD" in line.upper() for line in content_lines):
+    if _contains_placeholder_plan_content(content_lines):
         raise WorkflowCommandError(
-            f"Issue plan block {issue_id} contains TODO/TBD placeholder content under --strict lint.",
+            f"Issue plan block {issue_id} contains placeholder content under --strict lint.",
             exit_code=4,
         )
 
@@ -3506,9 +3507,9 @@ def _lint_plan_section(
         content_lines = _filter_section_content(lines[start_index:end_index])
         if not content_lines:
             raise WorkflowCommandError(f"Heading {heading!r} must contain non-empty content.", exit_code=4)
-        if strict and any("TODO" in line.upper() or "TBD" in line.upper() for line in content_lines):
+        if strict and _contains_placeholder_plan_content(content_lines):
             raise WorkflowCommandError(
-                f"Heading {heading!r} contains TODO/TBD placeholder content under --strict lint.",
+                f"Heading {heading!r} contains placeholder content under --strict lint.",
                 exit_code=4,
             )
         messages.append(f"{heading}:ok")
@@ -3518,6 +3519,7 @@ def _lint_plan_section(
             section_text=section_text,
             feature_id=feature_id,
             feature_node=feature_node,
+            strict=strict,
         )
         messages.append("Issue Plan Blocks:ok")
         issue_order_state = _resolve_issue_execution_order_state(
@@ -3868,6 +3870,7 @@ def _lint_issue_plan_blocks(
     section_text: str,
     feature_id: str,
     feature_node: dict[str, Any],
+    strict: bool,
 ) -> None:
     """Validate canonical per-issue plan block headings/sections within one feature plan section."""
     lines = section_text.splitlines()
@@ -3926,10 +3929,22 @@ def _lint_issue_plan_blocks(
             if stripped.startswith("## ") or stripped.startswith("### "):
                 end_index = probe_index
                 break
-        _lint_one_issue_plan_block(lines=lines, start_index=start_index, end_index=end_index, issue_id=issue_id)
+        _lint_one_issue_plan_block(
+            lines=lines,
+            start_index=start_index,
+            end_index=end_index,
+            issue_id=issue_id,
+            strict=strict,
+        )
 
 
-def _lint_one_issue_plan_block(lines: list[str], start_index: int, end_index: int, issue_id: str) -> None:
+def _lint_one_issue_plan_block(
+    lines: list[str],
+    start_index: int,
+    end_index: int,
+    issue_id: str,
+    strict: bool = False,
+) -> None:
     """Validate required subheading hierarchy/content inside one canonical issue-plan block."""
     subheading_positions: list[tuple[str, int]] = []
     seen_subheadings: set[str] = set()
@@ -3979,9 +3994,33 @@ def _lint_one_issue_plan_block(lines: list[str], start_index: int, end_index: in
                 f"Issue plan block {issue_id} section {heading!r} must contain non-empty content.",
                 exit_code=4,
             )
+        if strict and _contains_placeholder_plan_content(content_lines):
+            raise WorkflowCommandError(
+                f"Issue plan block {issue_id} section {heading!r} contains placeholder content under --strict lint.",
+                exit_code=4,
+            )
         if heading == "Dependencies":
             for raw_line in content_lines:
                 _parse_dependency_line(raw_line, issue_id=issue_id)
+
+
+def _contains_placeholder_plan_content(content_lines: list[str]) -> bool:
+    """Return True when section content still contains placeholder authoring text."""
+    placeholder_tokens = ("TODO", "TBD", "PLACEHOLDER")
+    placeholder_phrases = (
+        "describe expected behaviour",
+        "describe runtime behaviour",
+        "fill expected behaviour",
+    )
+    for line in content_lines:
+        normalized = str(line).strip().lower()
+        if not normalized:
+            continue
+        if any(token in normalized.upper() for token in placeholder_tokens):
+            return True
+        if any(phrase in normalized for phrase in placeholder_phrases):
+            return True
+    return False
 
 
 def _collect_issue_planning_status_mismatches(
@@ -4068,6 +4107,114 @@ def _format_issue_execution_order_row(position: int, issue_id: str, issue_title:
     """Build canonical markdown row for one issue execution order item."""
     normalized_title = issue_title.strip() or issue_id
     return f"{position}. `{issue_id}` - {normalized_title}"
+
+
+def _resolve_issue_execution_order_from_overlaps(
+    *,
+    context: WorkflowContext,
+    dev_map: dict[str, Any],
+    feature_id: str,
+    feature_node: dict[str, Any],
+) -> dict[str, Any]:
+    """Resolve feature issue order from the canonical ISSUE_OVERLAPS payload."""
+    overlaps_payload = load_issue_overlaps_payload(context)
+    ordered_issue_ids = _select_feature_issue_execution_order(
+        ordered_issue_ids=overlaps_payload.get("issue_execution_order", {}).get("ordered_issue_ids", []),
+        feature_node=feature_node,
+    )
+    issue_by_id = {
+        str(issue.get("id", "")).strip(): issue
+        for issue in _collect_feature_issue_nodes(feature_node)
+    }
+    rows = [
+        {
+            "id": issue_id,
+            "title": str(issue_by_id[issue_id].get("title", "")).strip(),
+            "status": str(issue_by_id[issue_id].get("status", "")).strip(),
+        }
+        for issue_id in ordered_issue_ids
+        if issue_id in issue_by_id
+    ]
+    next_issue = rows[0] if rows else None
+    return {
+        "active_issue_count": len(rows),
+        "next_issue": next_issue,
+        "rows": rows,
+    }
+
+
+def _select_feature_issue_execution_order(*, ordered_issue_ids: list[str], feature_node: dict[str, Any]) -> list[str]:
+    """Project global issue order onto one feature while keeping uncovered issues in DEV_MAP order."""
+    active_issue_ids = [
+        str(issue.get("id", "")).strip()
+        for issue in _collect_feature_issue_nodes(feature_node)
+        if str(issue.get("status", "")).strip() not in ISSUE_TERMINAL_STATUSES
+    ]
+    ordered_subset = [issue_id for issue_id in ordered_issue_ids if issue_id in active_issue_ids]
+    remaining_issue_ids = [issue_id for issue_id in active_issue_ids if issue_id not in ordered_subset]
+    return ordered_subset + remaining_issue_ids
+
+
+def _build_global_issue_execution_order(*, dev_map: dict[str, Any], overlaps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build one deterministic global issue order from active DEV_MAP issues and dependency overlaps."""
+    active_issue_ids = _collect_active_issue_ids_in_dev_map_order(dev_map)
+    if not active_issue_ids:
+        return {"ordered_issue_ids": []}
+
+    adjacency: dict[str, set[str]] = {issue_id: set() for issue_id in active_issue_ids}
+    indegree: dict[str, int] = {issue_id: 0 for issue_id in active_issue_ids}
+    for item in overlaps:
+        if not isinstance(item, dict) or str(item.get("type", "")).strip() != "dependency":
+            continue
+        order = str(item.get("order", "")).strip()
+        if "->" not in order:
+            continue
+        left_issue_id, right_issue_id = [token.strip() for token in order.split("->", 1)]
+        if left_issue_id not in adjacency or right_issue_id not in adjacency:
+            continue
+        if right_issue_id in adjacency[left_issue_id]:
+            continue
+        adjacency[left_issue_id].add(right_issue_id)
+        indegree[right_issue_id] += 1
+
+    ordered_issue_ids: list[str] = []
+    queue = [issue_id for issue_id in active_issue_ids if indegree[issue_id] == 0]
+    while queue:
+        issue_id = queue.pop(0)
+        ordered_issue_ids.append(issue_id)
+        for dependent_issue_id in sorted(adjacency[issue_id], key=active_issue_ids.index):
+            indegree[dependent_issue_id] -= 1
+            if indegree[dependent_issue_id] == 0:
+                queue.append(dependent_issue_id)
+                queue.sort(key=active_issue_ids.index)
+
+    if len(ordered_issue_ids) != len(active_issue_ids):
+        raise WorkflowCommandError(
+            "issue_execution_order cannot be derived because dependency overlaps contain a cycle.",
+            exit_code=4,
+        )
+    return {"ordered_issue_ids": ordered_issue_ids}
+
+
+def _collect_active_issue_ids_in_dev_map_order(dev_map: dict[str, Any]) -> list[str]:
+    """Collect active issue IDs from DEV_MAP in canonical milestone/feature/issue order."""
+    ordered_issue_ids: list[str] = []
+    for milestone in dev_map.get("milestones", []):
+        if not isinstance(milestone, dict):
+            continue
+        for feature in milestone.get("features", []):
+            if not isinstance(feature, dict):
+                continue
+            for issue in feature.get("issues", []):
+                if not isinstance(issue, dict):
+                    continue
+                issue_id = str(issue.get("id", "")).strip()
+                if not issue_id:
+                    continue
+                if str(issue.get("status", "")).strip() in ISSUE_TERMINAL_STATUSES:
+                    continue
+                ordered_issue_ids.append(issue_id)
+    return ordered_issue_ids
 
 
 def _collect_feature_tasks(feature_node: dict[str, Any], only_pending: bool) -> list[dict[str, str]]:

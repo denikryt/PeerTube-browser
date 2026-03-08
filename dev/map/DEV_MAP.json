@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-08T01:43:53+02:00",
+  "updated_at": "2026-03-08T01:58:47+02:00",
   "task_count": 290,
   "milestones": [
     {
@@ -2676,8 +2676,8 @@
               "title": "Move issue execution order from FEATURE_PLANS into ISSUE_OVERLAPS",
               "description": "Remove Issue Execution Order from FEATURE_PLANS entirely and make ISSUE_OVERLAPS own the global issue execution order that build-overlaps updates from overlap dependencies.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 149,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/149",
               "tasks": [
                 {
                   "id": "282",
@@ -2726,8 +2726,8 @@
               "title": "Fix scoped dependency-index reconcile for shared surfaces",
               "description": "Make issue-scoped and feature-scoped dependency index refresh preserve shared-surface reverse lookups instead of dropping unrelated issue memberships from by_surface buckets.",
               "status": "Tasked",
-              "gh_issue_number": null,
-              "gh_issue_url": null,
+              "gh_issue_number": 150,
+              "gh_issue_url": "https://github.com/denikryt/PeerTube-browser/issues/150",
               "tasks": [
                 {
                   "id": "287",

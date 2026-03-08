@@ -1,5 +1,47 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
+  "issue_execution_order": {
+    "ordered_issue_ids": [
+      "I7-F4-M1",
+      "I9-F4-M1",
+      "I13-F4-M1",
+      "I32-F4-M1",
+      "I33-F4-M1",
+      "I34-F4-M1",
+      "I1-F5-M1",
+      "I2-F5-M1",
+      "I3-F5-M1",
+      "I4-F5-M1",
+      "I5-F5-M1",
+      "I6-F5-M1",
+      "I7-F5-M1",
+      "I8-F5-M1",
+      "I1-F7-M1",
+      "I2-F7-M1",
+      "I3-F7-M1",
+      "I4-F7-M1",
+      "I1-F9-M1",
+      "I2-F9-M1",
+      "I3-F9-M1",
+      "I1-F10-M1",
+      "I2-F10-M1",
+      "I3-F10-M1",
+      "I1-F11-M1",
+      "I2-F11-M1",
+      "I3-F11-M1",
+      "I1-F12-M1",
+      "I2-F12-M1",
+      "I3-F12-M1",
+      "I1-F13-M1",
+      "I2-F13-M1",
+      "I3-F13-M1",
+      "I9-F14-M1",
+      "I10-F14-M1",
+      "I11-F14-M1",
+      "I12-F14-M1",
+      "I13-F14-M1"
+    ]
+  },
   "overlaps": [
     {
       "issues": [

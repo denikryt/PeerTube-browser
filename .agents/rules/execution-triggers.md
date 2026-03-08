@@ -14,3 +14,10 @@ description: Strict execution triggers for agent tasks
 3. If the user intent looks like execution but the command format is not explicit, ask for a direct command in any of the required formats and do not start implementation.
 4. User confirmation that a task is completed is separate from execution start and must still be explicit.
 5. On any explicit execution command (task, issue, issues, feature, or bundle), first follow the mandatory read order defined in **Section 1 (Read order)** of `.agents/protocols/task-execution-protocol.md` before implementation.
+6. If the user directly requests a concrete follow-up code fix inside the already active implementation scope, the agent may execute it without requiring a new explicit `execute ...` command.
+7. This exception applies only when:
+   - the change is a direct continuation of the same feature/issue scope already being implemented,
+   - the request does not expand scope into a new feature/issue,
+   - the change is not destructive.
+8. In such cases, direct user imperatives like "fix it", "add this", "remove that", "change this behavior" are valid execution triggers.
+

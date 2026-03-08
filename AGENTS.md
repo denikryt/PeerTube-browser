@@ -36,6 +36,8 @@ When you recognize a KNOWN COMMAND:
 3. Do not skip steps
 4. Do not use subagents unless workflow explicitly requires it
 5. Do not make independent decisions
+6. If a known command has already activated execution for a specific issue/feature in the current session, subsequent direct user follow-up instructions inside that same scope should be treated as execution continuations, not blocked for missing repeated execute commands.
+
 
 ---
 

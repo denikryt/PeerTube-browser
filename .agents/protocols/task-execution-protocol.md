@@ -17,7 +17,7 @@ If any procedural detail differs across docs, the corresponding `.agents/workflo
 1. Read in strict order before coding:
    - exact task text in `dev/TASK_LIST.json`,
    - `dev/ISSUE_OVERLAPS.json`,
-   - `dev/FEATURE_PLANS.md` (issue execution order / issue plan context),
+   - `dev/FEATURE_PLANS.md` (issue plan context),
    - `dev/map/DEV_MAP.json` context for the target task set and ownership markers,
    - this file (`.agents/protocols/task-execution-protocol.md`).
 
@@ -28,7 +28,7 @@ If any procedural detail differs across docs, the corresponding `.agents/workflo
 - **Requirement Closure**: every stated requirement in the exact task text must be explicitly re-checked before reporting results.
 - **No Auto-Completion**: implementation completion and tracker completion are separate states; completion remains confirmation-gated.
 - **Chain Execution Rule**: feature/issue/issues/bundle execution must run sequentially in dependency order and stop on the first blocking failure.
-- **Multi-Issue Package Rule**: `execute issues <issue_id>, <issue_id>, ...` means execute the listed issues as one package in the exact user-provided order; do not reorder unless the user explicitly changes the sequence.
+- **Multi-Issue Package Rule**: `execute issues <issue_id>, <issue_id>, ...` means execute the listed issues as one package ordered by `issue_execution_order` in `dev/ISSUE_OVERLAPS.json`, restricted to the selected subset.
 
 ## Section 3: Execution gates
 
