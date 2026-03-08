@@ -41,20 +41,11 @@ When you recognize a KNOWN COMMAND:
 
 ---
 
-## DIRECT USER REQUESTS
-
-1. A direct and explicit user request to modify code, config, docs, or files is a valid execution trigger even when it is not written in a workflow-command format.
-2. Examples include requests such as "fix this", "add this", "remove that", "change this", "rewrite this", "implement this", or equivalent phrasing in any language.
-3. Such direct requests authorize local implementation work unless blocked by a higher-priority safety rule or by a workflow that the user explicitly invoked.
-4. Workflow commands remain required when the user wants a workflow-governed operation such as planning, tracked execution, confirmation, rejection, or other `.agents/workflows/` procedures.
-5. If the user request is analytical, exploratory, or ambiguous rather than a clear request to change something, treat it as non-execution.
-
----
-
 > [!IMPORTANT]
 > **Project rules and protocols are in `.agents/`.**
 > - **Hard Policies**: See `.agents/rules/` for mandatory constraints.
 > - **Procedures**: See `.agents/protocols/` for background information.
 > - **Workflows**: See `.agents/workflows/` for command implementation details.
+> - **Execution trigger semantics**: See `.agents/rules/execution-triggers.md` as the canonical source.
 
 Canonical rules are maintained in the `.agents/` directory.

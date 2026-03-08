@@ -72,7 +72,4 @@ If any procedural detail differs across docs, the corresponding `.agents/workflo
 
 ## Execution Triggers
 
-Execution triggers are defined in `.agents/rules/execution-triggers.md`.
-
-- Use tracked workflow commands when the user wants planning, tracked execution, confirmation, rejection, or other workflow-governed operations.
-- Use direct user requests as valid execution triggers for ordinary local code, config, docs, or file changes unless blocked by a higher-priority rule.
+Execution trigger semantics are defined exclusively in `.agents/rules/execution-triggers.md`.
