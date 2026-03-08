@@ -1416,6 +1416,174 @@
         "Add coverage for empty or overlap-free dependency graphs so the stored order block remains empty instead of echoing unrelated DEV_MAP issues.",
         "Assert that dependency-linked issues still appear in stable order after the node-selection logic is narrowed to overlap participants only."
       ]
+    },
+    {
+      "id": "301",
+      "marker": "[M1][F15]",
+      "title": "Add reject feature parser target and handler contract",
+      "problem": "The CLI only supports reject issue, so feature rejection cannot be expressed as one canonical workflow command and has no deterministic preview or write contract.",
+      "solution_option": "Add reject feature as a first-class CLI target and define a handler payload that mirrors the existing reject and confirm command conventions for preview and write mode.",
+      "concrete_steps": [
+        "Extend register_reject_router in dev/workflow_lib/confirm_commands.py with a feature target that accepts --id, --write, --close-github, and --no-close-github using the same command-surface conventions as reject issue.",
+        "Add a dedicated reject-feature handler in dev/workflow_lib/confirm_commands.py that resolves the target feature from DEV_MAP, validates feature-level reject preconditions, and returns a structured preview payload for subtree status transitions and cleanup surfaces.",
+        "Keep emitted fields aligned with existing confirm/reject output conventions so preview consumers can inspect affected child issues, task cleanup, feature-plan cleanup, overlap cleanup, and dependency-index cleanup deterministically."
+      ]
+    },
+    {
+      "id": "302",
+      "marker": "[M1][F15]",
+      "title": "Implement local reject-feature subtree cleanup",
+      "problem": "Feature rejection currently requires manual issue-by-issue cleanup, which leaves room for stale task artifacts, orphan plan blocks, and active overlap rows to survive after the feature is locally rejected.",
+      "solution_option": "Implement one reject-feature local cleanup path that marks the feature subtree as Rejected and removes all active planning and execution artifacts for child tasks and issue plans.",
+      "concrete_steps": [
+        "Implement feature and child-issue status transitions to Rejected in dev/workflow_lib/confirm_commands.py without deleting mapped issue nodes from DEV_MAP.",
+        "Reuse existing tracker cleanup helpers in dev/workflow_lib/confirm_commands.py to remove feature-owned task-list entries, overlap rows, dependency-index rows, and other active tracker artifacts for all child task IDs in one write run.",
+        "Reuse _cleanup_feature_plan_issue_artifacts and _cleanup_feature_plan_feature_section so child issue blocks and the parent ## <feature_id> section are removed from dev/FEATURE_PLANS.md when present."
+      ]
+    },
+    {
+      "id": "303",
+      "marker": "[M1][F15]",
+      "title": "Make reject-feature preview and repeat runs deterministic",
+      "problem": "Rejecting a feature with partially missing artifacts or running the same reject twice can otherwise fail late or hide what was already clean versus what was actually removed.",
+      "solution_option": "Make reject-feature preview and write reporting explicitly distinguish removed, would-remove, and already-absent surfaces so partial and repeat runs stay auditable.",
+      "concrete_steps": [
+        "In dev/workflow_lib/confirm_commands.py, report whether feature-plan sections, child issue blocks, task-list entries, overlap rows, and dependency-index rows were found, removed, or already absent for reject feature.",
+        "Keep preview mode side-effect free while still surfacing the exact subtree cleanup counts that write mode would apply.",
+        "Add deterministic no-op and repeat-run handling so missing artifacts do not fail the command after the subtree has already been partially cleaned."
+      ]
+    },
+    {
+      "id": "304",
+      "marker": "[M1][F15]",
+      "title": "Cascade GitHub reject flow across feature subtree",
+      "problem": "Even if local reject-feature cleanup exists, remote state will drift unless the mapped feature issue and mapped child issues receive the same rejection marker and close flow already used by reject issue.",
+      "solution_option": "Reuse the existing reject-issue GitHub marker and close behavior for every mapped issue in the rejected feature subtree while keeping unmapped nodes local-only.",
+      "concrete_steps": [
+        "Extend reject-feature handling in dev/workflow_lib/confirm_commands.py to call the existing GitHub rejection helpers for the mapped feature issue and each mapped child issue in the subtree.",
+        "Reuse _append_issue_rejection_marker and the existing github_adapter integration so remote issue bodies and close actions stay identical to reject issue semantics.",
+        "Return deterministic reporting for mapped, unmapped, and close-github-disabled cases so partial mappings do not collapse the whole reject-feature run."
+      ]
+    },
+    {
+      "id": "305",
+      "marker": "[M1][F15]",
+      "title": "Document reject-feature workflow and command behavior",
+      "problem": "The reject workflow documentation still describes reject as issue-only, so agents would not know when local subtree cleanup happens, when GitHub side effects are attempted, or how repeat runs behave.",
+      "solution_option": "Update reject workflow docs and command help text so feature-level reject is documented as a canonical subtree operation with explicit local-only and remote-close modes.",
+      "concrete_steps": [
+        "Update .agents/workflows/reject.md to include reject feature --id <feature_id> with the full local subtree cleanup sequence and the mapped GitHub reject behavior.",
+        "Align user-facing help and comments in dev/workflow_lib/confirm_commands.py so the reject command surface no longer reads as issue-only once feature reject exists.",
+        "Keep the docs explicit about unmapped child issues staying local-only and about no-op or repeat behavior when tracker artifacts are already absent."
+      ]
+    },
+    {
+      "id": "306",
+      "marker": "[M1][F15]",
+      "title": "Add reject-feature regression coverage",
+      "problem": "Without tests, feature-level reject can easily regress into partial cleanup, missing GitHub cascade behavior, or unstable repeat-run handling.",
+      "solution_option": "Extend workflow tests to lock reject-feature preview, write, repeat-run, and mixed mapping behavior into the repo's lifecycle coverage.",
+      "concrete_steps": [
+        "Add tests in tests/workflow/test_feature_lifecycle.py for reject feature preview and write behavior, including mapped feature issue plus mapped and unmapped child issue combinations.",
+        "Add cleanup-oriented assertions in tests/workflow/test_overlap_commands.py or the most relevant lifecycle fixture to prove feature-plan removal, overlap cleanup, dependency-index cleanup, and task-list cleanup happen together.",
+        "Cover repeat rejects and already-absent artifacts so reject feature remains idempotent and deterministic across mixed local tracker states."
+      ]
+    },
+    {
+      "id": "307",
+      "marker": "[M1][F16]",
+      "title": "Make feature-planning protocol the canonical plan-format owner",
+      "problem": "The repo currently has drift between the planning protocol, workflow docs, and runtime lint expectations, so agents infer the real FEATURE_PLANS contract from code and nearby examples instead of one canonical protocol.",
+      "solution_option": "Rewrite the feature-planning protocol so it becomes the single explicit owner of the simplified FEATURE_PLANS structure and planning quality gates.",
+      "concrete_steps": [
+        "Update .agents/protocols/feature-planning-protocol.md so it explicitly declares the valid feature-level structure as ## <feature_id> plus ### Expected Behaviour only.",
+        "Keep the same protocol explicit about the issue-level structure that still requires #### Expected Behaviour, #### Dependencies, #### Decomposition, and #### Issue/Task Decomposition Assessment.",
+        "Rewrite protocol wording that still implies feature-level Dependencies, Decomposition, or Assessment sections are mandatory so the protocol matches the new simplified planning model."
+      ]
+    },
+    {
+      "id": "308",
+      "marker": "[M1][F16]",
+      "title": "Align plan-feature and plan-issue workflows to protocol-owned structure",
+      "problem": "Planning workflows currently point agents back to FEATURE_PLANS header text and older feature-level headings, which preserves the same drift the protocol is supposed to eliminate.",
+      "solution_option": "Update plan-feature and plan-issue workflows so they are procedural only and reference the protocol-owned structure directly.",
+      "concrete_steps": [
+        "Update .agents/workflows/plan-feature.md to reference .agents/protocols/feature-planning-protocol.md as the plan-structure source of truth instead of any FEATURE_PLANS header section.",
+        "Rewrite plan-feature steps that still instruct agents to insert feature-level Dependencies, Decomposition, or Issue/Task Decomposition Assessment blocks.",
+        "Update .agents/workflows/plan-issue.md so it stays aligned with the protocol-owned issue-block structure and does not reintroduce obsolete feature-level format assumptions."
+      ]
+    },
+    {
+      "id": "309",
+      "marker": "[M1][F16]",
+      "title": "Reduce feature-level lint to Expected Behaviour only",
+      "problem": "Runtime lint still requires the old full set of feature-level headings, so the code rejects the simplified feature-block contract the user wants to adopt.",
+      "solution_option": "Update plan-lint so feature sections require only Expected Behaviour while issue blocks continue to enforce the full detailed structure.",
+      "concrete_steps": [
+        "Change the feature-level required heading set in dev/workflow_lib/feature_commands.py so _lint_plan_section treats Expected Behaviour as the only mandatory top-level heading inside a feature section.",
+        "Keep issue-block linting strict in the same file so detailed engineering structure remains enforced under each ### <issue_id> block.",
+        "Adjust strict-lint placeholder checks so the simplified feature block still needs concrete Expected Behaviour content instead of a TODO placeholder."
+      ]
+    },
+    {
+      "id": "310",
+      "marker": "[M1][F16]",
+      "title": "Update feature plan-init scaffold for minimal feature blocks",
+      "problem": "plan-init currently generates obsolete feature-level Dependencies, Decomposition, and Issue/Task Decomposition Assessment sections, so a newly scaffolded feature block does not match the desired contract.",
+      "solution_option": "Update plan-init and related rendering helpers so new feature sections contain only the feature heading, title line if still required by runtime, and Expected Behaviour content.",
+      "concrete_steps": [
+        "Update _build_feature_plan_scaffold in dev/workflow_lib/feature_commands.py so it stops emitting feature-level Dependencies, Decomposition, and Issue/Task Decomposition Assessment placeholders.",
+        "Keep plan-init output immediately valid under feature plan-lint after the lint contract is simplified.",
+        "Review related rendering helpers in dev/workflow_lib/feature_commands.py so no other feature-scaffold path reintroduces the removed headings."
+      ]
+    },
+    {
+      "id": "311",
+      "marker": "[M1][F16]",
+      "title": "Remove header-dependent FEATURE_PLANS runtime assumptions",
+      "problem": "Several runtime paths and fixtures still assume FEATURE_PLANS starts with a file header like # Feature Plans, which conflicts with the new storage-only, headerless file model.",
+      "solution_option": "Make feature plan extraction, initialization, and section-bound logic work correctly when FEATURE_PLANS contains only plan sections with no file preamble.",
+      "concrete_steps": [
+        "Review and update feature-section initialization and extraction paths in dev/workflow_lib/feature_commands.py so they do not rely on a # Feature Plans preamble.",
+        "Keep _extract_feature_plan_section, _find_h2_section_bounds, and related helpers stable when the file begins directly with ## <feature_id>.",
+        "Verify cleanup and section-rewrite behavior stays correct when FEATURE_PLANS contains only raw feature and issue plan blocks."
+      ]
+    },
+    {
+      "id": "312",
+      "marker": "[M1][F16]",
+      "title": "Migrate FEATURE_PLANS to headerless storage-only format",
+      "problem": "Even if the protocol and runtime change, the stored FEATURE_PLANS file will remain a source of confusion until its header boilerplate and obsolete feature-level sections are actually removed.",
+      "solution_option": "Normalize FEATURE_PLANS into a headerless storage-only file and simplify existing feature sections to Expected Behaviour only without touching valid issue-level detail unnecessarily.",
+      "concrete_steps": [
+        "Remove file-level header boilerplate from dev/FEATURE_PLANS.md so the file contains only plan sections.",
+        "Simplify existing feature sections in dev/FEATURE_PLANS.md to keep only ### Expected Behaviour at the feature level while preserving issue blocks unless they need targeted fixes for lint conformance.",
+        "Re-run feature plan lint for representative active features after the migration so the stored plan file matches the new contract end to end."
+      ]
+    },
+    {
+      "id": "313",
+      "marker": "[M1][F16]",
+      "title": "Update planning fixtures for headerless simplified feature blocks",
+      "problem": "Workflow tests still build FEATURE_PLANS fixtures with # Feature Plans headers and obsolete feature-level headings, so they will fail or continue encoding the old contract after runtime changes.",
+      "solution_option": "Rewrite planning-related fixtures so tests reflect headerless FEATURE_PLANS storage and simplified feature-level blocks.",
+      "concrete_steps": [
+        "Update tests/workflow/test_feature_lifecycle.py fixtures and assertions so feature plan-init and plan-lint no longer expect a # Feature Plans header or obsolete feature-level sections.",
+        "Update tests/workflow/test_overlap_commands.py and tests/workflow/test_task_planning.py fixtures that currently construct FEATURE_PLANS with file headers or removed feature-level headings.",
+        "Keep issue-level fixture detail intact where those tests still depend on issue-block Dependencies, Decomposition, and Assessment content."
+      ]
+    },
+    {
+      "id": "314",
+      "marker": "[M1][F16]",
+      "title": "Add protocol-lint consistency regression coverage",
+      "problem": "After this migration, the same drift can return unless tests explicitly lock the runtime lint contract to the protocol-owned structure and the representative fixture shapes used in the repo.",
+      "solution_option": "Add targeted regression checks that keep the protocol contract, runtime lint behavior, and canonical planning fixtures aligned.",
+      "concrete_steps": [
+        "Add regression checks in the relevant workflow tests so simplified feature blocks with Expected Behaviour only pass lint while missing feature-level Expected Behaviour still fails deterministically.",
+        "Add guards that plan-init scaffolds are valid under the new lint contract without manual cleanup of obsolete headings.",
+        "Keep the new regression scope focused on real drift points between .agents/protocols/feature-planning-protocol.md, dev/workflow_lib/feature_commands.py, and representative FEATURE_PLANS fixtures."
+      ]
     }
   ]
 }

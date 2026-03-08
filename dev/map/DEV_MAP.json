@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-08T04:42:59+02:00",
-  "task_count": 300,
+  "updated_at": "2026-03-08T04:56:19+02:00",
+  "task_count": 314,
   "milestones": [
     {
       "id": "M1",
@@ -2780,19 +2780,69 @@
               "id": "I1-F15-M1",
               "title": "Add reject feature command and local subtree cleanup",
               "description": "Implement `reject feature` with deterministic preview/write behavior that marks the feature and child issues as `Rejected` while removing feature-owned task, plan, overlap, and dependency artifacts through one feature-level cleanup flow.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "301",
+                  "title": "Add reject feature parser target and handler contract",
+                  "summary": "Add reject feature to the CLI router with preview and write semantics aligned to the existing reject and confirm command surfaces.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:17"
+                },
+                {
+                  "id": "302",
+                  "title": "Implement local reject-feature subtree cleanup",
+                  "summary": "Implement local reject-feature status transitions and subtree cleanup across DEV_MAP, TASK_LIST, FEATURE_PLANS, ISSUE_OVERLAPS, and ISSUE_DEP_INDEX.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:17"
+                },
+                {
+                  "id": "303",
+                  "title": "Make reject-feature preview and repeat runs deterministic",
+                  "summary": "Add stable preview/no-op reporting for reject feature when plan blocks or tracker artifacts are already partially absent.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:17"
+                }
+              ]
             },
             {
               "id": "I2-F15-M1",
               "title": "Add GitHub rejection cascade and regression coverage for reject feature",
               "description": "Extend feature rejection so mapped child issues and the mapped feature issue receive the same rejection-marker and close behavior as `reject issue`, then lock the new feature-level reject flow with workflow docs and regression coverage.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "304",
+                  "title": "Cascade GitHub reject flow across feature subtree",
+                  "summary": "Reuse reject-issue GitHub marker and close behavior for the mapped feature issue and all mapped child issues during reject feature.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:17"
+                },
+                {
+                  "id": "305",
+                  "title": "Document reject-feature workflow and command behavior",
+                  "summary": "Update reject workflow docs and help text so feature-level reject is documented as a first-class command with local-only and remote-close modes.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:17"
+                },
+                {
+                  "id": "306",
+                  "title": "Add reject-feature regression coverage",
+                  "summary": "Extend workflow tests to cover reject-feature preview, write, repeat runs, and mixed mapped or unmapped subtree behavior.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:17"
+                }
+              ]
             }
           ],
           "branch_name": null,
@@ -2811,28 +2861,95 @@
               "id": "I1-F16-M1",
               "title": "Define canonical planning contract and storage-only FEATURE_PLANS structure",
               "description": "Rewrite the formal planning protocol and workflows so the protocol becomes the only source of truth for plan structure, `FEATURE_PLANS.md` becomes storage-only, and feature blocks are defined as `Expected Behaviour` only while issue blocks keep the detailed canonical structure.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "307",
+                  "title": "Make feature-planning protocol the canonical plan-format owner",
+                  "summary": "Rewrite the planning protocol so it explicitly owns the simplified FEATURE_PLANS structure and quality gates.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:19"
+                },
+                {
+                  "id": "308",
+                  "title": "Align plan-feature and plan-issue workflows to protocol-owned structure",
+                  "summary": "Update planning workflows to reference the protocol contract instead of treating FEATURE_PLANS header text as the source of truth.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:19"
+                }
+              ]
             },
             {
               "id": "I2-F16-M1",
               "title": "Align lint and plan generation with the simplified feature-block contract",
               "description": "Update planning runtime enforcement and plan scaffolds so `feature plan-lint` and `plan-init` require only feature-level `Expected Behaviour`, keep full issue-block validation, and support headerless `FEATURE_PLANS.md` storage.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "309",
+                  "title": "Reduce feature-level lint to Expected Behaviour only",
+                  "summary": "Update plan-lint so feature sections require only Expected Behaviour while issue blocks keep the full detailed structure.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:19"
+                },
+                {
+                  "id": "310",
+                  "title": "Update feature plan-init scaffold for minimal feature blocks",
+                  "summary": "Change plan-init and related rendering helpers so new feature scaffolds no longer emit obsolete feature-level headings.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:19"
+                },
+                {
+                  "id": "311",
+                  "title": "Remove header-dependent FEATURE_PLANS runtime assumptions",
+                  "summary": "Make feature plan extraction and initialization work when FEATURE_PLANS contains only raw plan sections and no file header boilerplate.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:19"
+                }
+              ]
             },
             {
               "id": "I3-F16-M1",
               "title": "Migrate existing plans and add consistency regression coverage",
               "description": "Normalize existing `FEATURE_PLANS.md` sections to the new feature-level contract, remove obsolete boilerplate, and add tests that prove protocol, lint, and fixtures stay aligned without drift.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "312",
+                  "title": "Migrate FEATURE_PLANS to headerless storage-only format",
+                  "summary": "Remove FEATURE_PLANS header boilerplate and simplify existing feature sections to Expected Behaviour only.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:19"
+                },
+                {
+                  "id": "313",
+                  "title": "Update planning fixtures for headerless simplified feature blocks",
+                  "summary": "Rewrite workflow test fixtures that still assume FEATURE_PLANS headers or obsolete feature-level headings.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:19"
+                },
+                {
+                  "id": "314",
+                  "title": "Add protocol-lint consistency regression coverage",
+                  "summary": "Add targeted regression checks that keep the protocol contract, runtime lint, and representative plan fixtures aligned.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:56:19"
+                }
+              ]
             }
           ],
           "branch_name": null,
