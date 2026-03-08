@@ -63,19 +63,9 @@ def _write_minimal_repo_state(tmp_repo):
         encoding="utf-8",
     )
     (tmp_repo / "dev/FEATURE_PLANS.md").write_text(
-        "# Feature Plans\n"
         "## F14-M1\n"
         "### Expected Behaviour\n"
-        "- Overlap planning should expose deterministic related-issue context for this feature.\n"
-        "### Dependencies\n"
-        "- file: dev/workflow_lib/feature_commands.py | reason: planning command surface\n\n"
-        "### Decomposition\n"
-        "1. Build dependency index and dedicated overlap helpers.\n\n"
-        "### Issue Execution Order\n"
-        "1. `I1-F14-M1` - Issue one\n"
-        "2. `I2-F14-M1` - Issue two\n\n"
-        "### Issue/Task Decomposition Assessment\n"
-        "- task_count = 0\n\n"
+        "- Overlap planning should expose deterministic related-issue context for this feature.\n\n"
         "### I1-F14-M1 - Issue one\n"
         "#### Expected Behaviour\n"
         "- Issue one should publish dependency surfaces for overlap discovery.\n"
@@ -275,6 +265,8 @@ def test_apply_and_show_issue_overlaps(workflow, tmp_repo):
     overlap_delta.write_text(
         json.dumps(
             {
+                "schema_version": "1.1",
+                "issue_execution_order": {"ordered_issue_ids": []},
                 "overlaps": [
                     {
                         "issues": ["I1-F14-M1", "I2-F14-M1"],
@@ -296,7 +288,174 @@ def test_apply_and_show_issue_overlaps(workflow, tmp_repo):
     assert len(show_result["overlaps"]) == 1
     assert show_result["overlaps"][0]["issues"] == ["I1-F14-M1", "I2-F14-M1"]
     stored_payload = json.loads((tmp_repo / "dev/ISSUE_OVERLAPS.json").read_text(encoding="utf-8"))
+    assert stored_payload["issue_execution_order"]["ordered_issue_ids"] == []
+
+
+def test_apply_overlaps_preserves_unrelated_pairs_when_full_draft_keeps_them(workflow, tmp_repo):
+    """Full-draft apply should preserve unrelated overlap rows when they remain in the submitted payload."""
+    _write_minimal_repo_state(tmp_repo)
+    dev_map_path = tmp_repo / "dev/map/DEV_MAP.json"
+    dev_map = json.loads(dev_map_path.read_text(encoding="utf-8"))
+    dev_map["milestones"][0]["features"].append(
+        {
+            "id": "F99-M1",
+            "title": "Unrelated feature",
+            "description": "Unrelated feature description.",
+            "status": "Planned",
+            "track": "System/Test",
+            "gh_issue_number": None,
+            "gh_issue_url": None,
+            "issues": [
+                {
+                    "id": "I7-F99-M1",
+                    "title": "Unrelated issue one",
+                    "description": "Unrelated issue one description.",
+                    "status": "Planned",
+                    "gh_issue_number": None,
+                    "gh_issue_url": None,
+                    "tasks": [],
+                },
+                {
+                    "id": "I8-F99-M1",
+                    "title": "Unrelated issue two",
+                    "description": "Unrelated issue two description.",
+                    "status": "Planned",
+                    "gh_issue_number": None,
+                    "gh_issue_url": None,
+                    "tasks": [],
+                },
+            ],
+            "branch_name": None,
+            "branch_url": None,
+        }
+    )
+    dev_map_path.write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
+    overlaps_path = tmp_repo / "dev/ISSUE_OVERLAPS.json"
+    overlaps_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "issue_execution_order": {"ordered_issue_ids": []},
+                "overlaps": [
+                    {
+                        "issues": ["I7-F99-M1", "I8-F99-M1"],
+                        "type": "shared_logic",
+                        "surface": "file: unrelated/module.py",
+                        "description": "why: unrelated pair; impact: should remain; action: preserve in full draft.",
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    overlap_delta = tmp_repo / "overlaps_full.json"
+    overlap_delta.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "issue_execution_order": {"ordered_issue_ids": ["I1-F14-M1", "I2-F14-M1"]},
+                "overlaps": [
+                    {
+                        "issues": ["I7-F99-M1", "I8-F99-M1"],
+                        "type": "shared_logic",
+                        "surface": "file: unrelated/module.py",
+                        "description": "why: unrelated pair; impact: should remain; action: preserve in full draft.",
+                    },
+                    {
+                        "issues": ["I1-F14-M1", "I2-F14-M1"],
+                        "type": "dependency",
+                        "order": "I1-F14-M1->I2-F14-M1",
+                        "surface": "file: dev/workflow_lib/feature_commands.py",
+                        "description": "why: same command path; impact: execution ordering matters; action: keep dependency order explicit.",
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    workflow.run("plan", "apply-overlaps", "--delta-file", str(overlap_delta), "--write")
+    stored_payload = json.loads(overlaps_path.read_text(encoding="utf-8"))
+    assert len(stored_payload["overlaps"]) == 2
     assert stored_payload["issue_execution_order"]["ordered_issue_ids"] == ["I1-F14-M1", "I2-F14-M1"]
+
+
+def test_apply_overlaps_rejects_manual_order_with_extra_non_participants(workflow, tmp_repo):
+    """Full-draft apply should reject issue_execution_order entries that are not dependency participants."""
+    _write_minimal_repo_state(tmp_repo)
+    dev_map_path = tmp_repo / "dev/map/DEV_MAP.json"
+    dev_map = json.loads(dev_map_path.read_text(encoding="utf-8"))
+    dev_map["milestones"][0]["features"][0]["issues"].append(
+        {
+            "id": "I3-F14-M1",
+            "title": "Issue three",
+            "description": "Issue three description.",
+            "status": "Planned",
+            "gh_issue_number": None,
+            "gh_issue_url": None,
+            "tasks": [],
+        }
+    )
+    dev_map_path.write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
+    overlap_delta = tmp_repo / "invalid_overlaps.json"
+    overlap_delta.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "issue_execution_order": {"ordered_issue_ids": ["I1-F14-M1", "I2-F14-M1", "I3-F14-M1"]},
+                "overlaps": [
+                    {
+                        "issues": ["I1-F14-M1", "I2-F14-M1"],
+                        "type": "dependency",
+                        "order": "I1-F14-M1->I2-F14-M1",
+                        "surface": "file: dev/workflow_lib/feature_commands.py",
+                        "description": "why: same command path; impact: execution ordering matters; action: keep dependency order explicit.",
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(pytest.fail.Exception) as excinfo:
+        workflow.run("plan", "apply-overlaps", "--delta-file", str(overlap_delta), "--write")
+    assert "must match dependency-overlap participants" in str(excinfo.value)
+
+
+def test_show_overlaps_feature_scope_returns_feature_subtree_rows(workflow, tmp_repo):
+    """Feature-scoped overlap reads should return all overlaps owned by the feature subtree."""
+    _write_minimal_repo_state(tmp_repo)
+    (tmp_repo / "dev/ISSUE_OVERLAPS.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "issue_execution_order": {"ordered_issue_ids": ["I1-F14-M1", "I2-F14-M1"]},
+                "overlaps": [
+                    {
+                        "issues": ["I1-F14-M1", "I2-F14-M1"],
+                        "type": "dependency",
+                        "order": "I1-F14-M1->I2-F14-M1",
+                        "surface": "file: dev/workflow_lib/feature_commands.py",
+                        "description": "why: same command path; impact: execution ordering matters; action: keep dependency order explicit.",
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = workflow.run("plan", "show-overlaps", "--feature-id", "F14-M1")
+    assert len(result["overlaps"]) == 1
+    assert result["overlaps"][0]["issues"] == ["I1-F14-M1", "I2-F14-M1"]
 
 
 def test_execution_plan_does_not_require_pipeline_file(workflow, tmp_repo):
@@ -605,7 +764,7 @@ def test_confirm_feature_write_is_stable_when_feature_plan_section_is_missing(wo
         + "\n",
         encoding="utf-8",
     )
-    (tmp_repo / "dev/FEATURE_PLANS.md").write_text("# Feature Plans\n", encoding="utf-8")
+    (tmp_repo / "dev/FEATURE_PLANS.md").write_text("", encoding="utf-8")
 
     result = workflow.run(
         "confirm",
@@ -619,3 +778,206 @@ def test_confirm_feature_write_is_stable_when_feature_plan_section_is_missing(wo
 
     assert result["cleanup"]["feature_plans"]["feature_section_found"] is False
     assert result["cleanup"]["feature_plans"]["feature_section_removed"] is False
+
+
+def test_reject_feature_preview_reports_subtree_cleanup_and_mixed_mapping(workflow, tmp_repo):
+    """Reject feature preview should report subtree cleanup and mixed mapping state without mutating files."""
+    _write_minimal_repo_state(tmp_repo)
+
+    dev_map_path = tmp_repo / "dev/map/DEV_MAP.json"
+    dev_map = json.loads(dev_map_path.read_text(encoding="utf-8"))
+    feature = dev_map["milestones"][0]["features"][0]
+    feature["status"] = "Tasked"
+    feature["issues"][0]["status"] = "Tasked"
+    feature["issues"][0]["tasks"] = [{"id": "1", "title": "Task one", "summary": "Task summary", "status": "Planned"}]
+    feature["issues"][1]["status"] = "Tasked"
+    feature["issues"][1]["tasks"] = [{"id": "2", "title": "Task two", "summary": "Task summary", "status": "Planned"}]
+    feature["issues"][1]["gh_issue_number"] = None
+    feature["issues"][1]["gh_issue_url"] = None
+    dev_map_path.write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
+
+    (tmp_repo / "dev/TASK_LIST.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "tasks": [
+                    {
+                        "id": "1",
+                        "marker": "[M1][F14]",
+                        "title": "Task one",
+                        "problem": "Need feature reject preview.",
+                        "solution_option": "Run reject feature preview.",
+                        "concrete_steps": ["Preview reject feature cleanup."],
+                    },
+                    {
+                        "id": "2",
+                        "marker": "[M1][F14]",
+                        "title": "Task two",
+                        "problem": "Need feature reject preview.",
+                        "solution_option": "Run reject feature preview.",
+                        "concrete_steps": ["Preview reject feature cleanup."],
+                    },
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_repo / "dev/ISSUE_OVERLAPS.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "issue_execution_order": {
+                    "ordered_issue_ids": ["I1-F14-M1", "I2-F14-M1", "I7-F99-M1"]
+                },
+                "overlaps": [
+                    {
+                        "issues": ["I1-F14-M1", "I2-F14-M1"],
+                        "type": "dependency",
+                        "order": "I1-F14-M1->I2-F14-M1",
+                        "surface": "file: dev/workflow_lib/confirm_commands.py",
+                        "description": "why: shared cleanup path; impact: reject subtree ordering; action: keep deterministic.",
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_repo / "dev/ISSUE_DEP_INDEX.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "scope_type": "feature",
+                "scope_id": "F14-M1",
+                "by_issue": {
+                    "I1-F14-M1": {"surface_keys": ["file: dev/workflow_lib/confirm_commands.py"]},
+                    "I2-F14-M1": {"surface_keys": ["file: dev/workflow_lib/confirm_commands.py"]},
+                },
+                "by_surface": {
+                    "file: dev/workflow_lib/confirm_commands.py": ["I1-F14-M1", "I2-F14-M1"]
+                },
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    plans_before = (tmp_repo / "dev/FEATURE_PLANS.md").read_text(encoding="utf-8")
+    task_list_before = (tmp_repo / "dev/TASK_LIST.json").read_text(encoding="utf-8")
+    result = workflow.run("reject", "feature", "--id", "F14-M1")
+
+    assert result["cleanup"]["feature_plans"]["feature_section"]["feature_section_would_be_removed"] is True
+    assert result["cleanup"]["task_list_entries_removed"] == 2
+    assert result["cleanup"]["issue_overlaps"]["overlap_rows_removed"] == 1
+    assert result["github_rejections"]["feature"]["reason"] == "dry-run"
+    assert result["github_rejections"]["issues"][0]["result"]["reason"] == "dry-run"
+    assert result["github_rejections"]["issues"][1]["result"]["reason"] == "issue-not-mapped"
+    assert (tmp_repo / "dev/FEATURE_PLANS.md").read_text(encoding="utf-8") == plans_before
+    assert (tmp_repo / "dev/TASK_LIST.json").read_text(encoding="utf-8") == task_list_before
+
+
+def test_reject_feature_write_cleans_subtree_and_marks_statuses_rejected(workflow, tmp_repo):
+    """Reject feature write should reject the subtree and remove local planning artifacts."""
+    _write_minimal_repo_state(tmp_repo)
+
+    dev_map_path = tmp_repo / "dev/map/DEV_MAP.json"
+    dev_map = json.loads(dev_map_path.read_text(encoding="utf-8"))
+    feature = dev_map["milestones"][0]["features"][0]
+    feature["status"] = "Tasked"
+    feature["issues"][0]["status"] = "Tasked"
+    feature["issues"][0]["tasks"] = [{"id": "1", "title": "Task one", "summary": "Task summary", "status": "Planned"}]
+    feature["issues"][1]["status"] = "Tasked"
+    feature["issues"][1]["tasks"] = [{"id": "2", "title": "Task two", "summary": "Task summary", "status": "Planned"}]
+    dev_map_path.write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
+
+    (tmp_repo / "dev/TASK_LIST.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "tasks": [
+                    {
+                        "id": "1",
+                        "marker": "[M1][F14]",
+                        "title": "Task one",
+                        "problem": "Need feature reject write.",
+                        "solution_option": "Run reject feature write.",
+                        "concrete_steps": ["Apply reject feature cleanup."],
+                    },
+                    {
+                        "id": "2",
+                        "marker": "[M1][F14]",
+                        "title": "Task two",
+                        "problem": "Need feature reject write.",
+                        "solution_option": "Run reject feature write.",
+                        "concrete_steps": ["Apply reject feature cleanup."],
+                    },
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_repo / "dev/ISSUE_OVERLAPS.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "issue_execution_order": {
+                    "ordered_issue_ids": ["I1-F14-M1", "I2-F14-M1", "I7-F99-M1"]
+                },
+                "overlaps": [
+                    {
+                        "issues": ["I1-F14-M1", "I2-F14-M1"],
+                        "type": "dependency",
+                        "order": "I1-F14-M1->I2-F14-M1",
+                        "surface": "file: dev/workflow_lib/confirm_commands.py",
+                        "description": "why: shared cleanup path; impact: reject subtree ordering; action: keep deterministic.",
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_repo / "dev/ISSUE_DEP_INDEX.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "scope_type": "feature",
+                "scope_id": "F14-M1",
+                "by_issue": {
+                    "I1-F14-M1": {"surface_keys": ["file: dev/workflow_lib/confirm_commands.py"]},
+                    "I2-F14-M1": {"surface_keys": ["file: dev/workflow_lib/confirm_commands.py"]},
+                },
+                "by_surface": {
+                    "file: dev/workflow_lib/confirm_commands.py": ["I1-F14-M1", "I2-F14-M1"]
+                },
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = workflow.run("reject", "feature", "--id", "F14-M1", "--write", "--no-close-github")
+
+    assert result["feature_status_after"] == "Rejected"
+    assert result["cleanup"]["task_list_entries_removed"] == 2
+    assert result["cleanup"]["issue_overlaps"]["overlap_rows_removed"] == 1
+    assert result["cleanup"]["issue_overlaps"]["issue_order_ids_removed"] == 2
+    assert result["cleanup"]["feature_plans"]["feature_section"]["feature_section_removed"] is True
+    updated_map = json.loads(dev_map_path.read_text(encoding="utf-8"))
+    feature_after = updated_map["milestones"][0]["features"][0]
+    assert feature_after["status"] == "Rejected"
+    assert [issue["status"] for issue in feature_after["issues"]] == ["Rejected", "Rejected"]
+    assert json.loads((tmp_repo / "dev/TASK_LIST.json").read_text(encoding="utf-8"))["tasks"] == []
+    issue_overlaps = json.loads((tmp_repo / "dev/ISSUE_OVERLAPS.json").read_text(encoding="utf-8"))
+    assert issue_overlaps["overlaps"] == []
+    assert issue_overlaps["issue_execution_order"]["ordered_issue_ids"] == ["I7-F99-M1"]
+    plans_after = (tmp_repo / "dev/FEATURE_PLANS.md").read_text(encoding="utf-8")
+    assert "## F14-M1" not in plans_after

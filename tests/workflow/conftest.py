@@ -25,7 +25,7 @@ def tmp_repo(tmp_path):
     
     # Create empty docs for features
     (repo_dir / "dev/TASK_LIST.md").write_text("# Task List\n")
-    (repo_dir / "dev/FEATURE_PLANS.md").write_text("# Feature Plans\n")
+    (repo_dir / "dev/FEATURE_PLANS.md").write_text("")
     
     # Initialize git
     subprocess.run(["git", "init", "-q"], cwd=repo_dir, check=True)

@@ -1,32 +1,3 @@
-# Feature Plans
-
-Canonical storage for `plan feature <id>` outputs.
-
-## Scope ownership
-
-- This file stores plan artifacts only.
-- Command semantics/order are defined in `dev/TASK_EXECUTION_PROTOCOL.md`.
-- Planning quality requirements are defined in `dev/FEATURE_PLANNING_PROTOCOL.md`.
-
-## Format
-
-Each feature plan section must use the feature ID as a heading and include:
-- Dependencies
-- Decomposition
-- Issue/Task Decomposition Assessment
-
-Canonical per-issue plan block format inside a feature section:
-- Heading: `### <issue_id> - <issue_title>` (one block per issue ID).
-- Allowed inner headings: only `#### Dependencies`, `#### Decomposition`, `#### Issue/Task Decomposition Assessment`.
-- All three inner headings are mandatory for each issue block.
-
-## Planned Features
-
-<!-- Add or update feature plan sections below, for example: -->
-<!-- ## F<local>-M<milestone> -->
-<!-- ### Dependencies -->
-<!-- ... -->
-
 ## F4-M1
 
 ### Issue Execution Order
@@ -1037,38 +1008,6 @@ Canonical per-issue plan block format inside a feature section:
 - Local cleanup removes child issue plan blocks, the parent feature plan section, overlap rows, and dependency-index rows when present, while staying stable when some artifacts were already removed earlier.
 - Remote behavior mirrors existing `reject issue` semantics: each mapped child issue and the mapped feature issue receives the rejection marker and is closed, while unmapped nodes remain local-only and are reported explicitly.
 
-### Dependencies
-- [dev/workflow_lib/confirm_commands.py](dev/workflow_lib/confirm_commands.py) — owns the current `reject issue` flow, feature confirmation cleanup path, and shared tracker cleanup helpers that `reject feature` should reuse instead of reimplementing.
-- [dev/FEATURE_PLANS.md](dev/FEATURE_PLANS.md) — feature rejection must remove child issue plan blocks and the parent feature section when they exist, while staying stable if they are already absent.
-- [dev/map/DEV_MAP.json](dev/map/DEV_MAP.json) — feature and child issue status transitions must mark the subtree as `Rejected` without leaving orphan issue nodes or stale active statuses.
-- [dev/ISSUE_OVERLAPS.json](dev/ISSUE_OVERLAPS.json) and [dev/ISSUE_DEP_INDEX.json](dev/ISSUE_DEP_INDEX.json) — feature-level reject cleanup must remove rows and lookups for the rejected feature subtree in the same write run as other tracker cleanup.
-- [.agents/workflows/reject.md](.agents/workflows/reject.md) and [.agents/protocols/task-execution-protocol.md](.agents/protocols/task-execution-protocol.md) — command workflow and lifecycle rules must be extended from issue-only reject semantics to a deterministic feature-level reject contract.
-- Existing `reject issue` GitHub behavior is the remote contract baseline: mapped issues receive a rejection marker and are closed, while unmapped issues stay local-only and report missing mapping metadata explicitly.
-
-### Decomposition
-1. Add a feature-level reject command surface and local cleanup contract:
-   - introduce `reject feature --id <feature_id>` with deterministic preview and write-mode payloads,
-   - mark the feature and all child issues as `Rejected`,
-   - remove child task artifacts plus issue/feature plan blocks, overlap rows, and dependency-index rows when present,
-   - keep repeated or partial-artifact runs no-op-safe instead of failing on already-clean state.
-2. Reuse existing reject/confirm primitives rather than fork new logic:
-   - build feature reject on top of the current `reject issue` GitHub semantics and `confirm feature` cleanup helpers,
-   - keep cleanup reporting aligned with existing reject/confirm payload shapes so downstream workflow output stays predictable,
-   - preserve materialization-aware behavior for mapped versus unmapped child issues.
-3. Lock the new behavior with docs and regression coverage:
-   - add preview/write/no-op/repeat tests for feature reject,
-   - document how feature rejection differs from feature confirmation while reusing the same cleanup surfaces,
-   - keep runtime help and workflow docs aligned with the final command surface.
-
-### Issue/Task Decomposition Assessment
-- Feature scope is intentionally split into two issues because local subtree cleanup and remote GitHub rejection are tightly related but still separable implementation slices.
-- Minimal execution order:
-  1. add the feature-level reject contract and local subtree cleanup,
-  2. extend GitHub rejection flow and lock the combined behavior with docs/tests.
-- Expected split:
-  - `I1-F15-M1`: contract, parser/handler wiring, local cleanup, deterministic payloads
-  - `I2-F15-M1`: GitHub cascade, workflow/help updates, regression coverage
-
 ### I1-F15-M1 - Add reject feature command and local subtree cleanup
 
 #### Expected Behaviour
@@ -1147,38 +1086,6 @@ Canonical per-issue plan block format inside a feature section:
 - `FEATURE_PLANS.md` becomes a storage-only file with no header boilerplate, and each feature section is reduced to a concise `Expected Behaviour` block that describes the intended outcome and how the feature can be verified.
 - Detailed planning structure remains only at the issue-block level, and `feature plan-lint` plus plan-generation helpers enforce that simplified split consistently across runtime, docs, and tests.
 - Existing plans migrate to the new format without losing actionable issue-level decomposition detail, and regression checks prevent protocol, lint, and fixtures from drifting apart again.
-
-### Dependencies
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — owns `plan-init`, `plan-lint`, and plan parsing logic that must be aligned to the new feature-level contract.
-- [.agents/protocols/feature-planning-protocol.md](.agents/protocols/feature-planning-protocol.md) — should become the only canonical owner of the planning structure and quality gates.
-- [.agents/workflows/plan-feature.md](.agents/workflows/plan-feature.md) and [.agents/workflows/plan-issue.md](.agents/workflows/plan-issue.md) — workflow steps must reference the protocol contract instead of treating `FEATURE_PLANS.md` header text as the structure owner.
-- [dev/FEATURE_PLANS.md](dev/FEATURE_PLANS.md) — target storage artifact that must become headerless and be normalized to the simplified feature-level block shape.
-- [tests/workflow/test_feature_lifecycle.py](tests/workflow/test_feature_lifecycle.py), [tests/workflow/test_overlap_commands.py](tests/workflow/test_overlap_commands.py), and [tests/workflow/test_task_planning.py](tests/workflow/test_task_planning.py) — fixtures and lint expectations must be updated to prove the new contract is enforced end-to-end.
-
-### Decomposition
-1. Move canonical ownership of the planning format into the protocol:
-   - define the exact feature-level and issue-level plan structures in the planning protocol,
-   - make workflows procedural only and reference that contract instead of duplicating local format rules,
-   - keep the feature-level contract intentionally minimal: `Expected Behaviour` only.
-2. Align runtime enforcement and plan-generation helpers to the simplified contract:
-   - change lint so feature sections require only `Expected Behaviour`,
-   - keep issue-block validation strict and unchanged where detailed engineering decomposition still belongs,
-   - make scaffolds and parser assumptions work with a headerless `FEATURE_PLANS.md`.
-3. Migrate stored plans and lock the contract with tests:
-   - remove `FEATURE_PLANS.md` boilerplate and normalize existing feature sections,
-   - update test fixtures to the new storage shape,
-   - add consistency checks that fail when protocol, lint, and fixtures diverge.
-
-### Issue/Task Decomposition Assessment
-- Feature scope is split into three issues because protocol ownership, runtime enforcement, and migration/regression work are closely related but should still be delivered in a controlled sequence.
-- Minimal execution order:
-  1. define the canonical protocol and storage contract,
-  2. align runtime lint and generation helpers,
-  3. migrate stored plans and add regression/consistency checks.
-- Expected split:
-  - `I1-F16-M1`: protocol and workflow contract rewrite
-  - `I2-F16-M1`: runtime lint and scaffold alignment
-  - `I3-F16-M1`: storage migration and regression coverage
 
 ### I1-F16-M1 - Define canonical planning contract and storage-only FEATURE_PLANS structure
 
@@ -1290,45 +1197,6 @@ Canonical per-issue plan block format inside a feature section:
 - `issue_execution_order` becomes an explicitly edited field in the final draft rather than a hidden side effect of `apply-overlaps`, while CLI validation ensures that the provided order is structurally valid and semantically consistent with dependency overlaps.
 - `issue_execution_order` is reduced to issues that actually participate in dependency overlaps, so the order block stops echoing unrelated active issues from `DEV_MAP` that contribute no dependency edges.
 - Workflow docs and regression coverage make the roles clear: CLI commands discover context and validate/apply the final snapshot, while the agent prepares and edits the full draft between those stages.
-
-### Dependencies
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — owns `show-related`, `get-plan-block`, `build-overlaps`, `show-overlaps`, and `apply-overlaps`, so the overlap workflow contract and write semantics must be updated there.
-- [dev/workflow_lib/tracker_json_contracts.py](dev/workflow_lib/tracker_json_contracts.py) and [dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json](dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json) — canonical overlap payload shape and validation rules that must be extended to support full-draft validation and explicit order semantics.
-- [dev/ISSUE_OVERLAPS.json](dev/ISSUE_OVERLAPS.json) — target global tracker whose full-block ownership, preservation rules, and apply semantics must become explicit and auditable.
-- [.agents/workflows/build-overlaps.md](.agents/workflows/build-overlaps.md) — current workflow still describes delta-oriented overlap drafting and needs to be rewritten around full snapshot preparation and CLI validation/apply.
-- [tests/workflow/test_overlap_commands.py](tests/workflow/test_overlap_commands.py) — overlap workflow behavior, scope filtering, and apply semantics need regression coverage once the new contract is introduced.
-
-### Decomposition
-1. Define one canonical overlap workflow contract:
-   - scope-specific commands discover candidates and issue-plan context,
-   - the agent prepares a full editable draft snapshot from current global overlap state plus scoped updates,
-   - final apply validates and writes the entire block instead of performing hidden partial replacement or implicit merge.
-2. Align runtime validation and apply semantics with that contract:
-   - schema validation and semantic validation live in CLI,
-   - draft preparation remains agent-driven,
-   - `issue_execution_order` is validated as an explicit field supplied in the final draft.
-3. Lock the workflow with docs and tests:
-   - update build/apply overlap workflow guidance,
-   - cover preservation of unrelated pairs,
-   - cover invalid orders, duplicate pairs, pair/order mismatch, and scope-read behavior.
-4. Remove noise from global overlap ordering:
-   - keep `issue_execution_order` limited to dependency-overlap participants only,
-   - stop auto-including active issues that have no dependency edges,
-   - make tests prove that isolated issues stay out of the order block.
-
-### Issue/Task Decomposition Assessment
-- Feature scope is split into three issues because workflow contract, runtime enforcement, and regression/documentation work are closely connected but should be landed in a controlled sequence.
-- A fourth issue is required because global order node selection is a separate runtime rule from draft/apply semantics and needs targeted regression coverage.
-- Minimal execution order:
-  1. define the canonical overlap workflow and responsibility split,
-  2. implement full-draft validation and write semantics,
-  3. limit `issue_execution_order` to dependency-overlap participants,
-  4. align helper commands, docs, and regression coverage.
-- Expected split:
-  - `I1-F17-M1`: workflow contract and command-surface definition
-  - `I2-F17-M1`: runtime validation/apply semantics
-  - `I3-F17-M1`: workflow/doc/test alignment
-  - `I4-F17-M1`: dependency-graph-only issue order
 
 ### I1-F17-M1 - Define full-snapshot overlap workflow contract and CLI responsibilities
 

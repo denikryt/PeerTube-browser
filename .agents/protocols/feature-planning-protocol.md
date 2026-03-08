@@ -12,6 +12,19 @@ Canonical structure and ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md`.
 
 If any procedural detail differs across docs, the corresponding `.agents/workflows/` file is canonical for steps, while this file is canonical for quality requirements.
 
+## Canonical FEATURE_PLANS structure
+
+- `dev/FEATURE_PLANS.md` is a storage-only artifact. It must not carry file-level ownership prose or header boilerplate.
+- A feature section uses:
+  - `## <feature_id>`
+  - `### Expected Behaviour`
+- Issue blocks inside a feature section use:
+  - `### <issue_id> - <issue_title>`
+  - `#### Expected Behaviour`
+  - `#### Dependencies`
+  - `#### Decomposition`
+  - `#### Issue/Task Decomposition Assessment`
+
 ## Section 0: Planning Prerequisites
 
 - `plan feature <id>` and `plan issue <issue_id>` are **Drafting** phases. They produce artifacts in `dev/FEATURE_PLANS.md` but do NOT modify active runtime trackers.
@@ -41,11 +54,9 @@ Required input for `plan issue <issue_id>`:
 - `issue_task_decomposition_assessment`: explicit minimal-sufficient split decision for this issue.
 
 Required output in `dev/FEATURE_PLANS.md`:
-- `Expected Behaviour` section for the feature with target runtime outcome, observable result, touched runtime surfaces, and constraints,
-- dependencies section for the feature,
-- decomposition section with strict step-by-step flow,
-- `Issue/Task Decomposition Assessment`,
-- draft decomposition (`Feature -> Issue(s) -> Task(s)`) only if splitting is actually needed.
+- feature heading `## <feature_id>`,
+- feature-level `### Expected Behaviour` section with target runtime outcome, observable result, touched runtime surfaces, and constraints,
+- issue-level detailed planning only inside canonical issue-plan blocks under that feature section.
 
 Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
 - output must be persisted through `feature plan-issue --id <issue_id>` (no chat-only issue plan updates),

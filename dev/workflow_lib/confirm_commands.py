@@ -90,12 +90,29 @@ def register_confirm_router(subparsers: argparse._SubParsersAction[argparse.Argu
 
 
 def register_reject_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Register reject command routing for explicit issue rejection flow."""
+    """Register reject command routing for explicit issue and feature rejection flow."""
     reject_parser = subparsers.add_parser(
         "reject",
-        help="Issue rejection workflow commands.",
+        help="Issue and feature rejection workflow commands.",
     )
     reject_subparsers = reject_parser.add_subparsers(dest="reject_target", required=True)
+    feature_parser = reject_subparsers.add_parser("feature", help="Reject one feature subtree.")
+    feature_parser.add_argument("--id", required=True, help="Feature identifier.")
+    feature_parser.add_argument("--write", action="store_true", help="Persist rejection transition.")
+    feature_parser.add_argument(
+        "--close-github",
+        dest="close_github",
+        action="store_true",
+        default=True,
+        help="Reserved flag for mapped GitHub reject side effects.",
+    )
+    feature_parser.add_argument(
+        "--no-close-github",
+        dest="close_github",
+        action="store_false",
+        help="Skip mapped GitHub reject side effects.",
+    )
+    feature_parser.set_defaults(handler=_handle_reject_feature)
     issue_parser = reject_subparsers.add_parser("issue", help="Reject one feature issue.")
     issue_parser.add_argument("--id", required=True, help="Issue identifier.")
     issue_parser.add_argument("--write", action="store_true", help="Persist rejection transition.")
@@ -202,14 +219,9 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
         write=False,
     )
     cleanup_preview = {
+        **cleanup_preview_raw,
         "feature_plans": feature_plan_cleanup_preview,
         "mode": "preview",
-        "pipeline": {
-            "blocks_would_be_removed": int(cleanup_preview_raw["pipeline"]["blocks_removed"]),
-            "execution_rows_would_be_removed": int(cleanup_preview_raw["pipeline"]["execution_rows_removed"]),
-            "overlap_rows_would_be_removed": int(cleanup_preview_raw["pipeline"]["overlap_rows_removed"]),
-        },
-        "task_list_entries_would_be_removed": int(cleanup_preview_raw["task_list_entries_removed"]),
     }
     cleanup_result = cleanup_preview
     issue_removed = False
@@ -244,58 +256,15 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
         "marker_added": False,
         "reason": "reject-succeeded-local-only",
     }
-    if not bool(args.close_github):
-        github_rejection = {
-            "attempted": False,
-            "closed": False,
-            "marker_added": False,
-            "reason": "close-github-disabled",
-        }
-    elif not is_mapped_issue:
-        github_rejection = {
-            "attempted": False,
-            "closed": False,
-            "marker_added": False,
-            "reason": "issue-not-mapped",
-            "missing_fields": [
-                field
-                for field, missing in (
-                    ("gh_issue_number", issue_number is None),
-                    ("gh_issue_url", not issue_url),
-                )
-                if missing
-            ],
-        }
-    elif not bool(args.write):
-        github_rejection = {
-            "attempted": False,
-            "closed": False,
-            "marker_added": False,
-            "reason": "dry-run",
-            "issue_number": issue_number,
-        }
-    elif status_before == "Rejected":
-        github_rejection = {
-            "attempted": False,
-            "closed": False,
-            "marker_added": False,
-            "reason": "already-rejected-no-op",
-            "issue_number": issue_number,
-        }
-    else:
-        github_repo = resolve_github_repository(context.root_dir)
-        repo_name_with_owner = github_repo["name_with_owner"]
-        current_body = gh_issue_view_body(repo_name_with_owner, issue_number)
-        updated_body, marker_added = _append_issue_rejection_marker(current_body, issue_id)
-        if marker_added:
-            gh_issue_edit_body(repo_name_with_owner, issue_number, updated_body)
-        close_github_issue(issue_number)
-        github_rejection = {
-            "attempted": True,
-            "closed": True,
-            "marker_added": marker_added,
-            "issue_number": issue_number,
-        }
+    github_rejection = _reject_one_mapped_issue(
+        context=context,
+        issue_id=issue_id,
+        issue_number=issue_number,
+        issue_url=issue_url,
+        close_github=bool(args.close_github),
+        write=bool(args.write),
+        already_rejected=status_before == "Rejected",
+    )
 
     emit_json(
         {
@@ -319,6 +288,279 @@ def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
         }
     )
     return 0
+
+
+def _handle_reject_feature(args: Namespace, context: WorkflowContext) -> int:
+    """Reject one feature subtree in local tracker state and optionally on GitHub."""
+    feature_id = _normalize_identifier(args.id)
+    if FEATURE_ID_PATTERN.fullmatch(feature_id) is None:
+        raise WorkflowCommandError(
+            f"Invalid feature ID {args.id!r}; expected F<local>-M<milestone>.",
+            exit_code=4,
+        )
+
+    dev_map = _load_json(context.dev_map_path)
+    feature_ref = _find_feature(dev_map, feature_id)
+    if feature_ref is None:
+        raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
+
+    feature_node = feature_ref["feature"]
+    feature_status_before = str(feature_node.get("status", "")).strip() or "Pending"
+    if feature_status_before == "Done":
+        raise WorkflowCommandError(
+            f"Feature {feature_id} is already Done and cannot transition to Rejected.",
+            exit_code=4,
+        )
+
+    issue_nodes = _collect_feature_issue_nodes(feature_node)
+    child_issue_ids = [str(issue_node.get("id", "")).strip() for issue_node in issue_nodes if str(issue_node.get("id", "")).strip()]
+    child_task_ids = _collect_issue_task_ids(issue_nodes)
+
+    cleanup_preview = _compute_tracker_cleanup_preview(
+        context,
+        set(child_task_ids),
+        issue_ids_to_remove=set(child_issue_ids),
+        feature_ids_to_remove={feature_id},
+    )
+    cleanup_preview["feature_plans"] = _build_feature_reject_plan_cleanup_preview(
+        feature_plans_path=context.feature_plans_path,
+        feature_id=feature_id,
+        issue_ids=child_issue_ids,
+    )
+    cleanup_preview["mode"] = "preview"
+
+    if bool(args.write):
+        feature_node["status"] = "Rejected"
+        for issue_node in issue_nodes:
+            issue_status_before = str(issue_node.get("status", "")).strip() or "Pending"
+            if issue_status_before != "Done":
+                issue_node["status"] = "Rejected"
+        cleanup_result = _apply_tracker_cleanup(
+            context=context,
+            dev_map=dev_map,
+            task_ids_to_remove=set(child_task_ids),
+            issue_ids_to_remove=set(child_issue_ids),
+            feature_ids_to_remove={feature_id},
+        )
+        cleanup_result["feature_plans"] = _apply_feature_reject_plan_cleanup(
+            feature_plans_path=context.feature_plans_path,
+            feature_id=feature_id,
+            issue_ids=child_issue_ids,
+        )
+        cleanup_result["mode"] = "applied"
+    else:
+        cleanup_result = cleanup_preview
+
+    github_rejections = _reject_feature_github_subtree(
+        context=context,
+        feature_id=feature_id,
+        feature_node=feature_node,
+        issue_nodes=issue_nodes,
+        close_github=bool(args.close_github),
+        write=bool(args.write),
+        feature_status_before=feature_status_before,
+    )
+
+    emit_json(
+        {
+            "child_issue_count": len(child_issue_ids),
+            "cleanup": cleanup_result,
+            "close_github": bool(args.close_github),
+            "command": "reject.feature",
+            "feature_id": feature_id,
+            "feature_status_after": str(feature_node.get("status", "")).strip() if bool(args.write) else feature_status_before,
+            "feature_status_before": feature_status_before,
+            "github_rejections": github_rejections,
+            "task_count": len(child_task_ids),
+            "write": bool(args.write),
+        }
+    )
+    return 0
+
+
+def _collect_feature_issue_nodes(feature_node: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return normalized issue node list for one feature node."""
+    issue_nodes = feature_node.get("issues", [])
+    if not isinstance(issue_nodes, list):
+        raise WorkflowCommandError("Feature issue list must be a list for feature reject.", exit_code=4)
+    return [issue_node for issue_node in issue_nodes if isinstance(issue_node, dict)]
+
+
+def _collect_issue_task_ids(issue_nodes: list[dict[str, Any]]) -> list[str]:
+    """Collect child task identifiers for one feature subtree."""
+    task_ids: list[str] = []
+    for issue_node in issue_nodes:
+        tasks = issue_node.get("tasks", [])
+        if not isinstance(tasks, list):
+            continue
+        for task in tasks:
+            if not isinstance(task, dict):
+                continue
+            task_id = str(task.get("id", "")).strip()
+            if task_id:
+                task_ids.append(task_id)
+    return task_ids
+
+
+def _build_feature_reject_plan_cleanup_preview(
+    *,
+    feature_plans_path: Path,
+    feature_id: str,
+    issue_ids: list[str],
+) -> dict[str, Any]:
+    """Build deterministic preview payload for reject-feature FEATURE_PLANS cleanup."""
+    return {
+        "feature_section": _cleanup_feature_plan_feature_section(
+            feature_plans_path=feature_plans_path,
+            feature_id=feature_id,
+            write=False,
+        ),
+        "issue_blocks": [
+            {
+                "issue_id": issue_id,
+                "cleanup": _cleanup_feature_plan_issue_artifacts(
+                    feature_plans_path=feature_plans_path,
+                    feature_id=feature_id,
+                    issue_id=issue_id,
+                    write=False,
+                ),
+            }
+            for issue_id in issue_ids
+        ],
+    }
+
+
+def _apply_feature_reject_plan_cleanup(
+    *,
+    feature_plans_path: Path,
+    feature_id: str,
+    issue_ids: list[str],
+) -> dict[str, Any]:
+    """Apply reject-feature FEATURE_PLANS cleanup and return stable result details."""
+    issue_results = [
+        {
+            "issue_id": issue_id,
+            "cleanup": _cleanup_feature_plan_issue_artifacts(
+                feature_plans_path=feature_plans_path,
+                feature_id=feature_id,
+                issue_id=issue_id,
+                write=False,
+            ),
+        }
+        for issue_id in issue_ids
+    ]
+    return {
+        "feature_section": _cleanup_feature_plan_feature_section(
+            feature_plans_path=feature_plans_path,
+            feature_id=feature_id,
+            write=True,
+        ),
+        "issue_blocks": issue_results,
+    }
+
+
+def _reject_one_mapped_issue(
+    *,
+    context: WorkflowContext,
+    issue_id: str,
+    issue_number: int | None,
+    issue_url: str,
+    close_github: bool,
+    write: bool,
+    already_rejected: bool,
+) -> dict[str, Any]:
+    """Reject one mapped issue on GitHub with deterministic dry-run/no-op reporting."""
+    if not close_github:
+        return {
+            "attempted": False,
+            "closed": False,
+            "marker_added": False,
+            "reason": "close-github-disabled",
+        }
+    if issue_number is None or not issue_url:
+        return {
+            "attempted": False,
+            "closed": False,
+            "marker_added": False,
+            "reason": "issue-not-mapped",
+            "missing_fields": [
+                field
+                for field, missing in (
+                    ("gh_issue_number", issue_number is None),
+                    ("gh_issue_url", not issue_url),
+                )
+                if missing
+            ],
+        }
+    if not write:
+        return {
+            "attempted": False,
+            "closed": False,
+            "marker_added": False,
+            "reason": "dry-run",
+            "issue_number": issue_number,
+        }
+    if already_rejected:
+        return {
+            "attempted": False,
+            "closed": False,
+            "marker_added": False,
+            "reason": "already-rejected-no-op",
+            "issue_number": issue_number,
+        }
+
+    github_repo = resolve_github_repository(context.root_dir)
+    repo_name_with_owner = github_repo["name_with_owner"]
+    current_body = gh_issue_view_body(repo_name_with_owner, issue_number)
+    updated_body, marker_added = _append_issue_rejection_marker(current_body, issue_id)
+    if marker_added:
+        gh_issue_edit_body(repo_name_with_owner, issue_number, updated_body)
+    close_github_issue(issue_number)
+    return {
+        "attempted": True,
+        "closed": True,
+        "marker_added": marker_added,
+        "issue_number": issue_number,
+    }
+
+
+def _reject_feature_github_subtree(
+    *,
+    context: WorkflowContext,
+    feature_id: str,
+    feature_node: dict[str, Any],
+    issue_nodes: list[dict[str, Any]],
+    close_github: bool,
+    write: bool,
+    feature_status_before: str,
+) -> dict[str, Any]:
+    """Reject mapped feature and child issues on GitHub for reject-feature flow."""
+    return {
+        "feature": _reject_one_mapped_issue(
+            context=context,
+            issue_id=feature_id,
+            issue_number=_coerce_issue_number(feature_node.get("gh_issue_number")),
+            issue_url=str(feature_node.get("gh_issue_url", "")).strip(),
+            close_github=close_github,
+            write=write,
+            already_rejected=feature_status_before == "Rejected",
+        ),
+        "issues": [
+            {
+                "issue_id": str(issue_node.get("id", "")).strip(),
+                "result": _reject_one_mapped_issue(
+                    context=context,
+                    issue_id=str(issue_node.get("id", "")).strip(),
+                    issue_number=_coerce_issue_number(issue_node.get("gh_issue_number")),
+                    issue_url=str(issue_node.get("gh_issue_url", "")).strip(),
+                    close_github=close_github,
+                    write=write,
+                    already_rejected=(str(issue_node.get("status", "")).strip() == "Rejected" and not write),
+                ),
+            }
+            for issue_node in issue_nodes
+        ],
+    }
 
 
 def _handle_confirm_issues_done(args: Namespace, context: WorkflowContext) -> int:

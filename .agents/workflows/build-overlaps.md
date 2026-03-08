@@ -1,34 +1,28 @@
 ---
-description: Build or update issue-level overlaps through CLI plus analysis workflow
+description: Build or update issue-level overlaps through scoped discovery plus full-draft validation/apply
 ---
-> [!IMPORTANT]
-> Input feature/issue IDs in this workflow are **seed scope**, not a hard limit on final overlap pairs.
-> The workflow must:
-> - start from the explicitly requested feature/issue scope,
-> - discover all related issues through `index-dependencies` + `show-related`,
-> - read plan blocks for those discovered candidates,
-> - and produce overlaps for **all real intersections found from that discovered candidate set**.
->
-> Do not reduce the result to only the inner pairs between explicitly named IDs unless the user asks for a narrow/manual pair-only operation explicitly.
-
 1. Run `python3 dev/workflow plan index-dependencies --feature-id <feature_id> --write` or `--issue-id <issue_id> --write`.
-2. Run `python3 dev/workflow plan show-related --feature-id <feature_id>` or `--issue-id <issue_id>` to collect candidate issue pairs and matched surfaces.
-   - Treat this output as the expanded overlap-analysis scope.
-   - If the seed scope is one or more issue IDs, the final overlap set still includes external related issues discovered from those seeds.
+2. Run `python3 dev/workflow plan show-related --feature-id <feature_id>` or `--issue-id <issue_id>` to collect candidate issue pairs and matched surfaces for the requested seed scope.
 3. Run `python3 dev/workflow plan get-plan-block --feature-id <feature_id>` or `--issue-id <issue_id>` to fetch Dependencies-only plan blocks for the candidate issues.
-   - Read plan blocks for all discovered candidate issues required to reason about the expanded overlap scope, not just the originally named seed IDs.
-4. Read `Expected Behaviour` from the same candidate issue blocks in `dev/FEATURE_PLANS.md`.
-   - Use it together with Dependencies so overlap classification does not contradict the declared runtime outcome for any issue in scope.
-5. Run `python3 dev/workflow plan show-overlaps --feature-id <feature_id>` or `--issue-id <issue_id>` to inspect current overlap state for the same scope.
-6. Run `python3 dev/workflow plan build-overlaps --feature-id <feature_id> --delta-file tmp/workflow/<scope>-overlaps-draft.json` or the issue-scoped variant to write the draft payload.
-7. Read `tmp/workflow/<scope>-overlaps-draft.json`, analyze the candidate pairs, and enrich each final overlap row manually:
-   - choose `type`: `dependency`, `conflict`, or `shared_logic`
-   - if `type=dependency`, add `order: "<issue_a>-><issue_b>"`
-   - add `surface`
-   - add `description` with `why: ...; impact: ...; action: ...`
-   - cross-check the chosen type and description against both Dependencies and Expected Behaviour,
-   - keep every candidate pair that has a real code-level intersection or dependency chain in the expanded candidate set,
-   - do not drop externally discovered pairs only because they were not in the original user-provided seed list.
-8. Save the enriched payload back to a JSON file (for example `tmp/workflow/<scope>-overlaps-final.json`) with root shape `{ "overlaps": [ ... ] }`.
-9. Run `python3 dev/workflow plan apply-overlaps --delta-file tmp/workflow/<scope>-overlaps-final.json --write`.
-10. Review the command output and stop if overlap count or validation results do not match the expanded candidate scope discovered from the seeds.
+4. Read `Expected Behaviour` from the same candidate issue blocks in `dev/FEATURE_PLANS.md` so overlap type and description stay aligned with the declared runtime outcome.
+5. Run `python3 dev/workflow plan show-overlaps --feature-id <feature_id>` or `--issue-id <issue_id>` to inspect current overlap rows for the same scope.
+6. Optionally run `python3 dev/workflow plan build-overlaps --feature-id <feature_id> --delta-file tmp/workflow/<scope>-overlaps-draft.json` (or the issue-scoped variant) to capture discovery output, current overlaps, and current issue_execution_order as drafting context.
+7. Prepare a full editable `ISSUE_OVERLAPS.json` draft snapshot:
+   - start from the current `dev/ISSUE_OVERLAPS.json` payload,
+   - add or update overlap rows for the analyzed scope,
+   - keep unrelated existing overlap rows unless you are intentionally changing them,
+   - edit `issue_execution_order.ordered_issue_ids` explicitly in the same draft.
+8. For each overlap row in the final draft:
+   - normalize `issues` to the canonical pair for that row,
+   - choose `type`: `dependency`, `conflict`, or `shared_logic`,
+   - if `type=dependency`, set `order: "<issue_a>-><issue_b>"`,
+   - add `surface`,
+   - add `description` with `why: ...; impact: ...; action: ...`.
+9. Save the final full draft to JSON with the canonical root shape:
+   - `schema_version`
+   - `issue_execution_order`
+   - `overlaps`
+10. Run `python3 dev/workflow plan apply-overlaps --delta-file tmp/workflow/<scope>-overlaps-final.json --write`.
+11. Stop if validation fails:
+   - schema validation must pass for the full payload shape,
+   - semantic validation must confirm referenced issue IDs exist, duplicate pair keys are absent, dependency orders match their pairs, and `issue_execution_order` matches the dependency-overlap participants and ordering.

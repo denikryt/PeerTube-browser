@@ -55,14 +55,11 @@ For **each existing related issue**:
 
 ## Phase 3: Draft Feature-Level Plan
 
-Follow the **canonical structure** in `dev/FEATURE_PLANS.md` header section:
+Follow the canonical structure in `.agents/protocols/feature-planning-protocol.md`:
 
 1. Feature-level block:
    - `## <feature_id>`
    - `### Expected Behaviour`
-   - `### Dependencies`
-   - `### Decomposition`
-   - `### Issue/Task Decomposition Assessment`
 
 2. Issue-level blocks (one per issue, for all issues whether existing or newly created):
    - `### <issue_id> - <issue_title>`
@@ -85,12 +82,11 @@ Before executing CLI commands:
 ## Phase 5: Insert into FEATURE_PLANS.md
 
 1. Run: `python3 dev/workflow feature plan-init --id <feature_id>`
-   - `plan-init` auto-inserts one plain line with `<title>` from `dev/map/DEV_MAP.json` into the feature section scaffold (without `Title:` label).
 2. Open `dev/FEATURE_PLANS.md` and locate the newly created feature section.
-3. Insert all drafted `Expected Behaviour`, dependencies, decomposition, and assessments.
+3. Insert the drafted feature-level `Expected Behaviour` and the canonical issue-plan blocks.
 4. Do not create or maintain `### Issue Execution Order` in `FEATURE_PLANS.md`; issue sequencing is owned by `dev/ISSUE_OVERLAPS.json`.
 5. Ensure `Expected Behaviour` exists for the feature block and every issue block before linting.
-6. Ensure all issue-plan blocks follow the canonical format (see `FEATURE_PLANS.md` header).
+6. Ensure all issue-plan blocks follow the canonical format defined in `.agents/protocols/feature-planning-protocol.md`.
 7. If agent-generated markdown drafts are part of the workflow, keep the schema reference centralized in `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md` instead of duplicating format rules inline.
 
 ## Phase 6: Validate and Finalize

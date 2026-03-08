@@ -75,22 +75,9 @@ def test_plan_tasks_success_chain(workflow, tmp_repo):
 
     # 3. Setup FEATURE_PLANS.md to promote to 'Planned'
     plans_path = tmp_repo / "dev/FEATURE_PLANS.md"
-    plans_content = """# Feature Plans
-## F9-M1
+    plans_content = """## F9-M1
 ### Expected Behaviour
 - Smoke feature should expose one planned issue with deterministic task-decomposition intent.
-
-### Dependencies
-- file: dev/workflow_lib/feature_commands.py | reason: smoke planning surface
-
-### Decomposition
-1. Build smoke issue plan and sync task decomposition.
-
-### Issue Execution Order
-1. `I1-F9-M1` - Smoke issue
-
-### Issue/Task Decomposition Assessment
-- task_count = 0
 
 ### I1-F9-M1 - Smoke issue
 #### Expected Behaviour
@@ -160,19 +147,9 @@ def test_batch_issue_planning(workflow, tmp_repo):
     
     # Needs FEATURE_PLANS.md section with issue blocks for status reconciliation
     plans = (
-        "# Feature Plans\n"
         "## F1-M1\n"
         "### Expected Behaviour\n"
         "- Both issues should remain valid planning inputs for batch task decomposition.\n\n"
-        "### Dependencies\n"
-        "- file: dev/workflow_lib/feature_commands.py | reason: batch planning surface\n\n"
-        "### Decomposition\n"
-        "1. Build both issue plans before task sync.\n\n"
-        "### Issue Execution Order\n"
-        "1. `I1-F1-M1` - I1\n"
-        "2. `I2-F1-M1` - I2\n\n"
-        "### Issue/Task Decomposition Assessment\n"
-        "- task_count = 0\n\n"
         "### I1-F1-M1 - I1\n"
         "#### Expected Behaviour\n- Issue one should map to one concrete task.\n"
         "#### Dependencies\n- file: dev/workflow_lib/feature_commands.py | reason: batch issue one\n"

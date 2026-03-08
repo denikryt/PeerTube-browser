@@ -60,9 +60,6 @@ ISSUE_PLAN_BLOCK_HEADING_PATTERN = re.compile(
 CANONICAL_ISSUE_PLAN_BLOCK_HEADING_PATTERN = re.compile(r"^###\s+(?P<issue_id>I\d+-F\d+-M\d+)\s+-\s+(?P<issue_title>.+\S)\s*$")
 REQUIRED_PLAN_HEADINGS = (
     "Expected Behaviour",
-    "Dependencies",
-    "Decomposition",
-    "Issue/Task Decomposition Assessment",
 )
 REQUIRED_ISSUE_PLAN_SUBHEADINGS = (
     "Expected Behaviour",
@@ -339,14 +336,22 @@ def register_plan_router(subparsers: argparse._SubParsersAction[argparse.Argumen
         help="Build draft issue-overlap delta payload for one feature or issue scope.",
     )
     _register_scope_selector_args(build_overlaps_parser, allow_all=False)
-    build_overlaps_parser.add_argument("--delta-file", required=True, help="Path to write draft overlap payload.")
+    build_overlaps_parser.add_argument(
+        "--delta-file",
+        required=True,
+        help="Path to write overlap discovery draft payload for agent-prepared full snapshots.",
+    )
     build_overlaps_parser.set_defaults(handler=_handle_plan_build_overlaps)
 
     apply_overlaps_parser = plan_subparsers.add_parser(
         "apply-overlaps",
         help="Validate and persist issue-overlap payload from a delta file.",
     )
-    apply_overlaps_parser.add_argument("--delta-file", required=True, help="Path to overlap payload JSON file.")
+    apply_overlaps_parser.add_argument(
+        "--delta-file",
+        required=True,
+        help="Path to full ISSUE_OVERLAPS payload JSON file prepared for validation/apply.",
+    )
     apply_overlaps_parser.add_argument("--write", action="store_true", help="Persist overlap changes.")
     apply_overlaps_parser.set_defaults(handler=_handle_plan_apply_overlaps)
 
@@ -1021,7 +1026,7 @@ def _handle_plan_show_overlaps(args: Namespace, context: WorkflowContext) -> int
 
 
 def _handle_plan_build_overlaps(args: Namespace, context: WorkflowContext) -> int:
-    """Build draft overlap delta payload from dependency-index candidates."""
+    """Build overlap discovery payload from dependency-index candidates."""
     selector = _resolve_scope_selector(args=args, allow_all=False)
     current_index = load_issue_dependency_index_payload(context)
     current_overlaps = load_issue_overlaps_payload(context).get("overlaps", [])
@@ -1038,6 +1043,7 @@ def _handle_plan_build_overlaps(args: Namespace, context: WorkflowContext) -> in
         "scope_id": selector["scope_id"],
         "candidates": related_payload,
         "existing_overlaps": current_overlaps,
+        "existing_issue_execution_order": load_issue_overlaps_payload(context).get("issue_execution_order", {"ordered_issue_ids": []}),
         "overlaps": [],
     }
     Path(args.delta_file).write_text(f"{json.dumps(draft_payload, indent=2, ensure_ascii=False)}\n", encoding="utf-8")
@@ -1054,24 +1060,16 @@ def _handle_plan_build_overlaps(args: Namespace, context: WorkflowContext) -> in
 
 
 def _handle_plan_apply_overlaps(args: Namespace, context: WorkflowContext) -> int:
-    """Validate and optionally persist overlap payload from a delta file."""
+    """Validate and optionally persist a full issue-overlaps payload from a draft file."""
     payload = _load_json(Path(args.delta_file))
-    dev_map = _load_json(context.dev_map_path)
-    issue_execution_order = _build_global_issue_execution_order(
-        dev_map=dev_map,
-        overlaps=payload.get("overlaps", []),
-    )
-    overlaps_payload = build_issue_overlaps_contract_payload(
-        payload.get("overlaps", []),
-        issue_execution_order,
-    )
-    validate_issue_overlaps_contract_payload(overlaps_payload, "plan.apply-overlaps")
+    validate_issue_overlaps_contract_payload(payload, "plan.apply-overlaps")
+    _validate_issue_overlaps_semantics(payload=payload, dev_map=_load_json(context.dev_map_path), location="plan.apply-overlaps")
     if bool(args.write):
-        write_issue_overlaps_payload(context, overlaps_payload)
+        write_issue_overlaps_payload(context, payload)
     emit_json(
         {
             "command": "plan.apply-overlaps",
-            "overlap_count": len(overlaps_payload.get("overlaps", [])),
+            "overlap_count": len(payload.get("overlaps", [])),
             "write": bool(args.write),
         }
     )
@@ -3063,17 +3061,9 @@ def _find_h2_section_bounds(text: str, heading: str) -> tuple[int, int] | None:
 
 def _build_feature_plan_scaffold(feature_id: str, feature_title: str) -> str:
     """Build default feature plan markdown scaffold."""
-    normalized_feature_title = feature_title.strip() or feature_id
     return (
         f"## {feature_id}\n\n"
-        f"{normalized_feature_title}\n\n"
         "### Expected Behaviour\n"
-        "- TODO\n\n"
-        "### Dependencies\n"
-        "- TODO\n\n"
-        "### Decomposition\n"
-        "1. TODO\n\n"
-        "### Issue/Task Decomposition Assessment\n"
         "- TODO\n"
     )
 
@@ -3424,9 +3414,6 @@ def _resolve_issue_plan_block_insert_index(section_lines: list[str]) -> int:
         last_block_end = end_index
     if last_block_end is not None:
         return last_block_end
-    for index, line in enumerate(section_lines):
-        if line.strip() == "### Issue/Task Decomposition Assessment":
-            return index
     return len(section_lines)
 
 
@@ -4156,8 +4143,8 @@ def _select_feature_issue_execution_order(*, ordered_issue_ids: list[str], featu
 
 
 def _build_global_issue_execution_order(*, dev_map: dict[str, Any], overlaps: list[dict[str, Any]]) -> dict[str, Any]:
-    """Build one deterministic global issue order from active DEV_MAP issues and dependency overlaps."""
-    active_issue_ids = _collect_active_issue_ids_in_dev_map_order(dev_map)
+    """Build one deterministic global issue order from dependency-overlap participants only."""
+    active_issue_ids = _collect_dependency_issue_ids_in_dev_map_order(dev_map, overlaps)
     if not active_issue_ids:
         return {"ordered_issue_ids": []}
 
@@ -4215,6 +4202,139 @@ def _collect_active_issue_ids_in_dev_map_order(dev_map: dict[str, Any]) -> list[
                     continue
                 ordered_issue_ids.append(issue_id)
     return ordered_issue_ids
+
+
+def _collect_dependency_issue_ids_in_dev_map_order(dev_map: dict[str, Any], overlaps: list[dict[str, Any]]) -> list[str]:
+    """Collect active DEV_MAP issue IDs that participate in dependency overlaps."""
+    dependency_issue_ids: set[str] = set()
+    for item in overlaps:
+        if not isinstance(item, dict) or str(item.get("type", "")).strip() != "dependency":
+            continue
+        issues = item.get("issues", [])
+        if not isinstance(issues, list):
+            continue
+        for issue_id in issues:
+            normalized_issue_id = str(issue_id).strip()
+            if normalized_issue_id:
+                dependency_issue_ids.add(normalized_issue_id)
+    return [
+        issue_id
+        for issue_id in _collect_active_issue_ids_in_dev_map_order(dev_map)
+        if issue_id in dependency_issue_ids
+    ]
+
+
+def _validate_issue_overlaps_semantics(*, payload: dict[str, Any], dev_map: dict[str, Any], location: str) -> None:
+    """Validate semantic relationships inside a full issue-overlaps payload."""
+    overlaps = payload.get("overlaps", [])
+    ordered_issue_ids = payload.get("issue_execution_order", {}).get("ordered_issue_ids", [])
+    existing_issue_ids = set(_collect_all_issue_ids_in_dev_map(dev_map))
+    dependency_issue_ids: set[str] = set()
+    adjacency: dict[str, set[str]] = {}
+    indegree: dict[str, int] = {}
+
+    for overlap_index, overlap in enumerate(overlaps):
+        item_location = f"{location}.overlaps[{overlap_index}]"
+        issues = [str(issue_id).strip() for issue_id in overlap.get("issues", [])]
+        for issue_id in issues:
+            if issue_id not in existing_issue_ids:
+                raise WorkflowCommandError(
+                    f"{item_location} references unknown DEV_MAP issue ID {issue_id!r}.",
+                    exit_code=4,
+                )
+        if str(overlap.get("type", "")).strip() != "dependency":
+            continue
+        left_issue_id, right_issue_id = issues
+        dependency_issue_ids.update(issues)
+        adjacency.setdefault(left_issue_id, set())
+        adjacency.setdefault(right_issue_id, set())
+        indegree.setdefault(left_issue_id, 0)
+        indegree.setdefault(right_issue_id, 0)
+        order = str(overlap.get("order", "")).strip()
+        if "->" not in order:
+            continue
+        order_left, order_right = [token.strip() for token in order.split("->", 1)]
+        if order_right not in adjacency[order_left]:
+            adjacency[order_left].add(order_right)
+            indegree[order_right] = indegree.get(order_right, 0) + 1
+            indegree.setdefault(order_left, 0)
+
+    order_issue_set = {str(issue_id).strip() for issue_id in ordered_issue_ids if str(issue_id).strip()}
+    if order_issue_set != dependency_issue_ids:
+        missing = sorted(dependency_issue_ids - order_issue_set)
+        extra = sorted(order_issue_set - dependency_issue_ids)
+        problems: list[str] = []
+        if missing:
+            problems.append(f"missing dependency participants: {', '.join(missing)}")
+        if extra:
+            problems.append(f"extra non-participants: {', '.join(extra)}")
+        raise WorkflowCommandError(
+            f"{location}.issue_execution_order.ordered_issue_ids must match dependency-overlap participants ({'; '.join(problems)}).",
+            exit_code=4,
+        )
+
+    order_index = {issue_id: index for index, issue_id in enumerate(ordered_issue_ids)}
+    for left_issue_id, dependent_issue_ids in adjacency.items():
+        for right_issue_id in dependent_issue_ids:
+            if order_index[left_issue_id] >= order_index[right_issue_id]:
+                raise WorkflowCommandError(
+                    f"{location}.issue_execution_order.ordered_issue_ids contradicts dependency order {left_issue_id}->{right_issue_id}.",
+                    exit_code=4,
+                )
+
+    if dependency_issue_ids:
+        _assert_dependency_order_is_acyclic(
+            ordered_issue_ids=[issue_id for issue_id in ordered_issue_ids if issue_id in dependency_issue_ids],
+            adjacency=adjacency,
+            indegree=indegree,
+            location=location,
+        )
+
+
+def _collect_all_issue_ids_in_dev_map(dev_map: dict[str, Any]) -> list[str]:
+    """Collect all feature issue IDs from DEV_MAP in stable order."""
+    issue_ids: list[str] = []
+    for milestone in dev_map.get("milestones", []):
+        if not isinstance(milestone, dict):
+            continue
+        for feature in milestone.get("features", []):
+            if not isinstance(feature, dict):
+                continue
+            for issue in feature.get("issues", []):
+                if not isinstance(issue, dict):
+                    continue
+                issue_id = str(issue.get("id", "")).strip()
+                if issue_id:
+                    issue_ids.append(issue_id)
+    return issue_ids
+
+
+def _assert_dependency_order_is_acyclic(
+    *,
+    ordered_issue_ids: list[str],
+    adjacency: dict[str, set[str]],
+    indegree: dict[str, int],
+    location: str,
+) -> None:
+    """Reject cyclic dependency-overlap graphs during apply validation."""
+    working_indegree = {issue_id: indegree.get(issue_id, 0) for issue_id in ordered_issue_ids}
+    queue = [issue_id for issue_id in ordered_issue_ids if working_indegree[issue_id] == 0]
+    visited: list[str] = []
+    while queue:
+        issue_id = queue.pop(0)
+        visited.append(issue_id)
+        for dependent_issue_id in sorted(adjacency.get(issue_id, set()), key=ordered_issue_ids.index):
+            if dependent_issue_id not in working_indegree:
+                continue
+            working_indegree[dependent_issue_id] -= 1
+            if working_indegree[dependent_issue_id] == 0:
+                queue.append(dependent_issue_id)
+                queue.sort(key=ordered_issue_ids.index)
+    if len(visited) != len(ordered_issue_ids):
+        raise WorkflowCommandError(
+            f"{location}.issue_execution_order cannot be validated because dependency overlaps contain a cycle.",
+            exit_code=4,
+        )
 
 
 def _collect_feature_tasks(feature_node: dict[str, Any], only_pending: bool) -> list[dict[str, str]]:
