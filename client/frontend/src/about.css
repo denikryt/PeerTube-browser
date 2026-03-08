@@ -86,8 +86,24 @@
   margin: 6px 0;
 }
 
-.about-links {
+.about-links-section {
+  margin-top: 18px;
+}
+
+.about-links-section:first-of-type {
   margin-top: 16px;
+}
+
+.about-links-title {
+  margin: 0 0 10px;
+  color: #5b4c3f;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.about-links {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -150,6 +166,13 @@
   object-fit: cover;
   border-radius: 14px;
   display: block;
+}
+
+.about-support-note {
+  padding: 12px 14px;
+  border: 1px solid #e0d8cc;
+  border-radius: 14px;
+  background: #f8f4ec;
 }
 
 @media (max-width: 980px) {
