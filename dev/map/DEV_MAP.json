@@ -8,8 +8,8 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-08T03:25:54+02:00",
-  "task_count": 290,
+  "updated_at": "2026-03-08T04:42:59+02:00",
+  "task_count": 300,
   "milestones": [
     {
       "id": "M1",
@@ -2851,37 +2851,121 @@
               "id": "I1-F17-M1",
               "title": "Define full-snapshot overlap workflow contract and CLI responsibilities",
               "description": "Define the canonical overlap workflow around a full editable draft snapshot, agent-prepared overlap updates, manual `issue_execution_order`, and CLI-owned validation/apply responsibilities instead of implicit partial-delta semantics.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "291",
+                  "title": "Rewrite overlap workflow around full editable snapshots",
+                  "summary": "Rewrite the overlap workflow doc so agents prepare a full editable ISSUE_OVERLAPS snapshot and CLI is used only for discovery, validation, and final apply.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:42:59"
+                },
+                {
+                  "id": "292",
+                  "title": "Align overlap command descriptions with snapshot contract",
+                  "summary": "Update overlap command descriptions and output semantics in feature_commands so build/show/apply responsibilities match the documented full-snapshot workflow.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:42:59"
+                }
+              ]
             },
             {
               "id": "I2-F17-M1",
               "title": "Implement full-block overlap apply validation and write semantics",
               "description": "Make overlap apply validate a full draft snapshot by schema and semantic rules, preserve global state prepared by the agent, and write the complete `ISSUE_OVERLAPS.json` block without destructive hidden scope replacement.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "293",
+                  "title": "Extend overlap schema and contract for full-draft apply",
+                  "summary": "Update overlap schema and contract validators so apply-overlaps accepts a full ISSUE_OVERLAPS draft with explicit issue_execution_order.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:42:59"
+                },
+                {
+                  "id": "294",
+                  "title": "Implement semantic validation for overlap draft apply",
+                  "summary": "Add semantic validation in apply-overlaps for duplicate canonical pairs, pair/order mismatches, unknown issue IDs, and contradictory manual ordering.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:42:59"
+                },
+                {
+                  "id": "295",
+                  "title": "Persist validated overlap drafts without hidden recomputation",
+                  "summary": "Change apply-overlaps to write the validated full draft block as supplied instead of replacing one scope implicitly or recomputing issue_execution_order.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:42:59"
+                }
+              ]
             },
             {
               "id": "I3-F17-M1",
               "title": "Align overlap build/read workflows and regression coverage with snapshot apply",
               "description": "Update overlap-oriented workflows, helper commands, and tests so discovery remains scoped, draft preparation stays agent-driven, and validation/apply behavior is consistently documented and regression-protected.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "296",
+                  "title": "Fix feature-scoped overlap reads for F17-style subtree queries",
+                  "summary": "Update overlap read helpers so feature-scoped lookups return overlaps for issues inside the selected feature subtree rather than behaving like a direct issue-id filter.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:42:59"
+                },
+                {
+                  "id": "297",
+                  "title": "Document full-draft overlap preparation and apply flow",
+                  "summary": "Rewrite overlap workflow guidance and command examples around agent-prepared full drafts, explicit issue_execution_order editing, and CLI validation/apply.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:42:59"
+                },
+                {
+                  "id": "298",
+                  "title": "Add regression coverage for snapshot apply and scope reads",
+                  "summary": "Extend overlap command tests to cover preserved unrelated pairs, feature-scope reads, and invalid full-draft apply paths.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:42:59"
+                }
+              ]
             },
             {
               "id": "I4-F17-M1",
               "title": "Limit issue execution order to dependency-overlap participants only",
               "description": "Stop populating `issue_execution_order.ordered_issue_ids` with active issues that do not participate in any dependency overlap, so the global order reflects only the dependency graph represented in `ISSUE_OVERLAPS.json` instead of unrelated tracker noise.",
-              "status": "Planned",
+              "status": "Tasked",
               "gh_issue_number": null,
               "gh_issue_url": null,
-              "tasks": []
+              "tasks": [
+                {
+                  "id": "299",
+                  "title": "Restrict overlap order nodes to dependency participants",
+                  "summary": "Change the global overlap order builder so ordered_issue_ids contains only issues that appear in dependency overlaps.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:42:59"
+                },
+                {
+                  "id": "300",
+                  "title": "Add noisy-order regression tests for isolated issues",
+                  "summary": "Add overlap tests proving isolated active issues stay out of ordered_issue_ids while dependency-linked issues keep stable order.",
+                  "status": "Planned",
+                  "date": "2026-03-08",
+                  "time": "04:42:59"
+                }
+              ]
             }
           ],
           "branch_name": null,

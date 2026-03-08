@@ -1295,6 +1295,127 @@
         "Add regression assertions that .agents/workflows/execute-issue.md references workflow get context issue.",
         "Add negative check patterns to fail CI when legacy context-command wording appears in execution workflow docs."
       ]
+    },
+    {
+      "id": "291",
+      "marker": "[M1][F17]",
+      "title": "Rewrite overlap workflow around full editable snapshots",
+      "problem": "The current overlap workflow text still mixes scoped discovery with ambiguous delta-apply semantics, so agents have no single explicit contract for how full ISSUE_OVERLAPS drafts should be prepared and applied.",
+      "solution_option": "Rewrite the overlap workflow around one explicit model: discovery remains scoped, the agent prepares a full editable ISSUE_OVERLAPS snapshot, and CLI is reserved for validation and final apply.",
+      "concrete_steps": [
+        "Rewrite .agents/workflows/build-overlaps.md so the procedure explicitly starts with scope discovery commands, then has the agent read the current dev/ISSUE_OVERLAPS.json block and prepare one full editable draft snapshot.",
+        "State in the workflow that the draft contains both overlaps and issue_execution_order, and that the order field is edited explicitly by the agent instead of being treated as an implicit CLI side effect.",
+        "Remove or rewrite steps that imply partial-delta apply semantics, hidden merge behavior, or automatic recomputation during apply.",
+        "Cross-check workflow wording against the actual overlap commands in dev/workflow_lib/feature_commands.py so the documented sequence matches the implemented command surface."
+      ]
+    },
+    {
+      "id": "292",
+      "marker": "[M1][F17]",
+      "title": "Align overlap command descriptions with snapshot contract",
+      "problem": "Overlap command help text and emitted semantics still describe delta-oriented behavior, which conflicts with the new contract where the agent prepares a full draft and CLI only validates and writes it.",
+      "solution_option": "Update overlap command descriptions and related output wording in the parser/handlers so build/show/apply semantics match the full-snapshot workflow contract.",
+      "concrete_steps": [
+        "Update overlap parser help strings in dev/workflow_lib/feature_commands.py for build-overlaps, show-overlaps, and apply-overlaps so they describe scoped discovery plus full-draft validation/apply semantics.",
+        "Adjust overlap command comments and any emitted action/summary wording in dev/workflow_lib/feature_commands.py that still implies hidden merge, scope replacement, or automatic order generation during apply.",
+        "Make the command-surface wording consistent with the rewritten workflow doc so agents can rely on one stable explanation of CLI-owned versus agent-owned responsibilities."
+      ]
+    },
+    {
+      "id": "293",
+      "marker": "[M1][F17]",
+      "title": "Extend overlap schema and contract for full-draft apply",
+      "problem": "The current overlap contract validates basic pair shape, but it does not clearly encode the final full-draft apply payload as the canonical ISSUE_OVERLAPS block with explicit order semantics.",
+      "solution_option": "Update the schema and contract validators so apply-overlaps expects one full ISSUE_OVERLAPS payload with explicit issue_execution_order and deterministic pair constraints.",
+      "concrete_steps": [
+        "Update dev/map/ISSUE_OVERLAPS_JSON_SCHEMA.json so the canonical payload shape matches the full draft the agent applies, including schema_version, issue_execution_order, and overlaps.",
+        "Extend validate_issue_overlaps_contract_payload in dev/workflow_lib/tracker_json_contracts.py to enforce the final full-draft structure and keep pair-key uniqueness checks deterministic.",
+        "Keep dependency overlap order validation aligned with canonical issue pair membership so only valid order strings for the declared pair are accepted."
+      ]
+    },
+    {
+      "id": "294",
+      "marker": "[M1][F17]",
+      "title": "Implement semantic validation for overlap draft apply",
+      "problem": "Schema checks alone do not prevent apply-overlaps from accepting drafts that reference unknown issues, duplicate canonical pairs, or manual order blocks that contradict declared dependency edges.",
+      "solution_option": "Add semantic validation in apply-overlaps so invalid full drafts fail before any file mutation happens.",
+      "concrete_steps": [
+        "Add semantic validation in dev/workflow_lib/feature_commands.py so apply-overlaps rejects overlap drafts with issue IDs that do not exist in dev/map/DEV_MAP.json.",
+        "Reject duplicate canonical issue pairs and reject dependency order strings that do not reference the same two issue IDs as their overlap entry.",
+        "Validate the supplied issue_execution_order against dependency overlaps so contradictory or cyclic manual ordering fails deterministically before write."
+      ]
+    },
+    {
+      "id": "295",
+      "marker": "[M1][F17]",
+      "title": "Persist validated overlap drafts without hidden recomputation",
+      "problem": "apply-overlaps currently rewrites overlap state with implicit replacement semantics and hidden issue_execution_order recomputation, so the stored file does not necessarily match the draft the agent reviewed.",
+      "solution_option": "Change apply-overlaps to persist the validated full draft block exactly as supplied and stop mutating issue_execution_order behind the agent's back.",
+      "concrete_steps": [
+        "Refactor _handle_plan_apply_overlaps in dev/workflow_lib/feature_commands.py so it loads the draft payload, validates it, and writes the resulting full ISSUE_OVERLAPS block without building a new order block internally.",
+        "Remove code paths that derive issue_execution_order from all active DEV_MAP issues during apply-overlaps and keep write behavior tied to the validated draft payload.",
+        "Preserve the canonical top-level ISSUE_OVERLAPS.json structure on write while making the final persisted file equal to the reviewed draft content."
+      ]
+    },
+    {
+      "id": "296",
+      "marker": "[M1][F17]",
+      "title": "Fix feature-scoped overlap reads for F17-style subtree queries",
+      "problem": "Feature-scoped overlap reads currently behave like direct issue filtering, so show-overlaps can miss overlaps that belong to the selected feature subtree and the agent loses reliable context for draft preparation.",
+      "solution_option": "Update feature-scoped overlap reads to resolve the selected feature's issue IDs and filter overlaps by membership in that subtree.",
+      "concrete_steps": [
+        "Update feature-scoped overlap filtering in dev/workflow_lib/feature_commands.py so show-overlaps --feature-id collects the selected feature's issue IDs from DEV_MAP and matches overlaps against that subtree.",
+        "Keep issue-scoped filtering behavior intact while making feature-scope output deterministic for features like F17-M1 that have multiple internal overlap pairs.",
+        "Review related overlap read/build helper paths in dev/workflow_lib/feature_commands.py so they no longer imply issue-only filtering when invoked with a feature selector."
+      ]
+    },
+    {
+      "id": "297",
+      "marker": "[M1][F17]",
+      "title": "Document full-draft overlap preparation and apply flow",
+      "problem": "Even with runtime fixes, agents will keep drifting if the workflow and examples do not clearly show how to prepare a full overlap draft, edit issue_execution_order, validate it, and apply it.",
+      "solution_option": "Rewrite overlap guidance and examples so the documented procedure mirrors the agent-prepared full-draft model end to end.",
+      "concrete_steps": [
+        "Update .agents/workflows/build-overlaps.md examples to show scoped discovery, reading the current dev/ISSUE_OVERLAPS.json state, assembling a full draft, editing issue_execution_order, and then running CLI validation/apply.",
+        "Make command examples use the actual overlap commands and payload fields implemented in dev/workflow_lib/feature_commands.py instead of describing implicit delta merge behavior.",
+        "Keep the workflow wording explicit about the separation of responsibilities: the agent prepares the draft, and CLI validates plus writes the final block."
+      ]
+    },
+    {
+      "id": "298",
+      "marker": "[M1][F17]",
+      "title": "Add regression coverage for snapshot apply and scope reads",
+      "problem": "The overlap workflow has already drifted once, and without dedicated regression tests future changes can reintroduce destructive apply behavior or broken feature-scope reads.",
+      "solution_option": "Add overlap command tests that lock feature-scope reads, full-draft apply behavior, and invalid draft rejection into the workflow test suite.",
+      "concrete_steps": [
+        "Extend tests/workflow/test_overlap_commands.py with feature-scope read coverage so show-overlaps --feature-id returns overlaps for all issues inside the selected feature subtree.",
+        "Add apply-overlaps tests that use full ISSUE_OVERLAPS drafts, preserve unrelated existing pairs when the draft preserves them, and fail deterministically on malformed or semantically invalid drafts.",
+        "Cover duplicate pair rejection, unknown issue IDs, pair/order mismatch, and contradictory manual issue_execution_order cases in the overlap test suite."
+      ]
+    },
+    {
+      "id": "299",
+      "marker": "[M1][F17]",
+      "title": "Restrict overlap order nodes to dependency participants",
+      "problem": "issue_execution_order is currently seeded from all active DEV_MAP issues, so the stored order block is noisy and includes issues that do not participate in any dependency overlap.",
+      "solution_option": "Change the global overlap order builder to derive ordered_issue_ids only from issues that appear in dependency overlaps.",
+      "concrete_steps": [
+        "Update _build_global_issue_execution_order in dev/workflow_lib/feature_commands.py so it seeds graph nodes from dependency overlap participants instead of from all active issues in DEV_MAP.",
+        "Constrain or replace _collect_active_issue_ids_in_dev_map_order usage for overlap ordering so non-participating issues stop appearing in ordered_issue_ids.",
+        "Keep stable ordering and cycle handling for dependency-linked issues while making overlap-free graphs produce an empty order block instead of a full active-issue list."
+      ]
+    },
+    {
+      "id": "300",
+      "marker": "[M1][F17]",
+      "title": "Add noisy-order regression tests for isolated issues",
+      "problem": "Without targeted tests, future overlap changes can quietly reintroduce isolated active issues into ordered_issue_ids and hide the regression behind otherwise valid overlap data.",
+      "solution_option": "Add regression tests proving that only dependency participants appear in issue_execution_order while dependency-linked issues remain in stable topological order.",
+      "concrete_steps": [
+        "Extend tests/workflow/test_overlap_commands.py with fixtures where only a subset of active issues participates in dependency overlaps and assert that ordered_issue_ids excludes isolated issues.",
+        "Add coverage for empty or overlap-free dependency graphs so the stored order block remains empty instead of echoing unrelated DEV_MAP issues.",
+        "Assert that dependency-linked issues still appear in stable order after the node-selection logic is narrowed to overlap participants only."
+      ]
     }
   ]
 }
