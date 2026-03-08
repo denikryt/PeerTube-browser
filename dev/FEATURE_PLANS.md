@@ -172,162 +172,6 @@ Canonical per-issue plan block format inside a feature section:
    - Deliverable: smoke cases for failing/good assessment content in `tests/check-workflow-cli-smoke.sh`.
    - Validation: smoke run fails on vague assessment and passes on explicit task breakdown format.
 
-## F6-M1
-
-### Issue Execution Order
-1. `I1-F6-M1` - Implement Markdown template parser for CLI inputs
-2. `I2-F6-M1` - Wire --input argument to create feature and create issue commands
-3. `I3-F6-M1` - Update agent workflows to use draft files for CLI commands
-
-### Dependencies
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — create feature/issue handlers and CLI registration
-- [dev/workflow_lib/errors.py](dev/workflow_lib/errors.py) — `WorkflowCommandError` for validation
-- [.agents/protocols/feature-planning-protocol.md](.agents/protocols/feature-planning-protocol.md) — planning quality standards
-- [.agents/workflows/plan-feature.md](.agents/workflows/plan-feature.md) and [plan-issue.md](.agents/workflows/plan-issue.md) — workflow definitions to update
-- `tmp/workflow/` — temporary file directory for agent-generated markdown templates
-
-### Decomposition
-1. Implement parser utility in `dev/workflow_lib/markdown_parser.py` that extracts title and description from Markdown templates with flexible heading detection and clear error messages.
-2. Wire parser into CLI `create feature` and `create issue` commands via optional `--input` argument while maintaining backward compatibility with existing flag-based mode.
-3. Create schema file `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md` defining canonical template structure; update protocol and workflow docs to reference schema and `tmp/workflow/` temporary storage directory.
-
-### Issue/Task Decomposition Assessment
-- Decomposition splits into three sequential issues with explicit dependencies on task completion: I1 ← I2 ← I3.
-- Expected outcome: agents can safely generate Markdown templates and pass via CLI `--input` argument; workflows updated to document optional agent input mechanism.
-- No new trackers required; existing workflow and protocol docs sufficient for schema reference and usage guidance.
-
-### I1-F6-M1 - Implement Markdown template parser for CLI inputs
-
-#### Dependencies
-- [dev/workflow_lib/errors.py](dev/workflow_lib/errors.py) — `WorkflowCommandError` for validation with exit codes
-- [dev/workflow_lib/tracking_writers.py](dev/workflow_lib/tracking_writers.py#L207) — existing markdown utility patterns for reference
-- Python standard library: `pathlib.Path`, `re` for heading pattern detection
-
-#### Decomposition
-1. Create new module `dev/workflow_lib/markdown_parser.py`:
-   - Input contract: file path to Markdown file (UTF-8 encoded)
-   - Output contract: structured dict `{"title": str, "description": str}`
-   - Flexible heading detection: extract first two headings (any level: #, ##, ###, etc.)
-
-2. Implement `parse_feature_issue_template(file_path: Path) -> dict`:
-   - Read file with UTF-8 encoding; handle `FileNotFoundError` with error message: `"Input file not found: {path}. Ensure the file exists before re-running."`
-   - Extract first heading as title using regex pattern `^#+\s+(.+)$` (match any level, trim whitespace)
-   - Extract content between first heading and second heading (or EOF) as description
-   - Return `{"title": title_str, "description": description_str}`
-   - Validation: title must be non-empty (error if missing); description allowed empty (warning)
-   - On parse error, raise `WorkflowCommandError` with exit_code=4 and actionable guidance
-
-3. Error handling with deterministic messages:
-   - No headings detected: `"No headings detected in {path}. Expected at least one heading for title. Format: # Title followed by content."`
-   - Empty title text: `"Title heading is empty. Provide text after the first heading, e.g., '# My Title'"`
-   - File read error: wrap OS error with context message
-
-4. Design for testability:
-   - Happy path: file with `# Title` + `## Description content`
-   - Flexible headings: `### Title` + `# Description` (level and order flexible)
-   - Missing title: error with recovery guidance
-   - Missing description: title extracted, description empty string
-   - File not found: clear error message
-
-#### Issue/Task Decomposition Assessment
-- Decomposition state: `planning` (plan only; task allocation deferred to `plan tasks for I1-F6-M1`).
-- Expected split: 3-4 tasks
-  1. Module setup + core parsing logic (heading extraction, template validation)
-  2. Error handling + file I/O + validation
-  3. Test coverage for happy paths and failure scenarios
-  4. Docstring + usage examples + integration guide
-
-### I2-F6-M1 - Wire --input argument to create feature and create issue commands
-
-#### Dependencies
-- [I1-F6-M1](#i1-f6-m1--implement-markdown-template-parser-for-cli-inputs) — parser module and function must exist
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py#L66-L95) — CLI argument registration in create subcommand parsers
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py#L289) — `_handle_feature_create` and `_handle_create_issue` handlers
-
-#### Decomposition
-1. Extend CLI argument parsers for both `create feature` and `create issue` subcommands:
-   - Add optional argument `--input <path>` accepting file path string
-   - Keep all existing flags (`--title`, `--description`, `--track`, etc.) for backward compatibility
-   - Add validation: if both `--input` and `--title`/`--description` are provided, error with message: `"Cannot combine --input with --title/--description. Use one input method only."`
-
-2. Update `_handle_feature_create` and `_handle_create_issue` handlers:
-   - Check if `args.input` is provided
-   - If yes: import and call parser from I1; extract `title` and `description` from parsed result
-   - If parsing fails: catch `WorkflowCommandError` and propagate with same exit code (4 for input validation)
-   - If `--input` not provided: use existing flag-based logic (backward compatible path)
-   - Merge parsed values into command execution (same downstream handler logic as flag-based)
-
-3. Ensure deterministic behavior:
-   - `--input` takes precedence if both input methods present (or strict error — choose one mode)
-   - Parser errors bubble up with clear messages indicating file/format problem
-   - Empty title from parser = error (consistent with flag-based validation)
-   - Empty description from parser = allowed with warning
-
-4. Validation and edge cases:
-   - Success: parsed template values used for feature/issue creation
-   - Parser error: exit code 4 + actionable message re-run guidance
-   - Missing input file: exit code 4 + file path in error text
-   - Backward compatibility: flag-based mode unchanged when `--input` not provided
-
-#### Issue/Task Decomposition Assessment
-- Decomposition state: `planning` (plan only; task allocation deferred to `plan tasks for I2-F6-M1`).
-- Expected split: 3-4 tasks
-  1. Argument parser extension for both `create feature` and `create issue` commands
-  2. Handler update + template value merge + precedence logic
-  3. Error handling + backward-compatibility validation tests
-  4. Integration smoke tests + command docs update
-
-### I3-F6-M1 - Update agent workflows to use draft files for CLI commands
-
-#### Dependencies
-- [I1-F6-M1](#i1-f6-m1--implement-markdown-template-parser-for-cli-inputs) and [I2-F6-M1](#i2-f6-m1--wire--input-argument-to-create-feature-and-create-issue-commands) — parser and CLI wiring must be functional
-- [.agents/protocols/feature-planning-protocol.md](.agents/protocols/feature-planning-protocol.md) — planning standards and protocols (read + update allowed)
-- [.agents/workflows/plan-feature.md](.agents/workflows/plan-feature.md#L38) — Phase 5 (Insert into FEATURE_PLANS) reference
-- [.agents/workflows/plan-issue.md](.agents/workflows/plan-issue.md#L73) — Phase 4 (Execute CLI) reference
-- `tmp/workflow/` — temporary file directory (already exists)
-
-#### Decomposition
-1. Create schema file `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md`:
-   - Define canonical Markdown template format for **feature creation**: title heading + optional description heading + content sections
-   - Define canonical Markdown template format for **issue creation**: title heading + optional description heading + content sections
-   - Document: any heading level (# ## ###) allowed; parser extracts first two headings by position
-   - Document required vs optional fields: title required (non-empty), description optional (empty allowed, warn)
-   - Document error scenarios: missing title, missing headings, no file, file not readable
-   - Document recovery guidance for each error type
-   - Include example templates: good format (correct template), bad format (common mistakes)
-   - This file is the single source of truth; both protocol and workflows reference it only
-
-2. Update [.agents/protocols/feature-planning-protocol.md](.agents/protocols/feature-planning-protocol.md):
-   - **Section 0 (Planning Prerequisites):** Add note that agents can generate Markdown templates for safe multi-line input
-   - **New subsection "Agent Output Method: Markdown Templates":** Reference `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md` for template format and structure
-   - Document temp storage convention: `tmp/workflow/` directory for agent-generated draft files (example: `tmp/workflow/feature_draft_<timestamp>.md`)
-   - Example workflow: agents write draft to temp file, pass path to `python3 dev/workflow feature create --input <path>`
-   - Clarify: temp file approach is optional for humans; recommended for AI agents to avoid JSON corruption
-
-3. Update [.agents/workflows/plan-feature.md](.agents/workflows/plan-feature.md#L38):
-   - **Phase 2b (Decompose Feature into Issues):** Add optional agent guidance: If decomposing into new issues, agents may generate Markdown drafts and use `create issue --input <path>` for each issue creation
-   - **Phase 5 (Insert into FEATURE_PLANS.md):** Add reference link: agents may write planning drafts; see `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md` for format and `tmp/workflow/` for temp storage directory convention
-   - Clarify: human workflows continue unchanged; agent workflow entirely optional
-
-4. Update [.agents/workflows/plan-issue.md](.agents/workflows/plan-issue.md#L42):
-   - **Phase 2 (Formulate Issue Plan):** Add optional note: agents formulating plans may write output to Markdown draft file for structured persists before CLI insertion
-   - **Phase 4 (Execute CLI):** Reference protocol schema if agents choose file-based input approach; link to `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md`
-   - Emphasize: optional enhancement; human-driven workflows use memory-based planning as-is
-
-5. Validation and schema ownership:
-   - Schema file exists and contains complete specifications
-   - Protocol and both workflow files reference schema (no duplication of schema rules in workflows)
-   - Temp directory path consistent: `tmp/workflow/` referenced in protocol
-   - No residual schema duplication across canonical docs
-
-#### Issue/Task Decomposition Assessment
-- Decomposition state: `planning` (plan only; task allocation deferred to `plan tasks for I3-F6-M1`).
-- Expected split: 3-4 tasks
-  1. Create `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md` with full template specifications and examples
-  2. Update `dev/FEATURE_PLANNING_PROTOCOL.md` with new "Agent Output Method" subsection and schema reference
-  3. Update both workflow docs (`plan-feature.md`, `plan-issue.md`) with optional agent guidance and protocol reference
-  4. Validation: grep + manual check that schema not duplicated in workflows; verify all canonical references point to schema file
-
 ## F7-M1
 
 ### Issue Execution Order
@@ -508,178 +352,6 @@ Canonical per-issue plan block format inside a feature section:
 2. Update feature-planning protocol so Gate 0 and lifecycle text match runtime behavior.
 3. Update `plan-feature.md` and `plan-issue.md` for cascading feature planning and compact status checks.
 4. Add smoke validation for old `feature-only` planning claims and old `feature plan-issue` naming.
-
-## F8-M1
-
-### Issue Execution Order
-1. `I1-F8-M1` - Add canonical action-first feature commands for create and materialize flows
-2. `I2-F8-M1` - Add canonical action-first issue commands for create and materialize flows
-3. `I3-F8-M1` - Unify workflow CLI routing, help, and docs around action-first grammar
-
-### Dependencies
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current feature-owned create/materialize handlers that need to move behind explicit action-first entrypoints
-- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — top-level CLI tree and help output path for command-surface changes
-- [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — GitHub create/edit primitives reused by new feature and issue materialize scopes
-- [.agents/workflows/create-feature.md](.agents/workflows/create-feature.md) and [.agents/workflows/materialize-feature.md](.agents/workflows/materialize-feature.md) — workflow docs that still assume entity-first command routing
-- [dev/TASK_EXECUTION_PIPELINE.json](dev/TASK_EXECUTION_PIPELINE.json) — existing materialize overlaps in F4-M1 (`74`, `78`, `94`, `95`) and draft-input create flows in F6-M1 define the compatibility surface
-- Existing feature-level behavior in `feature create --github` is prerequisite context; new command shape must not regress already mapped feature issue updates
-- Existing issue-level behavior in `feature create-issue` and `feature materialize --mode bootstrap|issues-create|issues-sync` is prerequisite context; refactor must preserve deterministic GitHub side effects during migration
-
-### Decomposition
-1. Define the target command surface and scope ownership:
-- Decide the canonical action-first command model for `create` and `materialize` across `feature` and `issue` entities
-- Specify `create` versus `sync` semantics for both materialize scopes, including whether `sync` updates only mapped nodes or also creates missing remote mappings
-- Define the direct canonical replacement for legacy `feature create`, `feature create-issue`, and `feature materialize --mode bootstrap|issues-create|issues-sync`
-   - Expected result: one unambiguous action/entity command contract exists before code changes begin
-
-2. Refactor runtime handlers around action-first routing:
-   - Extract feature-level create and materialize behavior into explicit `create feature` and `materialize feature` entrypoints
-   - Introduce issue-level `create issue` and `materialize issue` entrypoints that operate on one issue ID or a feature-owned issue set with deterministic create/sync behavior
-   - Keep milestone resolution, GitHub retry policy, branch linkage, and output payloads stable across the refactor
-   - Expected result: runtime code paths cleanly separate action routing from entity scope and remove hidden feature-owned issue commands
-
-3. Align CLI help, migration behavior, and process docs:
-   - Update parser help, examples, and error messages so command discovery matches the new action-first grammar
-   - Update workflow/protocol docs to explain the new commands and remove hidden feature issue or issue-create semantics
-   - Replace old command references with the new canonical commands instead of preserving compatibility shims
-   - Expected result: users can discover the new command model directly from `--help` and workflow docs without reading implementation code
-
-4. Validate the refactor end-to-end:
-   - Run `feature plan-lint` for plan quality, then implement task decomposition later from the approved issue split
-   - During execution phase, require regression coverage for feature create/materialize, issue create/materialize, and any legacy redirect or rejection path
-   - Confirm no command path silently mixes feature-issue and child-issue side effects after the refactor
-   - Expected result: the command model is testable, migration-safe, and ready for later task decomposition
-
-
-### Issue/Task Decomposition Assessment
-- Feature scope should split into three sequential issues because feature routing, issue routing, and help/docs alignment concerns are separable but dependent
-- Planned issue order is minimal-sufficient:
-  1. establish canonical action-first feature commands,
-  2. establish canonical action-first issue commands on top of that routing model,
-  3. align help/docs after the new runtime behavior is clear
-- Expected follow-up: `plan issue I1-F8-M1`, `plan issue I2-F8-M1`, and `plan issue I3-F8-M1`, then `plan tasks for F8-M1` after issue plans are reviewed
-
-### I1-F8-M1 - Add canonical action-first feature commands for create and materialize flows
-
-#### Dependencies
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current `feature create` handling, `_materialize_feature_registration_issue`, and feature issue body sync behavior
-- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — top-level parser tree that currently exposes entity-first feature routing
-- [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — `gh_issue_create` and `gh_issue_edit` feature issue calls
-- [dev/map/DEV_MAP.json](dev/map/DEV_MAP.json) — feature-level `gh_issue_number` and `gh_issue_url` are the local source of truth for feature issue mapping
-- Current behavior in `feature create --github` must be preserved or migrated cleanly so existing feature registration flow does not regress during the action-first move
-
-#### Decomposition
-1. Audit current feature-level command behavior:
-   - Trace how `feature create` registers the local feature and how `feature create --github` creates or updates the feature-level GitHub issue
-   - Trace how feature issue state is updated during existing materialize and sync paths when the feature issue is already mapped
-   - Identify all output payload fields and local state mutations tied to feature registration and feature issue mapping
-   - Expected result: current feature create/materialize semantics are fully cataloged
-
-2. Define the new action-first feature command contract:
-   - Introduce canonical `create feature` and `materialize feature` command paths that target the feature entity directly
-   - Define how local feature registration, feature issue creation, and feature issue sync are split between those entrypoints
-   - Define failure-path behavior for missing feature node, mismatched milestone, and invalid sync-on-unmapped cases if sync is strict
-   - Expected result: one explicit feature command contract replaces hidden feature issue behavior and entity-first create routing
-
-3. Refactor runtime implementation:
-   - Move feature registration and feature issue create/update logic behind the new action-first feature entrypoints
-   - Keep branch linkage persistence and deterministic output fields intact
-   - Preserve idempotency so repeated `create` or `sync` runs do not corrupt `DEV_MAP` mappings or duplicate GitHub issues
-   - Expected result: feature create/materialize behavior is discoverable, explicit, and behaviorally stable
-
-4. Define acceptance and regression coverage:
-   - Success path: register feature through `create feature`
-   - Success path: create or sync feature issue through `materialize feature`
-   - Failure path: invalid feature ID or invalid materialize mode reports deterministic output
-   - Expected result: later task decomposition can split routing refactor and regression checks cleanly
-
-#### Issue/Task Decomposition Assessment
-- Expected split: 3-4 tasks
-  1. audit current feature create/materialize behavior and output contract
-  2. implement canonical action-first feature routing and handler path
-  3. preserve branch linkage and idempotent mapping behavior
-  4. add regression coverage for feature create/materialize paths
-
-### I2-F8-M1 - Add canonical action-first issue commands for create and materialize flows
-
-#### Dependencies
-- [I1-F8-M1](#i1-f8-m1--add-canonical-action-first-feature-commands-for-create-and-materialize-flows) — feature-level action-first routing should be explicit before issue commands are redesigned
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current `feature create-issue`, `bootstrap|issues-create|issues-sync` handlers, issue queue logic, and materialize status gates
-- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — command-tree routing that currently nests issue creation under feature commands
-- [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — issue create/edit adapters and sub-issue reconciliation helpers
-- [dev/TASK_EXECUTION_PIPELINE.json](dev/TASK_EXECUTION_PIPELINE.json) — current F4 materialize tasks and overlaps define existing issue-mode guarantees that must be preserved or intentionally replaced
-
-#### Decomposition
-1. Audit current issue-level command behavior:
-   - Trace `feature create-issue` behavior for local issue registration and optional GitHub materialization
-   - Trace `issues-create` and `issues-sync` behavior for mapped versus unmapped issues
-   - Trace `--issue-id` queue logic, gating rules, and output payload differences
-   - Identify exactly which parts are truly issue-scoped and which parts are residual feature-scoped behavior
-   - Expected result: the current issue create/materialize contract is explicit enough to redesign safely
-
-2. Define the new action-first issue command contract:
-   - Introduce canonical `create issue` and `materialize issue` command paths that target one issue or a feature-owned issue set
-   - Define `create` behavior for local issue registration versus remote issue creation, and `sync` behavior for mapped issues, including whether sync may create missing mappings
-   - Define deterministic failure behavior for invalid issue ownership, terminal status, missing mappings, and queue misuse
-   - Expected result: issue create/materialize semantics are clear and no longer hidden behind feature-scoped command names
-
-3. Refactor issue runtime:
-   - Move issue registration, queue validation, scope resolution, and GitHub create/edit operations behind the new action-first issue command surface
-   - Keep milestone assignment, retry policy, and deterministic output payloads stable
-   - Preserve or explicitly replace sub-issue reconciliation behavior tied to the parent feature issue
-   - Expected result: issue create/materialize works through explicit issue-oriented commands without mixing feature issue semantics
-
-4. Define acceptance and regression coverage:
-   - Success path: register one issue through `create issue`
-   - Success path: materialize or sync one issue through `materialize issue`
-   - Batch path: run issue materialization for all issues owned by one feature if batch mode remains in scope
-   - Expected result: later task decomposition can separate routing work from regression checks and compatibility cases
-
-#### Issue/Task Decomposition Assessment
-- Expected split: 4 tasks
-  1. audit and document current issue create/materialize scope behavior
-  2. implement canonical action-first issue routing and validation
-  3. preserve milestone/sub-issue/output contracts during refactor
-  4. add regression coverage for single-issue and feature-owned issue-set flows
-
-### I3-F8-M1 - Unify workflow CLI routing, help, and docs around action-first grammar
-
-#### Dependencies
-- [I1-F8-M1](#i1-f8-m1--add-canonical-action-first-feature-commands-for-create-and-materialize-flows) and [I2-F8-M1](#i2-f8-m1--add-canonical-action-first-issue-commands-for-create-and-materialize-flows) — runtime command semantics must be settled before documentation and compatibility policy can be finalized
-- [I1-F8-M1](#i1-f8-m1--add-canonical-action-first-feature-commands-for-create-and-materialize-flows) and [I2-F8-M1](#i2-f8-m1--add-canonical-action-first-issue-commands-for-create-and-materialize-flows) — runtime command semantics must be settled before documentation can be finalized
-- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) and [dev/workflow_lib/helpers/cli_format.py](dev/workflow_lib/helpers/cli_format.py) — help output path for new command descriptions/examples
-- [.agents/workflows/create-feature.md](.agents/workflows/create-feature.md) and [.agents/workflows/materialize-feature.md](.agents/workflows/materialize-feature.md) — workflow text must match the new canonical command surface
-- Planning and execution docs that reference create or materialization flow or feature issue mapping expectations
-
-#### Decomposition
-1. Update CLI help and examples:
-   - Rewrite parser help text so feature-level and issue-level create/materialize flows are discoverable from `--help`
-   - Add examples that show the new action-first feature and issue commands directly instead of relying on hidden `feature create --github` or `feature create-issue` semantics
-   - Ensure multiline help remains readable under the shared compact formatter
-   - Expected result: users can infer the command model from help output alone
-
-2. Update workflow and protocol docs:
-   - Rewrite `.agents/workflows/materialize-feature.md`, `.agents/workflows/create-feature.md`, and any linked planning/execution docs that still describe the old command model
-   - Clarify how feature-level and issue-level GitHub issue creation now fit into the lifecycle relative to local registration and sync
-   - Keep materialization gates, milestone rules, and branch policy wording consistent with the runtime behavior
-   - Expected result: canonical docs match the new CLI semantics without hidden exceptions
-
-3. Remove old command references from runtime and documentation:
-   - Replace legacy `feature create`, `feature create-issue`, and `feature materialize --mode ...` references with the new canonical commands
-   - Keep error text and examples pointed at the new command shape explicitly
-   - Expected result: the runtime and docs present one command model instead of parallel legacy and canonical paths
-
-4. Define acceptance and regression coverage:
-   - Verify help output, workflow docs, and runtime behavior all point to the same canonical commands
-   - Ensure no stale docs/examples remain that instruct users to use entity-first create/materialize paths
-   - Expected result: users can adopt the new command model without reading implementation history
-
-#### Issue/Task Decomposition Assessment
-- Expected split: 3-4 tasks
-  1. update CLI help and examples for the new action-first command model
-  2. rewrite workflow/protocol docs to the new command surface
-  3. remove old command references from runtime/docs surfaces
-  4. add regression checks for help/docs consistency
 
 ## F9-M1
 
@@ -1467,3 +1139,145 @@ Canonical per-issue plan block format inside a feature section:
   1. GitHub cascade integration for feature + child issues
   2. workflow/help alignment for the new command
   3. regression coverage for preview/write/repeat/mixed-mapping flows
+
+## F16-M1
+
+### Expected Behaviour
+- The planning protocol becomes the single source of truth for `FEATURE_PLANS.md` structure, so agents no longer need to infer the real contract from existing plan blocks or runtime quirks.
+- `FEATURE_PLANS.md` becomes a storage-only file with no header boilerplate, and each feature section is reduced to a concise `Expected Behaviour` block that describes the intended outcome and how the feature can be verified.
+- Detailed planning structure remains only at the issue-block level, and `feature plan-lint` plus plan-generation helpers enforce that simplified split consistently across runtime, docs, and tests.
+- Existing plans migrate to the new format without losing actionable issue-level decomposition detail, and regression checks prevent protocol, lint, and fixtures from drifting apart again.
+
+### Dependencies
+- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — owns `plan-init`, `plan-lint`, and plan parsing logic that must be aligned to the new feature-level contract.
+- [.agents/protocols/feature-planning-protocol.md](.agents/protocols/feature-planning-protocol.md) — should become the only canonical owner of the planning structure and quality gates.
+- [.agents/workflows/plan-feature.md](.agents/workflows/plan-feature.md) and [.agents/workflows/plan-issue.md](.agents/workflows/plan-issue.md) — workflow steps must reference the protocol contract instead of treating `FEATURE_PLANS.md` header text as the structure owner.
+- [dev/FEATURE_PLANS.md](dev/FEATURE_PLANS.md) — target storage artifact that must become headerless and be normalized to the simplified feature-level block shape.
+- [tests/workflow/test_feature_lifecycle.py](tests/workflow/test_feature_lifecycle.py), [tests/workflow/test_overlap_commands.py](tests/workflow/test_overlap_commands.py), and [tests/workflow/test_task_planning.py](tests/workflow/test_task_planning.py) — fixtures and lint expectations must be updated to prove the new contract is enforced end-to-end.
+
+### Decomposition
+1. Move canonical ownership of the planning format into the protocol:
+   - define the exact feature-level and issue-level plan structures in the planning protocol,
+   - make workflows procedural only and reference that contract instead of duplicating local format rules,
+   - keep the feature-level contract intentionally minimal: `Expected Behaviour` only.
+2. Align runtime enforcement and plan-generation helpers to the simplified contract:
+   - change lint so feature sections require only `Expected Behaviour`,
+   - keep issue-block validation strict and unchanged where detailed engineering decomposition still belongs,
+   - make scaffolds and parser assumptions work with a headerless `FEATURE_PLANS.md`.
+3. Migrate stored plans and lock the contract with tests:
+   - remove `FEATURE_PLANS.md` boilerplate and normalize existing feature sections,
+   - update test fixtures to the new storage shape,
+   - add consistency checks that fail when protocol, lint, and fixtures diverge.
+
+### Issue/Task Decomposition Assessment
+- Feature scope is split into three issues because protocol ownership, runtime enforcement, and migration/regression work are closely related but should still be delivered in a controlled sequence.
+- Minimal execution order:
+  1. define the canonical protocol and storage contract,
+  2. align runtime lint and generation helpers,
+  3. migrate stored plans and add regression/consistency checks.
+- Expected split:
+  - `I1-F16-M1`: protocol and workflow contract rewrite
+  - `I2-F16-M1`: runtime lint and scaffold alignment
+  - `I3-F16-M1`: storage migration and regression coverage
+
+### I1-F16-M1 - Define canonical planning contract and storage-only FEATURE_PLANS structure
+
+#### Expected Behaviour
+- The protocol explicitly defines the only valid `FEATURE_PLANS.md` structure, so feature and issue plan shape no longer depends on header prose inside the storage file.
+- Feature sections are defined as `## <feature_id>` plus `### Expected Behaviour` only, while issue sections remain the detailed engineering planning units.
+- Planning workflows reference the protocol contract directly and stop treating `FEATURE_PLANS.md` itself as a format-owner document.
+
+#### Dependencies
+- file: `.agents/protocols/feature-planning-protocol.md` | reason: this file must become the canonical owner of the planning structure and quality gates.
+- file: `.agents/workflows/plan-feature.md` | reason: feature-planning workflow must reference the protocol contract instead of `FEATURE_PLANS.md` header text.
+- file: `.agents/workflows/plan-issue.md` | reason: issue-planning workflow must stay aligned with the protocol-owned issue-block structure.
+- file: `dev/FEATURE_PLANS.md` | reason: storage file must stop carrying ownership/format boilerplate once the protocol becomes canonical.
+
+#### Decomposition
+1. Define the canonical planning structure in the protocol:
+   - document that feature sections require only `Expected Behaviour`,
+   - document that issue blocks keep `Expected Behaviour`, `Dependencies`, `Decomposition`, and `Issue/Task Decomposition Assessment`,
+   - make the protocol the explicit source of truth for heading names and section levels.
+2. Rewrite planning workflows around protocol-owned structure:
+   - update `plan-feature` to generate and review the simplified feature block plus full issue blocks,
+   - update `plan-issue` to reference only the issue-block contract it owns procedurally,
+   - remove references that imply `FEATURE_PLANS.md` header text is normative.
+3. Define storage-only expectations for `FEATURE_PLANS.md`:
+   - document that the file may contain plans only, without header boilerplate,
+   - keep storage semantics compatible with plan extraction and cleanup code,
+   - specify migration expectations for existing sections.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3 implementation tasks
+  1. protocol contract rewrite for feature and issue sections
+  2. plan-feature workflow alignment
+  3. plan-issue/storage-only guidance alignment
+
+### I2-F16-M1 - Align lint and plan generation with the simplified feature-block contract
+
+#### Expected Behaviour
+- `feature plan-lint` validates feature sections using the new minimal contract and still validates issue blocks with the full detailed structure.
+- `feature plan-init` and related plan-generation helpers create feature sections that are immediately valid under the new contract without injecting obsolete placeholders.
+- Runtime parsing and extraction stay stable when `FEATURE_PLANS.md` contains only raw plan sections and no file header boilerplate.
+
+#### Dependencies
+- file: `dev/workflow_lib/feature_commands.py` | reason: lint, plan-init, and plan extraction logic must enforce the new feature-level contract.
+- function: `_lint_feature_plan_section` | reason: feature-level heading validation must be reduced to `Expected Behaviour` only.
+- function: `_render_feature_plan_section` | reason: generated feature scaffolds must stop emitting obsolete feature-level headings.
+- function: `_extract_feature_plan_section` | reason: plan extraction must remain stable after removing storage-file boilerplate.
+- file: `dev/FEATURE_PLANS.md` | reason: runtime assumptions about file preamble or feature-section layout must be compatible with headerless storage.
+
+#### Decomposition
+1. Update runtime feature-section linting:
+   - require only `Expected Behaviour` at the feature level,
+   - keep non-empty content and placeholder-quality checks where appropriate,
+   - preserve strict issue-block validation under the same feature section.
+2. Update plan scaffolds and section rendering:
+   - make `plan-init` emit only the simplified feature-level block,
+   - keep issue-block generation unchanged where detailed decomposition is still required,
+   - ensure newly initialized plans pass lint without manual removal of obsolete placeholders.
+3. Remove header-dependent runtime assumptions:
+   - make empty/default file initialization compatible with a headerless storage file,
+   - keep feature lookup and section-bound detection stable without relying on `# Feature Plans`,
+   - verify cleanup and extraction helpers still operate correctly on pure-plan storage.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3-4 implementation tasks
+  1. feature-level lint contract update
+  2. plan-init / scaffold update
+  3. headerless storage compatibility pass
+  4. targeted runtime verification
+
+### I3-F16-M1 - Migrate existing plans and add consistency regression coverage
+
+#### Expected Behaviour
+- Existing `FEATURE_PLANS.md` content is normalized to the new contract without dropping issue-level implementation detail.
+- Test fixtures stop depending on storage-file boilerplate or obsolete feature-level headings.
+- Regression checks catch future drift between the protocol contract, runtime lint, and representative plan fixtures.
+
+#### Dependencies
+- file: `dev/FEATURE_PLANS.md` | reason: existing feature sections must be migrated to the new storage shape.
+- file: `tests/workflow/test_feature_lifecycle.py` | reason: plan-init and lint fixtures must reflect headerless storage and simplified feature blocks.
+- file: `tests/workflow/test_overlap_commands.py` | reason: feature-plan lint and cleanup fixtures currently exercise feature-level Expected Behaviour and storage-file handling.
+- file: `tests/workflow/test_task_planning.py` | reason: task-planning fixtures must remain valid after feature-level headings are simplified.
+- file: `.agents/protocols/feature-planning-protocol.md` | reason: tests should validate the enforced contract declared by the protocol rather than a stale local convention.
+
+#### Decomposition
+1. Migrate stored feature plans:
+   - remove file-level boilerplate from `FEATURE_PLANS.md`,
+   - simplify existing feature sections to `Expected Behaviour` only,
+   - keep issue blocks intact except where updates are needed for contract conformance.
+2. Update workflow fixtures and lint expectations:
+   - rewrite test fixtures that currently include obsolete header text or feature-level headings,
+   - add positive checks for headerless storage plus simplified feature sections,
+   - add failure checks for missing feature-level `Expected Behaviour`.
+3. Add consistency regression coverage:
+   - prove runtime lint follows the protocol-declared feature and issue structures,
+   - add targeted guards for scaffold validity and headerless-file behavior,
+   - keep regression scope focused on real drift vectors rather than duplicating the full protocol in tests.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3 implementation tasks
+  1. plan storage migration
+  2. fixture/test update
+  3. protocol-lint consistency regression checks

@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-08T02:40:53+02:00",
+  "updated_at": "2026-03-08T03:25:54+02:00",
   "task_count": 290,
   "milestones": [
     {
@@ -2789,6 +2789,46 @@
               "id": "I2-F15-M1",
               "title": "Add GitHub rejection cascade and regression coverage for reject feature",
               "description": "Extend feature rejection so mapped child issues and the mapped feature issue receive the same rejection-marker and close behavior as `reject issue`, then lock the new feature-level reject flow with workflow docs and regression coverage.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
+        },
+        {
+          "id": "F16-M1",
+          "title": "Make planning protocol canonical and simplify FEATURE_PLANS feature blocks",
+          "description": "Make the planning protocol the single source of truth for `FEATURE_PLANS.md`, reduce feature-level plan sections to `Expected Behaviour` only, remove `FEATURE_PLANS` header boilerplate, align lint and plan scaffolds to the new contract, migrate existing plan sections, and lock the contract with regression checks.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F16-M1",
+              "title": "Define canonical planning contract and storage-only FEATURE_PLANS structure",
+              "description": "Rewrite the formal planning protocol and workflows so the protocol becomes the only source of truth for plan structure, `FEATURE_PLANS.md` becomes storage-only, and feature blocks are defined as `Expected Behaviour` only while issue blocks keep the detailed canonical structure.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F16-M1",
+              "title": "Align lint and plan generation with the simplified feature-block contract",
+              "description": "Update planning runtime enforcement and plan scaffolds so `feature plan-lint` and `plan-init` require only feature-level `Expected Behaviour`, keep full issue-block validation, and support headerless `FEATURE_PLANS.md` storage.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F16-M1",
+              "title": "Migrate existing plans and add consistency regression coverage",
+              "description": "Normalize existing `FEATURE_PLANS.md` sections to the new feature-level contract, remove obsolete boilerplate, and add tests that prove protocol, lint, and fixtures stay aligned without drift.",
               "status": "Planned",
               "gh_issue_number": null,
               "gh_issue_url": null,
