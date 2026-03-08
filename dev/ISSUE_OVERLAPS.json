@@ -2,40 +2,54 @@
   "schema_version": "1.1",
   "issue_execution_order": {
     "ordered_issue_ids": [
-      "I7-F4-M1",
-      "I9-F4-M1",
-      "I13-F4-M1",
-      "I32-F4-M1",
-      "I33-F4-M1",
-      "I34-F4-M1",
-      "I1-F5-M1",
-      "I2-F5-M1",
-      "I3-F5-M1",
-      "I4-F5-M1",
-      "I5-F5-M1",
-      "I6-F5-M1",
-      "I7-F5-M1",
-      "I8-F5-M1",
-      "I1-F7-M1",
-      "I2-F7-M1",
-      "I3-F7-M1",
-      "I4-F7-M1",
-      "I1-F9-M1",
-      "I2-F9-M1",
-      "I3-F9-M1",
-      "I1-F10-M1",
-      "I2-F10-M1",
-      "I3-F10-M1",
-      "I1-F11-M1",
-      "I2-F11-M1",
-      "I3-F11-M1",
-      "I1-F12-M1",
-      "I2-F12-M1",
-      "I3-F12-M1",
-      "I1-F13-M1",
-      "I2-F13-M1",
-      "I3-F13-M1"
+      "I3-F13-M1",
+      "I1-F15-M1",
+      "I2-F15-M1",
+      "I1-F16-M1",
+      "I2-F16-M1",
+      "I3-F16-M1"
     ]
   },
-  "overlaps": []
+  "overlaps": [
+    {
+      "issues": [
+        "I1-F15-M1",
+        "I2-F15-M1"
+      ],
+      "type": "dependency",
+      "order": "I1-F15-M1->I2-F15-M1",
+      "surface": "file: dev/workflow_lib/confirm_commands.py",
+      "description": "why: the GitHub rejection cascade extends the same feature-level reject handler and cleanup payload introduced by I1; impact: implementing remote close and marker behavior first would either duplicate subtree reject wiring or bind to unstable local payloads; action: land the local reject command and cleanup contract before adding GitHub cascade and regression coverage."
+    },
+    {
+      "issues": [
+        "I1-F16-M1",
+        "I2-F16-M1"
+      ],
+      "type": "dependency",
+      "order": "I1-F16-M1->I2-F16-M1",
+      "surface": "file: dev/FEATURE_PLANS.md",
+      "description": "why: I2 changes lint and scaffold enforcement for the simplified feature-block structure that I1 defines canonically; impact: runtime enforcement could drift again if scaffolds are updated before the protocol-owned storage contract is fixed; action: finalize the protocol and storage-only FEATURE_PLANS contract before changing lint and plan-init behavior."
+    },
+    {
+      "issues": [
+        "I1-F16-M1",
+        "I3-F16-M1"
+      ],
+      "type": "dependency",
+      "order": "I1-F16-M1->I3-F16-M1",
+      "surface": "file: .agents/protocols/feature-planning-protocol.md",
+      "description": "why: I3 migrates stored plans and adds consistency checks against the protocol contract declared in I1; impact: migration and regression fixtures would encode the wrong target structure if protocol ownership is not settled first; action: define the canonical protocol contract before rewriting FEATURE_PLANS content and tests."
+    },
+    {
+      "issues": [
+        "I2-F16-M1",
+        "I3-F16-M1"
+      ],
+      "type": "dependency",
+      "order": "I2-F16-M1->I3-F16-M1",
+      "surface": "file: dev/FEATURE_PLANS.md",
+      "description": "why: I3 must migrate stored plans and fixture expectations to the exact runtime lint/scaffold behavior produced by I2; impact: migrating plans before the new enforcement lands would create temporary shapes that still fail plan-lint or require a second migration pass; action: update runtime enforcement first, then normalize FEATURE_PLANS and add regression coverage."
+    }
+  ]
 }

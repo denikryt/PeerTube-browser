@@ -1,7 +1,121 @@
 {
   "schema_version": "1.1",
   "scope_type": "feature",
-  "scope_id": "F14-M1",
-  "by_issue": {},
-  "by_surface": {}
+  "scope_id": "F16-M1",
+  "by_issue": {
+    "I1-F15-M1": {
+      "surface_keys": [
+        "file: `dev/map/dev_map.json`",
+        "file: `dev/workflow_lib/confirm_commands.py`",
+        "function: `_cleanup_feature_plan_feature_section`",
+        "function: `_cleanup_feature_plan_issue_artifacts`",
+        "function: `_handle_confirm_feature_done`",
+        "function: `_handle_reject_issue`"
+      ]
+    },
+    "I1-F16-M1": {
+      "surface_keys": [
+        "file: `.agents/protocols/feature-planning-protocol.md`",
+        "file: `.agents/workflows/plan-feature.md`",
+        "file: `.agents/workflows/plan-issue.md`",
+        "file: `dev/feature_plans.md`"
+      ]
+    },
+    "I2-F15-M1": {
+      "surface_keys": [
+        "file: `.agents/workflows/reject.md`",
+        "file: `dev/workflow_lib/confirm_commands.py`",
+        "file: `tests/workflow/test_feature_lifecycle.py`",
+        "file: `tests/workflow/test_overlap_commands.py`",
+        "function: `_append_issue_rejection_marker`",
+        "module: `dev.workflow_lib.github_adapter`"
+      ]
+    },
+    "I2-F16-M1": {
+      "surface_keys": [
+        "file: `dev/feature_plans.md`",
+        "file: `dev/workflow_lib/feature_commands.py`",
+        "function: `_extract_feature_plan_section`",
+        "function: `_lint_feature_plan_section`",
+        "function: `_render_feature_plan_section`"
+      ]
+    },
+    "I3-F16-M1": {
+      "surface_keys": [
+        "file: `.agents/protocols/feature-planning-protocol.md`",
+        "file: `dev/feature_plans.md`",
+        "file: `tests/workflow/test_feature_lifecycle.py`",
+        "file: `tests/workflow/test_overlap_commands.py`",
+        "file: `tests/workflow/test_task_planning.py`"
+      ]
+    }
+  },
+  "by_surface": {
+    "file: `.agents/protocols/feature-planning-protocol.md`": [
+      "I1-F16-M1",
+      "I3-F16-M1"
+    ],
+    "file: `.agents/workflows/plan-feature.md`": [
+      "I1-F16-M1"
+    ],
+    "file: `.agents/workflows/plan-issue.md`": [
+      "I1-F16-M1"
+    ],
+    "file: `.agents/workflows/reject.md`": [
+      "I2-F15-M1"
+    ],
+    "file: `dev/feature_plans.md`": [
+      "I1-F16-M1",
+      "I2-F16-M1",
+      "I3-F16-M1"
+    ],
+    "file: `dev/map/dev_map.json`": [
+      "I1-F15-M1"
+    ],
+    "file: `dev/workflow_lib/confirm_commands.py`": [
+      "I1-F15-M1",
+      "I2-F15-M1"
+    ],
+    "file: `dev/workflow_lib/feature_commands.py`": [
+      "I2-F16-M1"
+    ],
+    "file: `tests/workflow/test_feature_lifecycle.py`": [
+      "I2-F15-M1",
+      "I3-F16-M1"
+    ],
+    "file: `tests/workflow/test_overlap_commands.py`": [
+      "I2-F15-M1",
+      "I3-F16-M1"
+    ],
+    "file: `tests/workflow/test_task_planning.py`": [
+      "I3-F16-M1"
+    ],
+    "function: `_append_issue_rejection_marker`": [
+      "I2-F15-M1"
+    ],
+    "function: `_cleanup_feature_plan_feature_section`": [
+      "I1-F15-M1"
+    ],
+    "function: `_cleanup_feature_plan_issue_artifacts`": [
+      "I1-F15-M1"
+    ],
+    "function: `_extract_feature_plan_section`": [
+      "I2-F16-M1"
+    ],
+    "function: `_handle_confirm_feature_done`": [
+      "I1-F15-M1"
+    ],
+    "function: `_handle_reject_issue`": [
+      "I1-F15-M1"
+    ],
+    "function: `_lint_feature_plan_section`": [
+      "I2-F16-M1"
+    ],
+    "function: `_render_feature_plan_section`": [
+      "I2-F16-M1"
+    ],
+    "module: `dev.workflow_lib.github_adapter`": [
+      "I2-F15-M1"
+    ]
+  }
 }
