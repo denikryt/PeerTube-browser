@@ -1288,6 +1288,7 @@ Canonical per-issue plan block format inside a feature section:
 - Overlap workflow moves to one explicit model: the agent prepares a full editable draft snapshot for `ISSUE_OVERLAPS.json`, including both `overlaps` and `issue_execution_order`, instead of relying on ambiguous partial-delta apply semantics.
 - Scope discovery remains local to the requested feature or issue, but final apply writes a complete validated global block so unrelated existing overlap pairs remain intact unless the draft changes them explicitly.
 - `issue_execution_order` becomes an explicitly edited field in the final draft rather than a hidden side effect of `apply-overlaps`, while CLI validation ensures that the provided order is structurally valid and semantically consistent with dependency overlaps.
+- `issue_execution_order` is reduced to issues that actually participate in dependency overlaps, so the order block stops echoing unrelated active issues from `DEV_MAP` that contribute no dependency edges.
 - Workflow docs and regression coverage make the roles clear: CLI commands discover context and validate/apply the final snapshot, while the agent prepares and edits the full draft between those stages.
 
 ### Dependencies
@@ -1310,17 +1311,24 @@ Canonical per-issue plan block format inside a feature section:
    - update build/apply overlap workflow guidance,
    - cover preservation of unrelated pairs,
    - cover invalid orders, duplicate pairs, pair/order mismatch, and scope-read behavior.
+4. Remove noise from global overlap ordering:
+   - keep `issue_execution_order` limited to dependency-overlap participants only,
+   - stop auto-including active issues that have no dependency edges,
+   - make tests prove that isolated issues stay out of the order block.
 
 ### Issue/Task Decomposition Assessment
 - Feature scope is split into three issues because workflow contract, runtime enforcement, and regression/documentation work are closely connected but should be landed in a controlled sequence.
+- A fourth issue is required because global order node selection is a separate runtime rule from draft/apply semantics and needs targeted regression coverage.
 - Minimal execution order:
   1. define the canonical overlap workflow and responsibility split,
   2. implement full-draft validation and write semantics,
-  3. align helper commands, docs, and regression coverage.
+  3. limit `issue_execution_order` to dependency-overlap participants,
+  4. align helper commands, docs, and regression coverage.
 - Expected split:
   - `I1-F17-M1`: workflow contract and command-surface definition
   - `I2-F17-M1`: runtime validation/apply semantics
   - `I3-F17-M1`: workflow/doc/test alignment
+  - `I4-F17-M1`: dependency-graph-only issue order
 
 ### I1-F17-M1 - Define full-snapshot overlap workflow contract and CLI responsibilities
 
@@ -1421,3 +1429,37 @@ Canonical per-issue plan block format inside a feature section:
   1. workflow/doc alignment
   2. helper/read-path alignment
   3. regression coverage for full-draft apply and scope reads
+
+### I4-F17-M1 - Limit issue execution order to dependency-overlap participants only
+
+#### Expected Behaviour
+- `issue_execution_order.ordered_issue_ids` contains only issue IDs that participate in at least one dependency overlap edge, rather than all active issues from `DEV_MAP`.
+- Issues with no dependency-overlap participation remain absent from the global order block, so `ISSUE_OVERLAPS.json` reflects real dependency-ordering data instead of unrelated tracker noise.
+- Runtime behavior and tests make it explicit that the order block is derived from dependency-graph membership, not from generic active-issue presence.
+
+#### Dependencies
+- file: `dev/workflow_lib/feature_commands.py` | reason: global issue order is currently built from all active DEV_MAP issues and must instead use only dependency-overlap participants.
+- function: `_build_global_issue_execution_order` | reason: this builder currently seeds the graph with unrelated active issues and must narrow node selection to dependency-overlap participants.
+- function: `_collect_active_issue_ids_in_dev_map_order` | reason: active-issue collection is the source of the current noise and must either be constrained or replaced for overlap ordering.
+- file: `dev/ISSUE_OVERLAPS.json` | reason: the stored order block should no longer include issues with no dependency-edge participation.
+- file: `tests/workflow/test_overlap_commands.py` | reason: regression coverage must prove isolated issues stay out of `ordered_issue_ids` while dependency-linked issues remain ordered correctly.
+
+#### Decomposition
+1. Redefine the node set for global overlap ordering:
+   - derive order nodes only from issue IDs that appear in dependency overlaps,
+   - preserve stable ordering among those participating nodes,
+   - stop seeding the graph from unrelated active issues in `DEV_MAP`.
+2. Update runtime global-order builder:
+   - change `_build_global_issue_execution_order` to ignore non-participating issues,
+   - keep cycle detection and dependency-edge handling intact for participating nodes,
+   - ensure empty or overlap-free dependency graphs produce an empty order block instead of a noisy active-issue list.
+3. Add regression coverage for noisy-order removal:
+   - prove issues without dependency overlaps do not appear in `ordered_issue_ids`,
+   - prove dependency-linked issues still appear in stable topological order,
+   - cover mixed states where only part of the active issue set participates in dependency overlaps.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3 implementation tasks
+  1. order-node contract change
+  2. runtime builder update
+  3. regression coverage for isolated-issue exclusion

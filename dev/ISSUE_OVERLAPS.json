@@ -42,6 +42,7 @@
       "I3-F16-M1",
       "I1-F17-M1",
       "I2-F17-M1",
+      "I4-F17-M1",
       "I3-F17-M1"
     ]
   },
@@ -115,6 +116,36 @@
       "order": "I2-F17-M1->I3-F17-M1",
       "surface": "file: dev/workflow_lib/feature_commands.py",
       "description": "why: I3 aligns read/build helpers and tests with the exact validation and apply behavior implemented in I2; impact: workflow docs and regression fixtures would encode stale semantics if helper alignment lands before final apply rules are implemented; action: finish full-block validation and write behavior before updating overlap workflows and coverage."
+    },
+    {
+      "issues": [
+        "I1-F17-M1",
+        "I4-F17-M1"
+      ],
+      "type": "dependency",
+      "order": "I1-F17-M1->I4-F17-M1",
+      "surface": "file: dev/ISSUE_OVERLAPS.json",
+      "description": "why: I4 narrows which issues belong in the global order block, but that rule depends on the full-snapshot overlap contract from I1 defining `issue_execution_order` as global overlap state rather than generic tracker output; impact: changing node-selection first would patch one symptom without a stable contract for what the order block represents; action: finalize the overlap workflow contract before constraining order membership."
+    },
+    {
+      "issues": [
+        "I2-F17-M1",
+        "I4-F17-M1"
+      ],
+      "type": "dependency",
+      "order": "I2-F17-M1->I4-F17-M1",
+      "surface": "file: dev/workflow_lib/feature_commands.py",
+      "description": "why: I4 changes the runtime global-order builder in the same apply path whose validation and write semantics are reworked in I2; impact: narrowing order membership before the full-block apply contract settles would force a second rewrite of the same overlap write path; action: land full-draft validation and write semantics before updating which dependency participants appear in the order block."
+    },
+    {
+      "issues": [
+        "I3-F17-M1",
+        "I4-F17-M1"
+      ],
+      "type": "dependency",
+      "order": "I4-F17-M1->I3-F17-M1",
+      "surface": "file: tests/workflow/test_overlap_commands.py",
+      "description": "why: I3 owns workflow/doc/test alignment, and I4 adds the final runtime rule that only dependency-overlap participants belong in `issue_execution_order`; impact: regression fixtures would stay incomplete if helper/docs alignment landed before the noisy-order removal rule was implemented; action: update the order builder first, then align workflow guidance and regression coverage around that final behavior."
     }
   ]
 }

@@ -2873,6 +2873,15 @@
               "gh_issue_number": null,
               "gh_issue_url": null,
               "tasks": []
+            },
+            {
+              "id": "I4-F17-M1",
+              "title": "Limit issue execution order to dependency-overlap participants only",
+              "description": "Stop populating `issue_execution_order.ordered_issue_ids` with active issues that do not participate in any dependency overlap, so the global order reflects only the dependency graph represented in `ISSUE_OVERLAPS.json` instead of unrelated tracker noise.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
             }
           ],
           "branch_name": null,

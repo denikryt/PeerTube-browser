@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1",
-  "scope_type": "feature",
-  "scope_id": "F17-M1",
+  "scope_type": "issue",
+  "scope_id": "I4-F17-M1",
   "by_issue": {
     "I1-F15-M1": {
       "surface_keys": [
@@ -72,6 +72,15 @@
         "file: `dev/workflow_lib/feature_commands.py`",
         "file: `tests/workflow/test_overlap_commands.py`"
       ]
+    },
+    "I4-F17-M1": {
+      "surface_keys": [
+        "file: `dev/issue_overlaps.json`",
+        "file: `dev/workflow_lib/feature_commands.py`",
+        "file: `tests/workflow/test_overlap_commands.py`",
+        "function: `_build_global_issue_execution_order`",
+        "function: `_collect_active_issue_ids_in_dev_map_order`"
+      ]
     }
   },
   "by_surface": {
@@ -99,7 +108,8 @@
     ],
     "file: `dev/issue_overlaps.json`": [
       "I1-F17-M1",
-      "I3-F17-M1"
+      "I3-F17-M1",
+      "I4-F17-M1"
     ],
     "file: `dev/map/dev_map.json`": [
       "I1-F15-M1",
@@ -117,7 +127,8 @@
       "I1-F17-M1",
       "I2-F16-M1",
       "I2-F17-M1",
-      "I3-F17-M1"
+      "I3-F17-M1",
+      "I4-F17-M1"
     ],
     "file: `dev/workflow_lib/tracker_json_contracts.py`": [
       "I2-F17-M1"
@@ -129,7 +140,8 @@
     "file: `tests/workflow/test_overlap_commands.py`": [
       "I2-F15-M1",
       "I3-F16-M1",
-      "I3-F17-M1"
+      "I3-F17-M1",
+      "I4-F17-M1"
     ],
     "file: `tests/workflow/test_task_planning.py`": [
       "I3-F16-M1"
@@ -137,11 +149,17 @@
     "function: `_append_issue_rejection_marker`": [
       "I2-F15-M1"
     ],
+    "function: `_build_global_issue_execution_order`": [
+      "I4-F17-M1"
+    ],
     "function: `_cleanup_feature_plan_feature_section`": [
       "I1-F15-M1"
     ],
     "function: `_cleanup_feature_plan_issue_artifacts`": [
       "I1-F15-M1"
+    ],
+    "function: `_collect_active_issue_ids_in_dev_map_order`": [
+      "I4-F17-M1"
     ],
     "function: `_extract_feature_plan_section`": [
       "I2-F16-M1"
