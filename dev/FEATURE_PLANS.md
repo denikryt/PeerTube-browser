@@ -1357,3 +1357,113 @@ Canonical per-issue plan block format inside a feature section:
   2. naming-surface regression checks for post-reorg command vocabulary
   3. negative/error-path coverage and migration-note consistency
 
+## F15-M1
+
+### Expected Behaviour
+- `reject feature --id <feature_id>` becomes a first-class workflow command that rejects the full feature subtree in one deterministic operation instead of requiring manual issue-by-issue rejection.
+- In local tracker state, the feature and all child issues transition to `Rejected`, while child task artifacts are removed from active planning/execution trackers so no stale pending work remains attached to a rejected feature.
+- Local cleanup removes child issue plan blocks, the parent feature plan section, overlap rows, and dependency-index rows when present, while staying stable when some artifacts were already removed earlier.
+- Remote behavior mirrors existing `reject issue` semantics: each mapped child issue and the mapped feature issue receives the rejection marker and is closed, while unmapped nodes remain local-only and are reported explicitly.
+
+### Dependencies
+- [dev/workflow_lib/confirm_commands.py](dev/workflow_lib/confirm_commands.py) — owns the current `reject issue` flow, feature confirmation cleanup path, and shared tracker cleanup helpers that `reject feature` should reuse instead of reimplementing.
+- [dev/FEATURE_PLANS.md](dev/FEATURE_PLANS.md) — feature rejection must remove child issue plan blocks and the parent feature section when they exist, while staying stable if they are already absent.
+- [dev/map/DEV_MAP.json](dev/map/DEV_MAP.json) — feature and child issue status transitions must mark the subtree as `Rejected` without leaving orphan issue nodes or stale active statuses.
+- [dev/ISSUE_OVERLAPS.json](dev/ISSUE_OVERLAPS.json) and [dev/ISSUE_DEP_INDEX.json](dev/ISSUE_DEP_INDEX.json) — feature-level reject cleanup must remove rows and lookups for the rejected feature subtree in the same write run as other tracker cleanup.
+- [.agents/workflows/reject.md](.agents/workflows/reject.md) and [.agents/protocols/task-execution-protocol.md](.agents/protocols/task-execution-protocol.md) — command workflow and lifecycle rules must be extended from issue-only reject semantics to a deterministic feature-level reject contract.
+- Existing `reject issue` GitHub behavior is the remote contract baseline: mapped issues receive a rejection marker and are closed, while unmapped issues stay local-only and report missing mapping metadata explicitly.
+
+### Decomposition
+1. Add a feature-level reject command surface and local cleanup contract:
+   - introduce `reject feature --id <feature_id>` with deterministic preview and write-mode payloads,
+   - mark the feature and all child issues as `Rejected`,
+   - remove child task artifacts plus issue/feature plan blocks, overlap rows, and dependency-index rows when present,
+   - keep repeated or partial-artifact runs no-op-safe instead of failing on already-clean state.
+2. Reuse existing reject/confirm primitives rather than fork new logic:
+   - build feature reject on top of the current `reject issue` GitHub semantics and `confirm feature` cleanup helpers,
+   - keep cleanup reporting aligned with existing reject/confirm payload shapes so downstream workflow output stays predictable,
+   - preserve materialization-aware behavior for mapped versus unmapped child issues.
+3. Lock the new behavior with docs and regression coverage:
+   - add preview/write/no-op/repeat tests for feature reject,
+   - document how feature rejection differs from feature confirmation while reusing the same cleanup surfaces,
+   - keep runtime help and workflow docs aligned with the final command surface.
+
+### Issue/Task Decomposition Assessment
+- Feature scope is intentionally split into two issues because local subtree cleanup and remote GitHub rejection are tightly related but still separable implementation slices.
+- Minimal execution order:
+  1. add the feature-level reject contract and local subtree cleanup,
+  2. extend GitHub rejection flow and lock the combined behavior with docs/tests.
+- Expected split:
+  - `I1-F15-M1`: contract, parser/handler wiring, local cleanup, deterministic payloads
+  - `I2-F15-M1`: GitHub cascade, workflow/help updates, regression coverage
+
+### I1-F15-M1 - Add reject feature command and local subtree cleanup
+
+#### Expected Behaviour
+- Users can preview and apply `reject feature --id <feature_id>` through the workflow CLI with the same dry-run/write conventions used by the current confirm and reject commands.
+- Write mode marks the feature and every child issue as `Rejected`, removes feature-owned task artifacts from active trackers, and deletes child issue plus feature plan blocks when they exist.
+- The command remains deterministic on partially cleaned or repeat-run states by reporting which cleanup surfaces were found, removed, or already absent instead of failing late on missing artifacts.
+
+#### Dependencies
+- file: `dev/workflow_lib/confirm_commands.py` | reason: add a `reject feature` parser target and handler next to the existing issue-level reject and feature-level confirm flows.
+- function: `_handle_reject_issue` | reason: feature reject should mirror materialization-aware local status semantics instead of inventing a second rejection model.
+- function: `_handle_confirm_feature_done` | reason: feature reject should reuse the existing full-subtree cleanup shape for task artifacts, overlaps, dependency-index rows, and feature-plan section removal.
+- function: `_cleanup_feature_plan_issue_artifacts` | reason: child issue plan blocks must be removed deterministically when rejecting a feature subtree.
+- function: `_cleanup_feature_plan_feature_section` | reason: the parent `## <feature_id>` section must be removed when present and reported explicitly in preview/write payloads.
+- file: `dev/map/DEV_MAP.json` | reason: feature and child issue statuses must transition to `Rejected` while task artifacts are removed from active trackers.
+
+#### Decomposition
+1. Define the feature-level reject contract in the CLI and handler payload:
+   - add `reject feature --id <feature_id>` as a first-class parser target,
+   - define preview fields for affected child issues, task artifacts, feature-plan cleanup, overlaps cleanup, and dependency-index cleanup,
+   - keep `--write`, `--close-github`, and repeat-run behavior consistent with existing reject commands.
+2. Implement local subtree rejection and cleanup:
+   - mark the feature node and every child issue node as `Rejected` in write mode,
+   - remove task-list entries, overlap rows, and dependency-index rows for the full feature subtree through the shared cleanup helpers,
+   - remove child issue plan blocks and the parent feature section from `FEATURE_PLANS.md` when they exist.
+3. Keep artifact-missing and mixed-state behavior deterministic:
+   - do not fail when some tasks, issue blocks, or the feature section are already absent,
+   - report which cleanup surfaces were found, removed, or already clean,
+   - keep unmapped child issues valid in local-only mode until GitHub rejection is explicitly requested.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3-4 implementation tasks
+  1. parser/handler contract for `reject feature`
+  2. DEV_MAP status transition for feature and child issues
+  3. subtree cleanup wiring across task list, overlaps, dep-index, and plan artifacts
+  4. deterministic preview/no-op reporting
+
+### I2-F15-M1 - Add GitHub rejection cascade and regression coverage for reject feature
+
+#### Expected Behaviour
+- Feature-level reject applies the same rejection-marker and close flow already used by `reject issue` to the mapped feature issue and every mapped child issue in the subtree.
+- Mixed mapping states remain valid: mapped issues are rejected remotely, unmapped issues stay local-only, and the command returns explicit reporting instead of collapsing the whole run.
+- Workflow docs and regression tests make preview, write, no-op, and repeat behavior explicit so feature rejection becomes as predictable and auditable as feature confirmation.
+
+#### Dependencies
+- file: `dev/workflow_lib/confirm_commands.py` | reason: extend feature-level reject to reuse the same rejection-marker and close flow already implemented for mapped issues.
+- function: `_append_issue_rejection_marker` | reason: the feature issue and mapped child issues should receive the same deterministic rejection marker content as `reject issue`.
+- module: `dev.workflow_lib.github_adapter` | reason: feature reject must resolve repository context, edit issue bodies, and close mapped feature/child issues through the existing adapter layer.
+- file: `.agents/workflows/reject.md` | reason: workflow docs must stop describing reject as issue-only once feature-level reject is introduced.
+- file: `tests/workflow/test_feature_lifecycle.py` | reason: feature lifecycle coverage should include the new feature-level reject command surface and repeat-run semantics.
+- file: `tests/workflow/test_overlap_commands.py` | reason: cleanup regression tests already cover feature-level artifact removal patterns and are a natural home for reject-feature cleanup assertions.
+
+#### Decomposition
+1. Implement GitHub rejection cascade for the feature subtree:
+   - apply the same rejection-marker and close flow to the mapped feature issue and every mapped child issue,
+   - keep `--no-close-github` as a pure local mode,
+   - return deterministic reporting for fully mapped, partially mapped, and unmapped subtrees.
+2. Update workflow/help guidance for feature reject:
+   - document that `reject feature` rejects the local subtree and cleans local planning/tracker artifacts,
+   - clarify that GitHub behavior mirrors `reject issue` for each mapped issue in the subtree,
+   - keep docs explicit about local-only behavior when mappings are missing or remote closing is disabled.
+3. Add regression coverage for preview, write, and repeat behavior:
+   - cover preview mode with no file mutations,
+   - cover write mode over mixed mapped/unmapped child issues,
+   - cover repeat reject runs and already-absent artifacts so the command remains idempotent and auditable.
+
+#### Issue/Task Decomposition Assessment
+- Expected split: 3 implementation tasks
+  1. GitHub cascade integration for feature + child issues
+  2. workflow/help alignment for the new command
+  3. regression coverage for preview/write/repeat/mixed-mapping flows

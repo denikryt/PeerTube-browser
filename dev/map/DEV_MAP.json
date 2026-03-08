@@ -2766,6 +2766,37 @@
           ],
           "branch_name": "feature/F14-M1",
           "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F14-M1"
+        },
+        {
+          "id": "F15-M1",
+          "title": "Add reject feature command with full subtree cleanup and GitHub rejection flow",
+          "description": "Add `reject feature --id <feature_id>` so feature rejection mirrors feature confirmation cleanup: cascade through child issues and task artifacts, remove local feature and issue planning artifacts when present, clean dependency and overlap indexes, set feature and child issue statuses to `Rejected`, and apply the same GitHub rejection semantics already used by `reject issue`.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F15-M1",
+              "title": "Add reject feature command and local subtree cleanup",
+              "description": "Implement `reject feature` with deterministic preview/write behavior that marks the feature and child issues as `Rejected` while removing feature-owned task, plan, overlap, and dependency artifacts through one feature-level cleanup flow.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F15-M1",
+              "title": "Add GitHub rejection cascade and regression coverage for reject feature",
+              "description": "Extend feature rejection so mapped child issues and the mapped feature issue receive the same rejection-marker and close behavior as `reject issue`, then lock the new feature-level reject flow with workflow docs and regression coverage.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
         }
       ],
       "non_feature_items": [
