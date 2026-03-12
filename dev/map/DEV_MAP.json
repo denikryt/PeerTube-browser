@@ -8,7 +8,7 @@
     "Rejected",
     "Done"
   ],
-  "updated_at": "2026-03-08T05:03:25+02:00",
+  "updated_at": "2026-03-12T20:20:00+02:00",
   "task_count": 314,
   "milestones": [
     {
@@ -3087,6 +3087,46 @@
           ],
           "branch_name": "feature/F17-M1",
           "branch_url": "https://github.com/denikryt/PeerTube-browser/tree/feature/F17-M1"
+        },
+        {
+          "id": "F18-M1",
+          "title": "Redesign workflow planning, execution, and tracking around Feature/Issue/Task with stable IDs.",
+          "description": "Replace the old issue-as-decomposition model with Feature and Issue as always GitHub-tracked entities, Task as plan-only local decomposition in FEATURE_PLANS.md, stable local IDs independent from hierarchy moves, and a simplified Pending/Draft/Planned/Done lifecycle.",
+          "status": "Planned",
+          "track": "System/Test",
+          "gh_issue_number": null,
+          "gh_issue_url": null,
+          "issues": [
+            {
+              "id": "I1-F18-M1",
+              "title": "Define canonical entity model, statuses, and stable IDs",
+              "description": "Define the new canonical model for Feature, Issue, and Task; make Feature and Issue always GitHub-tracked; move Task to FEATURE_PLANS-only decomposition; replace the old Tasked state with Pending/Draft/Planned/Done; and switch to stable local IDs plus explicit feature_id/milestone_id fields.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I2-F18-M1",
+              "title": "Refactor planning, execution, and completion commands around the new model",
+              "description": "Rewrite plan/execute workflows so tasks are authored directly inside feature and issue plans, remove plan-tasks-for and execute-task from the target model, replace confirm with done [--remote], and keep execution rules coherent for feature and issue scopes only.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            },
+            {
+              "id": "I3-F18-M1",
+              "title": "Rewrite publish/materialize and tracker semantics for always-tracked features and issues",
+              "description": "Make features and issues explicitly GitHub-tracked before execution, keep tasks out of DEV_MAP runtime ownership, support safe sync-all-children only for already-materialized child issues, allow imported GitHub issues to move into a feature, and preserve stable IDs without migration history.",
+              "status": "Planned",
+              "gh_issue_number": null,
+              "gh_issue_url": null,
+              "tasks": []
+            }
+          ],
+          "branch_name": null,
+          "branch_url": null
         }
       ],
       "non_feature_items": [
