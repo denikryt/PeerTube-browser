@@ -2,64 +2,6 @@
   "schema_version": "1.1",
   "scope_type": "feature",
   "scope_id": "F10-M1",
-  "by_issue": {
-    "I1-F10-M1": {
-      "surface_keys": [
-        "file: `.agents/rules/feature-planning.md`",
-        "file: `dev/workflow_lib/cli.py`",
-        "file: `dev/workflow_lib/feature_commands.py`",
-        "file: `dev/workflow_lib/sync_commands.py`"
-      ]
-    },
-    "I2-F10-M1": {
-      "surface_keys": [
-        "file: `dev/map/dev_map.json`",
-        "file: `dev/workflow_lib/cli.py`",
-        "file: `dev/workflow_lib/feature_commands.py`",
-        "file: `dev/workflow_lib/sync_commands.py`"
-      ]
-    },
-    "I3-F10-M1": {
-      "surface_keys": [
-        "file: `.agents/rules/feature-planning.md`",
-        "file: `.agents/workflows/create-feature.md`",
-        "file: `.agents/workflows/materialize-feature.md`",
-        "file: `tests/workflow/test_core.py`",
-        "file: `tests/workflow/test_feature_lifecycle.py`"
-      ]
-    }
-  },
-  "by_surface": {
-    "file: `.agents/rules/feature-planning.md`": [
-      "I1-F10-M1",
-      "I3-F10-M1"
-    ],
-    "file: `.agents/workflows/create-feature.md`": [
-      "I3-F10-M1"
-    ],
-    "file: `.agents/workflows/materialize-feature.md`": [
-      "I3-F10-M1"
-    ],
-    "file: `dev/map/dev_map.json`": [
-      "I2-F10-M1"
-    ],
-    "file: `dev/workflow_lib/cli.py`": [
-      "I1-F10-M1",
-      "I2-F10-M1"
-    ],
-    "file: `dev/workflow_lib/feature_commands.py`": [
-      "I1-F10-M1",
-      "I2-F10-M1"
-    ],
-    "file: `dev/workflow_lib/sync_commands.py`": [
-      "I1-F10-M1",
-      "I2-F10-M1"
-    ],
-    "file: `tests/workflow/test_core.py`": [
-      "I3-F10-M1"
-    ],
-    "file: `tests/workflow/test_feature_lifecycle.py`": [
-      "I3-F10-M1"
-    ]
-  }
+  "by_issue": {},
+  "by_surface": {}
 }
