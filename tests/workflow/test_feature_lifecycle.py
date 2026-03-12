@@ -418,8 +418,8 @@ def test_create_issue_action_registers_local_issue_without_github(workflow, tmp_
     assert issue_node["gh_issue_url"] is None
 
 
-def test_materialize_feature_action_create_mode_is_dry_and_create_only(workflow, tmp_repo):
-    """Verifies that action-first materialize feature supports dry-run create-only behavior."""
+def test_publish_feature_action_is_dry_and_create_only(workflow, tmp_repo):
+    """Verifies that action-first publish feature supports dry-run create-only behavior."""
     dev_map = {
         "schema_version": "1.4",
         "updated_at": "2026-02-24T00:00:00+00:00",
@@ -451,14 +451,14 @@ def test_materialize_feature_action_create_mode_is_dry_and_create_only(workflow,
     }
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
 
-    res = workflow.run("materialize", "feature", "--id", "F9-M1", "--mode", "create", "--no-github")
-    assert res["command"] == "materialize.feature"
+    res = workflow.run("publish", "feature", "--id", "F9-M1", "--no-github")
+    assert res["command"] == "publish.feature"
     assert res["github_issue"]["action"] == "would-create"
     assert res["active_feature_branch"] == "feature/F9-M1"
 
 
-def test_materialize_issue_action_single_issue_maps_to_issue_scope(workflow, tmp_repo):
-    """Verifies that action-first materialize issue delegates single-issue scope correctly."""
+def test_publish_issue_action_single_issue_maps_to_issue_scope(workflow, tmp_repo):
+    """Verifies that action-first publish issue delegates single-issue scope correctly."""
     dev_map = {
         "schema_version": "1.4",
         "updated_at": "2026-02-24T00:00:00+00:00",
@@ -500,8 +500,110 @@ def test_materialize_issue_action_single_issue_maps_to_issue_scope(workflow, tmp
     }
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
 
-    res = workflow.run("materialize", "issue", "--id", "I1-F9-M1", "--mode", "create", "--no-github")
-    assert res["command"] == "materialize.issue"
+    res = workflow.run("publish", "issue", "--id", "I1-F9-M1", "--no-github")
+    assert res["command"] == "publish.issue"
     assert res["feature_id"] == "F9-M1"
     assert res["selected_issue_ids"] == ["I1-F9-M1"]
     assert res["issues_materialized_summary"]["would_create"] == 1
+
+
+def test_sync_issue_action_single_issue_is_update_only(workflow, tmp_repo):
+    """Verifies that sync issue exposes issue-scoped update-only dry-run behavior."""
+    dev_map = {
+        "schema_version": "1.4",
+        "updated_at": "2026-02-24T00:00:00+00:00",
+        "task_count": 0,
+        "statuses": ["Pending", "Draft", "Planned", "Done", "Approved", "Tasked"],
+        "milestones": [
+            {
+                "id": "M1",
+                "title": "Milestone 1",
+                "goal": "Smoke goal",
+                "features": [
+                    {
+                        "id": "F9-M1",
+                        "milestone_id": "M1",
+                        "title": "Smoke feature",
+                        "description": "Smoke feature description.",
+                        "status": "Planned",
+                        "track": "System/Test",
+                        "gh_issue_number": 99,
+                        "gh_issue_url": "https://github.com/owner/repo/issues/99",
+                        "issues": [
+                            {
+                                "id": "I1-F9-M1",
+                                "feature_id": "F9-M1",
+                                "milestone_id": "M1",
+                                "title": "Smoke issue",
+                                "description": "Smoke issue description.",
+                                "status": "Planned",
+                                "gh_issue_number": 101,
+                                "gh_issue_url": "https://github.com/owner/repo/issues/101",
+                            }
+                        ],
+                        "branch_name": None,
+                        "branch_url": None,
+                    }
+                ],
+                "standalone_issues": [],
+                "non_feature_items": [],
+            }
+        ],
+    }
+    (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
+
+    res = workflow.run("sync", "issue", "--id", "I1-F9-M1", "--no-github")
+    assert res["command"] == "sync.issue"
+    assert res["selector_mode"] == "issue-id"
+    assert res["target_issue_ids"] == ["I1-F9-M1"]
+    assert res["sync_results"][0]["action"] == "would-update"
+
+
+def test_sync_issue_unpublished_target_fails(workflow, tmp_repo):
+    """Verifies that sync issue rejects unpublished targets instead of creating them."""
+    dev_map = {
+        "schema_version": "1.4",
+        "updated_at": "2026-02-24T00:00:00+00:00",
+        "task_count": 0,
+        "statuses": ["Pending", "Draft", "Planned", "Done", "Approved", "Tasked"],
+        "milestones": [
+            {
+                "id": "M1",
+                "title": "Milestone 1",
+                "goal": "Smoke goal",
+                "features": [
+                    {
+                        "id": "F9-M1",
+                        "milestone_id": "M1",
+                        "title": "Smoke feature",
+                        "description": "Smoke feature description.",
+                        "status": "Planned",
+                        "track": "System/Test",
+                        "gh_issue_number": 99,
+                        "gh_issue_url": "https://github.com/owner/repo/issues/99",
+                        "issues": [
+                            {
+                                "id": "I1-F9-M1",
+                                "feature_id": "F9-M1",
+                                "milestone_id": "M1",
+                                "title": "Smoke issue",
+                                "description": "Smoke issue description.",
+                                "status": "Planned",
+                                "gh_issue_number": None,
+                                "gh_issue_url": None,
+                            }
+                        ],
+                        "branch_name": None,
+                        "branch_url": None,
+                    }
+                ],
+                "standalone_issues": [],
+                "non_feature_items": [],
+            }
+        ],
+    }
+    (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
+
+    with pytest.raises(pytest.fail.Exception) as excinfo:
+        workflow.run("sync", "issue", "--id", "I1-F9-M1", "--no-github")
+    assert "requires published issue targets" in str(excinfo.value)

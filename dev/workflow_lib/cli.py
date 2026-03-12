@@ -13,9 +13,9 @@ from .feature_commands import (
     register_create_router,
     register_execute_router,
     register_feature_router,
-    register_materialize_router,
     register_move_router,
     register_plan_router,
+    register_publish_router,
 )
 from .helpers.cli_format import CompactHelpFormatter
 from .sync_commands import register_sync_router
@@ -52,9 +52,9 @@ def build_parser() -> argparse.ArgumentParser:
     register_create_router(subparsers)
     register_execute_router(subparsers)
     register_feature_router(subparsers)
-    register_materialize_router(subparsers)
     register_move_router(subparsers)
     register_plan_router(subparsers)
+    register_publish_router(subparsers)
     register_sync_router(subparsers)
     register_task_router(subparsers)
     register_clean_router(subparsers)

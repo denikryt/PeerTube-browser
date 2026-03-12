@@ -15,7 +15,7 @@ Before implementing tracked work:
 
 1. `execute feature <id>` and `execute issue <id>` are the canonical tracked execution scopes.
 2. `Task` is a local decomposition unit inside the plan and does not require a separate tracked execution command.
-3. Execution is blocked until the target `Feature` or `Issue` has GitHub materialization metadata.
+3. Execution is blocked until the target `Feature` or `Issue` has GitHub publication metadata.
 4. Execution must respect issue overlap order where applicable.
 
 ## Completion model
@@ -26,9 +26,9 @@ Before implementing tracked work:
 4. `done feature <id> --cascade` is the explicit mode for marking child issues `Done` together with the feature; add `--remote` only when remote child issue closure is also intended.
 4. Remote close/sync must only happen when `--remote` is explicitly provided.
 
-## Materialization and branch policy
+## Publication and branch policy
 
 1. Canonical feature branch naming remains `feature/<feature_id>`.
-2. Feature materialization owns the feature-level remote issue and branch linkage.
-3. Issue materialization owns child or standalone issue publication.
-4. Child sync may update already materialized issue state, but task decomposition must not create GitHub issues implicitly.
+2. Feature publication owns the feature-level remote issue and branch linkage.
+3. Issue publication owns child or standalone issue publication.
+4. Child sync may update already published issue state, but task decomposition must not create GitHub issues implicitly.

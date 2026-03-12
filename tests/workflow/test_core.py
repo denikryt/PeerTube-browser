@@ -5,7 +5,7 @@ def test_help(workflow):
     output = workflow.run("--help", parse_json=False)
     assert "usage:" in output.lower()
     assert "positional arguments:" in output.lower()
-    assert "{create,execute,feature,materialize,move,plan,sync,task,clean,done,reject,validate}" in output.lower()
+    assert "{create,execute,feature,move,plan,publish,sync,task,clean,done,reject,validate}" in output.lower()
 
 def test_feature_help(workflow):
     """Verifies that feature --help exposes only planning and execution-plan commands."""
@@ -19,10 +19,10 @@ def test_create_help(workflow):
     assert "usage: workflow create" in output.lower()
     assert "{feature,issue}" in output.lower()
 
-def test_materialize_help(workflow):
-    """Verifies that action-first materialize help is discoverable from top-level help."""
-    output = workflow.run("materialize", "--help", parse_json=False)
-    assert "usage: workflow materialize" in output.lower()
+def test_publish_help(workflow):
+    """Verifies that action-first publish help is discoverable from top-level help."""
+    output = workflow.run("publish", "--help", parse_json=False)
+    assert "usage: workflow publish" in output.lower()
     assert "{feature,issue}" in output.lower()
 
 def test_invalid_command(workflow):

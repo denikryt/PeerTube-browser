@@ -12,6 +12,18 @@ from typing import Any
 
 from .context import WorkflowContext
 from .errors import WorkflowCommandError
+from .feature_commands import (
+    _build_feature_registration_issue_body,
+    _build_issue_url,
+    _build_materialized_issue_body,
+    _find_feature,
+    _find_issue,
+    _find_standalone_issue,
+    _normalize_repository_url,
+    _optional_text,
+    _reconcile_feature_sub_issues,
+    _resolve_github_milestone_title,
+)
 from .github_adapter import (
     ensure_github_milestone_exists,
     gh_issue_edit,
@@ -41,6 +53,11 @@ def register_sync_router(subparsers: argparse._SubParsersAction[argparse.Argumen
         "--all",
         action="store_true",
         help="Target all features across milestones.",
+    )
+    feature_parser.add_argument(
+        "--all-children",
+        action="store_true",
+        help="Also sync all already published child issues for each selected feature.",
     )
     feature_parser.add_argument("--write", action="store_true", help="Apply remote sync side effects.")
     feature_parser.add_argument(
@@ -76,6 +93,50 @@ def register_sync_router(subparsers: argparse._SubParsersAction[argparse.Argumen
     )
     feature_parser.set_defaults(handler=_handle_sync_feature)
 
+    issue_parser = sync_subparsers.add_parser(
+        "issue",
+        help="Sync one issue or one feature-owned child-issue set without creating missing mappings.",
+    )
+    issue_target_group = issue_parser.add_mutually_exclusive_group(required=True)
+    issue_target_group.add_argument("--id", help="Target one issue ID.")
+    issue_target_group.add_argument(
+        "--children-of",
+        help="Target all already published child issues of one feature ID.",
+    )
+    issue_parser.add_argument("--write", action="store_true", help="Apply remote sync side effects.")
+    issue_parser.add_argument(
+        "--github",
+        dest="github",
+        action="store_true",
+        default=True,
+        help="Enable GitHub sync calls.",
+    )
+    issue_parser.add_argument(
+        "--no-github",
+        dest="github",
+        action="store_false",
+        help="Skip GitHub sync calls.",
+    )
+    issue_parser.add_argument(
+        "--pause-seconds",
+        type=float,
+        default=1.0,
+        help="Pause between issue sync requests in write+github mode.",
+    )
+    issue_parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=4,
+        help="Max retry attempts for transient GitHub request failures.",
+    )
+    issue_parser.add_argument(
+        "--request-timeout",
+        type=float,
+        default=20.0,
+        help="Per-request GitHub CLI timeout in seconds for write mode.",
+    )
+    issue_parser.set_defaults(handler=_handle_sync_issue)
+
 
 def _handle_sync_feature(args: Namespace, context: WorkflowContext) -> int:
     """Resolve sync targets and execute feature-only remote sync contract."""
@@ -92,6 +153,7 @@ def _handle_sync_feature(args: Namespace, context: WorkflowContext) -> int:
         context=context,
         target_features=target_features,
         request_policy=request_policy,
+        include_all_children=bool(getattr(args, "all_children", False)),
         github_enabled=bool(args.github),
         write=bool(args.write),
     )
@@ -113,8 +175,45 @@ def _handle_sync_feature(args: Namespace, context: WorkflowContext) -> int:
             "selector_mode": selector_mode,
             "sync_summary": sync_result["summary"],
             "sync_results": sync_result["results"],
+            "sync_child_issues": bool(getattr(args, "all_children", False)),
             "target_count": len(target_feature_ids),
             "target_feature_ids": target_feature_ids,
+            "write": bool(args.write),
+        }
+    )
+    return 0
+
+
+def _handle_sync_issue(args: Namespace, context: WorkflowContext) -> int:
+    """Resolve sync issue targets and run update-only issue synchronization."""
+    dev_map = _load_json(context.dev_map_path)
+    request_policy = _resolve_sync_request_policy(args)
+    targets = _resolve_sync_issue_targets(
+        dev_map=dev_map,
+        issue_id=_optional_text(getattr(args, "id", None)),
+        children_of=_optional_text(getattr(args, "children_of", None)),
+    )
+    sync_result = _run_sync_issue_targets(
+        context=context,
+        targets=targets,
+        request_policy=request_policy,
+        github_enabled=bool(args.github),
+        write=bool(args.write),
+    )
+    emit_json(
+        {
+            "action": "synced-issue" if bool(args.write) else "would-sync-issue",
+            "command": "sync.issue",
+            "github_enabled": bool(args.github),
+            "request_policy": request_policy,
+            "selector": {
+                "issue_id": _normalize_id(str(getattr(args, "id", "") or "").strip()) or None,
+                "children_of": _normalize_id(str(getattr(args, "children_of", "") or "").strip()) or None,
+            },
+            "selector_mode": targets["selector_mode"],
+            "sync_summary": sync_result["summary"],
+            "sync_results": sync_result["results"],
+            "target_issue_ids": targets["issue_ids"],
             "write": bool(args.write),
         }
     )
@@ -245,10 +344,12 @@ def _run_sync_feature_targets(
     context: WorkflowContext,
     target_features: list[dict[str, Any]],
     request_policy: dict[str, float | int],
+    include_all_children: bool,
     github_enabled: bool,
     write: bool,
 ) -> dict[str, Any]:
     """Execute per-feature sync flow and return deterministic aggregate summary."""
+    _ensure_sync_feature_targets_are_published(target_features, include_all_children=include_all_children)
     results: list[dict[str, Any]] = []
     summary = {
         "attempted": 0,
@@ -279,6 +380,22 @@ def _run_sync_feature_targets(
             milestone_cache=milestone_cache,
         )
         results.append(result)
+        if include_all_children:
+            child_result = _run_sync_issue_targets(
+                context=context,
+                targets={
+                    "feature_node": feature_node,
+                    "feature_id": feature_id,
+                    "issue_ids": [str(issue.get("id", "")).strip() for issue in feature_node.get("issues", []) if isinstance(issue, dict)],
+                    "issue_nodes": [issue for issue in feature_node.get("issues", []) if isinstance(issue, dict)],
+                    "milestone_node": milestone_node,
+                    "selector_mode": "children-of",
+                },
+                request_policy=request_policy,
+                github_enabled=github_enabled,
+                write=write,
+            )
+            result["child_issue_sync"] = child_result
         summary["attempted"] += 1
         if result["action"] in {"updated", "would-update"}:
             summary["updated"] += 1
@@ -387,6 +504,272 @@ def _sync_one_feature_target(
         "feature_id": feature_id,
         "gh_issue_number": issue_number,
         "gh_issue_url": issue_url,
+    }
+
+
+def _ensure_sync_feature_targets_are_published(
+    target_features: list[dict[str, Any]],
+    *,
+    include_all_children: bool,
+) -> None:
+    """Reject sync feature runs that target unpublished feature or child issue mappings."""
+    missing_feature_ids: list[str] = []
+    missing_child_issue_ids: list[str] = []
+    for target in target_features:
+        feature_node = target["feature"]
+        feature_id = target["feature_id"]
+        issue_number = _coerce_issue_number(feature_node.get("gh_issue_number"))
+        issue_url = str(feature_node.get("gh_issue_url", "")).strip()
+        if issue_number is None or not issue_url:
+            missing_feature_ids.append(feature_id)
+        if include_all_children:
+            for issue in feature_node.get("issues", []):
+                if not isinstance(issue, dict):
+                    continue
+                child_issue_id = str(issue.get("id", "")).strip()
+                child_issue_number = _coerce_issue_number(issue.get("gh_issue_number"))
+                child_issue_url = str(issue.get("gh_issue_url", "")).strip()
+                if child_issue_number is None or not child_issue_url:
+                    missing_child_issue_ids.append(child_issue_id)
+    if missing_feature_ids:
+        raise WorkflowCommandError(
+            "sync feature requires published feature targets; missing mappings for: "
+            + ", ".join(missing_feature_ids),
+            exit_code=4,
+        )
+    if missing_child_issue_ids:
+        raise WorkflowCommandError(
+            "sync feature --all-children requires published child issue targets; missing mappings for: "
+            + ", ".join(missing_child_issue_ids),
+            exit_code=4,
+        )
+
+
+def _resolve_sync_issue_targets(
+    *,
+    dev_map: dict[str, Any],
+    issue_id: str | None,
+    children_of: str | None,
+) -> dict[str, Any]:
+    """Resolve deterministic issue target set for update-only sync commands."""
+    if issue_id is not None:
+        feature_match = _find_issue(dev_map, issue_id)
+        if feature_match is not None:
+            return {
+                "feature_id": str(feature_match["feature_id"]).strip(),
+                "feature_node": feature_match["feature"],
+                "issue_ids": [issue_id],
+                "issue_nodes": [feature_match["issue"]],
+                "milestone_node": feature_match["milestone"],
+                "selector_mode": "issue-id",
+            }
+        standalone_match = _find_standalone_issue(dev_map, issue_id)
+        if standalone_match is None:
+            raise WorkflowCommandError(f"Issue {issue_id} not found in DEV_MAP.", exit_code=4)
+        return {
+            "feature_id": None,
+            "feature_node": None,
+            "issue_ids": [issue_id],
+            "issue_nodes": [standalone_match["issue"]],
+            "milestone_node": standalone_match["milestone"],
+            "selector_mode": "issue-id",
+        }
+
+    if children_of is None:
+        raise WorkflowCommandError(
+            "sync issue requires either --id <issue_id> or --children-of <feature_id>.",
+            exit_code=4,
+        )
+    feature_id, _ = _parse_feature_id(children_of)
+    feature_ref = _find_feature(dev_map, feature_id)
+    if feature_ref is None:
+        raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
+    feature_node = feature_ref["feature"]
+    issue_nodes = [issue for issue in feature_node.get("issues", []) if isinstance(issue, dict)]
+    if not issue_nodes:
+        raise WorkflowCommandError(
+            f"Feature {feature_id} has no existing child issue nodes to sync.",
+            exit_code=4,
+        )
+    return {
+        "feature_id": feature_id,
+        "feature_node": feature_node,
+        "issue_ids": [str(issue.get("id", "")).strip() for issue in issue_nodes],
+        "issue_nodes": issue_nodes,
+        "milestone_node": feature_ref["milestone"],
+        "selector_mode": "children-of",
+    }
+
+
+def _run_sync_issue_targets(
+    *,
+    context: WorkflowContext,
+    targets: dict[str, Any],
+    request_policy: dict[str, float | int],
+    github_enabled: bool,
+    write: bool,
+) -> dict[str, Any]:
+    """Execute issue update-only sync flow over one deterministic target set."""
+    issue_nodes = targets["issue_nodes"]
+    feature_node = targets["feature_node"]
+    feature_id = targets["feature_id"]
+    milestone_node = targets["milestone_node"]
+    milestone_id = _normalize_id(str(milestone_node.get("id", "")))
+    milestone_title = _resolve_github_milestone_title(milestone_node, milestone_id)
+    _ensure_sync_issue_targets_are_published(issue_nodes, feature_node=feature_node, feature_id=feature_id)
+
+    results: list[dict[str, Any]] = []
+    repo_name_with_owner: str | None = None
+    repo_url: str | None = None
+    if write and github_enabled:
+        github_repo = resolve_github_repository(context.root_dir)
+        repo_name_with_owner = github_repo["name_with_owner"]
+        repo_url = _normalize_repository_url(str(github_repo.get("url", "")))
+        ensure_github_milestone_exists(
+            repo_name_with_owner=repo_name_with_owner,
+            milestone_title=milestone_title,
+            milestone_id=milestone_id,
+            max_retries=int(request_policy["max_retries"]),
+            retry_pause_seconds=float(request_policy["pause_seconds"]),
+            timeout_seconds=float(request_policy["request_timeout"]),
+        )
+
+    for index, issue_node in enumerate(issue_nodes):
+        result = _sync_one_issue_target(
+            issue_node=issue_node,
+            milestone_title=milestone_title,
+            repo_name_with_owner=repo_name_with_owner,
+            repo_url=repo_url,
+            request_policy=request_policy,
+            github_enabled=github_enabled,
+            write=write,
+        )
+        results.append(result)
+        if (
+            write
+            and github_enabled
+            and float(request_policy["pause_seconds"]) > 0
+            and index < len(issue_nodes) - 1
+        ):
+            time.sleep(float(request_policy["pause_seconds"]))
+
+    sub_issue_sync: dict[str, Any] | None = None
+    if feature_node is not None and repo_name_with_owner is not None and write and github_enabled:
+        sub_issue_sync = _reconcile_feature_sub_issues(
+            feature_node=feature_node,
+            issue_nodes=issue_nodes,
+            repo_name_with_owner=repo_name_with_owner,
+            max_retries=int(request_policy["max_retries"]),
+            retry_pause_seconds=float(request_policy["pause_seconds"]),
+            request_timeout=float(request_policy["request_timeout"]),
+        )
+
+    summary = {
+        "attempted": len(issue_nodes),
+        "updated": len(results),
+        "errors": [result["error"] for result in results if "error" in result],
+    }
+    payload = {"results": results, "summary": summary}
+    if sub_issue_sync is not None:
+        payload["sub_issue_sync"] = sub_issue_sync
+    return payload
+
+
+def _ensure_sync_issue_targets_are_published(
+    issue_nodes: list[dict[str, Any]],
+    *,
+    feature_node: dict[str, Any] | None,
+    feature_id: str | None,
+) -> None:
+    """Reject sync issue runs that target unpublished issue mappings."""
+    missing_issue_ids: list[str] = []
+    for issue_node in issue_nodes:
+        issue_id = str(issue_node.get("id", "")).strip()
+        issue_number = _coerce_issue_number(issue_node.get("gh_issue_number"))
+        issue_url = str(issue_node.get("gh_issue_url", "")).strip()
+        if issue_number is None or not issue_url:
+            missing_issue_ids.append(issue_id)
+    if missing_issue_ids:
+        raise WorkflowCommandError(
+            "sync issue requires published issue targets; missing mappings for: "
+            + ", ".join(missing_issue_ids),
+            exit_code=4,
+        )
+    if feature_node is not None:
+        parent_issue_number = _coerce_issue_number(feature_node.get("gh_issue_number"))
+        parent_issue_url = str(feature_node.get("gh_issue_url", "")).strip()
+        if parent_issue_number is None or not parent_issue_url:
+            raise WorkflowCommandError(
+                f"sync issue requires published parent feature issue for {feature_id}.",
+                exit_code=4,
+            )
+
+
+def _sync_one_issue_target(
+    *,
+    issue_node: dict[str, Any],
+    milestone_title: str,
+    repo_name_with_owner: str | None,
+    repo_url: str | None,
+    request_policy: dict[str, float | int],
+    github_enabled: bool,
+    write: bool,
+) -> dict[str, Any]:
+    """Sync one already published issue title/body from local issue metadata."""
+    issue_id = str(issue_node.get("id", "")).strip()
+    issue_number = _coerce_issue_number(issue_node.get("gh_issue_number"))
+    issue_url = str(issue_node.get("gh_issue_url", "")).strip()
+    if not write:
+        return {
+            "action": "would-update",
+            "issue_id": issue_id,
+            "gh_issue_number": issue_number,
+            "gh_issue_url": issue_url,
+        }
+    if not github_enabled:
+        return {
+            "action": "skipped",
+            "issue_id": issue_id,
+            "gh_issue_number": issue_number,
+            "gh_issue_url": issue_url,
+            "reason": "github-disabled",
+        }
+    if repo_name_with_owner is None:
+        return {
+            "action": "skipped",
+            "issue_id": issue_id,
+            "gh_issue_number": issue_number,
+            "gh_issue_url": issue_url,
+            "reason": "repo-resolution-missing",
+        }
+    title = str(issue_node.get("title", "")).strip() or issue_id
+    body = _build_materialized_issue_body(issue_node)
+    try:
+        gh_issue_edit(
+            repo_name_with_owner=repo_name_with_owner,
+            issue_number=int(issue_number),
+            title=title,
+            body=body,
+            milestone_title=milestone_title,
+            max_retries=int(request_policy["max_retries"]),
+            retry_pause_seconds=float(request_policy["pause_seconds"]),
+            timeout_seconds=float(request_policy["request_timeout"]),
+        )
+    except WorkflowCommandError as error:
+        return {
+            "action": "failed",
+            "error": f"issue {issue_id}: {error}",
+            "issue_id": issue_id,
+            "gh_issue_number": issue_number,
+            "gh_issue_url": issue_url,
+        }
+    if repo_url:
+        issue_node["gh_issue_url"] = _build_issue_url(repo_url, int(issue_number))
+    return {
+        "action": "updated",
+        "issue_id": issue_id,
+        "gh_issue_number": issue_number,
+        "gh_issue_url": issue_node.get("gh_issue_url"),
     }
 
 

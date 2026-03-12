@@ -136,7 +136,7 @@ def ensure_github_milestone_exists(
             return
     raise WorkflowCommandError(
         f"GitHub milestone title {milestone_title!r} (from {milestone_id}) was not found for {repo_name_with_owner}; "
-        "create/select it before materialize.",
+        "create/select it before publish or sync.",
         exit_code=4,
     )
 

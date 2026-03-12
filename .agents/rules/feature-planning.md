@@ -28,12 +28,13 @@ description: Feature and issue planning policy
 5. Task decomposition must be authored directly in `dev/FEATURE_PLANS.md`, not as runtime-owned task nodes in `dev/map/DEV_MAP.json`.
 6. Dependencies and overlap records must still be justified by real shared code surfaces or dependency chains.
 
-## Materialization and execution policy
+## Publication and execution policy
 
 1. `Feature` and `Issue` must be GitHub-tracked before tracked execution starts.
-2. `publish/materialize feature` creates or syncs only the feature-level remote issue.
-3. Child issue creation or sync happens only from explicit issue materialization scope.
-4. `sync all children` may update already materialized child issues, but it must not silently create new child issues from local task decomposition.
+2. `publish feature` creates only the feature-level remote issue.
+3. `publish issue` creates only already existing issue nodes; it must not create remote issues from local task decomposition.
+4. `sync feature` and `sync issue` are update-only operations and must fail for unpublished targets.
+5. `sync all children` may update already published child issues, but it must not silently create new child issues from local task decomposition.
 
 ## Tracker policy
 

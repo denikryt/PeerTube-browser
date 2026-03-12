@@ -1,21 +1,13 @@
 import pytest
 import json
 
-def test_plan_tasks_success_chain(workflow, tmp_repo):
-    """
-    Tests the complex task planning flow:
-    1. Setup milestone and feature.
-    2. Add an issue to DEV_MAP but keep it 'Pending'.
-    3. Verify that 'plan tasks' fails due to 'Pending' status.
-    4. Move issue to 'Planned' via FEATURE_PLANS.md + empty delta.
-    5. Run full 'plan tasks' with delta and verify 'Tasked' status.
-    """
-    # 1. Setup initial state
+def test_plan_issue_writes_canonical_issue_block(workflow, tmp_repo):
+    """Verifies that plan issue writes one canonical issue block into the owning feature section."""
     dev_map = {
         "version": "1.0",
         "updated_at": "2026-02-24T00:00:00+00:00",
         "task_count": 0,
-        "statuses": ["Pending", "Planned", "Tasked", "Done", "Approved"],
+        "statuses": ["Pending", "Draft", "Planned", "Done"],
         "milestones": [
             {
                 "id": "M1",
@@ -42,92 +34,32 @@ def test_plan_tasks_success_chain(workflow, tmp_repo):
             }
         ]
     }
-    dev_map_path = tmp_repo / "dev/map/DEV_MAP.json"
-    dev_map_path.write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
-
-    # delta.json
-    delta = {
-        "issues": [
-            {
-                "id": "I1-F9-M1",
-                "title": "Smoke issue",
-                "tasks": [{"id": "$t1", "title": "Smoke task", "summary": "Smoke summary"}]
-            }
-        ],
-        "task_list_entries": [
-            {
-                "id": "$t1",
-                "title": "Smoke task",
-                "problem": "Deterministic smoke.",
-                "solution_option": "Execute flow.",
-                "concrete_steps": ["Run command."]
-            }
-        ]
-    }
-    delta_path = tmp_repo / "dev/sync_delta.json"
-    delta_path.write_text(json.dumps(delta, indent=2), encoding="utf-8")
-
-    # 2. Verify failure on 'Pending' status
-    # We need --allocate-task-ids because delta.json uses tokens ($t1)
-    with pytest.raises(pytest.fail.Exception) as excinfo:
-        workflow.run("plan", "tasks", "for", "feature", "--id", "F9-M1", "--delta-file", str(delta_path), "--write", "--allocate-task-ids")
-    assert "cannot run for issue I1-F9-M1 with status 'Pending'" in str(excinfo.value)
-
-    # 3. Setup FEATURE_PLANS.md to promote to 'Planned'
-    plans_path = tmp_repo / "dev/FEATURE_PLANS.md"
-    plans_content = """## F9-M1
-### Expected Behaviour
-- Smoke feature should expose one planned issue with deterministic task-decomposition intent.
-
-### I1-F9-M1 - Smoke issue
-#### Expected Behaviour
-- Smoke issue should resolve into one executable workflow task without changing unrelated planning state.
-#### Dependencies
-- file: dev/workflow_lib/feature_commands.py | reason: smoke workflow entrypoint
-#### Decomposition
-1. smoke
-#### Issue/Task Decomposition Assessment
-- task_count = 0
-"""
-    plans_path.write_text(plans_content, encoding="utf-8")
-
-    # 4. Promote to 'Planned' using empty delta
-    empty_delta_path = tmp_repo / "dev/empty_delta.json"
-    empty_delta_path.write_text("{}", encoding="utf-8")
-    res = workflow.run(
-        "plan",
-        "tasks",
-        "for",
-        "feature",
-        "--id",
-        "F9-M1",
-        "--delta-file",
-        str(empty_delta_path),
-        "--write",
+    (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map, indent=2), encoding="utf-8")
+    (tmp_repo / "dev/FEATURE_PLANS.md").write_text(
+        "## F9-M1\n"
+        "### Expected Behaviour\n"
+        "- Smoke feature should expose one canonical issue plan block.\n",
+        encoding="utf-8",
     )
-    assert "I1-F9-M1" in res["issue_planning_status_reconciliation"]["reconciled_issue_ids"]
 
-    # Verify status in DEV_MAP
-    updated_map = json.loads(dev_map_path.read_text(encoding="utf-8"))
-    assert updated_map["milestones"][0]["features"][0]["issues"][0]["status"] == "Planned"
+    res = workflow.run("plan", "issue", "--id", "I1-F9-M1", "--write")
+    assert res["command"] == "feature.plan-issue"
+    assert res["action"] in {"created", "updated"}
+    assert res["plan_block_updated"] is True
 
-    # 5. Run full 'plan tasks' and verify 'Tasked'
-    res = workflow.run("plan", "tasks", "for", "feature", "--id", "F9-M1", "--delta-file", str(delta_path), "--write", "--allocate-task-ids")
-    assert res["action"] == "planned-tasks"
-    assert res["task_count_after"] == 1
-    
-    # Verify final status
-    updated_map = json.loads(dev_map_path.read_text(encoding="utf-8"))
-    assert updated_map["milestones"][0]["features"][0]["issues"][0]["status"] == "Tasked"
+    feature_plans = (tmp_repo / "dev/FEATURE_PLANS.md").read_text(encoding="utf-8")
+    assert "### I1-F9-M1 - Smoke issue" in feature_plans
+    assert "#### Dependencies" in feature_plans
+    assert "#### Decomposition" in feature_plans
 
-def test_batch_issue_planning(workflow, tmp_repo):
-    """Verifies that multiple issues can be planned in a single batch command."""
-    # Setup F1-M1 with two issues
+
+def test_issue_planning_can_be_done_sequentially_for_multiple_issues(workflow, tmp_repo):
+    """Verifies that multiple issues can be planned sequentially under one feature section."""
     dev_map = {
         "version": "1.0",
         "updated_at": "2026-02-24T00:00:00+00:00",
         "task_count": 0,
-        "statuses": ["Planned", "Tasked", "Done"],
+        "statuses": ["Pending", "Draft", "Planned", "Done"],
         "milestones": [
             {
                 "id": "M1", "title": "M1", "status": "Planned",
@@ -135,8 +67,8 @@ def test_batch_issue_planning(workflow, tmp_repo):
                     {
                         "id": "F1-M1", "title": "F1", "status": "Planned", "track": "Test",
                         "issues": [
-                            {"id": "I1-F1-M1", "title": "I1", "status": "Planned", "tasks": []},
-                            {"id": "I2-F1-M1", "title": "I2", "status": "Planned", "tasks": []}
+                            {"id": "I1-F1-M1", "title": "I1", "status": "Pending", "tasks": []},
+                            {"id": "I2-F1-M1", "title": "I2", "status": "Pending", "tasks": []}
                         ]
                     }
                 ]
@@ -144,69 +76,42 @@ def test_batch_issue_planning(workflow, tmp_repo):
         ]
     }
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map), encoding="utf-8")
-    
-    # Needs FEATURE_PLANS.md section with issue blocks for status reconciliation
-    plans = (
+    (tmp_repo / "dev/FEATURE_PLANS.md").write_text(
         "## F1-M1\n"
         "### Expected Behaviour\n"
-        "- Both issues should remain valid planning inputs for batch task decomposition.\n\n"
-        "### I1-F1-M1 - I1\n"
-        "#### Expected Behaviour\n- Issue one should map to one concrete task.\n"
-        "#### Dependencies\n- file: dev/workflow_lib/feature_commands.py | reason: batch issue one\n"
-        "#### Decomposition\n- T1\n"
-        "#### Issue/Task Decomposition Assessment\n- OK\n\n"
-        "### I2-F1-M1 - I2\n"
-        "#### Expected Behaviour\n- Issue two should map to one concrete task.\n"
-        "#### Dependencies\n- file: dev/workflow_lib/tracker_store.py | reason: batch issue two\n"
-        "#### Decomposition\n- T2\n"
-        "#### Issue/Task Decomposition Assessment\n- OK\n"
+        "- Both issues should remain valid planning inputs for sequential issue planning.\n",
+        encoding="utf-8",
     )
-    (tmp_repo / "dev/FEATURE_PLANS.md").write_text(plans, encoding="utf-8")
-    
-    delta = {
-        "issues": [
-            {"id": "I1-F1-M1", "tasks": [{"id": "$t1", "title": "T1", "summary": "S"}]},
-            {"id": "I2-F1-M1", "tasks": [{"id": "$t2", "title": "T2", "summary": "S"}]}
-        ],
-        "task_list_entries": [
-            {"id": "$t1", "title": "T1", "problem": "P", "solution_option": "S", "concrete_steps": ["C"]},
-            {"id": "$t2", "title": "T2", "problem": "P", "solution_option": "S", "concrete_steps": ["C"]}
-        ]
-    }
-    delta_path = tmp_repo / "dev/batch_delta.json"
-    delta_path.write_text(json.dumps(delta), encoding="utf-8")
-    
-    res = workflow.run("plan", "tasks", "for", "issues", "--issue-id", "I1-F1-M1", "--issue-id", "I2-F1-M1", "--delta-file", str(delta_path), "--write", "--allocate-task-ids")
-    assert res["dev_map_tasks_upserted"] == 2
-    
-    updated_map = json.loads((tmp_repo / "dev/map/DEV_MAP.json").read_text())
-    issues = updated_map["milestones"][0]["features"][0]["issues"]
-    # Check status by looking up in the list
-    status_by_id = {i["id"]: i["status"] for i in issues}
-    assert status_by_id["I1-F1-M1"] == "Tasked", f"I1-F1-M1 status is {status_by_id.get('I1-F1-M1')}. Full issues: {issues}"
-    assert status_by_id["I2-F1-M1"] == "Tasked", f"I2-F1-M1 status is {status_by_id.get('I2-F1-M1')}. Full issues: {issues}"
 
-def test_materialize_missing_milestone_title_fails(workflow, tmp_repo):
-    """Verifies that materialization fails if the milestone title is empty in DEV_MAP."""
+    res1 = workflow.run("plan", "issue", "--id", "I1-F1-M1", "--write")
+    res2 = workflow.run("plan", "issue", "--id", "I2-F1-M1", "--write")
+    assert res1["plan_block_updated"] is True
+    assert res2["plan_block_updated"] is True
+
+    feature_plans = (tmp_repo / "dev/FEATURE_PLANS.md").read_text(encoding="utf-8")
+    assert "### I1-F1-M1 - I1" in feature_plans
+    assert "### I2-F1-M1 - I2" in feature_plans
+
+def test_sync_feature_missing_milestone_title_fails(workflow, tmp_repo):
+    """Verifies that sync fails if the milestone title is empty in DEV_MAP."""
     dev_map = {
         "version": "1.0", "updated_at": "2026-02-24T0", "task_count": 0, "statuses": ["Planned"],
-        "milestones": [{"id": "M1", "title": "", "status": "Planned", "features": [{"id": "F1-M1", "title": "F1", "status": "Planned"}]}]
+        "milestones": [{"id": "M1", "title": "", "status": "Planned", "features": [{"id": "F1-M1", "title": "F1", "status": "Planned", "gh_issue_number": 5, "gh_issue_url": "https://github.com/owner/repo/issues/5"}]}]
     }
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map), encoding="utf-8")
     
     with pytest.raises(pytest.fail.Exception) as excinfo:
-        workflow.run("materialize", "feature", "--id", "F1-M1", "--mode", "sync")
+        workflow.run("sync", "feature", "--feature-id", "F1-M1")
     assert "has empty title in DEV_MAP" in str(excinfo.value)
 
-def test_issue_mapping_skip_logic(workflow, tmp_repo):
-    """Verifies that already mapped issues (with gh_issue_number) are skipped during creation."""
+def test_publish_issue_already_mapped_target_fails(workflow, tmp_repo):
+    """Verifies that publish issue rejects already mapped targets instead of skipping them."""
     dev_map = {
         "version": "1.0", "updated_at": "2026-02-24T0", "task_count": 0, "statuses": ["Planned", "Tasked", "Approved"],
         "milestones": [{
             "id": "M1", "title": "M1", "status": "Planned",
             "features": [{
                 "id": "F1-M1", "title": "F1", "status": "Approved", "issues": [
-                    # Set status to 'Tasked' to satisfy materialize requirements
                     {
                         "id": "I1-F1-M1", "title": "Mapped", "status": "Tasked", 
                         "gh_issue_number": 123, "gh_issue_url": "https://github.com/owner/repo/issues/123",
@@ -218,11 +123,9 @@ def test_issue_mapping_skip_logic(workflow, tmp_repo):
     }
     (tmp_repo / "dev/map/DEV_MAP.json").write_text(json.dumps(dev_map), encoding="utf-8")
     
-    # Materialize issue create mode with no-github should skip the mapped issue
-    # Since we use --no-github, it's a dry-run and reports 'would_skip'
-    res = workflow.run("materialize", "issue", "--feature-id", "F1-M1", "--mode", "create", "--no-github")
-    assert res["issues_materialized_summary"]["created"] == 0
-    assert res["issues_materialized_summary"]["would_skip"] == 1
+    with pytest.raises(pytest.fail.Exception) as excinfo:
+        workflow.run("publish", "issue", "--children-of", "F1-M1", "--no-github")
+    assert "already mapped issue ids" in str(excinfo.value).lower()
 
 def test_approved_gate_audit():
     """Checks that 'Approved' gate is enforced where expected by auditing source."""

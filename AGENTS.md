@@ -20,7 +20,8 @@ When you receive text matching these patterns, it IS a workflow command:
 - `execute features {ID[, ID...]}` → `.agents/workflows/execute-features.md`
 - `execute issue {ID}` → `.agents/workflows/execute-issue.md`
 - `execute issues {ID[, ID...]}` → `.agents/workflows/execute-issues.md`
-- `materialize feature {ID}` → `.agents/workflows/materialize-feature.md`
+- `publish feature {ID}` → `.agents/workflows/publish-feature.md`
+- `publish issue {ID}` → `.agents/workflows/publish-feature.md`
 - `reject` → `.agents/workflows/reject.md`
 - `init` → `.agents/workflows/init.md`
 
