@@ -1,166 +1,47 @@
 # Feature Planning Protocol
 
-This protocol defines planning-only requirements before implementation starts.
-`dev/map/DEV_MAP.json` is the planning source of truth.
-Canonical structure and ID formats are defined in `dev/map/DEV_MAP_SCHEMA.md`.
+This protocol defines target-state planning quality for workflow entities.
+`dev/map/DEV_MAP.json` is the runtime tracker for `Feature` and `Issue`.
+`dev/FEATURE_PLANS.md` is the canonical storage for local `Task` decomposition.
 
-## Scope ownership
+## Canonical structure
 
-- This file owns **Planning Quality Standards** and **Definition of Done** for planning artifacts.
-- `.agents/rules/` owns **Hard Policy Constraints** and **Permission Gates**.
-- `.agents/workflows/` owns **Actionable Procedures** and **CLI Command Sequences**.
-
-If any procedural detail differs across docs, the corresponding `.agents/workflows/` file is canonical for steps, while this file is canonical for quality requirements.
-
-## Canonical FEATURE_PLANS structure
-
-- `dev/FEATURE_PLANS.md` is a storage-only artifact. It must not carry file-level ownership prose or header boilerplate.
-- A feature section uses:
+- `Feature` section:
   - `## <feature_id>`
   - `### Expected Behaviour`
-- Issue blocks inside a feature section use:
+- `Issue` section inside a feature:
   - `### <issue_id> - <issue_title>`
   - `#### Expected Behaviour`
   - `#### Dependencies`
   - `#### Decomposition`
   - `#### Issue/Task Decomposition Assessment`
 
-## Section 0: Planning Prerequisites
+## Planning contract
 
-- `plan feature <id>` and `plan issue <issue_id>` are **Drafting** phases. They produce artifacts in `dev/FEATURE_PLANS.md` but do NOT modify active runtime trackers.
-- `plan tasks for feature <id>` and `plan tasks for issue <issue_id>` are **Enforcement/Write** phases. They synchronize local task decomposition into `dev/TASK_LIST.json` and `dev/map/DEV_MAP.json`.
-- `plan tasks for issue <issue_id>` is allowed only after a valid issue-plan block exists in `dev/FEATURE_PLANS.md` that meets the quality requirements defined in this protocol.
-- A plan must define the implementation direction; task decomposition is a separate subsequent step.
-- Task decomposition is code-informed work: before authoring tasks or overlaps, the agent must read the current code, runtime handlers, schemas, workflows, and tests relevant to the issue scope.
-- Agents may use markdown draft files for multi-line create-command input; the canonical draft structure is defined in `dev/map/ISSUE_CREATE_INPUT_SCHEMA.md`.
-- Recommended temporary storage for agent-generated drafts is `tmp/workflow/`.
+1. `plan feature <id>` and `plan issue <id>` produce or refine plan content in `dev/FEATURE_PLANS.md`.
+2. Local `Task` decomposition is written directly in `#### Decomposition` and assessed in `#### Issue/Task Decomposition Assessment`.
+3. `Task` storage is local-plan only; it is not required to be mirrored into `DEV_MAP`.
+4. Every planned `Feature` must have at least one local `Task`.
+5. Every planned `Issue` must have at least one local `Task`.
+6. `Issue` always means a GitHub-tracked entity; internal decomposition must not use `issue` as a synonym for local task stages.
 
-## Section 1: Planning Input Contract
+## Quality gates
 
-Required input for `plan feature <id>`:
-- `feature_id`: stable feature id in schema format (for example `F1-M1`).
-- `feature_title`: short title.
-- `milestone_id`: target milestone (`M1..Mn`).
-- `dependencies`: task/feature/issue dependencies.
-- `overlaps`: issue-overlap context from `dev/ISSUE_OVERLAPS.json` or identified overlap candidates for later overlap-build work.
-- `step_flow`: strict command sequence with per-step actions (`what to run`, `what script does`, `what executor does`, `step result`).
-- `issue_task_decomposition_assessment`: explicit assessment whether to split or not split; if split, minimal logical issues/tasks.
+### Gate 0: Structure
 
-Required input for `plan issue <issue_id>`:
-- `issue_id`: stable issue id in schema format (for example `I16-F4-M1`).
-- `parent_feature_id`: resolved owner feature id from `DEV_MAP`.
-- `dependencies`: issue-specific dependencies.
-- `step_flow`: strict issue-level implementation flow (ordered actions and expected result per step).
-- `issue_task_decomposition_assessment`: explicit minimal-sufficient split decision for this issue.
+- The feature section and each issue block use the canonical headings.
+- `Expected Behaviour` is concrete and repository-specific.
+- `Dependencies` uses concrete file/module/function/class lines.
+- `Decomposition` contains executable implementation steps, not placeholders.
 
-Required output in `dev/FEATURE_PLANS.md`:
-- feature heading `## <feature_id>`,
-- feature-level `### Expected Behaviour` section with target runtime outcome, observable result, touched runtime surfaces, and constraints,
-- issue-level detailed planning only inside canonical issue-plan blocks under that feature section.
+### Gate 1: Execution readiness
 
-Required output for `plan issue <issue_id>` in `dev/FEATURE_PLANS.md`:
-- output must be persisted through `feature plan-issue --id <issue_id>` (no chat-only issue plan updates),
-- exactly one canonical issue-plan block under the parent feature section for the target issue id,
-  - heading format: `### <issue_id> - <issue_title>` (one issue per block),
-  - only `####` headings are allowed inside that block.
-- mandatory issue-specific `#### Expected Behaviour` with concrete runtime outcome, observable result, touched runtime surfaces, and constraints,
-- mandatory issue-specific `#### Dependencies`,
-- mandatory issue-specific `#### Decomposition` with strict step flow,
-- mandatory issue-specific `#### Issue/Task Decomposition Assessment`,
-- mandatory `#### Dependencies` lines must use strict one-line tokens:
-  - `- file: <repo/path.ext> | reason: <text>`
-  - `- module: <module.name> | reason: <text>`
-  - `- function: <repo/path.ext>::<symbol> | reason: <text>`
-  - `- class: <repo/path.ext>::<ClassName> | reason: <text>`
-- content quality rule for `plan issue`: the plan block must be authored from the issue context (`title`, `description`, related workflow/code paths) and must not be left as a generic template/fallback stub.
-- forbidden for completed `plan issue` output:
-  - generic placeholder decomposition such as `Implement issue scope and produce executable task updates.`.
-- if the issue has no tasks yet, `plan issue` must still include concrete issue-specific dependencies/decomposition/assessment that explain what must be implemented before `plan tasks for issue <issue_id>`.
+- The plan identifies real runtime/code surfaces, not topic-only intent.
+- The plan states what changes, what remains invariant, and how it should be validated.
+- Removed target-state commands such as `plan tasks for` and `execute task` must not appear as required phases.
 
-## Section 2: Decomposition Rules
+### Gate 2: Tracker alignment
 
-**Scope ownership:** Policy rules are in `.agents/rules/feature-planning.md`. This section defines the decomposition methodology.
-
-- **Feature -> Issue decomposition rules (mandatory for `plan feature`):**
-  - **Check Existing:** Before initiating a new breakdown, first check `dev/map/DEV_MAP.json` for any existing issue nodes already linked to the target feature.
-  - **Prioritize Existing:** If linked issues exist, the planning focus must be on individual `plan issue <issue_id>` and `plan tasks for issue <issue_id>` steps for those issues.
-  - **Adequate Breakdown:** If no issues exist yet, the feature must be decomposed into a set of issues. The breakdown must be evaluated based on:
-    - **Adequacy:** Does the set of issues fully cover the feature scope?
-    - **Realism:** Can each issue be implemented within a reasonable timeframe and within the project's technical constraints?
-    - **Practicality:** Is the split logical and practical from an implementation/dependency perspective?
-    - **Sequence:** Is there a clear, non-blocking implementation order?
-- Additional work issues (`type:work`) are allowed when scope is too large for one implementation thread.
-- Tasks stay in `dev/TASK_LIST.json` and are not forced into 1-task-1-issue mapping.
-- Every task must be attached to a parent chain in `dev/map/DEV_MAP.json`:
-  `Milestone -> Feature -> Issue -> Task`.
-  If parent nodes do not exist yet, create them first using `dev/map/DEV_MAP_SCHEMA.md`.
-- Every task in `dev/TASK_LIST.json` must carry markers `[M*][F*]` that match `dev/map/DEV_MAP.json`.
-- Every planned task must describe concrete code changes:
-  - what to remove,
-  - what to add,
-  - what to rename or move,
-  - what to validate in tests, docs, or runtime behavior.
-- Generic task wording is not acceptable for `plan tasks`; decomposition must be anchored to real files, modules, handlers, schemas, commands, or tests discovered during code reading.
-- issue-overlaps in `dev/ISSUE_OVERLAPS.json` must be derived from real shared code surfaces or dependency chains, not from high-level topic similarity alone.
-- Overlap descriptions may include a short generalized summary, but only after naming the concrete shared code surface or dependency chain that justifies the overlap.
-- For `build overlaps` workflows, explicitly requested issue/feature IDs define only the **seed scope** for discovery. Final overlap output must cover all real intersections found through related-issue discovery from that seed scope, not only the inner pairs among the originally named IDs.
-
-## Section 3: Planning Quality Gates
-
-### Gate 0: Plan Detail and Formatting Standard (mandatory for all new/updated plans)
-
-Checklist:
-- `#### Decomposition` uses numbered top-level steps (`1.`, `2.`, ...) and each step has concrete sub-points with implementation actions.
-- Every decomposition step states expected result/output (not only action wording).
-- `Expected Behaviour` exists and is concrete rather than placeholder text.
-- For CLI/automation changes, decomposition explicitly includes:
-  - input contract,
-  - output contract,
-  - failure-path behavior,
-  - idempotency/stability behavior.
-- `#### Issue/Task Decomposition Assessment` includes:
-  - what must be decomposed next and why, or
-  - explicit `task_count` and per-task scope when task decomposition already exists.
-- Avoid generic wording (`improve`, `enhance`, `refine`) without concrete mechanism, files, or validation criteria.
-- For `plan issue`, generic fallback stubs are not acceptable completion: the block must be issue-specific and implementation-oriented on the first write.
-
-### Gate A: Pre-decomposition review
-
-Checklist:
-- strict step flow exists and is executable,
-- manual vs script responsibilities are explicit for each step,
-- `Issue/Task Decomposition Assessment` exists,
-- decomposition is minimal-sufficient (no unnecessary splitting).
-
-### Gate B: Pre-sync (local decomposition)
-
-Checklist:
-- target feature plan is lint-clean and reviewed,
-- target issue nodes are not `Pending` (pending issues must be planned first via `plan issue <issue_id>`),
-- relevant code for the target issues has been read before task decomposition is written,
-- decomposition is represented as local `Issue -> Task` structure,
-- each task contains concrete code-change steps that identify what will be removed, added, changed, or validated,
-- planned task markers/ownership are consistent with `DEV_MAP` parent chain,
-- overlaps are justified by actual shared files, primitives, parser paths, handlers, schemas, tests, or dependency chains found in the code,
-- overlap wording may summarize the broader shared concern, but it must still include the concrete code-level basis,
-- decomposition scope is minimal and executable,
-- successful decomposition is expected to transition selected issues to `Tasked`.
-
-### Gate C: Pre-materialize
-
-Checklist:
-- local decomposition has been synced and reviewed,
-- selected unmapped issue nodes for `issues-create`/`issues-sync` have status `Tasked` (mapped issues may be updated in `issues-sync` regardless of status),
-- GitHub materialization uses only already-defined local issue nodes,
-- every created/updated GitHub issue is assigned to the target milestone,
-- milestone resolution is confirmed before issuing materialization actions.
-
-## 4) Reference to Procedures
-
-Procedural steps for planning are defined in:
-- `/confirm`: Completion update sequence.
-- `/create-feature`: Feature registration.
-- `/plan-feature`: Feature plan formulation.
-- `/plan-issue`: Issue-level plan formulation.
-- `/plan-tasks-for`: Task decomposition sync.
-- `/materialize-feature`: GitHub materialization.
+- Runtime entity ownership fields (`milestone_id`, `feature_id`) match the plan scope.
+- Task decomposition remains local to `FEATURE_PLANS.md`.
+- Materialization and execution docs do not treat `Task` as a runtime-owned DEV_MAP node.

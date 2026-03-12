@@ -6,13 +6,15 @@ import argparse
 import sys
 from typing import Sequence
 
-from .confirm_commands import register_confirm_router, register_reject_router
+from .confirm_commands import register_done_router, register_reject_router
 from .context import WorkflowContext, build_default_context
 from .errors import WorkflowCommandError
 from .feature_commands import (
     register_create_router,
+    register_execute_router,
     register_feature_router,
     register_materialize_router,
+    register_move_router,
     register_plan_router,
 )
 from .helpers.cli_format import CompactHelpFormatter
@@ -48,12 +50,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command_group", required=True)
     register_create_router(subparsers)
+    register_execute_router(subparsers)
     register_feature_router(subparsers)
     register_materialize_router(subparsers)
+    register_move_router(subparsers)
     register_plan_router(subparsers)
     register_sync_router(subparsers)
     register_task_router(subparsers)
-    register_confirm_router(subparsers)
+    register_done_router(subparsers)
     register_reject_router(subparsers)
     register_validate_router(subparsers)
     return parser

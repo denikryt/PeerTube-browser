@@ -1,10 +1,10 @@
 ---
-description: Execute all pending tasks for a specific issue
+description: Execute one issue under the target-state workflow model
 ---
-1. Initialization: Resolve the given `<issue_id>` in `dev/map/DEV_MAP.json` under `Milestone -> Feature -> Issue`.
-2. Formulate execution scope: Collect all pending tasks (`status != Done`) from this issue subtree. If no pending tasks exist, stop and report there is nothing to execute.
-3. Materialization Gate: Enforce the **Materialization Gate** for the target issue as defined in `.agents/protocols/task-execution-protocol.md`. Stop if mapping is missing.
-4. Execution Order: Build the execution order (Pipeline order first, then `DEV_MAP` task order).
-5. Execution: Execute each task sequentially following the procedure in `execute-task.md`.
-6. Overlaps: After each task, run overlap/dependency validations relevant to the next tasks in the same issue chain. Stop on the first blocking failure.
-7. Stop execution. Do not auto-mark any task or issue as `Done`. Wait for explicit user confirmation via `notify_user` with `BlockedOnUser=true` (e.g., `confirm issue <id> done`).
+1. Read `.agents/protocols/task-execution-protocol.md`.
+2. Resolve `<issue_id>` in `dev/map/DEV_MAP.json`.
+3. Verify the issue is materialized on GitHub.
+4. Read the exact issue plan block in `dev/FEATURE_PLANS.md`.
+5. Implement the scoped changes described by the issue and its local task decomposition.
+6. Run validations for the touched surfaces.
+7. Do not auto-mark the issue done; wait for explicit `done issue <id>`.

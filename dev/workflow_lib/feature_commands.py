@@ -289,13 +289,72 @@ def register_materialize_router(subparsers: argparse._SubParsersAction[argparse.
     materialize_issue_parser.set_defaults(handler=_handle_materialize_issue_action)
 
 
+def register_execute_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register target-state execute commands for feature and issue scopes."""
+    execute_parser = subparsers.add_parser(
+        "execute",
+        help="Execution-readiness commands for feature and issue scopes.",
+    )
+    execute_subparsers = execute_parser.add_subparsers(dest="execute_target", required=True)
+
+    feature_parser = execute_subparsers.add_parser(
+        "feature",
+        help="Resolve one feature execution scope under the current workflow model.",
+    )
+    feature_parser.add_argument("--id", required=True, help="Feature ID.")
+    feature_parser.set_defaults(handler=_handle_execute_feature_action)
+
+    issue_parser = execute_subparsers.add_parser(
+        "issue",
+        help="Resolve one issue execution scope under the current workflow model.",
+    )
+    issue_parser.add_argument("--id", required=True, help="Issue ID.")
+    issue_parser.set_defaults(handler=_handle_execute_issue_action)
+
+
+def register_move_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register ownership-move commands for tracker entities."""
+    move_parser = subparsers.add_parser(
+        "move",
+        help="Move workflow entities without changing their stable identity.",
+    )
+    move_subparsers = move_parser.add_subparsers(dest="move_target", required=True)
+
+    issue_parser = move_subparsers.add_parser(
+        "issue",
+        help="Move one standalone or feature-owned issue under a target feature.",
+    )
+    issue_parser.add_argument("--id", required=True, help="Issue ID.")
+    issue_parser.add_argument("--feature", required=True, help="Target feature ID.")
+    issue_parser.add_argument("--write", action="store_true", help="Persist the ownership move.")
+    issue_parser.set_defaults(handler=_handle_move_issue_action)
+
+
 def register_plan_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Register canonical decomposition commands: `plan tasks for ...`."""
+    """Register target-state planning and overlap commands."""
     plan_parser = subparsers.add_parser(
         "plan",
         help="Plan and decompose workflow entities.",
     )
     plan_subparsers = plan_parser.add_subparsers(dest="plan_command", required=True)
+
+    feature_parser = plan_subparsers.add_parser(
+        "feature",
+        help="Initialize or verify one feature plan section.",
+    )
+    feature_parser.add_argument("--id", required=True, help="Feature ID.")
+    feature_parser.add_argument("--write", action="store_true", help="Persist scaffold creation when needed.")
+    feature_parser.set_defaults(handler=_handle_plan_feature_action)
+
+    issue_parser = plan_subparsers.add_parser(
+        "issue",
+        help="Create or update one issue plan block.",
+    )
+    issue_parser.add_argument("--id", required=True, help="Issue ID.")
+    issue_parser.add_argument("--feature-id", help="Optional owner feature assertion.")
+    issue_parser.add_argument("--write", action="store_true", help="Persist plan block update.")
+    issue_parser.add_argument("--strict", action="store_true", help="Enable strict scoped lint checks.")
+    issue_parser.set_defaults(handler=_handle_plan_issue_action)
 
     index_dependencies_parser = plan_subparsers.add_parser(
         "index-dependencies",
@@ -361,77 +420,6 @@ def register_plan_router(subparsers: argparse._SubParsersAction[argparse.Argumen
     )
     migrate_overlaps_parser.add_argument("--write", action="store_true", help="Persist pipeline cleanup.")
     migrate_overlaps_parser.set_defaults(handler=_handle_plan_migrate_overlaps)
-
-    tasks_parser = plan_subparsers.add_parser(
-        "tasks",
-        help="Task decomposition operations.",
-    )
-    tasks_subparsers = tasks_parser.add_subparsers(dest="plan_tasks_command", required=True)
-    for_parser = tasks_subparsers.add_parser(
-        "for",
-        help="Select decomposition target type.",
-    )
-    for_subparsers = for_parser.add_subparsers(dest="plan_tasks_target", required=True)
-
-    feature_parser = for_subparsers.add_parser(
-        "feature",
-        help="Plan tasks for one feature decomposition delta.",
-    )
-    feature_parser.add_argument("--id", required=True, help="Feature ID.")
-    feature_parser.add_argument(
-        "--delta-file",
-        required=True,
-        help="Path to JSON delta describing issue/task and tracker updates.",
-    )
-    feature_parser.add_argument("--write", action="store_true", help="Persist tracker updates.")
-    feature_parser.add_argument(
-        "--allocate-task-ids",
-        action="store_true",
-        help="Allocate numeric IDs from DEV_MAP task_count for token IDs ($token).",
-    )
-    feature_parser.set_defaults(handler=_handle_plan_tasks_for_feature)
-
-    issue_parser = for_subparsers.add_parser(
-        "issue",
-        help="Plan tasks for one issue decomposition delta.",
-    )
-    issue_parser.add_argument("--id", required=True, help="Issue ID.")
-    issue_parser.add_argument(
-        "--delta-file",
-        required=True,
-        help="Path to JSON delta describing issue/task and tracker updates.",
-    )
-    issue_parser.add_argument("--write", action="store_true", help="Persist tracker updates.")
-    issue_parser.add_argument(
-        "--allocate-task-ids",
-        action="store_true",
-        help="Allocate numeric IDs from DEV_MAP task_count for token IDs ($token).",
-    )
-    issue_parser.set_defaults(handler=_handle_plan_tasks_for_issue)
-
-    issues_parser = for_subparsers.add_parser(
-        "issues",
-        help="Plan tasks for multiple issues in one decomposition delta run.",
-    )
-    issues_parser.add_argument(
-        "--issue-id",
-        action="append",
-        required=True,
-        help="Repeatable issue selector; queue order is preserved.",
-    )
-    issues_parser.add_argument(
-        "--delta-file",
-        required=True,
-        help="Path to JSON delta describing issue/task and tracker updates.",
-    )
-    issues_parser.add_argument("--write", action="store_true", help="Persist tracker updates.")
-    issues_parser.add_argument(
-        "--allocate-task-ids",
-        action="store_true",
-        help="Allocate numeric IDs from DEV_MAP task_count for token IDs ($token).",
-    )
-    issues_parser.set_defaults(handler=_handle_plan_tasks_for_issues)
-
 
 def _handle_feature_create(args: Namespace, context: WorkflowContext) -> int:
     """Create feature node and optionally sync feature-level GitHub issue metadata."""
@@ -646,6 +634,16 @@ def _handle_create_issue(args: Namespace, context: WorkflowContext) -> int:
         }
     )
     return 0
+
+
+def _handle_plan_feature_action(args: Namespace, context: WorkflowContext) -> int:
+    """Expose target-state `plan feature` as the canonical scaffold/init entrypoint."""
+    return _handle_feature_plan_init(args, context)
+
+
+def _handle_plan_issue_action(args: Namespace, context: WorkflowContext) -> int:
+    """Expose target-state `plan issue` as the canonical issue-plan entrypoint."""
+    return _handle_feature_plan_issue(args, context)
 
 
 def _handle_create_feature_action(args: Namespace, context: WorkflowContext) -> int:
@@ -1719,6 +1717,167 @@ def _handle_feature_execution_plan(args: Namespace, context: WorkflowContext) ->
     return 0
 
 
+def _handle_execute_feature_action(args: Namespace, context: WorkflowContext) -> int:
+    """Resolve one feature execution scope under the target-state contract."""
+    feature_id, _ = _parse_feature_id(args.id)
+    dev_map = _load_json(context.dev_map_path)
+    feature_ref = _find_feature(dev_map, feature_id)
+    if feature_ref is None:
+        raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
+
+    feature_node = feature_ref["feature"]
+    feature_issue_number = _coerce_issue_number(feature_node.get("gh_issue_number"), feature_node.get("gh_issue_url"))
+    feature_issue_url = str(feature_node.get("gh_issue_url", "")).strip()
+    issue_nodes = [
+        issue
+        for issue in _collect_feature_issue_nodes(feature_node)
+        if str(issue.get("status", "")).strip() not in {"Done", "Rejected"}
+    ]
+    issue_lookup = {
+        str(issue.get("id", "")).strip(): issue
+        for issue in issue_nodes
+        if str(issue.get("id", "")).strip()
+    }
+    ordered_issue_ids = _resolve_execution_issue_order(
+        feature_node=feature_node,
+        selected_issue_ids=list(issue_lookup.keys()),
+        context=context,
+    )
+    issues_payload: list[dict[str, Any]] = []
+    missing_issue_materialization: list[str] = []
+    for issue_id in ordered_issue_ids:
+        issue_node = issue_lookup[issue_id]
+        issue_number = _coerce_issue_number(issue_node.get("gh_issue_number"), issue_node.get("gh_issue_url"))
+        issue_url = str(issue_node.get("gh_issue_url", "")).strip()
+        if issue_number is None or not issue_url:
+            missing_issue_materialization.append(issue_id)
+        issues_payload.append(
+            {
+                "id": issue_id,
+                "title": str(issue_node.get("title", "")).strip() or issue_id,
+                "status": str(issue_node.get("status", "")).strip() or "Pending",
+                "gh_issue_number": issue_number,
+                "gh_issue_url": issue_url or None,
+                "has_local_task_plan": _issue_plan_has_task_decomposition(context.feature_plans_path, issue_id),
+            }
+        )
+    emit_json(
+        {
+            "command": "execute.feature",
+            "feature_id": feature_id,
+            "feature_status": str(feature_node.get("status", "")).strip() or "Pending",
+            "feature_materialized": feature_issue_number is not None and bool(feature_issue_url),
+            "gh_issue_number": feature_issue_number,
+            "gh_issue_url": feature_issue_url or None,
+            "issue_execution_order": ordered_issue_ids,
+            "issues": issues_payload,
+            "missing_issue_materialization": missing_issue_materialization,
+            "ready": feature_issue_number is not None and bool(feature_issue_url) and not missing_issue_materialization,
+        }
+    )
+    return 0
+
+
+def _handle_execute_issue_action(args: Namespace, context: WorkflowContext) -> int:
+    """Resolve one issue execution scope under the target-state contract."""
+    issue_id, _, _ = _parse_issue_id(args.id)
+    dev_map = _load_json(context.dev_map_path)
+    issue_ref = _resolve_issue_owner_feature(dev_map, issue_id)
+    issue_node = issue_ref["issue"]
+    issue_number = _coerce_issue_number(issue_node.get("gh_issue_number"), issue_node.get("gh_issue_url"))
+    issue_url = str(issue_node.get("gh_issue_url", "")).strip()
+    emit_json(
+        {
+            "command": "execute.issue",
+            "feature_id": issue_ref["feature_id"],
+            "issue_id": issue_id,
+            "issue_status": str(issue_node.get("status", "")).strip() or "Pending",
+            "gh_issue_number": issue_number,
+            "gh_issue_url": issue_url or None,
+            "has_local_task_plan": _issue_plan_has_task_decomposition(context.feature_plans_path, issue_id),
+            "ready": issue_number is not None and bool(issue_url),
+        }
+    )
+    return 0
+
+
+def _handle_move_issue_action(args: Namespace, context: WorkflowContext) -> int:
+    """Move one issue under a target feature without changing its identity."""
+    issue_id, _, _ = _parse_issue_id(args.id)
+    target_feature_id, _ = _parse_feature_id(args.feature)
+    dev_map = _load_json(context.dev_map_path)
+    target_feature_ref = _find_feature(dev_map, target_feature_id)
+    if target_feature_ref is None:
+        raise WorkflowCommandError(f"Target feature {target_feature_id} not found in DEV_MAP.", exit_code=4)
+
+    target_feature = target_feature_ref["feature"]
+    target_milestone_id = str(target_feature_ref["milestone"].get("id", "")).strip()
+    source_issue_ref = _find_issue(dev_map, issue_id)
+    source_kind = "feature"
+    issue_node: dict[str, Any] | None = None
+    source_container: list[Any] | None = None
+    source_feature_id: str | None = None
+    if source_issue_ref is not None:
+        issue_node = source_issue_ref["issue"]
+        source_feature_id = str(source_issue_ref["feature_id"]).strip()
+        source_container = source_issue_ref["feature"].get("issues", [])
+    else:
+        standalone_ref = _find_standalone_issue(dev_map, issue_id)
+        if standalone_ref is None:
+            raise WorkflowCommandError(f"Issue {issue_id} not found in DEV_MAP.", exit_code=4)
+        source_kind = "standalone"
+        issue_node = standalone_ref["issue"]
+        source_container = standalone_ref["milestone"].get("standalone_issues", [])
+
+    if source_feature_id == target_feature_id:
+        emit_json(
+            {
+                "action": "noop",
+                "command": "move.issue",
+                "issue_id": issue_id,
+                "feature_id": target_feature_id,
+                "source": source_kind,
+                "write": bool(args.write),
+            }
+        )
+        return 0
+
+    target_issues = target_feature.setdefault("issues", [])
+    if not isinstance(target_issues, list) or not isinstance(source_container, list) or issue_node is None:
+        raise WorkflowCommandError(f"Issue {issue_id} has invalid owner containers in DEV_MAP.", exit_code=4)
+    if any(str(candidate.get("id", "")).strip() == issue_id for candidate in target_issues if isinstance(candidate, dict)):
+        raise WorkflowCommandError(
+            f"Feature {target_feature_id} already contains issue {issue_id}.",
+            exit_code=4,
+        )
+
+    if bool(args.write):
+        source_container[:] = [
+            candidate
+            for candidate in source_container
+            if not (isinstance(candidate, dict) and str(candidate.get("id", "")).strip() == issue_id)
+        ]
+        issue_node["feature_id"] = target_feature_id
+        issue_node["milestone_id"] = target_milestone_id
+        target_issues.append(issue_node)
+        _normalize_issue_node_layout(issue_node)
+        _normalize_feature_issue_nodes_layout(target_feature)
+        _touch_updated_at(dev_map)
+        _write_json(context.dev_map_path, dev_map)
+
+    emit_json(
+        {
+            "action": "moved" if bool(args.write) else "would-move",
+            "command": "move.issue",
+            "issue_id": issue_id,
+            "feature_id": target_feature_id,
+            "source": source_kind,
+            "write": bool(args.write),
+        }
+    )
+    return 0
+
+
 def _parse_feature_local_num(feature_id: str) -> int:
     """Extract the local feature number from an already validated feature ID."""
     match = FEATURE_ID_PATTERN.fullmatch(feature_id)
@@ -2700,8 +2859,16 @@ def _build_default_issue_description(issue_node: dict[str, Any]) -> str:
 
 def _normalize_feature_node_layout(feature_node: dict[str, Any]) -> None:
     """Place feature description directly under title while preserving existing fields."""
+    feature_id = str(feature_node.get("id", "")).strip()
+    if feature_id and not str(feature_node.get("milestone_id", "")).strip():
+        try:
+            _, milestone_num = _parse_feature_id(feature_id)
+            feature_node["milestone_id"] = f"M{milestone_num}"
+        except WorkflowCommandError:
+            pass
     ordered_keys = (
         "id",
+        "milestone_id",
         "title",
         "description",
         "status",
@@ -2737,14 +2904,23 @@ def _normalize_feature_issue_nodes_layout(feature_node: dict[str, Any]) -> None:
 
 def _normalize_issue_node_layout(issue_node: dict[str, Any]) -> None:
     """Place description directly under title while preserving all existing fields."""
+    issue_id = str(issue_node.get("id", "")).strip()
+    if issue_id:
+        try:
+            _, feature_num, milestone_num = _parse_issue_id(issue_id)
+            issue_node.setdefault("feature_id", f"F{feature_num}-M{milestone_num}")
+            issue_node.setdefault("milestone_id", f"M{milestone_num}")
+        except WorkflowCommandError:
+            pass
     ordered_keys = (
         "id",
+        "feature_id",
+        "milestone_id",
         "title",
         "description",
         "status",
         "gh_issue_number",
         "gh_issue_url",
-        "tasks",
     )
     reordered: dict[str, Any] = {}
     for key in ordered_keys:
@@ -2931,6 +3107,23 @@ def _find_feature(dev_map: dict[str, Any], feature_id: str) -> dict[str, Any] | 
     return None
 
 
+def _find_issue(dev_map: dict[str, Any], issue_id: str) -> dict[str, Any] | None:
+    """Find issue node with owning feature and milestone metadata."""
+    try:
+        return _resolve_issue_owner_feature(dev_map, issue_id)
+    except WorkflowCommandError:
+        return None
+
+
+def _find_standalone_issue(dev_map: dict[str, Any], issue_id: str) -> dict[str, Any] | None:
+    """Find standalone issue node by identifier."""
+    for milestone in dev_map.get("milestones", []):
+        for standalone_issue in milestone.get("standalone_issues", []):
+            if str(standalone_issue.get("id", "")).strip() == issue_id:
+                return {"issue": standalone_issue, "milestone": milestone}
+    return None
+
+
 def _resolve_issue_owner_feature(dev_map: dict[str, Any], issue_id: str) -> dict[str, Any]:
     """Resolve issue node and owning feature from DEV_MAP with uniqueness checks."""
     matches: list[dict[str, Any]] = []
@@ -2963,17 +3156,66 @@ def _resolve_issue_owner_feature(dev_map: dict[str, Any], issue_id: str) -> dict
     return matches[0]
 
 
+def _resolve_execution_issue_order(
+    *,
+    feature_node: dict[str, Any],
+    selected_issue_ids: list[str],
+    context: WorkflowContext,
+) -> list[str]:
+    """Resolve issue execution order using overlaps first, then feature issue order."""
+    selected = [issue_id for issue_id in selected_issue_ids if issue_id]
+    if not selected:
+        return []
+    overlap_payload = load_issue_overlaps_payload(context)
+    overlap_order = overlap_payload.get("issue_execution_order", {}).get("ordered_issue_ids", [])
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for issue_id in overlap_order:
+        if issue_id in selected and issue_id not in seen:
+            ordered.append(issue_id)
+            seen.add(issue_id)
+    for issue in _collect_feature_issue_nodes(feature_node):
+        issue_id = str(issue.get("id", "")).strip()
+        if issue_id in selected and issue_id not in seen:
+            ordered.append(issue_id)
+            seen.add(issue_id)
+    return ordered
+
+
+def _issue_plan_has_task_decomposition(feature_plans_path: Path, issue_id: str) -> bool:
+    """Return whether one issue-plan block contains a non-empty decomposition section."""
+    plan_text = feature_plans_path.read_text(encoding="utf-8")
+    block_match = re.search(
+        rf"^###\s+{re.escape(issue_id)}\s+-.*?(?=^###\s+I|^##\s+F|\Z)",
+        plan_text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if block_match is None:
+        return False
+    block_text = block_match.group(0)
+    section_match = re.search(
+        r"^####\s+Decomposition\s*$\n(?P<body>.*?)(?=^####\s+Issue/Task Decomposition Assessment\s*$|\Z)",
+        block_text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if section_match is None:
+        return False
+    return bool(section_match.group("body").strip())
+
+
 def _build_feature_node(feature_id: str, title: str, description: str, track: str) -> dict[str, Any]:
     """Build canonical feature node shape for DEV_MAP."""
+    _, milestone_num = _parse_feature_id(feature_id)
     normalized_title = title.strip()
     description_value = description.strip() or _build_default_feature_description(
         {"id": feature_id, "title": normalized_title}
     )
     return {
         "id": feature_id,
+        "milestone_id": f"M{milestone_num}",
         "title": normalized_title,
         "description": description_value,
-        "status": "Planned",
+        "status": "Pending",
         "track": track.strip(),
         "gh_issue_number": None,
         "gh_issue_url": None,
@@ -2985,18 +3227,20 @@ def _build_feature_node(feature_id: str, title: str, description: str, track: st
 
 def _build_issue_node(issue_id: str, title: str, description: str) -> dict[str, Any]:
     """Build canonical issue node shape for DEV_MAP."""
+    _, feature_num, milestone_num = _parse_issue_id(issue_id)
     normalized_title = title.strip()
     description_value = description.strip() or _build_default_issue_description(
         {"id": issue_id, "title": normalized_title}
     )
     return {
         "id": issue_id,
+        "feature_id": f"F{feature_num}-M{milestone_num}",
+        "milestone_id": f"M{milestone_num}",
         "title": normalized_title,
         "description": description_value,
         "status": "Pending",
         "gh_issue_number": None,
         "gh_issue_url": None,
-        "tasks": [],
     }
 
 

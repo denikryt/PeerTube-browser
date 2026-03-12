@@ -43,50 +43,15 @@ ISSUE_PLAN_BLOCK_HEADING_PATTERN = re.compile(
 )
 
 
-def register_confirm_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Register confirm router with completion target subcommands."""
-    confirm_parser = subparsers.add_parser(
-        "confirm",
-        help="Completion confirmation workflow commands.",
+def register_done_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register target-state done router for feature and issue completion."""
+    done_parser = subparsers.add_parser(
+        "done",
+        help="Mark one feature or issue done locally, with optional remote close.",
     )
-    confirm_subparsers = confirm_parser.add_subparsers(dest="confirm_target", required=True)
-
-    _register_confirm_target(confirm_subparsers, "task", "Confirm one task completion.")
-    _register_confirm_target(confirm_subparsers, "issue", "Confirm one issue completion.")
-    issues_parser = confirm_subparsers.add_parser("issues", help="Confirm multiple issue completions in one command.")
-    issues_parser.add_argument(
-        "--issue-id",
-        action="append",
-        required=True,
-        help="Repeatable issue identifier queue; order is preserved.",
-    )
-    issues_parser.add_argument("state", choices=["done"], help="Confirmation state keyword.")
-    issues_parser.add_argument("--write", action="store_true", help="Persist completion updates.")
-    issues_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Skip interactive extra confirmation for pending child tasks.",
-    )
-    issues_parser.add_argument(
-        "--close-github",
-        dest="close_github",
-        action="store_true",
-        default=True,
-        help="Close mapped GitHub issue in the same run where applicable.",
-    )
-    issues_parser.add_argument(
-        "--no-close-github",
-        dest="close_github",
-        action="store_false",
-        help="Skip GitHub issue closing.",
-    )
-    issues_parser.set_defaults(handler=_handle_confirm)
-    _register_confirm_target(confirm_subparsers, "feature", "Confirm one feature completion.")
-    _register_confirm_target(
-        confirm_subparsers,
-        "standalone-issue",
-        "Confirm one standalone issue completion.",
-    )
+    done_subparsers = done_parser.add_subparsers(dest="done_target", required=True)
+    _register_done_target(done_subparsers, "feature", "Mark one feature done.")
+    _register_done_target(done_subparsers, "issue", "Mark one issue done.")
 
 
 def register_reject_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -132,6 +97,23 @@ def register_reject_router(subparsers: argparse._SubParsersAction[argparse.Argum
     issue_parser.set_defaults(handler=_handle_reject_issue)
 
 
+def _register_done_target(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    target: str,
+    help_text: str,
+) -> None:
+    """Register one done-target parser."""
+    parser = subparsers.add_parser(target, help=help_text)
+    parser.add_argument("--id", required=True, help=f"{target} identifier.")
+    parser.add_argument("--write", action="store_true", help="Persist local done state.")
+    parser.add_argument(
+        "--remote",
+        action="store_true",
+        help="Also close the mapped remote GitHub issue in the same run.",
+    )
+    parser.set_defaults(handler=_handle_done)
+
+
 def _register_confirm_target(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
     target: str,
@@ -163,6 +145,15 @@ def _register_confirm_target(
     parser.set_defaults(handler=_handle_confirm)
 
 
+def _handle_done(args: Namespace, context: WorkflowContext) -> int:
+    """Dispatch done command by target type."""
+    if args.done_target == "feature":
+        return _handle_done_feature(args, context)
+    if args.done_target == "issue":
+        return _handle_done_issue(args, context)
+    raise WorkflowCommandError(f"Unsupported done target: {args.done_target}", exit_code=4)
+
+
 def _handle_confirm(args: Namespace, context: WorkflowContext) -> int:
     """Dispatch confirm command by target type."""
     if args.confirm_target == "task":
@@ -176,6 +167,83 @@ def _handle_confirm(args: Namespace, context: WorkflowContext) -> int:
     if args.confirm_target == "standalone-issue":
         return _handle_confirm_standalone_issue_done(args, context)
     raise WorkflowCommandError(f"Unsupported confirm target: {args.confirm_target}", exit_code=4)
+
+
+def _handle_done_feature(args: Namespace, context: WorkflowContext) -> int:
+    """Mark one feature done locally and optionally close the mapped remote issue."""
+    feature_id = _normalize_identifier(args.id)
+    if FEATURE_ID_PATTERN.fullmatch(feature_id) is None:
+        raise WorkflowCommandError(
+            f"Invalid feature ID {args.id!r}; expected F<local>-M<milestone>.",
+            exit_code=4,
+        )
+    dev_map = _load_json(context.dev_map_path)
+    feature_ref = _find_feature(dev_map, feature_id)
+    if feature_ref is None:
+        raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
+    feature_node = feature_ref["feature"]
+    feature_issue_number = _coerce_issue_number(feature_node.get("gh_issue_number"))
+    feature_issue_url = str(feature_node.get("gh_issue_url", "")).strip()
+    if bool(args.write):
+        feature_node["status"] = "Done"
+        _touch_updated_at(dev_map)
+        _write_json(context.dev_map_path, dev_map)
+    remote_closed = False
+    if bool(args.write) and bool(args.remote) and feature_issue_number is not None and feature_issue_url:
+        close_github_issue(feature_issue_number)
+        remote_closed = True
+    emit_json(
+        {
+            "command": "done.feature",
+            "feature_id": feature_id,
+            "status_after": "Done" if bool(args.write) else str(feature_node.get("status", "")).strip(),
+            "gh_issue_number": feature_issue_number,
+            "gh_issue_url": feature_issue_url or None,
+            "remote_requested": bool(args.remote),
+            "remote_closed": remote_closed,
+            "write": bool(args.write),
+        }
+    )
+    return 0
+
+
+def _handle_done_issue(args: Namespace, context: WorkflowContext) -> int:
+    """Mark one issue done locally and optionally close the mapped remote issue."""
+    issue_id = _normalize_identifier(args.id)
+    if ISSUE_ID_PATTERN.fullmatch(issue_id) is None:
+        raise WorkflowCommandError(
+            f"Invalid issue ID {args.id!r}; expected I<local>-F<feature_local>-M<milestone>.",
+            exit_code=4,
+        )
+    dev_map = _load_json(context.dev_map_path)
+    issue_ref = _find_issue(dev_map, issue_id)
+    if issue_ref is None:
+        raise WorkflowCommandError(f"Issue {issue_id} not found in DEV_MAP.", exit_code=4)
+    issue_node = issue_ref["issue"]
+    issue_number = _coerce_issue_number(issue_node.get("gh_issue_number"))
+    issue_url = str(issue_node.get("gh_issue_url", "")).strip()
+    if bool(args.write):
+        issue_node["status"] = "Done"
+        _touch_updated_at(dev_map)
+        _write_json(context.dev_map_path, dev_map)
+    remote_closed = False
+    if bool(args.write) and bool(args.remote) and issue_number is not None and issue_url:
+        close_github_issue(issue_number)
+        remote_closed = True
+    emit_json(
+        {
+            "command": "done.issue",
+            "feature_id": issue_ref["feature_id"],
+            "issue_id": issue_id,
+            "status_after": "Done" if bool(args.write) else str(issue_node.get("status", "")).strip(),
+            "gh_issue_number": issue_number,
+            "gh_issue_url": issue_url or None,
+            "remote_requested": bool(args.remote),
+            "remote_closed": remote_closed,
+            "write": bool(args.write),
+        }
+    )
+    return 0
 
 
 def _handle_reject_issue(args: Namespace, context: WorkflowContext) -> int:
@@ -1419,10 +1487,12 @@ def _find_issue(dev_map: dict[str, Any], issue_id: str) -> dict[str, Any] | None
     """Find issue node and parent metadata by issue ID."""
     for milestone in dev_map.get("milestones", []):
         for feature in milestone.get("features", []):
+            feature_id = str(feature.get("id", "")).strip().upper()
             for issue in feature.get("issues", []):
                 if str(issue.get("id", "")).strip().upper() == issue_id:
                     return {
                         "feature": feature,
+                        "feature_id": feature_id,
                         "issue": issue,
                         "milestone": milestone,
                     }

@@ -100,51 +100,52 @@ def _normalize_feature_filter(raw_feature: str | None) -> str | None:
 
 
 def _run_tracking_validation(context: WorkflowContext, feature_id: str | None) -> dict[str, list[str]]:
-    """Validate tracker consistency across DEV_MAP and TASK_LIST."""
+    """Validate tracker consistency for feature/issue runtime entities."""
     errors: list[str] = []
     warnings: list[str] = []
     dev_map = _load_json(context.dev_map_path)
-    all_tasks, duplicate_task_ids = _collect_dev_map_task_ownership(dev_map, feature_id=None)
-    for duplicate_task_id in duplicate_task_ids:
-        errors.append(f"Duplicate task id in DEV_MAP: {duplicate_task_id}")
+    if feature_id is not None and _find_feature_status(dev_map, feature_id) is None:
+        errors.append(f"Feature {feature_id} not found in DEV_MAP.")
+        return {"errors": errors, "warnings": warnings}
 
-    scoped_tasks = all_tasks
-    if feature_id is not None:
-        feature_status = _find_feature_status(dev_map, feature_id)
-        if feature_status is None:
-            errors.append(f"Feature {feature_id} not found in DEV_MAP.")
-            return {"errors": errors, "warnings": warnings}
-        scoped_tasks, _ = _collect_dev_map_task_ownership(dev_map, feature_id=feature_id)
+    seen_feature_ids: set[str] = set()
+    seen_issue_ids: set[str] = set()
+    for milestone in dev_map.get("milestones", []):
+        milestone_id = str(milestone.get("id", "")).strip()
+        for feature in milestone.get("features", []):
+            current_feature_id = str(feature.get("id", "")).strip()
+            if not current_feature_id:
+                continue
+            if current_feature_id in seen_feature_ids:
+                errors.append(f"Duplicate feature id in DEV_MAP: {current_feature_id}")
+            seen_feature_ids.add(current_feature_id)
+            if feature_id is not None and current_feature_id.upper() != feature_id:
+                continue
+            feature_milestone_id = str(feature.get("milestone_id", "")).strip()
+            if feature_milestone_id and feature_milestone_id != milestone_id:
+                errors.append(
+                    f"Feature {current_feature_id} milestone_id mismatch: node={feature_milestone_id}, parent={milestone_id}."
+                )
+            for issue in feature.get("issues", []):
+                issue_id = str(issue.get("id", "")).strip()
+                if not issue_id:
+                    continue
+                if issue_id in seen_issue_ids:
+                    errors.append(f"Duplicate issue id in DEV_MAP: {issue_id}")
+                seen_issue_ids.add(issue_id)
+                issue_feature_id = str(issue.get("feature_id", "")).strip()
+                issue_milestone_id = str(issue.get("milestone_id", "")).strip()
+                if issue_feature_id and issue_feature_id != current_feature_id:
+                    errors.append(
+                        f"Issue {issue_id} feature_id mismatch: node={issue_feature_id}, owner={current_feature_id}."
+                    )
+                if issue_milestone_id and issue_milestone_id != milestone_id:
+                    errors.append(
+                        f"Issue {issue_id} milestone_id mismatch: node={issue_milestone_id}, parent={milestone_id}."
+                    )
 
-    task_list_payload = load_task_list_payload(context)
-    task_list_entries, duplicate_task_list_ids = _parse_task_list_ownership(task_list_payload)
-    for duplicate_task_list_id in duplicate_task_list_ids:
-        errors.append(f"Duplicate task heading in TASK_LIST: {duplicate_task_list_id}")
-
-    for task_id, ownership in scoped_tasks.items():
-        task_list_entry = task_list_entries.get(task_id)
-        if task_list_entry is None:
-            if ownership.status != "Done":
-                errors.append(f"Pending task {task_id} is present in DEV_MAP but missing in TASK_LIST.")
-            continue
-        if task_list_entry.milestone_id != ownership.milestone_id:
-            errors.append(
-                f"Task {task_id} marker milestone mismatch: TASK_LIST={task_list_entry.milestone_id}, "
-                f"DEV_MAP={ownership.milestone_id}."
-            )
-        if task_list_entry.owner_marker != ownership.owner_marker:
-            errors.append(
-                f"Task {task_id} owner marker mismatch: TASK_LIST={task_list_entry.owner_marker}, "
-                f"DEV_MAP={ownership.owner_marker} ({ownership.owner_path})."
-            )
-
-    if feature_id is None:
-        for task_id in task_list_entries:
-            if task_id not in all_tasks:
-                errors.append(f"TASK_LIST contains task {task_id} not found in DEV_MAP.")
-
-    task_count_errors = _validate_task_count(dev_map, all_tasks)
-    errors.extend(task_count_errors)
+    if context.task_list_path.exists():
+        load_task_list_payload(context)
 
     return {"errors": errors, "warnings": warnings}
 
@@ -308,4 +309,3 @@ def _validate_task_count(dev_map: dict[str, Any], ownership: dict[str, DevMapTas
         if value > task_count:
             errors.append(f"Task {task_id} exceeds task_count={task_count}.")
     return errors
-
