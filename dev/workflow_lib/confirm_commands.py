@@ -303,7 +303,7 @@ def _handle_clean_issue(args: Namespace, context: WorkflowContext) -> int:
         set(child_task_ids),
         issue_ids_to_remove={issue_id},
     )
-    feature_plan_cleanup = _cleanup_feature_plan_issue_task_sections(
+    feature_plan_cleanup = _cleanup_feature_plan_issue_artifacts(
         feature_plans_path=context.feature_plans_path,
         feature_id=feature_id,
         issue_id=issue_id,
@@ -1741,83 +1741,6 @@ def _cleanup_feature_plan_issue_artifacts(
     }
 
 
-def _cleanup_feature_plan_issue_task_sections(
-    feature_plans_path: Path,
-    feature_id: str,
-    issue_id: str,
-    write: bool,
-) -> dict[str, Any]:
-    """Clear local task/decomposition sections for one issue block while preserving the issue block itself."""
-    text = feature_plans_path.read_text(encoding="utf-8")
-    bounds = _find_h2_section_bounds(text, feature_id)
-    if bounds is None:
-        return {
-            "attempted": False,
-            "feature_section_found": False,
-            "issue_block_found": False,
-            "decomposition_cleared": False,
-            "decomposition_would_be_cleared": False,
-            "assessment_cleared": False,
-            "assessment_would_be_cleared": False,
-            "updated": False,
-            "would_update": False,
-        }
-
-    lines = text.splitlines()
-    start_line, end_line = bounds
-    section_lines = lines[start_line:end_line]
-    issue_start, issue_end = _find_issue_plan_block_bounds(section_lines, issue_id)
-    if issue_start is None or issue_end is None:
-        return {
-            "attempted": True,
-            "feature_section_found": True,
-            "issue_block_found": False,
-            "decomposition_cleared": False,
-            "decomposition_would_be_cleared": False,
-            "assessment_cleared": False,
-            "assessment_would_be_cleared": False,
-            "updated": False,
-            "would_update": False,
-        }
-
-    assessment_cleared, assessment_updated = _replace_issue_subsection_body(
-        section_lines=section_lines,
-        block_start=issue_start,
-        block_end=issue_end,
-        heading="#### Issue/Task Decomposition Assessment",
-        replacement_lines=[
-            "- Local task decomposition artifacts cleared.",
-        ],
-    )
-    issue_start, issue_end = _find_issue_plan_block_bounds(section_lines, issue_id)
-    if issue_start is None or issue_end is None:
-        raise WorkflowCommandError(f"Issue block {issue_id} disappeared during task cleanup.", exit_code=4)
-    decomposition_cleared, decomposition_updated = _replace_issue_subsection_body(
-        section_lines=section_lines,
-        block_start=issue_start,
-        block_end=issue_end,
-        heading="#### Decomposition",
-        replacement_lines=[
-            "- Local task decomposition cleared by `clean issue`.",
-        ],
-    )
-    updated = decomposition_updated or assessment_updated
-    if write and updated:
-        lines[start_line:end_line] = section_lines
-        feature_plans_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return {
-        "attempted": True,
-        "feature_section_found": True,
-        "issue_block_found": True,
-        "decomposition_cleared": decomposition_cleared if write else False,
-        "decomposition_would_be_cleared": decomposition_cleared,
-        "assessment_cleared": assessment_cleared if write else False,
-        "assessment_would_be_cleared": assessment_cleared,
-        "updated": updated if write else False,
-        "would_update": updated,
-    }
-
-
 def _cleanup_feature_plan_feature_section(
     feature_plans_path: Path,
     feature_id: str,
@@ -1919,57 +1842,6 @@ def _remove_issue_plan_block(section_lines: list[str], issue_id: str) -> tuple[b
     return True, True
 
 
-def _find_issue_plan_block_bounds(section_lines: list[str], issue_id: str) -> tuple[int | None, int | None]:
-    """Find one issue plan block bounds inside a feature section."""
-    block_start: int | None = None
-    block_end: int | None = None
-    for index, line in enumerate(section_lines):
-        if not _is_issue_plan_block_heading_for_issue(line, issue_id):
-            continue
-        block_start = index
-        block_end = len(section_lines)
-        for next_index in range(index + 1, len(section_lines)):
-            stripped = section_lines[next_index].strip()
-            if stripped.startswith("### ") or stripped.startswith("## "):
-                block_end = next_index
-                break
-        break
-    return block_start, block_end
-
-
-def _replace_issue_subsection_body(
-    *,
-    section_lines: list[str],
-    block_start: int,
-    block_end: int,
-    heading: str,
-    replacement_lines: list[str],
-) -> tuple[bool, bool]:
-    """Replace one issue subsection body while preserving the issue block and heading."""
-    heading_index: int | None = None
-    next_heading_index: int | None = None
-    for index in range(block_start + 1, block_end):
-        stripped = section_lines[index].strip()
-        if stripped == heading:
-            heading_index = index
-            continue
-        if heading_index is not None and stripped.startswith("#### "):
-            next_heading_index = index
-            break
-    if heading_index is None:
-        return False, False
-    if next_heading_index is None:
-        next_heading_index = block_end
-    normalized_current = [
-        line.rstrip()
-        for line in section_lines[heading_index + 1:next_heading_index]
-        if line.strip()
-    ]
-    normalized_replacement = [line.rstrip() for line in replacement_lines if line.strip()]
-    updated = normalized_current != normalized_replacement
-    if updated:
-        section_lines[heading_index + 1:next_heading_index] = replacement_lines
-    return True, updated
 
 
 def _find_issue_execution_order_heading(section_lines: list[str]) -> int | None:

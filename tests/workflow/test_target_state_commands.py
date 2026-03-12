@@ -131,6 +131,4 @@ def test_clean_issue_removes_local_plan_and_overlap_artifacts(workflow, tmp_repo
     assert res["cleanup"]["issue_overlaps"]["overlap_rows_removed"] == 1
 
     feature_plans = (tmp_repo / "dev/FEATURE_PLANS.md").read_text(encoding="utf-8")
-    assert "### I1-F9-M1 - Smoke issue" in feature_plans
-    assert "- Local task decomposition cleared by `clean issue`." in feature_plans
-    assert "- Local task decomposition artifacts cleared." in feature_plans
+    assert "### I1-F9-M1 - Smoke issue" not in feature_plans
