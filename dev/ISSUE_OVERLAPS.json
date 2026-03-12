@@ -10,10 +10,7 @@
       "I1-F17-M1",
       "I2-F17-M1",
       "I4-F17-M1",
-      "I3-F17-M1",
-      "I1-F18-M1",
-      "I2-F18-M1",
-      "I3-F18-M1"
+      "I3-F17-M1"
     ]
   },
   "overlaps": [
@@ -116,26 +113,6 @@
       "order": "I4-F17-M1->I3-F17-M1",
       "surface": "file: tests/workflow/test_overlap_commands.py",
       "description": "why: I3 owns workflow/doc/test alignment, and I4 adds the final runtime rule that only dependency-overlap participants belong in `issue_execution_order`; impact: regression fixtures would stay incomplete if helper/docs alignment landed before the noisy-order removal rule was implemented; action: update the order builder first, then align workflow guidance and regression coverage around that final behavior."
-    },
-    {
-      "issues": [
-        "I1-F18-M1",
-        "I3-F18-M1"
-      ],
-      "type": "dependency",
-      "order": "I1-F18-M1->I3-F18-M1",
-      "surface": "file: .agents/rules/feature-planning.md; file: dev/map/DEV_MAP.json",
-      "description": "why: I3 rewrites publish/materialize and tracker semantics on the same feature-planning policy and DEV_MAP ownership surfaces that I1 redefines for the new Feature/Issue/Task model; impact: changing publication/runtime behavior before the canonical entity fields, statuses, and stable-ID model are locked would couple remote-sync rules to a stale tracker contract; action: land the canonical entity/status/data-model rewrite before applying the publish/materialize semantics rewrite."
-    },
-    {
-      "issues": [
-        "I2-F18-M1",
-        "I3-F18-M1"
-      ],
-      "type": "dependency",
-      "order": "I2-F18-M1->I3-F18-M1",
-      "surface": "file: .agents/protocols/task-execution-protocol.md; file: .agents/workflows/execute-feature.md; file: .agents/workflows/execute-issue.md; file: .agents/workflows/reject.md",
-      "description": "why: I3 changes publish/materialize and runtime validation on the same execution and rejection surfaces that I2 rewrites around done, removed task commands, and the new feature/issue lifecycle; impact: remote-sync behavior would be implemented against unstable command and completion contracts if I3 lands first; action: finalize the planning/execution/completion command model before wiring the materialize/publish rewrite to those same surfaces."
     }
   ]
 }
