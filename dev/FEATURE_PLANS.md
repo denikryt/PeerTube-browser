@@ -462,143 +462,146 @@
 
 ## F10-M1
 
-### Issue Execution Order
-1. `I1-F10-M1` - Add explicit publish command for feature GitHub issue creation
-2. `I2-F10-M1` - Add explicit publish commands for child issues and feature-owned issue batches
-3. `I3-F10-M1` - Rewrite help, workflows, and migration guidance around publish semantics
+### Expected Behaviour
+- Remote lifecycle becomes explicit and non-overlapping: `create` stays local-only, `publish` creates remote GitHub issues for already existing local `Feature`/`Issue` nodes, and `sync` updates already published remote state without creating new issues.
+- `materialize` is removed from the canonical command surface entirely; the target-state remote lifecycle is described only through `publish` and `sync`.
+- `publish feature` creates only the feature-level remote issue, while `publish issue` publishes either one issue by `--id` or all feature-owned child issues through the explicit batch selector `--children-of <feature_id>`.
+- `sync feature` updates only already published feature state by default and may update all already published child issues only through an explicit `--all-children` mode; `sync issue` updates one issue by `--id` or a feature-owned child issue set through `--children-of <feature_id>`.
+- Child issue publication is blocked until the parent feature issue is already published, and every published child issue is linked to that parent feature issue immediately when it is created on GitHub.
 
-### Dependencies
-- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — top-level command tree where the new publish grammar must become discoverable
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current create/materialize feature and issue flows that need explicit publish-oriented entrypoints
-- [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — GitHub issue creation/update helpers and milestone validation primitives
-- [.agents/workflows/create-feature.md](.agents/workflows/create-feature.md) and [.agents/workflows/materialize-feature.md](.agents/workflows/materialize-feature.md) — workflow docs that currently describe registration/materialize language instead of explicit publication semantics
-- [dev/map/DEV_MAP.json](dev/map/DEV_MAP.json) — local source of truth for feature issue mappings, child issue mappings, and milestone ownership
-- Existing create-vs-GitHub publication behavior must stay deterministic while the command surface is renamed and clarified
-- Milestone assignment must remain automatic from local ownership; the new publish commands must not require redundant milestone input when the target is already mapped under `M1`
+### I1-F10-M1 - Define canonical publish vs sync contract for always-tracked features and issues
 
-### Decomposition
-1. Define explicit publish semantics for GitHub issue creation:
-   - Replace ambiguous `materialize` terminology with commands that explicitly say they create GitHub issues
-   - Separate local registration from remote publication so users can predict side effects from the command name alone
-   - Keep milestone assignment automatic from the local ownership chain instead of asking the user to repeat milestone data
-   - Expected result: users can read the command and immediately know it creates a GitHub issue
-
-2. Refactor runtime around publish-oriented entity scopes:
-   - Add publish flow for one feature issue, one issue, and one feature-owned issue batch
-   - Preserve deterministic behavior for already-published targets, dry-run paths, and local mapping updates
-   - Keep parent feature issue linkage semantics explicit for child issue publishing
-   - Expected result: runtime behavior is clear for `feature issue`, `child issue`, and `all child issues of one feature`
-
-3. Align help and workflow documentation with the new model:
-   - Replace materialize-oriented examples with publish-oriented commands
-   - Clarify which commands only register local nodes and which ones create remote GitHub issues
-   - Document dry-run versus write behavior in terms of publication instead of abstract materialization
-   - Expected result: command naming, help output, and workflows all describe one consistent publication model
-
-### Issue/Task Decomposition Assessment
-- Feature scope should split into three sequential issues because feature publication, child issue publication, and docs/help migration are related but should be implemented and validated independently
-- Minimal execution order:
-  1. establish feature issue publication command,
-  2. establish child issue and issue-batch publication commands on top of that model,
-  3. rewrite help/workflows after the runtime contract is settled
-- Expected commit-oriented split:
-  - `I1-F10-M1`: 2-3 commits (contract, runtime, regression checks)
-  - `I2-F10-M1`: 3-4 commits (single issue publish, feature-owned issue batch publish, linkage behavior, tests)
-  - `I3-F10-M1`: 2-3 commits (help/docs rewrite, migration text cleanup, regression checks)
-
-### I1-F10-M1 - Add explicit publish command for feature GitHub issue creation
+#### Expected Behaviour
+- The repository has one explicit remote-lifecycle contract where `publish` means remote creation, `sync` means remote update-only behavior, and `materialize` is not part of the target-state command model.
+- Feature and issue scopes have deterministic publish/sync rules, including fail-fast behavior for already published `publish` calls, unpublished `sync` calls, and child issue publication requests made before the parent feature issue exists on GitHub.
+- Batch child publication and batch child synchronization use one explicit selector shape, so the CLI does not overload ownership fields with hidden multi-target behavior.
 
 #### Dependencies
-- [dev/workflow_lib/cli.py](dev/workflow_lib/cli.py) — top-level router where `publish feature` must become first-class
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current feature-level GitHub issue create/sync logic that should be exposed under publish naming
-- [dev/workflow_lib/github_adapter.py](dev/workflow_lib/github_adapter.py) — existing milestone validation and issue create/edit helpers reused by the new publish command
+- file: `dev/workflow_lib/cli.py` | reason: top-level router where the final `publish` and `sync` grammar must become first-class.
+- file: `dev/workflow_lib/feature_commands.py` | reason: current feature-level and issue-level `materialize` behavior still mixes create and sync semantics.
+- file: `dev/workflow_lib/sync_commands.py` | reason: current sync-only surface should become the canonical owner of remote update behavior.
+- file: `.agents/rules/feature-planning.md` | reason: planning/runtime rule owner must stop using transitional `publish/materialize` wording.
 
 #### Decomposition
-1. Define the `publish feature` contract:
-   - Specify that the command creates the feature issue on GitHub and records local mapping state
-   - Define deterministic create-only behavior for already published features versus not-yet-published features
-   - Keep milestone assignment implicit from local ownership, not repeated as user input
-   - Expected result: one explicit contract replaces ambiguous feature-level materialize wording
+1. Define the canonical command split:
+   - `publish` owns remote GitHub issue creation
+   - `sync` owns remote GitHub issue/body/metadata updates
+   - `materialize` is removed from canonical help/docs/runtime surface entirely
+   - Expected result: one explicit contract replaces the current overlap between `materialize` and `sync`
 
-2. Implement runtime wiring for `publish feature`:
-   - Route the new command to the existing feature issue creation/update primitives with publish-oriented output text
-   - Preserve dry-run and write-mode behavior without hiding GitHub side effects
-   - Keep branch linkage behavior separate from publication semantics unless explicitly required
-   - Expected result: users can publish a feature issue with one clearly named command
+2. Define scope-specific semantics:
+   - `publish feature` creates only the feature issue
+   - `publish issue --id <issue_id>` creates one issue-level remote issue
+   - `publish issue --children-of <feature_id>` creates remote issues only for existing child issues of that feature
+   - `sync feature` updates only already published feature state by default, and `sync feature --all-children` updates the feature plus all already published child issues
+   - `sync issue --id <issue_id>` updates one issue, while `sync issue --children-of <feature_id>` updates already published child issues of that feature
+   - Expected result: feature and issue scopes have explicit create/update boundaries
 
-3. Add regression coverage:
-   - Cover dry-run preview for unpublished feature issues
-   - Cover write-mode publication for unpublished features
-   - Cover already-published feature behavior so repeat runs stay deterministic
-   - Expected result: feature publication semantics remain stable during the command rename
+3. Define deterministic edge-case behavior:
+   - unpublished target + `sync` must fail clearly
+   - already published target + `publish` must fail clearly
+   - child issue publication requested without a published parent feature issue is blocked
+   - standalone ownership is determined by `feature_id = null`; feature-owned issues must keep milestone and feature ownership-derived publish behavior deterministic
+   - child issue publication must link the created remote issue to the already published parent feature issue in the same run
+   - Expected result: no ambiguous fallback paths remain in the publish/sync contract
 
 #### Issue/Task Decomposition Assessment
 - Expected split: 3 tasks / commit slices
-  1. define feature publish contract and output semantics
-  2. implement publish feature runtime path
-  3. add regression coverage for dry-run, create, and repeat behavior
+  1. define final command ownership (`publish` vs `sync` with no `materialize` compatibility)
+  2. define scope-specific feature/issue semantics
+  3. define deterministic create/skip/error edge-case behavior
 
-### I2-F10-M1 - Add explicit publish commands for child issues and feature-owned issue batches
+### I2-F10-M1 - Implement explicit publish and sync command surfaces for feature and issue scopes
+
+#### Expected Behaviour
+- Users can create remote feature and issue GitHub mappings through explicit `publish` commands instead of any `materialize` create modes.
+- Remote update behavior is owned by `sync` and cannot silently create missing feature or child issue mappings.
+- Runtime output, skip behavior, and failure behavior are deterministic across unpublished, published, and partially published scopes.
 
 #### Dependencies
-- [I1-F10-M1](#i1-f10-m1--add-explicit-publish-command-for-feature-github-issue-creation) — feature-level publish semantics should be explicit first
-- [dev/workflow_lib/feature_commands.py](dev/workflow_lib/feature_commands.py) — current issue and issue-batch materialize behavior that must be replaced with publish naming
-- [dev/map/DEV_MAP.json](dev/map/DEV_MAP.json) — issue ownership and milestone lineage that drive publication targets
+- file: `dev/workflow_lib/cli.py` | reason: new `publish` command tree and any updated `sync` routing live here.
+- file: `dev/workflow_lib/feature_commands.py` | reason: current feature and issue materialize handlers are the main migration source.
+- file: `dev/workflow_lib/sync_commands.py` | reason: sync surface must expand or be adjusted to cover final issue-level update semantics.
+- file: `dev/map/DEV_MAP.json` | reason: feature ownership and milestone lineage drive publication targets.
 
 #### Decomposition
-1. Define `publish issue` and `publish issues --feature-id` contracts:
-   - Support one explicit command for a single issue and one for all child issues under a feature
-   - Define create behavior for unmapped issues and deterministic skip or error behavior for already published issues
-   - Clarify how child issue publication relates to an existing parent feature issue mapping
-   - Expected result: users can publish one child issue or the full child issue set without guessing command scope
+1. Add canonical publish runtime for features:
+   - implement `publish feature --id <feature_id>`
+   - preserve implicit milestone derivation from local ownership
+   - make write vs preview output explicit about remote creation side effects
+   - Expected result: feature publication no longer depends on `materialize feature --mode create`
 
-2. Implement runtime publication paths:
-   - Route single-issue and feature-owned issue-batch publication through the existing GitHub issue creation logic
-   - Preserve milestone assignment from local ownership and queue-order behavior for batch publication
-   - Keep deterministic output for selected issue IDs, created mappings, and skipped already-published issues
-   - Expected result: issue publication works through explicit publish commands instead of materialize naming
+2. Add canonical publish runtime for issues:
+   - implement `publish issue --id <issue_id>` for single-issue publication
+   - implement `publish issue --children-of <feature_id>` for feature-owned issue batch publication over existing issue nodes only
+   - block child issue publication when the parent feature issue is not yet published
+   - link every created child issue to the existing parent feature issue in the same publish run
+   - keep deterministic output for created mappings and blocked already-published or invalid-owner cases
+   - Expected result: child issue publication no longer depends on `materialize issue --mode create`
 
-3. Validate linkage and edge cases:
-   - Cover feature-owned issue batch publish when the parent feature issue exists and when it does not
-   - Define whether publication only creates issues or also reconciles parent/child linkage in the same run
-   - Cover blocked invalid-owner or invalid-queue behavior
-   - Expected result: child issue publication semantics are explicit and safe for batch use
+3. Align sync runtime to the same model:
+   - ensure sync updates already published feature/issue state only
+   - implement `sync feature --all-children` as an explicit update-only mode for feature plus already published child issues
+   - implement `sync issue --id <issue_id>` and `sync issue --children-of <feature_id>` for issue-scoped updates
+   - keep all child-sync behavior explicit and update-only
+   - Expected result: update semantics live under `sync`, not under hidden branches of `publish`
+
+4. Remove materialize from the runtime surface in the same cutover:
+   - delete `materialize` CLI/help/workflow registration
+   - remove canonical output contracts that still expose `materialize.feature` or `materialize.issue`
+   - Expected result: runtime exposes one canonical publish/sync model with no leftover materialize entrypoint
 
 #### Issue/Task Decomposition Assessment
-- Expected split: 3-4 tasks / commit slices
-  1. define single-issue and feature-owned issue-batch publish contracts
-  2. implement publish issue runtime path
-  3. implement publish issues batch path and linkage behavior
-  4. add regression coverage for create/skip/error cases
+- Expected split: 4-5 tasks / commit slices
+  1. implement publish feature
+  2. implement publish issue with `--id` and `--children-of`
+  3. implement explicit child sync semantics for `sync feature --all-children` and `sync issue --children-of`
+  4. remove materialize from CLI/help/runtime surface
+  5. add regression coverage for create/sync/skip/error cases
 
-### I3-F10-M1 - Rewrite help, workflows, and migration guidance around publish semantics
+### I3-F10-M1 - Rewrite help, workflows, tests, and compatibility guidance around publish/sync semantics
+
+#### Expected Behaviour
+- Canonical help, workflows, rules, and tests describe the final `create` / `publish` / `sync` split without presenting `materialize` as the target-state remote publication model.
+- No compatibility support for `materialize` remains in canonical docs, help, or runtime guidance after the cutover.
+- Repository regression checks protect the final publish/sync vocabulary and prevent accidental drift back to transitional wording.
 
 #### Dependencies
-- [I1-F10-M1](#i1-f10-m1--add-explicit-publish-command-for-feature-github-issue-creation) and [I2-F10-M1](#i2-f10-m1--add-explicit-publish-commands-for-child-issues-and-feature-owned-issue-batches) — runtime command semantics must be finalized before docs can be rewritten
-- [.agents/workflows/create-feature.md](.agents/workflows/create-feature.md) and [.agents/workflows/materialize-feature.md](.agents/workflows/materialize-feature.md) — workflow docs that need publish-oriented terminology
-- CLI help output and any repository guidance that still uses materialize wording
+- file: `.agents/workflows/create-feature.md` | reason: local-create guidance must remain aligned with the final publish/sync split.
+- file: `.agents/workflows/materialize-feature.md` | reason: this workflow file needs canonical publish/sync terminology or retirement.
+- file: `.agents/rules/feature-planning.md` | reason: it still contains transitional `publish/materialize` wording.
+- file: `tests/workflow/test_feature_lifecycle.py` | reason: lifecycle fixtures still assert `materialize` as the canonical remote-publication surface.
+- file: `tests/workflow/test_core.py` | reason: CLI help expectations must align with the final publish/sync vocabulary.
 
 #### Decomposition
 1. Rewrite help output and examples:
-   - Replace materialize-oriented examples with `publish feature`, `publish issue`, and `publish issues` examples
-   - Make the local-registration versus GitHub-publication split obvious from `--help`
-   - Expected result: users can discover the right publish command directly from help text
+   - replace canonical `materialize` examples with `publish` and `sync` examples
+   - make the local-registration versus remote-publication split obvious from `--help`
+   - Expected result: users can discover the right create/publish/sync command directly from help text
 
-2. Update workflow and migration documentation:
-   - Rewrite workflow docs so local creation and GitHub publication are described as separate lifecycle steps
-   - Document milestone behavior, dry-run behavior, and parent-feature versus child-issue publication paths in publish terminology
-   - Expected result: operator guidance matches the new command surface without legacy ambiguity
+2. Update workflows and rule/protocol docs:
+   - rewrite workflow docs so local creation, remote publication, and remote sync are described as separate lifecycle steps
+   - retire `materialize-feature.md` if it no longer matches the target-state command names
+   - update planning rules to remove transitional `publish/materialize` wording
+   - Expected result: operator guidance matches the final command surface without legacy ambiguity
 
-3. Add regression checks and clean up legacy wording:
-   - Ensure help and docs no longer present `materialize` as the canonical way to create GitHub issues
-   - Keep compatibility or migration notes explicit if any old command remains temporarily supported
-   - Expected result: the repository exposes one clear publish-oriented model for GitHub issue creation
+3. Update regression coverage:
+   - replace tests that currently assert `materialize.feature` / `materialize.issue` as the canonical output contract
+   - add regression checks for publish create-only behavior, sync update-only behavior, blocked hidden-create paths, blocked already-published `publish`, and blocked unpublished `sync`
+   - add regression checks for `publish issue --children-of <feature_id>` and `sync issue --children-of <feature_id>` selectors
+   - Expected result: runtime, help, docs, and tests expose one clear remote-lifecycle model
+
+4. Perform final artifact cleanup:
+   - grep for stale canonical `materialize` wording across `.agents`, CLI help, and workflow tests
+   - remove the stale wording entirely instead of preserving compatibility mentions
+   - Expected result: no accidental drift back to transitional publication language remains in canonical repository surfaces
 
 #### Issue/Task Decomposition Assessment
-- Expected split: 2-3 tasks / commit slices
-  1. rewrite help/examples for publish commands
-  2. rewrite workflows and migration guidance
-  3. add regression checks for help/docs consistency
+- Expected split: 3-4 tasks / commit slices
+  1. rewrite help/examples for publish and sync commands
+  2. rewrite workflow/rule/protocol guidance
+  3. update regression coverage for the final selectors and failure rules
+  4. perform final stale-wording cleanup audit
 
 ## F11-M1
 
@@ -999,4 +1002,3 @@
   1. runtime regression tests for collector payload and overlap intersections
   2. naming-surface regression checks for post-reorg command vocabulary
   3. negative/error-path coverage and migration-note consistency
-
