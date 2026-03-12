@@ -5,7 +5,7 @@ def test_help(workflow):
     output = workflow.run("--help", parse_json=False)
     assert "usage:" in output.lower()
     assert "positional arguments:" in output.lower()
-    assert "{create,feature,materialize,plan,sync,task,confirm,reject,validate}" in output.lower()
+    assert "{create,execute,feature,materialize,move,plan,sync,task,clean,done,reject,validate}" in output.lower()
 
 def test_feature_help(workflow):
     """Verifies that feature --help exposes only planning and execution-plan commands."""

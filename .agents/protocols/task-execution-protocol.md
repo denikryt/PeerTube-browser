@@ -23,6 +23,7 @@ Before implementing tracked work:
 1. Completion remains explicit and user-driven.
 2. The canonical completion command is `done feature <id>` or `done issue <id>`.
 3. `done` updates local state to `Done`.
+4. `done feature <id> --cascade` is the explicit mode for marking child issues `Done` together with the feature; add `--remote` only when remote child issue closure is also intended.
 4. Remote close/sync must only happen when `--remote` is explicitly provided.
 
 ## Materialization and branch policy

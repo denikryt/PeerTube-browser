@@ -524,8 +524,8 @@ def test_confirm_issue_cleans_issue_overlaps_and_dependency_index(workflow, tmp_
                         "marker": "[M1][F14]",
                         "title": "Task one",
                         "problem": "Need cleanup coverage.",
-                        "solution_option": "Run confirm cleanup.",
-                        "concrete_steps": ["Confirm issue and prune trackers."],
+                        "solution_option": "Run clean issue cleanup.",
+                        "concrete_steps": ["Clean issue and prune trackers."],
                     }
                 ],
             },
@@ -577,17 +577,7 @@ def test_confirm_issue_cleans_issue_overlaps_and_dependency_index(workflow, tmp_
         encoding="utf-8",
     )
 
-    result = workflow.run(
-        "confirm",
-        "issue",
-        "--id",
-        "I1-F14-M1",
-        "done",
-        "--write",
-        "--force",
-        "--no-close-github",
-    )
-    assert result["issue_status_after"] == "Done"
+    result = workflow.run("clean", "issue", "--id", "I1-F14-M1", "--write")
 
     task_list = json.loads((tmp_repo / "dev/TASK_LIST.json").read_text(encoding="utf-8"))
     assert task_list["tasks"] == []
@@ -601,8 +591,8 @@ def test_confirm_issue_cleans_issue_overlaps_and_dependency_index(workflow, tmp_
     assert issue_dep_index["by_surface"]["file: dev/workflow_lib/feature_commands.py"] == ["I2-F14-M1"]
 
 
-def test_confirm_feature_preview_reports_feature_plan_section_cleanup(workflow, tmp_repo):
-    """Confirm feature preview should report full FEATURE_PLANS section cleanup without mutating files."""
+def test_clean_feature_preview_reports_feature_plan_section_cleanup(workflow, tmp_repo):
+    """Clean feature preview should report full FEATURE_PLANS section cleanup without mutating files."""
     _write_minimal_repo_state(tmp_repo)
 
     dev_map_path = tmp_repo / "dev/map/DEV_MAP.json"
@@ -625,7 +615,7 @@ def test_confirm_feature_preview_reports_feature_plan_section_cleanup(workflow, 
                         "marker": "[M1][F14]",
                         "title": "Task one",
                         "problem": "Need feature cleanup preview.",
-                        "solution_option": "Run confirm feature preview.",
+                        "solution_option": "Run clean feature preview.",
                         "concrete_steps": ["Preview feature cleanup."],
                     },
                     {
@@ -633,7 +623,7 @@ def test_confirm_feature_preview_reports_feature_plan_section_cleanup(workflow, 
                         "marker": "[M1][F14]",
                         "title": "Task two",
                         "problem": "Need feature cleanup preview.",
-                        "solution_option": "Run confirm feature preview.",
+                        "solution_option": "Run clean feature preview.",
                         "concrete_steps": ["Preview feature cleanup."],
                     },
                 ],
@@ -645,22 +635,15 @@ def test_confirm_feature_preview_reports_feature_plan_section_cleanup(workflow, 
     )
 
     plans_before = (tmp_repo / "dev/FEATURE_PLANS.md").read_text(encoding="utf-8")
-    result = workflow.run(
-        "confirm",
-        "feature",
-        "--id",
-        "F14-M1",
-        "done",
-        "--no-close-github",
-    )
+    result = workflow.run("clean", "feature", "--id", "F14-M1")
 
-    assert result["cleanup"]["feature_plans"]["feature_section_would_be_removed"] is True
-    assert result["cleanup"]["feature_plans"]["feature_section_removed"] is False
+    assert result["cleanup"]["feature_plans"]["feature_section"]["feature_section_would_be_removed"] is True
+    assert result["cleanup"]["feature_plans"]["feature_section"]["feature_section_removed"] is False
     assert (tmp_repo / "dev/FEATURE_PLANS.md").read_text(encoding="utf-8") == plans_before
 
 
-def test_confirm_feature_write_removes_feature_plan_section(workflow, tmp_repo):
-    """Confirm feature write should remove the full FEATURE_PLANS section for the confirmed feature."""
+def test_clean_feature_write_removes_feature_plan_section(workflow, tmp_repo):
+    """Clean feature write should remove the full FEATURE_PLANS section for the cleaned feature."""
     _write_minimal_repo_state(tmp_repo)
 
     dev_map_path = tmp_repo / "dev/map/DEV_MAP.json"
@@ -683,7 +666,7 @@ def test_confirm_feature_write_removes_feature_plan_section(workflow, tmp_repo):
                         "marker": "[M1][F14]",
                         "title": "Task one",
                         "problem": "Need feature cleanup write path.",
-                        "solution_option": "Run confirm feature write.",
+                        "solution_option": "Run clean feature write.",
                         "concrete_steps": ["Apply feature cleanup."],
                     },
                     {
@@ -691,7 +674,7 @@ def test_confirm_feature_write_removes_feature_plan_section(workflow, tmp_repo):
                         "marker": "[M1][F14]",
                         "title": "Task two",
                         "problem": "Need feature cleanup write path.",
-                        "solution_option": "Run confirm feature write.",
+                        "solution_option": "Run clean feature write.",
                         "concrete_steps": ["Apply feature cleanup."],
                     },
                 ],
@@ -716,25 +699,17 @@ def test_confirm_feature_write_removes_feature_plan_section(workflow, tmp_repo):
         encoding="utf-8",
     )
 
-    result = workflow.run(
-        "confirm",
-        "feature",
-        "--id",
-        "F14-M1",
-        "done",
-        "--write",
-        "--no-close-github",
-    )
+    result = workflow.run("clean", "feature", "--id", "F14-M1", "--write")
 
-    assert result["cleanup"]["feature_plans"]["feature_section_removed"] is True
+    assert result["cleanup"]["feature_plans"]["feature_section"]["feature_section_removed"] is True
     plans_after = (tmp_repo / "dev/FEATURE_PLANS.md").read_text(encoding="utf-8")
     assert "## F14-M1" not in plans_after
     issue_overlaps = json.loads((tmp_repo / "dev/ISSUE_OVERLAPS.json").read_text(encoding="utf-8"))
     assert issue_overlaps["issue_execution_order"]["ordered_issue_ids"] == ["I7-F99-M1"]
 
 
-def test_confirm_feature_write_is_stable_when_feature_plan_section_is_missing(workflow, tmp_repo):
-    """Confirm feature write should stay stable when the feature section is already absent."""
+def test_clean_feature_write_is_stable_when_feature_plan_section_is_missing(workflow, tmp_repo):
+    """Clean feature write should stay stable when the feature section is already absent."""
     _write_minimal_repo_state(tmp_repo)
 
     dev_map_path = tmp_repo / "dev/map/DEV_MAP.json"
@@ -754,7 +729,7 @@ def test_confirm_feature_write_is_stable_when_feature_plan_section_is_missing(wo
                         "marker": "[M1][F14]",
                         "title": "Task one",
                         "problem": "Need no-op feature cleanup path.",
-                        "solution_option": "Run confirm on missing section.",
+                        "solution_option": "Run clean on missing section.",
                         "concrete_steps": ["Apply no-op feature cleanup."],
                     }
                 ],
@@ -766,18 +741,10 @@ def test_confirm_feature_write_is_stable_when_feature_plan_section_is_missing(wo
     )
     (tmp_repo / "dev/FEATURE_PLANS.md").write_text("", encoding="utf-8")
 
-    result = workflow.run(
-        "confirm",
-        "feature",
-        "--id",
-        "F14-M1",
-        "done",
-        "--write",
-        "--no-close-github",
-    )
+    result = workflow.run("clean", "feature", "--id", "F14-M1", "--write")
 
-    assert result["cleanup"]["feature_plans"]["feature_section_found"] is False
-    assert result["cleanup"]["feature_plans"]["feature_section_removed"] is False
+    assert result["cleanup"]["feature_plans"]["feature_section"]["feature_section_found"] is False
+    assert result["cleanup"]["feature_plans"]["feature_section"]["feature_section_removed"] is False
 
 
 def test_reject_feature_preview_reports_subtree_cleanup_and_mixed_mapping(workflow, tmp_repo):

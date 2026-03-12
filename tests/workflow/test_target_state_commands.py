@@ -85,6 +85,38 @@ def test_done_issue_marks_local_done_without_remote(workflow, tmp_repo):
     assert issue_node["status"] == "Done"
 
 
+def test_done_feature_does_not_touch_child_issues_without_cascade(workflow, tmp_repo):
+    _write_feature_fixture(tmp_repo)
+
+    res = workflow.run("done", "feature", "--id", "F9-M1", "--write")
+    assert res["status_after"] == "Done"
+    assert res["cascade_requested"] is False
+    assert res["cascaded_issue_ids"] == []
+
+    updated_map = json.loads((tmp_repo / "dev/map/DEV_MAP.json").read_text(encoding="utf-8"))
+    feature_node = updated_map["milestones"][0]["features"][0]
+    issue_node = feature_node["issues"][0]
+    assert feature_node["status"] == "Done"
+    assert issue_node["status"] == "Planned"
+
+
+def test_done_feature_cascade_marks_child_issues_done(workflow, tmp_repo):
+    _write_feature_fixture(tmp_repo)
+
+    res = workflow.run("done", "feature", "--id", "F9-M1", "--write", "--cascade")
+    assert res["status_after"] == "Done"
+    assert res["cascade_requested"] is True
+    assert res["cascaded_issue_ids"] == ["I1-F9-M1"]
+    assert res["remote_closed"] is False
+    assert res["remote_child_issue_ids_closed"] == []
+
+    updated_map = json.loads((tmp_repo / "dev/map/DEV_MAP.json").read_text(encoding="utf-8"))
+    feature_node = updated_map["milestones"][0]["features"][0]
+    issue_node = feature_node["issues"][0]
+    assert feature_node["status"] == "Done"
+    assert issue_node["status"] == "Done"
+
+
 def test_tracking_validate_no_longer_requires_devmap_task_ownership(workflow, tmp_repo):
     _write_feature_fixture(tmp_repo)
 

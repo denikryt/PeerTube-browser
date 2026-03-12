@@ -136,6 +136,12 @@ def _register_done_target(
         action="store_true",
         help="Also close the mapped remote GitHub issue in the same run.",
     )
+    if target == "feature":
+        parser.add_argument(
+            "--cascade",
+            action="store_true",
+            help="Also mark child issues done locally; with --remote also close their mapped GitHub issues.",
+        )
     parser.set_defaults(handler=_handle_done)
 
 
@@ -218,14 +224,33 @@ def _handle_done_feature(args: Namespace, context: WorkflowContext) -> int:
     feature_node = feature_ref["feature"]
     feature_issue_number = _coerce_issue_number(feature_node.get("gh_issue_number"))
     feature_issue_url = str(feature_node.get("gh_issue_url", "")).strip()
+    child_issue_nodes = _collect_feature_issue_nodes(feature_node)
+    cascade_requested = bool(getattr(args, "cascade", False))
+    cascaded_issue_ids = [
+        str(issue_node.get("id", "")).strip()
+        for issue_node in child_issue_nodes
+        if str(issue_node.get("id", "")).strip()
+    ] if cascade_requested else []
     if bool(args.write):
         feature_node["status"] = "Done"
+        if cascade_requested:
+            for issue_node in child_issue_nodes:
+                issue_node["status"] = "Done"
         _touch_updated_at(dev_map)
         _write_json(context.dev_map_path, dev_map)
     remote_closed = False
+    remote_child_issue_ids_closed: list[str] = []
     if bool(args.write) and bool(args.remote) and feature_issue_number is not None and feature_issue_url:
         close_github_issue(feature_issue_number)
         remote_closed = True
+    if bool(args.write) and bool(args.remote) and cascade_requested:
+        for issue_node in child_issue_nodes:
+            issue_id = str(issue_node.get("id", "")).strip()
+            issue_number = _coerce_issue_number(issue_node.get("gh_issue_number"))
+            issue_url = str(issue_node.get("gh_issue_url", "")).strip()
+            if issue_id and issue_number is not None and issue_url:
+                close_github_issue(issue_number)
+                remote_child_issue_ids_closed.append(issue_id)
     emit_json(
         {
             "command": "done.feature",
@@ -233,8 +258,12 @@ def _handle_done_feature(args: Namespace, context: WorkflowContext) -> int:
             "status_after": "Done" if bool(args.write) else str(feature_node.get("status", "")).strip(),
             "gh_issue_number": feature_issue_number,
             "gh_issue_url": feature_issue_url or None,
+            "cascade_requested": cascade_requested,
+            "cascaded_issue_ids": cascaded_issue_ids,
+            "child_issue_status_after": "Done" if bool(args.write) and cascade_requested else None,
             "remote_requested": bool(args.remote),
             "remote_closed": remote_closed,
+            "remote_child_issue_ids_closed": remote_child_issue_ids_closed,
             "write": bool(args.write),
         }
     )
