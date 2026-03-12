@@ -54,6 +54,31 @@ def register_done_router(subparsers: argparse._SubParsersAction[argparse.Argumen
     _register_done_target(done_subparsers, "issue", "Mark one issue done.")
 
 
+def register_clean_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register explicit local cleanup commands for finished feature or issue scopes."""
+    clean_parser = subparsers.add_parser(
+        "clean",
+        help="Remove local plan/tracker artifacts for one feature or issue scope.",
+    )
+    clean_subparsers = clean_parser.add_subparsers(dest="clean_target", required=True)
+
+    feature_parser = clean_subparsers.add_parser(
+        "feature",
+        help="Clean local feature artifacts from FEATURE_PLANS and tracker indexes.",
+    )
+    feature_parser.add_argument("--id", required=True, help="Feature identifier.")
+    feature_parser.add_argument("--write", action="store_true", help="Persist cleanup changes.")
+    feature_parser.set_defaults(handler=_handle_clean)
+
+    issue_parser = clean_subparsers.add_parser(
+        "issue",
+        help="Clean local issue artifacts from FEATURE_PLANS and tracker indexes.",
+    )
+    issue_parser.add_argument("--id", required=True, help="Issue identifier.")
+    issue_parser.add_argument("--write", action="store_true", help="Persist cleanup changes.")
+    issue_parser.set_defaults(handler=_handle_clean)
+
+
 def register_reject_router(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register reject command routing for explicit issue and feature rejection flow."""
     reject_parser = subparsers.add_parser(
@@ -154,6 +179,15 @@ def _handle_done(args: Namespace, context: WorkflowContext) -> int:
     raise WorkflowCommandError(f"Unsupported done target: {args.done_target}", exit_code=4)
 
 
+def _handle_clean(args: Namespace, context: WorkflowContext) -> int:
+    """Dispatch explicit cleanup command by target type."""
+    if args.clean_target == "feature":
+        return _handle_clean_feature(args, context)
+    if args.clean_target == "issue":
+        return _handle_clean_issue(args, context)
+    raise WorkflowCommandError(f"Unsupported clean target: {args.clean_target}", exit_code=4)
+
+
 def _handle_confirm(args: Namespace, context: WorkflowContext) -> int:
     """Dispatch confirm command by target type."""
     if args.confirm_target == "task":
@@ -240,6 +274,130 @@ def _handle_done_issue(args: Namespace, context: WorkflowContext) -> int:
             "gh_issue_url": issue_url or None,
             "remote_requested": bool(args.remote),
             "remote_closed": remote_closed,
+            "write": bool(args.write),
+        }
+    )
+    return 0
+
+
+def _handle_clean_issue(args: Namespace, context: WorkflowContext) -> int:
+    """Clean local plan and tracker artifacts for one issue without remote side effects."""
+    issue_id = _normalize_identifier(args.id)
+    if ISSUE_ID_PATTERN.fullmatch(issue_id) is None:
+        raise WorkflowCommandError(
+            f"Invalid issue ID {args.id!r}; expected I<local>-F<feature_local>-M<milestone>.",
+            exit_code=4,
+        )
+
+    dev_map = _load_json(context.dev_map_path)
+    issue_ref = _find_issue(dev_map, issue_id)
+    if issue_ref is None:
+        raise WorkflowCommandError(f"Issue {issue_id} not found in DEV_MAP.", exit_code=4)
+
+    issue_node = issue_ref["issue"]
+    feature_id = str(issue_ref["feature_id"]).strip()
+    child_tasks = issue_node.get("tasks", [])
+    child_task_ids = [str(task.get("id", "")).strip() for task in child_tasks if str(task.get("id", "")).strip()]
+    cleanup_preview = _compute_tracker_cleanup_preview(
+        context,
+        set(child_task_ids),
+        issue_ids_to_remove={issue_id},
+    )
+    feature_plan_cleanup = _cleanup_feature_plan_issue_artifacts(
+        feature_plans_path=context.feature_plans_path,
+        feature_id=feature_id,
+        issue_id=issue_id,
+        write=bool(args.write),
+    )
+    if bool(args.write):
+        cleanup = _apply_tracker_cleanup(
+            context=context,
+            dev_map=dev_map,
+            task_ids_to_remove=set(child_task_ids),
+            issue_ids_to_remove={issue_id},
+        )
+        cleanup["feature_plans"] = feature_plan_cleanup
+        cleanup["mode"] = "applied"
+    else:
+        cleanup = cleanup_preview
+        cleanup["feature_plans"] = feature_plan_cleanup
+        cleanup["mode"] = "preview"
+
+    emit_json(
+        {
+            "command": "clean.issue",
+            "feature_id": feature_id,
+            "issue_id": issue_id,
+            "cleanup": cleanup,
+            "write": bool(args.write),
+        }
+    )
+    return 0
+
+
+def _handle_clean_feature(args: Namespace, context: WorkflowContext) -> int:
+    """Clean local plan and tracker artifacts for one feature subtree without remote side effects."""
+    feature_id = _normalize_identifier(args.id)
+    if FEATURE_ID_PATTERN.fullmatch(feature_id) is None:
+        raise WorkflowCommandError(
+            f"Invalid feature ID {args.id!r}; expected F<local>-M<milestone>.",
+            exit_code=4,
+        )
+
+    dev_map = _load_json(context.dev_map_path)
+    feature_ref = _find_feature(dev_map, feature_id)
+    if feature_ref is None:
+        raise WorkflowCommandError(f"Feature {feature_id} not found in DEV_MAP.", exit_code=4)
+
+    feature_node = feature_ref["feature"]
+    issue_nodes = _collect_feature_issue_nodes(feature_node)
+    issue_ids = [str(issue_node.get("id", "")).strip() for issue_node in issue_nodes if str(issue_node.get("id", "")).strip()]
+    task_ids = _collect_issue_task_ids(issue_nodes)
+    cleanup_preview = _compute_tracker_cleanup_preview(
+        context,
+        set(task_ids),
+        issue_ids_to_remove=set(issue_ids),
+        feature_ids_to_remove={feature_id},
+    )
+    feature_plan_cleanup = {
+        "feature_section": _cleanup_feature_plan_feature_section(
+            feature_plans_path=context.feature_plans_path,
+            feature_id=feature_id,
+            write=bool(args.write),
+        ),
+        "issue_blocks": [
+            {
+                "issue_id": issue_id,
+                "cleanup": _cleanup_feature_plan_issue_artifacts(
+                    feature_plans_path=context.feature_plans_path,
+                    feature_id=feature_id,
+                    issue_id=issue_id,
+                    write=bool(args.write),
+                ),
+            }
+            for issue_id in issue_ids
+        ],
+    }
+    if bool(args.write):
+        cleanup = _apply_tracker_cleanup(
+            context=context,
+            dev_map=dev_map,
+            task_ids_to_remove=set(task_ids),
+            issue_ids_to_remove=set(issue_ids),
+            feature_ids_to_remove={feature_id},
+        )
+        cleanup["feature_plans"] = feature_plan_cleanup
+        cleanup["mode"] = "applied"
+    else:
+        cleanup = cleanup_preview
+        cleanup["feature_plans"] = feature_plan_cleanup
+        cleanup["mode"] = "preview"
+
+    emit_json(
+        {
+            "command": "clean.feature",
+            "feature_id": feature_id,
+            "cleanup": cleanup,
             "write": bool(args.write),
         }
     )

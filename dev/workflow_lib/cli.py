@@ -6,7 +6,7 @@ import argparse
 import sys
 from typing import Sequence
 
-from .confirm_commands import register_done_router, register_reject_router
+from .confirm_commands import register_clean_router, register_done_router, register_reject_router
 from .context import WorkflowContext, build_default_context
 from .errors import WorkflowCommandError
 from .feature_commands import (
@@ -57,6 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_plan_router(subparsers)
     register_sync_router(subparsers)
     register_task_router(subparsers)
+    register_clean_router(subparsers)
     register_done_router(subparsers)
     register_reject_router(subparsers)
     register_validate_router(subparsers)

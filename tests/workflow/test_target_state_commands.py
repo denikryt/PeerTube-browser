@@ -90,3 +90,45 @@ def test_tracking_validate_no_longer_requires_devmap_task_ownership(workflow, tm
 
     res = workflow.run("validate", "--scope", "tracking", "--feature", "F9-M1")
     assert res["valid"] is True
+
+
+def test_clean_issue_removes_local_plan_and_overlap_artifacts(workflow, tmp_repo):
+    _write_feature_fixture(tmp_repo)
+    (tmp_repo / "dev/ISSUE_OVERLAPS.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "issue_execution_order": {"ordered_issue_ids": ["I1-F9-M1"]},
+                "overlaps": [
+                    {
+                        "issues": ["I1-F9-M1", "I9-F1-M1"],
+                        "type": "dependency",
+                        "surface": "dev/workflow_lib/feature_commands.py",
+                        "order": "I9-F1-M1->I1-F9-M1",
+                        "description": "why: smoke overlap exists; impact: smoke cleanup must prune it; action: remove issue-owned overlap rows."
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_repo / "dev/ISSUE_DEP_INDEX.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.1",
+                "scope_type": "all",
+                "scope_id": "all",
+                "by_issue": {"I1-F9-M1": {"surface_keys": ["file:dev/workflow_lib/feature_commands.py"]}},
+                "by_surface": {"file:dev/workflow_lib/feature_commands.py": ["I1-F9-M1"]},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    res = workflow.run("clean", "issue", "--id", "I1-F9-M1", "--write")
+    assert res["cleanup"]["issue_overlaps"]["overlap_rows_removed"] == 1
+
+    feature_plans = (tmp_repo / "dev/FEATURE_PLANS.md").read_text(encoding="utf-8")
+    assert "### I1-F9-M1 - Smoke issue" not in feature_plans

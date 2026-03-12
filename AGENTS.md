@@ -21,6 +21,7 @@ When you receive text matching these patterns, it IS a workflow command:
 - `execute issue {ID}` → `.agents/workflows/execute-issue.md`
 - `execute issues {ID[, ID...]}` → `.agents/workflows/execute-issues.md`
 - `materialize feature {ID}` → `.agents/workflows/materialize-feature.md`
+- `clean {target} {ID}` → `.agents/workflows/clean.md`
 - `reject` → `.agents/workflows/reject.md`
 - `init` → `.agents/workflows/init.md`
 
