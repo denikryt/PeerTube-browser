@@ -1,7 +1,32 @@
 {
   "schema_version": "1.1",
   "issue_execution_order": {
-    "ordered_issue_ids": []
+    "ordered_issue_ids": [
+      "I1-F10-M1",
+      "I2-F10-M1",
+      "I3-F10-M1"
+    ]
   },
-  "overlaps": []
+  "overlaps": [
+    {
+      "issues": [
+        "I1-F10-M1",
+        "I2-F10-M1"
+      ],
+      "type": "dependency",
+      "order": "I1-F10-M1->I2-F10-M1",
+      "surface": "file: dev/workflow_lib/cli.py",
+      "description": "why: I1 defines the canonical publish vs sync command contract on the runtime surfaces that I2 rewires, especially the top-level CLI grammar; impact: implementing I2 before I1 would risk baking transitional materialize semantics into the new CLI and sync runtime; action: lock the command split and edge-case contract in I1 before changing the concrete publish/sync handlers in I2."
+    },
+    {
+      "issues": [
+        "I1-F10-M1",
+        "I3-F10-M1"
+      ],
+      "type": "dependency",
+      "order": "I1-F10-M1->I3-F10-M1",
+      "surface": "file: .agents/rules/feature-planning.md",
+      "description": "why: I1 changes the canonical planning/runtime rule language that I3 then propagates through workflows, help, and regression coverage; impact: rewriting docs and tests before the final contract exists would create drift and likely require rework; action: finish the publish vs sync policy rewrite in I1 before performing the canonical docs/help/test cleanup in I3."
+    }
+  ]
 }
