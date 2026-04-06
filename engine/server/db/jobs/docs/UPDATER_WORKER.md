@@ -50,7 +50,7 @@ The worker runs this sequence:
 7. Merge staging into prod (`merge-staging-db.py` with `merge_rules.json`).
 8. Recompute popularity incrementally (`recompute-popularity.py --incremental`).
 9. Rebuild ANN index from prod (`build-ann-index.py`).
-10. Update similarity cache incrementally (`precompute-similar-ann.py --incremental`).
+10. Refresh similarity cache for already-cached source videos (`precompute-similar-ann.py --refresh-existing`).
 11. Start API service back.
 12. Release lock and finish.
 

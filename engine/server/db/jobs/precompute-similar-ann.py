@@ -201,6 +201,41 @@ def fetch_similarity_targets_chunked(
     return merged
 
 
+def select_pending_rowids(
+    src_db: sqlite3.Connection,
+    out_db_path: Path,
+    *,
+    incremental: bool,
+    refresh_existing: bool,
+) -> list[int]:
+    """Select source embedding rowids for partial similarity recompute modes."""
+    out_uri = f"file:{out_db_path.as_posix()}?mode=ro"
+    src_db.execute("ATTACH DATABASE ? AS out_cache", (out_uri,))
+    try:
+        if incremental:
+            query = """
+                SELECT e.rowid
+                FROM video_embeddings e
+                LEFT JOIN out_cache.similarity_sources s
+                  ON s.video_id = e.video_id
+                 AND s.instance_domain = e.instance_domain
+                WHERE s.video_id IS NULL
+            """
+        elif refresh_existing:
+            query = """
+                SELECT e.rowid
+                FROM video_embeddings e
+                INNER JOIN out_cache.similarity_sources s
+                  ON s.video_id = e.video_id
+                 AND s.instance_domain = e.instance_domain
+            """
+        else:
+            return []
+        return [int(row["rowid"]) for row in src_db.execute(query)]
+    finally:
+        src_db.execute("DETACH DATABASE out_cache")
+
+
 def format_duration(seconds: float | None) -> str:
     """Format seconds to a compact human-readable duration."""
     if seconds is None or seconds < 0:
@@ -327,9 +362,16 @@ def main() -> None:
         action="store_true",
         help="Compute only for videos that do not exist in similarity_sources.",
     )
+    parser.add_argument(
+        "--refresh-existing",
+        action="store_true",
+        help="Recompute only for videos that already exist in similarity_sources.",
+    )
     args = parser.parse_args()
     if not args.reset_only and not (args.cpu or args.gpu):
         parser.error("one of --cpu or --gpu is required unless --reset-only is used")
+    if args.incremental and args.refresh_existing:
+        parser.error("--incremental and --refresh-existing are mutually exclusive")
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -429,26 +471,15 @@ def main() -> None:
                 f"Index dimension {index.d} does not match database dimension {dim_value}"
             )
 
-        if args.incremental:
-            # Incremental mode compares source embeddings with already-computed rows
-            # from the output cache DB. We materialize only rowids first to avoid
-            # lock contention while writing to the output DB.
-            out_uri = f"file:{out_db_path.as_posix()}?mode=ro"
-            src_db.execute("ATTACH DATABASE ? AS out_cache", (out_uri,))
-            pending_rowids = [
-                int(row["rowid"])
-                for row in src_db.execute(
-                    """
-                    SELECT e.rowid
-                    FROM video_embeddings e
-                    LEFT JOIN out_cache.similarity_sources s
-                      ON s.video_id = e.video_id
-                     AND s.instance_domain = e.instance_domain
-                    WHERE s.video_id IS NULL
-                    """
-                )
-            ]
-            src_db.execute("DETACH DATABASE out_cache")
+        if args.incremental or args.refresh_existing:
+            # Partial modes materialize source rowids before writes to keep the
+            # source DB scan isolated from output-cache mutations.
+            pending_rowids = select_pending_rowids(
+                src_db,
+                out_db_path,
+                incremental=args.incremental,
+                refresh_existing=args.refresh_existing,
+            )
             row_iter = iter_embedding_rows_by_rowids(src_db, pending_rowids)
             total_sources = len(pending_rowids)
         else:

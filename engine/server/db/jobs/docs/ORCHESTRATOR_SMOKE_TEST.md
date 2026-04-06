@@ -13,7 +13,7 @@ The smoke test validates the full updater pipeline on a temporary mini-prod DB:
 - merge from staging into mini-prod,
 - incremental popularity recompute,
 - full ANN build,
-- incremental similarity precompute.
+- similarity refresh for already-cached source videos.
 
 It also runs failure-injection scenarios by default to verify:
 

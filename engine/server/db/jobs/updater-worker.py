@@ -1126,6 +1126,7 @@ def main() -> None:
                     "--search-batch-size",
                     "1024",
                     "--recreate-out-db",
+                    "--refresh-existing",
                 ]
                 if args.use_gpu:
                     precompute_cmd.extend(["--gpu", "--gpu-device", "0"])
