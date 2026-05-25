@@ -18,7 +18,16 @@ similarity-based recommendations.
 6) Client renders the feed and video pages.
 
 ## Data build
-See `DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset and ANN index.
+See `docs/DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset and ANN index.
+
+
+## Documentation
+- `docs/ARCHITECTURE.md`: component boundaries and runtime flow.
+- `docs/DEVELOPMENT.md`: local navigation and verification commands.
+- `docs/TESTING.md`: regression and smoke test guidance.
+- `docs/DATA_BUILD.md`: crawler and dataset build flow.
+- `docs/DEPLOYMENT.md`: service installation and runtime deployment.
+- `docs/ROADMAP.md`: product direction, not a task tracker.
 
 ## Components
 - `engine/`: read/analytics workspace.

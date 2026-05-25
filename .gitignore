@@ -24,3 +24,11 @@ __pycache__/
 client/frontend/run-client-sync-build.sh
 client/frontend/run-client-sync-build-client-dev.sh
 client/frontend/about.html
+
+# Build outputs
+engine/crawler/dist/
+client/frontend/dist/
+
+# Python caches
+*.py[cod]
+.pytest_cache/
