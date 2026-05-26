@@ -54,3 +54,7 @@ Structural refactoring should preserve these boundaries until a later plan expli
 Stage 8 keeps the same Vite/vanilla TypeScript runtime while splitting reusable frontend code into narrower modules. Page entrypoints remain the lifecycle controllers, while shared Client API facades, rendering helpers, state helpers, and formatting utilities live under `client/frontend/src/api/`, `client/frontend/src/components/`, `client/frontend/src/state/`, and `client/frontend/src/utils/`.
 
 This split does not change the component boundary: frontend project API calls still go through the Client backend, and public PeerTube instance fallback on the video page remains PeerTube-specific metadata fallback behavior.
+
+## HTTP Adapter Ownership
+
+Stage 11 finalizes the HTTP framework migration: FastAPI app factories are the only active Client and Engine HTTP adapters. The `server.py` files remain stable executable launchers for compatibility, but they no longer own stdlib HTTP server or request-handler classes. Route behavior belongs to the FastAPI apps and the route/service modules listed above.

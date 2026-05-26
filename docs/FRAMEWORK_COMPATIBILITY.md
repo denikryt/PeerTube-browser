@@ -112,3 +112,39 @@ Implementation action: Use dict/manual parsing at the FastAPI boundary and keep 
 Tests: Existing malformed request tests and framework contract tests.
 
 Removal condition, if any: Dedicated public API schema plan.
+
+## Stdlib Client backend adapter removed
+
+Decision: The transitional Client stdlib HTTP server and handler classes are removed from active production runtime code while `client/backend/server.py` remains the executable path.
+
+Reason: After FastAPI route contracts were characterized, keeping a second inactive HTTP adapter created duplicate ownership and risked future drift.
+
+Implementation action: Keep `parse_args`, database/runtime construction, `create_app(state)`, and `uvicorn.run(...)` in `client/backend/server.py`; migrate Client backend scenario tests to FastAPI `TestClient`.
+
+Tests: `tests/client_backend/*`, `tests/framework/test_client_fastapi_contract.py`, and `tests/framework/test_entrypoint_compatibility.py`.
+
+Removal condition, if any: Complete for active runtime code. Only FastAPI app factories and launcher entrypoints remain.
+
+## Stdlib Engine route adapter removed
+
+Decision: The transitional Engine stdlib route handler and server classes are removed from active production runtime code while `engine/server/api/server.py` remains the executable path.
+
+Reason: Engine route ownership now lives in FastAPI app registration and Stage 4 route modules; retaining the old adapter would leave duplicate dispatch paths.
+
+Implementation action: Keep Engine startup, DB/cache/index wiring, FAISS prerequisite behavior, `create_app(state)`, and `uvicorn.run(...)` in `engine/server/api/server.py`; keep `handlers/similar.py` only as a helper re-export shim.
+
+Tests: `tests/engine_api/*`, `tests/framework/test_engine_fastapi_contract.py`, `tests/framework/test_entrypoint_compatibility.py`, and `engine/server/api/tests/test_recommendations_likes_limit.py`.
+
+Removal condition, if any: The `handlers/similar.py` helper re-export shim can be removed after downstream imports use `engine/server/api/services/recommendation_service.py` directly.
+
+## Legacy handler tests migrated
+
+Decision: Tests no longer execute the removed Client or Engine stdlib route adapters.
+
+Reason: The active HTTP adapter is FastAPI; behavior coverage must exercise the active adapter or narrow service/route harnesses.
+
+Implementation action: Client HTTP scenario tests use FastAPI `TestClient`; Engine route characterization tests use FastAPI `TestClient` or structural handler harnesses for direct route/service helpers.
+
+Tests: `tests/client_backend/*`, `tests/engine_api/*`, and `tests/framework/*`.
+
+Removal condition, if any: None. This is the active Stage 11 testing model.

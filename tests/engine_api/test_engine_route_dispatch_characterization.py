@@ -1,55 +1,47 @@
-"""Characterize Engine route dispatch owned by SimilarHandler."""
+"""Characterize Engine FastAPI route dispatch behavior."""
 from __future__ import annotations
 
-from types import SimpleNamespace
+from app import create_app
+from conftest import RejectingRateLimiter, make_engine_state
+from fastapi.testclient import TestClient
 
-from conftest import RejectingRateLimiter, RouteCapturingHandler, import_similar_handler_module
 
-
-def test_get_unknown_route_returns_current_404(monkeypatch) -> None:
+def test_get_unknown_route_returns_current_404(engine_client) -> None:
     """Unknown GET routes must keep the current JSON 404 contract."""
-    similar = import_similar_handler_module(monkeypatch)
-    handler = RouteCapturingHandler("/missing")
+    response = engine_client.get("/missing")
 
-    similar.SimilarHandler.do_GET(handler)
-
-    assert handler.status == 404
-    assert handler.parsed_body() == {"error": "Not found"}
+    assert response.status_code == 404
+    assert response.json() == {"error": "Not found"}
 
 
-def test_post_unknown_route_returns_current_404(monkeypatch) -> None:
+def test_post_unknown_route_returns_current_404(engine_client) -> None:
     """Unknown POST routes must keep the current JSON 404 contract."""
-    similar = import_similar_handler_module(monkeypatch)
-    handler = RouteCapturingHandler("/missing", method="POST")
+    response = engine_client.post("/missing", json={})
 
-    similar.SimilarHandler.do_POST(handler)
-
-    assert handler.status == 404
-    assert handler.parsed_body() == {"error": "Not found"}
+    assert response.status_code == 404
+    assert response.json() == {"error": "Not found"}
 
 
-def test_options_preserves_current_cors_preflight(monkeypatch) -> None:
+def test_options_preserves_current_cors_preflight(engine_client) -> None:
     """OPTIONS dispatch must continue to use the existing CORS preflight helper."""
-    similar = import_similar_handler_module(monkeypatch)
-    handler = RouteCapturingHandler("/any", method="OPTIONS")
+    response = engine_client.options("/any")
 
-    similar.SimilarHandler.do_OPTIONS(handler)
-
-    assert handler.status == 204
-    assert ("access-control-allow-origin", "*") in handler.response_headers
-    assert ("access-control-allow-methods", "GET, POST, OPTIONS") in handler.response_headers
-    assert ("access-control-max-age", "600") in handler.response_headers
+    assert response.status_code == 204
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert response.headers["access-control-allow-methods"] == "GET, POST, OPTIONS"
+    assert response.headers["access-control-max-age"] == "600"
 
 
-def test_rate_limit_rejection_preserves_status_body_and_key(monkeypatch) -> None:
+def test_rate_limit_rejection_preserves_status_body_and_key() -> None:
     """Route dispatch must keep the current per-IP plus path rate-limit key."""
-    similar = import_similar_handler_module(monkeypatch)
     limiter = RejectingRateLimiter()
-    server = SimpleNamespace(rate_limiter=limiter)
-    handler = RouteCapturingHandler("/api/health", server=server)
+    state = make_engine_state(rate_limiter=limiter)
+    try:
+        client = TestClient(create_app(state))
+        response = client.get("/api/health")
+    finally:
+        state.db.close()
 
-    similar.SimilarHandler.do_GET(handler)
-
-    assert limiter.key == "127.0.0.1:/api/health"
-    assert handler.status == 429
-    assert handler.parsed_body() == {"error": "Rate limit exceeded"}
+    assert limiter.key == "testclient:/api/health"
+    assert response.status_code == 429
+    assert response.json() == {"error": "Rate limit exceeded"}

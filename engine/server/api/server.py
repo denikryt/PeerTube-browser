@@ -11,9 +11,7 @@ import sqlite3
 import uvicorn
 import sys
 import signal
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import threading
 from uuid import uuid4
 
 script_dir = Path(__file__).resolve().parent
@@ -91,7 +89,6 @@ from recommendations.builder import (
 from recommendations.related_personalization import (
     RelatedPersonalizationDeps,
 )
-from handlers.similar import SimilarHandler
 from app import create_app
 from runtime import EngineRuntimeState
 from http_utils import RateLimiter
@@ -185,71 +182,6 @@ def set_nprobe(index: faiss.Index, nprobe: int) -> None:
         type(index).__name__,
         type(ivf_index).__name__ if ivf_index is not None else None,
     )
-
-
-class SimilarServer(ThreadingHTTPServer):
-    """Threaded HTTP server with shared DB and index handles."""
-    def __init__(
-        self,
-        server_address: tuple[str, int],
-        handler_class: type[BaseHTTPRequestHandler],
-        db: sqlite3.Connection,
-        similarity_db: sqlite3.Connection | None,
-        random_cache_db: sqlite3.Connection | None,
-        index: faiss.Index,
-        embeddings_dim: int,
-        embeddings_count: int,
-        default_limit: int,
-        normalize_queries: bool,
-        refresh_similarity_cache: bool,
-        similarity_require_full_cache: bool,
-        similarity_allow_ann_on_cache_miss: bool,
-        similarity_search_limit: int,
-        similarity_max_per_author: int,
-        similarity_exclude_source_author: bool,
-        recommendation_strategy: RecommendationStrategy,
-        related_personalization_deps: RelatedPersonalizationDeps | None,
-        related_personalization_enabled: bool,
-        video_error_threshold: int,
-        recommendations_debug_enabled: bool,
-        use_client_likes: bool,
-        rate_limiter: RateLimiter | None,
-        popularity_like_weight: float,
-        enable_instance_ignore: bool,
-        enable_channel_blocklist: bool,
-        engine_ingest_mode: str,
-    ) -> None:
-        """Initialize the instance."""
-        super().__init__(server_address, handler_class)
-        self.db = db
-        self.index = index
-        self.embeddings_dim = embeddings_dim
-        self.embeddings_count = embeddings_count
-        self.default_limit = default_limit
-        self.normalize_queries = normalize_queries
-        self.similarity_db = similarity_db
-        self.random_cache_db = random_cache_db
-        self.refresh_similarity_cache = refresh_similarity_cache
-        self.similarity_require_full_cache = similarity_require_full_cache
-        self.similarity_allow_ann_on_cache_miss = similarity_allow_ann_on_cache_miss
-        self.similarity_search_limit = similarity_search_limit
-        self.similarity_max_per_author = similarity_max_per_author
-        self.similarity_exclude_source_author = similarity_exclude_source_author
-        self.recommendation_strategy = recommendation_strategy
-        self.related_personalization_deps = related_personalization_deps
-        self.related_personalization_enabled = related_personalization_enabled
-        self.video_error_threshold = video_error_threshold
-        self.recommendations_debug_enabled = recommendations_debug_enabled
-        self.use_client_likes = use_client_likes
-        self.rate_limiter = rate_limiter
-        self.popularity_like_weight = popularity_like_weight
-        self.enable_instance_ignore = enable_instance_ignore
-        self.enable_channel_blocklist = enable_channel_blocklist
-        self.engine_ingest_mode = engine_ingest_mode
-        self.index_lock = threading.Lock()
-        self.db_lock = threading.Lock()
-        self.similarity_db_lock = threading.Lock()
-        self.random_cache_lock = threading.Lock()
 
 
 def main() -> None:

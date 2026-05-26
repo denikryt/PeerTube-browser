@@ -11,31 +11,27 @@ def _unused_local_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def test_proxy_preserves_engine_http_error_payload(start_json_engine, start_client_backend, http_json) -> None:
+def test_proxy_preserves_engine_http_error_payload(start_json_engine, start_client_backend) -> None:
     """Engine HTTP errors with payloads must pass through status and body."""
     fake_engine = start_json_engine(
         {("GET", "/api/video"): lambda _record: (503, {"error": "engine unavailable"})}
     )
     client = start_client_backend(f"http://127.0.0.1:{fake_engine.server_port}")
 
-    status, body = http_json(
-        "GET",
-        f"http://127.0.0.1:{client.server_port}/api/video?id=123&host=example.org",
-    )
+    response = client.get("/api/video?id=123&host=example.org")
+    status, body = response.status_code, response.json()
 
     assert status == 503
     assert body == {"error": "engine unavailable"}
 
 
-def test_proxy_transport_failure_returns_current_unavailable_shape(start_client_backend, http_json) -> None:
+def test_proxy_transport_failure_returns_current_unavailable_shape(start_client_backend) -> None:
     """A refused Engine connection must remain a controlled proxy-unavailable error."""
     port = _unused_local_port()
     client = start_client_backend(f"http://127.0.0.1:{port}")
 
-    status, body = http_json(
-        "GET",
-        f"http://127.0.0.1:{client.server_port}/api/video?id=123&host=example.org",
-    )
+    response = client.get("/api/video?id=123&host=example.org")
+    status, body = response.status_code, response.json()
 
     assert status == 502
     assert body["error"] == "Engine read proxy failed"

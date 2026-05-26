@@ -9,6 +9,8 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[2]
+for module_name in ("app", "runtime", "http_adapters"):
+    sys.modules.pop(module_name, None)
 sys.path.insert(0, str(ROOT / "client" / "backend"))
 
 import app as client_app  # noqa: E402

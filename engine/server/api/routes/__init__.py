@@ -1,6 +1,6 @@
-"""Route adapters for the stdlib Engine API handler.
+"""Route adapters for the FastAPI Engine API surface.
 
-The modules in this package keep HTTP route-specific request parsing and
-response selection out of ``handlers.similar`` while preserving the existing
-``BaseHTTPRequestHandler`` runtime and public Engine API contracts.
+The modules in this package keep route-specific request parsing and response
+selection out of framework startup code while preserving the existing public
+Engine API contracts.
 """

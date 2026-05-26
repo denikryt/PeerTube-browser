@@ -5,7 +5,7 @@ from lib.users_store import record_like
 
 
 def test_user_profile_get_returns_local_like_identities_without_engine_metadata(
-    client_db, start_json_engine, start_client_backend, http_json
+    client_db, start_json_engine, start_client_backend
 ) -> None:
     """The profile route exposes local stored identities and does not enrich via Engine."""
     record_like(
@@ -18,10 +18,8 @@ def test_user_profile_get_returns_local_like_identities_without_engine_metadata(
     fake_engine = start_json_engine({})
     client = start_client_backend(f"http://127.0.0.1:{fake_engine.server_port}")
 
-    status, body = http_json(
-        "GET",
-        f"http://127.0.0.1:{client.server_port}/api/user-profile?user_id=local-user",
-    )
+    response = client.get("/api/user-profile?user_id=local-user")
+    status, body = response.status_code, response.json()
 
     assert status == 200
     assert body["user_id"] == "local-user"

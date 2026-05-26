@@ -1,6 +1,6 @@
 """FastAPI compatibility helpers for Engine API routes.
 
-These helpers emulate the small subset of ``BaseHTTPRequestHandler`` used by
+These helpers emulate the small subset of the transitional stdlib handler used by
 existing Engine route modules. Stage 10 keeps route/service code behavior stable
 while replacing the active HTTP framework.
 """
@@ -73,7 +73,7 @@ class FastAPIHandlerAdapter:
         return f"{proto}://{host}{self.path}"
 
     def _log_access_start(self) -> None:
-        """No-op hook kept for compatibility with SimilarHandler tests."""
+        """No-op hook kept for compatibility with route-service tests."""
         return
 
     def _rate_limit_check(self, path: str) -> bool:

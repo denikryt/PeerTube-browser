@@ -1,7 +1,7 @@
 """Runtime state for the FastAPI Client backend adapter.
 
 This module keeps the dependencies that were historically stored on
-``ClientBackendServer`` in one explicit object. The object is intentionally
+the transitional stdlib server in one explicit object. The object is intentionally
 small and behavior-neutral: it preserves current database, Engine gateway,
 publish-mode, and rate-limit ownership while the HTTP framework changes.
 """

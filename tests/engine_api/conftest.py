@@ -6,22 +6,32 @@ import json
 import sqlite3
 import sys
 import threading
+import types
 from email.message import Message
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[2]
+for module_name in ("app", "runtime", "http_adapters"):
+    sys.modules.pop(module_name, None)
 sys.path.insert(0, str(ROOT / "engine" / "server" / "api"))
 sys.path.insert(0, str(ROOT / "engine" / "server"))
 
+fake_ann = types.ModuleType("data.ann")
+fake_ann.search_index = lambda *_args, **_kwargs: ([], [])
+sys.modules.setdefault("data.ann", fake_ann)
+
+from app import create_app  # noqa: E402
 from data.interaction_events import ensure_interaction_event_schema  # noqa: E402
+from runtime import EngineRuntimeState  # noqa: E402
 
 
 class CapturingHandler:
-    """Minimal BaseHTTPRequestHandler-like object for direct handler tests."""
+    """Structural handler harness for direct route/service tests."""
 
     def __init__(self, body: dict[str, Any] | None = None) -> None:
         """Encode the request body and prepare response capture fields."""
@@ -65,68 +75,6 @@ def engine_event_server() -> SimpleNamespace:
     conn.close()
 
 
-def install_fake_ann(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Install a minimal fake ANN module so Engine route tests avoid FAISS."""
-    import types
-
-    fake_ann = types.ModuleType("data.ann")
-    fake_ann.search_index = lambda *_args, **_kwargs: ([], [])
-    monkeypatch.setitem(sys.modules, "data.ann", fake_ann)
-
-
-def import_similar_handler_module(monkeypatch: pytest.MonkeyPatch):
-    """Import ``handlers.similar`` with only heavyweight ANN access faked."""
-    import importlib
-
-    install_fake_ann(monkeypatch)
-    for name in list(sys.modules):
-        if (
-            name == "handlers.similar"
-            or name.startswith("routes.")
-            or name.startswith("engine.server.api.routes.")
-        ):
-            sys.modules.pop(name, None)
-    return importlib.import_module("handlers.similar")
-
-
-class RouteCapturingHandler(CapturingHandler):
-    """BaseHTTPRequestHandler-like harness for exercising SimilarHandler routes."""
-
-    def __init__(
-        self,
-        path: str,
-        method: str = "GET",
-        body: dict[str, Any] | None = None,
-        server: Any | None = None,
-    ) -> None:
-        """Prepare route, request metadata, server state, and response capture."""
-        super().__init__(body)
-        self.path = path
-        self.command = method
-        self.server = server if server is not None else SimpleNamespace(rate_limiter=None)
-        self.client_address = ("127.0.0.1", 12345)
-        self.headers["Host"] = "engine.local"
-
-    def _get_client_ip(self) -> str:
-        """Return the test client IP using the production handler contract."""
-        return self.client_address[0] if self.client_address else "unknown"
-
-    def _get_full_url(self) -> str:
-        """Build a simple absolute URL for access-log compatibility."""
-        return f"http://engine.local{self.path}"
-
-    def _log_access_start(self) -> None:
-        """No-op request-start hook for route dispatch tests."""
-        return
-
-    def _rate_limit_check(self, path: str) -> bool:
-        """Use the production rate-limit key shape in handler tests."""
-        limiter = getattr(self.server, "rate_limiter", None)
-        if limiter is None:
-            return True
-        return limiter.allow(f"{self._get_client_ip()}:{path}")
-
-
 class RejectingRateLimiter:
     """Rate limiter fake that rejects all requests and records the requested key."""
 
@@ -138,3 +86,58 @@ class RejectingRateLimiter:
         """Reject the request while preserving the current rate-limit key."""
         self.key = key
         return False
+
+
+def make_engine_state(**overrides: Any) -> EngineRuntimeState:
+    """Create a minimal Engine runtime state for FastAPI route tests."""
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    state = EngineRuntimeState(
+        db=conn,
+        similarity_db=None,
+        random_cache_db=None,
+        index=None,
+        embeddings_dim=384,
+        embeddings_count=42,
+        default_limit=100,
+        normalize_queries=True,
+        refresh_similarity_cache=False,
+        similarity_require_full_cache=False,
+        similarity_allow_ann_on_cache_miss=True,
+        similarity_search_limit=100,
+        similarity_max_per_author=3,
+        similarity_exclude_source_author=True,
+        recommendation_strategy=SimpleNamespace(name="test"),
+        related_personalization_deps=None,
+        related_personalization_enabled=False,
+        video_error_threshold=3,
+        recommendations_debug_enabled=False,
+        use_client_likes=True,
+        rate_limiter=None,
+        popularity_like_weight=1.0,
+        enable_instance_ignore=True,
+        enable_channel_blocklist=True,
+        engine_ingest_mode="disabled",
+        db_lock=threading.RLock(),
+        similarity_db_lock=threading.RLock(),
+        random_cache_lock=threading.RLock(),
+        index_lock=threading.RLock(),
+    )
+    for key, value in overrides.items():
+        setattr(state, key, value)
+    return state
+
+
+@pytest.fixture
+def engine_state() -> EngineRuntimeState:
+    """Provide a minimal Engine runtime state and close its DB after use."""
+    state = make_engine_state()
+    yield state
+    state.db.close()
+
+
+@pytest.fixture
+def engine_client(engine_state: EngineRuntimeState) -> TestClient:
+    """Provide a FastAPI TestClient for Engine route characterization tests."""
+    with TestClient(create_app(engine_state)) as client:
+        yield client

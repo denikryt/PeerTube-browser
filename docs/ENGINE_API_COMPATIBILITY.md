@@ -6,7 +6,7 @@ This document records Engine API backward-compatibility decisions that are prese
 
 ## Stage 4 route split
 
-Stage 4 split Engine route adapters and orchestration services out of `engine/server/api/handlers/similar.py` while preserving the existing stdlib HTTP runtime, route paths, response shapes, and startup behavior.
+Stage 4 split Engine route adapters and orchestration services out of `engine/server/api/handlers/similar.py` while preserving the then-active HTTP runtime, route paths, response shapes, and startup behavior. Stage 11 later removed the transitional stdlib adapter; the route compatibility decisions below remain binding for the FastAPI adapter.
 
 ### `/videos/{id}/similar` path-id injection
 
@@ -68,14 +68,14 @@ Tests: `tests/engine_api/test_channels_route_characterization.py`.
 
 Removal condition, if any: A later channel API plan may change query semantics only with explicit contract tests and documentation updates.
 
-### SimilarHandler remaining adapter ownership
+### Transitional Engine handler removed
 
-Decision: `SimilarHandler` keeps stdlib HTTP adapter responsibilities: access logging, CORS preflight, GET/POST dispatch, and rate-limit checks.
+Decision: The Stage 4 transitional stdlib Engine handler was removed in Stage 11; active route ownership now lives in FastAPI app registration and `routes/*`.
 
-Reason: Stage 4 is not a framework migration; moving these concerns would affect request lifecycle behavior outside route extraction.
+Reason: After Stage 10 introduced FastAPI adapters, keeping a second handler dispatch path would create duplicate ownership and drift risk.
 
-Implementation action: `engine/server/api/handlers/similar.py` delegates route behavior to `routes/*` but keeps `_get_client_ip()`, `_get_full_url()`, `_log_access_start()`, `do_OPTIONS()`, `do_GET()`, `do_POST()`, and `_rate_limit_check()`.
+Implementation action: `engine/server/api/handlers/similar.py` remains only as a helper re-export shim for historical helper imports. CORS, rate-limit, unknown-route, and path-id behavior are covered by FastAPI route tests.
 
-Tests: `tests/engine_api/test_engine_route_dispatch_characterization.py`.
+Tests: `tests/engine_api/test_engine_route_dispatch_characterization.py`, `tests/engine_api/test_similar_route_characterization.py`, and `tests/framework/test_engine_fastapi_contract.py`.
 
-Removal condition, if any: A future framework migration or handler-cleanup stage may move this behavior only after preserving CORS, logging, and rate-limit contracts.
+Removal condition, if any: The helper re-export shim can be removed after downstream imports use `engine/server/api/services/recommendation_service.py` directly.

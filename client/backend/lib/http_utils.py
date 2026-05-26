@@ -6,10 +6,26 @@ import json
 import threading
 from collections import deque
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler
-from typing import Any
+from typing import Any, BinaryIO, Protocol
 
 DEFAULT_USER_ID = "local-user"
+
+
+class ResponseHandlerProtocol(Protocol):
+    """Structural protocol for legacy response-helper compatibility."""
+
+    rfile: BinaryIO
+    wfile: BinaryIO
+    headers: Any
+
+    def send_response(self, status: int) -> None:
+        """Send or capture the HTTP status code."""
+
+    def send_header(self, key: str, value: str) -> None:
+        """Send or capture one HTTP response header."""
+
+    def end_headers(self) -> None:
+        """Finish the response header block."""
 
 
 def _is_client_disconnect_error(exc: OSError) -> bool:
@@ -17,7 +33,7 @@ def _is_client_disconnect_error(exc: OSError) -> bool:
     return exc.errno in {errno.EPIPE, errno.ECONNRESET}
 
 
-def _finish_response(handler: BaseHTTPRequestHandler, body: bytes = b"") -> bool:
+def _finish_response(handler: ResponseHandlerProtocol, body: bytes = b"") -> bool:
     """Flush headers and body, suppressing expected client disconnect errors."""
     try:
         handler.end_headers()
@@ -39,7 +55,7 @@ def resolve_user_id(raw: str | None) -> str:
     return DEFAULT_USER_ID
 
 
-def respond_json(handler: BaseHTTPRequestHandler, status: int, payload: dict[str, Any]) -> bool:
+def respond_json(handler: ResponseHandlerProtocol, status: int, payload: dict[str, Any]) -> bool:
     """Send a JSON response with CORS headers."""
     body = json.dumps(payload, indent=2).encode("utf-8")
     handler.send_response(status)
@@ -52,7 +68,7 @@ def respond_json(handler: BaseHTTPRequestHandler, status: int, payload: dict[str
 
 
 def respond_bytes(
-    handler: BaseHTTPRequestHandler,
+    handler: ResponseHandlerProtocol,
     status: int,
     payload: bytes,
     content_type: str = "application/octet-stream",
@@ -67,7 +83,7 @@ def respond_bytes(
     return _finish_response(handler, payload)
 
 
-def respond_options(handler: BaseHTTPRequestHandler) -> bool:
+def respond_options(handler: ResponseHandlerProtocol) -> bool:
     """Respond to CORS preflight requests."""
     handler.send_response(204)
     handler.send_header("access-control-allow-origin", "*")
@@ -77,7 +93,7 @@ def respond_options(handler: BaseHTTPRequestHandler) -> bool:
     return _finish_response(handler)
 
 
-def read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
+def read_json_body(handler: ResponseHandlerProtocol) -> dict[str, Any]:
     """Read and parse a JSON request body with size limits."""
     length = handler.headers.get("content-length")
     size = int(length or "0")

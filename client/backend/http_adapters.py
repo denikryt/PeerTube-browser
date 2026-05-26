@@ -1,7 +1,7 @@
 """FastAPI compatibility helpers for Client backend HTTP behavior.
 
 The helpers in this module mirror the small pieces of behavior that used to be
-owned by ``BaseHTTPRequestHandler``: CORS headers, client IP resolution,
+owned by the transitional stdlib handler: CORS headers, client IP resolution,
 manual JSON-body parsing, and response-byte preservation. They deliberately do
 not introduce Pydantic validation so existing error bodies and status codes stay
 stable during framework migration.

@@ -1,6 +1,6 @@
 """Runtime state for the FastAPI Engine API adapter.
 
-The state mirrors the attributes that the stdlib ``SimilarServer`` exposed to
+The state mirrors the attributes that the stdlib the transitional stdlib server exposed to
 route modules. Keeping the attribute names stable lets Stage 10 change the HTTP
 framework without changing Engine route, service, recommendation, or data code.
 """

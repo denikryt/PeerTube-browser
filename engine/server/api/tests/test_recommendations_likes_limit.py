@@ -51,7 +51,7 @@ class _DummyHandler:
         self.response_headers.append((key, value))
 
     def end_headers(self) -> None:
-        """Keep BaseHTTPRequestHandler response compatibility."""
+        """Keep structural response-helper compatibility."""
         return
 
     def parsed_body(self) -> dict:

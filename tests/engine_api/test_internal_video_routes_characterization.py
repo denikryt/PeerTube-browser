@@ -1,12 +1,13 @@
-"""Characterize Engine internal video route adapters."""
+"""Characterize Engine internal video route adapters through FastAPI."""
 from __future__ import annotations
 
 import sqlite3
 import threading
-from types import SimpleNamespace
 
 import numpy as np
-from conftest import RouteCapturingHandler, import_similar_handler_module
+from app import create_app
+from conftest import make_engine_state
+from fastapi.testclient import TestClient
 
 
 def _connect_internal_video_db() -> sqlite3.Connection:
@@ -54,40 +55,38 @@ def _connect_internal_video_db() -> sqlite3.Connection:
     return conn
 
 
-def test_internal_video_resolve_route_preserves_missing_identity_error(monkeypatch) -> None:
+def _client_with_internal_video_db() -> tuple[TestClient, sqlite3.Connection]:
+    """Build a FastAPI client backed by the internal-video fixture DB."""
+    conn = _connect_internal_video_db()
+    state = make_engine_state(db=conn, db_lock=threading.RLock(), video_error_threshold=2)
+    return TestClient(create_app(state)), conn
+
+
+def test_internal_video_resolve_route_preserves_missing_identity_error() -> None:
     """Route dispatch must preserve missing identity errors for internal resolve."""
-    similar = import_similar_handler_module(monkeypatch)
-    server = SimpleNamespace(
-        rate_limiter=None, db=_connect_internal_video_db(), db_lock=threading.RLock()
-    )
-    handler = RouteCapturingHandler(
-        "/internal/videos/resolve", method="POST", body={}, server=server
-    )
+    client, conn = _client_with_internal_video_db()
+    try:
+        response = client.post("/internal/videos/resolve", json={})
+    finally:
+        conn.close()
 
-    similar.SimilarHandler.do_POST(handler)
-
-    assert handler.status == 400
-    assert handler.parsed_body() == {"error": "Missing video_id or uuid"}
-    server.db.close()
+    assert response.status_code == 400
+    assert response.json() == {"error": "Missing video_id or uuid"}
 
 
-def test_internal_video_resolve_route_preserves_success_shape(monkeypatch) -> None:
+def test_internal_video_resolve_route_preserves_success_shape() -> None:
     """Route dispatch must delegate to the existing identity resolver."""
-    similar = import_similar_handler_module(monkeypatch)
-    server = SimpleNamespace(
-        rate_limiter=None, db=_connect_internal_video_db(), db_lock=threading.RLock()
-    )
-    handler = RouteCapturingHandler(
-        "/internal/videos/resolve",
-        method="POST",
-        body={"uuid": "uuid-123", "host": "example.org"},
-        server=server,
-    )
+    client, conn = _client_with_internal_video_db()
+    try:
+        response = client.post(
+            "/internal/videos/resolve",
+            json={"uuid": "uuid-123", "host": "example.org"},
+        )
+    finally:
+        conn.close()
 
-    similar.SimilarHandler.do_POST(handler)
-    body = handler.parsed_body()
-
-    assert handler.status == 200
+    body = response.json()
+    assert response.status_code == 200
     assert body["ok"] is True
     assert body["video"] == {
         "video_id": "123",
@@ -96,54 +95,37 @@ def test_internal_video_resolve_route_preserves_success_shape(monkeypatch) -> No
         "channel_id": "c1",
         "title": "Title",
     }
-    server.db.close()
 
 
-def test_internal_videos_metadata_route_preserves_missing_and_empty_entries(monkeypatch) -> None:
+def test_internal_videos_metadata_route_preserves_missing_and_empty_entries() -> None:
     """Metadata route must keep current missing-entry and empty-valid-entry behavior."""
-    similar = import_similar_handler_module(monkeypatch)
-    server = SimpleNamespace(
-        rate_limiter=None, db=_connect_internal_video_db(), db_lock=threading.RLock()
-    )
+    client, conn = _client_with_internal_video_db()
+    try:
+        missing = client.post("/internal/videos/metadata", json={})
+        empty = client.post("/internal/videos/metadata", json={"entries": ["bad", {}]})
+    finally:
+        conn.close()
 
-    missing = RouteCapturingHandler(
-        "/internal/videos/metadata", method="POST", body={}, server=server
-    )
-    similar.SimilarHandler.do_POST(missing)
-    assert missing.status == 400
-    assert missing.parsed_body() == {"error": "Missing entries"}
-
-    empty = RouteCapturingHandler(
-        "/internal/videos/metadata", method="POST", body={"entries": ["bad", {}]}, server=server
-    )
-    similar.SimilarHandler.do_POST(empty)
-    assert empty.status == 200
-    assert empty.parsed_body() == {"ok": True, "count": 0, "rows": []}
-    server.db.close()
+    assert missing.status_code == 400
+    assert missing.json() == {"error": "Missing entries"}
+    assert empty.status_code == 200
+    assert empty.json() == {"ok": True, "count": 0, "rows": []}
 
 
-def test_internal_videos_metadata_route_preserves_success_shape(monkeypatch) -> None:
+def test_internal_videos_metadata_route_preserves_success_shape() -> None:
     """Metadata route must return rows from the current metadata reader."""
-    similar = import_similar_handler_module(monkeypatch)
-    server = SimpleNamespace(
-        rate_limiter=None,
-        db=_connect_internal_video_db(),
-        db_lock=threading.RLock(),
-        video_error_threshold=2,
-    )
-    handler = RouteCapturingHandler(
-        "/internal/videos/metadata",
-        method="POST",
-        body={"entries": [{"video_id": "123", "instance_domain": "example.org"}]},
-        server=server,
-    )
+    client, conn = _client_with_internal_video_db()
+    try:
+        response = client.post(
+            "/internal/videos/metadata",
+            json={"entries": [{"video_id": "123", "instance_domain": "example.org"}]},
+        )
+    finally:
+        conn.close()
 
-    similar.SimilarHandler.do_POST(handler)
-    body = handler.parsed_body()
-
-    assert handler.status == 200
+    body = response.json()
+    assert response.status_code == 200
     assert body["ok"] is True
     assert body["count"] == 1
     assert body["rows"][0]["video_id"] == "123"
     assert body["rows"][0]["title"] == "Title"
-    server.db.close()

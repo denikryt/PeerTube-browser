@@ -151,3 +151,14 @@ python3 engine/server/api/server.py --help
 ```
 
 The Engine entrypoint still has the existing FAISS runtime prerequisite in environments where FAISS is not installed. Stage 10 does not change that startup dependency. Framework compatibility decisions are documented in `docs/FRAMEWORK_COMPATIBILITY.md`.
+
+## HTTP adapter model
+
+The active Client and Engine HTTP adapter model is FastAPI/uvicorn only. Run services through the existing compatibility entrypoints:
+
+```bash
+python3 client/backend/server.py --help
+python3 engine/server/api/server.py --help
+```
+
+The Engine command still has the existing FAISS prerequisite in environments without FAISS installed. Do not add stdlib HTTP handler fixtures for new tests; use FastAPI `TestClient` or direct route/service harnesses.
