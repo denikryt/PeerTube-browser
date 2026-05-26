@@ -2,6 +2,29 @@
 
 This document defines how to verify current PeerTube Browser behavior before and during refactoring. It separates fast regression checks from dependency-heavy builds and full-contour smoke checks.
 
+
+## Root command wrappers
+
+Use `make test-fast` for the normal fast regression baseline before and during refactoring. It wraps the same fast checks listed below and does not run Node builds, full-contour smoke checks, installer checks, FAISS-heavy tests, or local production DB/index checks.
+
+`make test` is an alias for `make test-fast`. It is the default local regression command, not a full CI substitute.
+
+Root targets provided by Stage 2:
+
+```bash
+make test
+make test-fast
+make test-python
+make test-boundaries
+make build-frontend
+make build-crawler
+make test-smoke-arch
+make test-installers-dry-run
+make lint
+```
+
+The raw commands remain documented below so failures can be debugged without Makefile indirection.
+
 ## Fast baseline
 
 These checks should pass before structural refactoring and do not require frontend or crawler Node dependencies:
@@ -22,7 +45,14 @@ Current Stage 0 baseline in this environment:
 
 ## Python behavior tests
 
-Stage 0 adds pytest characterization tests around current behavior. They are intended to freeze observable behavior before code is split or moved.
+Stage 0 adds pytest characterization tests around current behavior. They are intended to freeze observable behavior before code is split or moved. Stage 2 configures pytest discovery in `pyproject.toml`, so the complete characterization suite can be run from the repository root with:
+
+```bash
+make test-python
+python3 -m pytest
+```
+
+Individual directories can still be run directly when debugging:
 
 ```bash
 python3 -m pytest tests/contracts
@@ -51,6 +81,10 @@ bash tests/check-frontend-client-gateway.sh
 Frontend and crawler builds are dependency-heavy checks. They require local package installation inside their component directories.
 
 ```bash
+make build-frontend
+make build-crawler
+
+# Equivalent raw commands:
 cd client/frontend && npm run build
 cd engine/crawler && npm run build
 ```
@@ -67,6 +101,9 @@ These are missing-prerequisite failures, not product behavior regressions by the
 The full split smoke script starts the Engine and Client locally, exercises the gateway path, sends a Client like action, checks profile likes, and verifies that Engine does not open the Client users DB.
 
 ```bash
+make test-smoke-arch
+
+# Equivalent raw command:
 bash tests/run-arch-split-smoke.sh
 ```
 
@@ -88,3 +125,15 @@ Current dependency-heavy baseline in this environment:
 A fast baseline or Stage 0 characterization test failure should be treated as a potential behavior regression unless the failure is clearly caused by a documented missing prerequisite.
 
 A Node build or full-contour smoke failure should first be classified as either a dependency/precondition issue or a real product failure. Do not hide missing prerequisites, but do not treat them as code regressions without confirming the prerequisite state.
+
+
+## Linting
+
+Stage 2 adds `ruff` as a development check for a narrow maintained surface: the boundary contract tests and small Client backend utility modules. Broader lint coverage is deferred so Stage 2 does not turn into unrelated legacy cleanup:
+
+```bash
+python3 -m pip install -r engine/server/requirements-dev.txt
+make lint
+```
+
+This stage uses `ruff check` only. It does not introduce `ruff format`; broad formatting normalization is deferred so tooling changes do not create unrelated code churn.

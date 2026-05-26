@@ -1,0 +1,29 @@
+[tool.pytest.ini_options]
+testpaths = [
+  "tests/contracts",
+  "tests/repositories",
+  "tests/client_backend",
+  "tests/engine_api",
+  "tests/recommendations",
+  "tests/engine_data",
+]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+exclude = [
+  ".git",
+  ".venv",
+  "venv",
+  "node_modules",
+  "client/frontend/dist",
+  "engine/crawler/dist",
+  "__pycache__",
+  ".pytest_cache",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = []

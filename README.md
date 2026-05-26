@@ -29,6 +29,9 @@ See `docs/DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset an
 - `docs/DEPLOYMENT.md`: service installation and runtime deployment.
 - `docs/ROADMAP.md`: product direction, not a task tracker.
 
+## Development checks
+Use `make test-fast` for the fast regression baseline before refactoring. `make test` is an alias for the same command. See `docs/DEVELOPMENT.md` and `docs/TESTING.md` for setup, dependency-heavy checks, and smoke tests.
+
 ## Components
 - `engine/`: read/analytics workspace.
 - `engine/crawler/`: crawler subsystem (part of Engine).

@@ -1,0 +1,33 @@
+.PHONY: test test-fast test-python test-boundaries test-python-compile test-legacy-interaction-events build-frontend build-crawler test-smoke-arch test-installers-dry-run lint
+
+test: test-fast
+
+test-fast: test-python-compile test-legacy-interaction-events test-boundaries test-python
+
+test-python-compile:
+	python3 -m compileall client/backend engine/server
+
+test-legacy-interaction-events:
+	python3 engine/server/db/jobs/tests/test-interaction-events.py
+
+test-boundaries:
+	bash tests/check-client-engine-boundary.sh
+	bash tests/check-frontend-client-gateway.sh
+
+test-python:
+	python3 -m pytest -q
+
+build-frontend:
+	cd client/frontend && npm run build
+
+build-crawler:
+	cd engine/crawler && npm run build
+
+test-smoke-arch:
+	bash tests/run-arch-split-smoke.sh
+
+test-installers-dry-run:
+	bash tests/run-installers-smoke.sh --dry-run-only
+
+lint:
+	python3 -m ruff check tests/contracts client/backend/lib/http_utils.py client/backend/lib/time_utils.py

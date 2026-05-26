@@ -19,21 +19,55 @@ plans                 implementation plans
 tests                 characterization, contract, repository, and smoke tests
 ```
 
+## Developer Setup
+
+Install the Python development tools needed for the fast regression and lint checks:
+
+```bash
+python3 -m pip install -r engine/server/requirements-dev.txt
+```
+
+Frontend and crawler dependencies remain component-local. This repository does not use npm workspaces in Stage 2:
+
+```bash
+cd client/frontend && npm install
+cd engine/crawler && npm install
+```
+
+`engine/server/requirements.txt` remains the compatibility runtime/deployment install file. Splitting API/runtime and ML/GPU dependencies is deferred to a later dependency-specific plan.
+
 ## Verification
 
 Use `docs/TESTING.md` as the source of truth for current verification commands and prerequisites.
 
-Fast refactor checks currently include:
+Fast refactor checks are available from the repository root:
 
 ```bash
-python3 -m compileall client/backend engine/server
-python3 engine/server/db/jobs/tests/test-interaction-events.py
-bash tests/check-client-engine-boundary.sh
-bash tests/check-frontend-client-gateway.sh
-python3 -m pytest tests/contracts tests/repositories tests/client_backend tests/engine_api tests/recommendations tests/engine_data -q
+make test-fast
 ```
 
-Dependency-heavy checks such as frontend/crawler builds require local Node dependencies first.
+`make test` is an alias for `make test-fast`. It is the local fast regression baseline, not a full CI substitute.
+
+The underlying raw commands are still documented in `docs/TESTING.md` for debugging. Python characterization tests are discovered through `pyproject.toml`, so they can also be run directly:
+
+```bash
+python3 -m pytest
+```
+
+Lint the Stage 2 maintained Python surface with:
+
+```bash
+make lint
+```
+
+Dependency-heavy checks such as frontend/crawler builds require local Node dependencies first. They can be run through root wrappers after component-local installation:
+
+```bash
+make build-frontend
+make build-crawler
+make test-smoke-arch
+make test-installers-dry-run
+```
 
 ## Generated Files
 
