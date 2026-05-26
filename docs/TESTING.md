@@ -45,7 +45,7 @@ Current Stage 0 baseline in this environment:
 
 ## Python behavior tests
 
-Stage 0 adds pytest characterization tests around current behavior. They are intended to freeze observable behavior before code is split or moved. Stage 2 configures pytest discovery in `pyproject.toml`, so the complete characterization suite can be run from the repository root with:
+Stage 0 adds pytest characterization tests around current behavior. Stage 3 extends the Client backend coverage for publish, profile reset, profile read, and proxy failure paths before moving that behavior into services. These tests are intended to freeze observable behavior before code is split or moved. Stage 2 configures pytest discovery in `pyproject.toml`, so the complete characterization suite can be run from the repository root with:
 
 ```bash
 make test-python
@@ -129,7 +129,7 @@ A Node build or full-contour smoke failure should first be classified as either 
 
 ## Linting
 
-Stage 2 adds `ruff` as a development check for a narrow maintained surface: the boundary contract tests and small Client backend utility modules. Broader lint coverage is deferred so Stage 2 does not turn into unrelated legacy cleanup:
+Stage 2 adds `ruff` as a development check for a narrow maintained surface. Stage 3 extends that maintained surface to the Client backend HTTP adapter, services, repositories, and small internal schemas introduced by the Client backend split. Broader lint coverage is still deferred so refactoring stages do not turn into unrelated legacy cleanup:
 
 ```bash
 python3 -m pip install -r engine/server/requirements-dev.txt

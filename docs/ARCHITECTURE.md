@@ -22,6 +22,8 @@ The frontend owns page state, rendering, UI interactions, and calls to the Clien
 
 The Client backend owns browser-facing profile and write behavior, local user data, Client API error shaping, and HTTP gateway calls to Engine. It must not import Engine modules or read Engine database files directly.
 
+Internally, `client/backend/server.py` is the stdlib HTTP adapter and process entrypoint. Client profile/write behavior, Engine read proxying, bridge publishing, and Client-owned persistence wrappers live under `client/backend/services/` and `client/backend/repositories/`. This internal split does not change public routes or component boundaries.
+
 ### Engine API
 
 The Engine API owns recommendation behavior, video/channel metadata reads, internal Client-to-Engine contracts, interaction ingest, and Engine-readable data access. It must not own Client local user profile persistence.

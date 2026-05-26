@@ -16,6 +16,24 @@ Client workspace contains two parts:
   - Engine endpoint: `POST /internal/events/ingest`
 - Uses Engine read API over HTTP for video resolve/metadata (no direct Engine DB access).
 
+
+## Backend Layout
+
+`client/backend/server.py` remains the stdlib HTTP entrypoint and route dispatch layer. It owns process startup, request parsing, rate-limit checks, CORS/response writing, and server lifecycle.
+
+The backend behavior is split into narrow modules:
+
+```text
+client/backend/services/bridge_publisher.py  Client -> Engine bridge publish modes
+client/backend/services/engine_gateway.py     read proxy allowlists and Engine HTTP forwarding
+client/backend/services/profile.py            local profile and likes metadata flows
+client/backend/services/user_actions.py       user action orchestration and event payload creation
+client/backend/repositories/users.py          Client users/likes SQLite wrapper
+client/backend/schemas.py                     small internal service result types
+```
+
+These modules are internal structure only. Public routes and payload shapes remain the boundary contract described above.
+
 ## Boundary Contract (Client-side)
 - Browser-facing ownership stays in Client backend:
   - write/profile: `/api/user-action`, `/api/user-profile/*`

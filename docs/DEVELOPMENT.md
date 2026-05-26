@@ -8,6 +8,8 @@ This document explains how to navigate and verify the project during refactoring
 
 ```text
 client/backend        browser-facing API, local profile/write state, Engine gateway
+client/backend/services  Client backend behavior split behind the HTTP handler
+client/backend/repositories Client-owned SQLite persistence wrappers
 client/frontend       web UI and Client API calls
 engine/server/api     Engine HTTP API, recommendations, metadata, internal ingest
 engine/server/data    Engine data access and SQLite read helpers
