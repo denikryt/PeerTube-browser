@@ -11,7 +11,9 @@ client/backend        browser-facing API, local profile/write state, Engine gate
 client/backend/services  Client backend behavior split behind the HTTP handler
 client/backend/repositories Client-owned SQLite persistence wrappers
 client/frontend       web UI and Client API calls
-engine/server/api     Engine HTTP API, recommendations, metadata, internal ingest
+engine/server/api     Engine HTTP API startup and handler adapter
+engine/server/api/routes Engine route-specific request/response adapters
+engine/server/api/services Engine API orchestration behind route adapters
 engine/server/data    Engine data access and SQLite read helpers
 engine/server/db/jobs data-build, updater, embedding, index, and cache jobs
 engine/crawler        PeerTube crawler source and schema

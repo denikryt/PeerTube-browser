@@ -30,4 +30,4 @@ test-installers-dry-run:
 	bash tests/run-installers-smoke.sh --dry-run-only
 
 lint:
-	python3 -m ruff check tests/contracts client/backend/lib/http_utils.py client/backend/lib/time_utils.py client/backend/server.py client/backend/repositories client/backend/services client/backend/schemas.py
+	python3 -m ruff check tests/contracts client/backend/lib/http_utils.py client/backend/lib/time_utils.py client/backend/server.py client/backend/repositories client/backend/services client/backend/schemas.py engine/server/api/handlers/similar.py engine/server/api/routes engine/server/api/services tests/engine_api/conftest.py tests/engine_api/test_engine_route_dispatch_characterization.py tests/engine_api/test_channels_route_characterization.py tests/engine_api/test_internal_video_routes_characterization.py tests/engine_api/test_engine_ingest_mode_characterization.py tests/engine_api/test_similar_route_characterization.py

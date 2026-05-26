@@ -45,7 +45,7 @@ Current Stage 0 baseline in this environment:
 
 ## Python behavior tests
 
-Stage 0 adds pytest characterization tests around current behavior. Stage 3 extends the Client backend coverage for publish, profile reset, profile read, and proxy failure paths before moving that behavior into services. These tests are intended to freeze observable behavior before code is split or moved. Stage 2 configures pytest discovery in `pyproject.toml`, so the complete characterization suite can be run from the repository root with:
+Stage 0 adds pytest characterization tests around current behavior. Stage 3 extends the Client backend coverage for publish, profile reset, profile read, and proxy failure paths before moving that behavior into services. Stage 4 adds Engine API route-dispatch tests before moving Engine route behavior into `engine/server/api/routes/` and `engine/server/api/services/`. These tests are intended to freeze observable behavior before code is split or moved. Stage 2 configures pytest discovery in `pyproject.toml`, so the complete characterization suite can be run from the repository root with:
 
 ```bash
 make test-python
@@ -111,14 +111,15 @@ Use this when the environment has Engine runtime dependencies and usable DB/inde
 
 ## Known local prerequisites
 
-- Engine server API tests may import `faiss` through `engine/server/api/server.py` or broad Engine server import paths.
+- Engine server startup checks may import `faiss` through `engine/server/api/server.py`; route-level tests should avoid broad server startup imports when possible.
 - Frontend build requires `npm install` or equivalent in `client/frontend`.
 - Crawler build requires `npm install` or equivalent in `engine/crawler`.
 - Full-contour smoke requires Engine runtime dependencies and data/index/cache files compatible with the current local configuration.
 
 Current dependency-heavy baseline in this environment:
 
-- `python3 -m unittest engine.server.api.tests.test_recommendations_likes_limit`: blocked by missing `faiss`.
+- `python3 -m unittest engine.server.api.tests.test_recommendations_likes_limit`: PASS after Stage 4 moved the test to narrow recommendation service imports.
+- `python3 engine/server/api/server.py --help`: blocked by missing `faiss` because startup still imports the FAISS-backed ANN path.
 
 ## How to interpret failures
 
@@ -136,4 +137,4 @@ python3 -m pip install -r engine/server/requirements-dev.txt
 make lint
 ```
 
-This stage uses `ruff check` only. It does not introduce `ruff format`; broad formatting normalization is deferred so tooling changes do not create unrelated code churn.
+This stage uses `ruff check` only. It does not introduce `ruff format`; broad formatting normalization is deferred so tooling changes do not create unrelated code churn. Stage 4 extends the maintained lint surface to the Engine API handler adapter, route modules, service modules, and new Engine route tests introduced by the route split.

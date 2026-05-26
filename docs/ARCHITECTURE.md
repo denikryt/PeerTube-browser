@@ -28,6 +28,8 @@ Internally, `client/backend/server.py` is the stdlib HTTP adapter and process en
 
 The Engine API owns recommendation behavior, video/channel metadata reads, internal Client-to-Engine contracts, interaction ingest, and Engine-readable data access. It must not own Client local user profile persistence.
 
+Internally, `engine/server/api/server.py` owns process startup, runtime state, DB/cache/index wiring, and FAISS/index loading. `engine/server/api/handlers/similar.py` is the stdlib HTTP adapter and route dispatcher. Route-specific request/response adapters live under `engine/server/api/routes/`, while non-trivial API orchestration that is not pure data access or recommendation-domain logic lives under `engine/server/api/services/`. Data access remains in `engine/server/data/`, and recommendation internals remain in `engine/server/api/recommendations/`.
+
 ### Crawler and Jobs
 
 The crawler and data-build jobs own PeerTube data collection, dataset updates, derived artifacts, and schema production for Engine consumption. Generated crawler JavaScript is a build output, not source code.
