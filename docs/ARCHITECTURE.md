@@ -48,3 +48,9 @@ SQLite schemas are owned by the component that creates or publishes the database
 ## Refactoring Rule
 
 Structural refactoring should preserve these boundaries until a later plan explicitly changes them with tests and documentation updates.
+
+## Frontend Internal Layout
+
+Stage 8 keeps the same Vite/vanilla TypeScript runtime while splitting reusable frontend code into narrower modules. Page entrypoints remain the lifecycle controllers, while shared Client API facades, rendering helpers, state helpers, and formatting utilities live under `client/frontend/src/api/`, `client/frontend/src/components/`, `client/frontend/src/state/`, and `client/frontend/src/utils/`.
+
+This split does not change the component boundary: frontend project API calls still go through the Client backend, and public PeerTube instance fallback on the video page remains PeerTube-specific metadata fallback behavior.

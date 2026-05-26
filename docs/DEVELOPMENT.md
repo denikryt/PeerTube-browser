@@ -117,3 +117,24 @@ Stage 5 adds Python-level config validation and internal dataclasses for route/s
 ## Schema Ownership
 
 Stage 6 adds current-shape migration resources for Client users DB and Engine runtime/cache tables. Existing `ensure_*` helpers remain compatibility wrappers, so startup and data-build commands do not change. See `docs/SCHEMA_OWNERSHIP.md` for owners, wrappers, and deferred schema work.
+
+## Frontend split and tests
+
+Stage 8 keeps the frontend on Vite and vanilla TypeScript. Shared helpers are organized under:
+
+```text
+client/frontend/src/api          Client-backend-facing frontend facade
+client/frontend/src/components   string/DOM render helpers for cards, rows, status, and profile UI
+client/frontend/src/state        browser/page state helpers
+client/frontend/src/utils        formatting, escaping, DOM, and video-field helpers
+```
+
+Frontend tests require component-local Node dependencies and are intentionally separate from `make test`:
+
+```bash
+cd client/frontend && npm install
+make test-frontend
+make build-frontend
+```
+
+`make test-frontend` runs Vitest/jsdom DOM and state characterization tests. It is not part of the Python fast regression baseline.

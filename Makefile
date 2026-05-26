@@ -1,4 +1,4 @@
-.PHONY: test test-fast test-python test-boundaries test-python-compile test-legacy-interaction-events build-frontend build-crawler test-crawler-db test-smoke-arch test-installers-dry-run lint
+.PHONY: test test-fast test-python test-boundaries test-python-compile test-legacy-interaction-events build-frontend build-crawler test-crawler-db test-frontend test-smoke-arch test-installers-dry-run lint
 
 test: test-fast
 
@@ -34,3 +34,6 @@ lint:
 
 test-crawler-db:
 	cd engine/crawler && npm run test:db
+
+test-frontend:
+	cd client/frontend && npm run test

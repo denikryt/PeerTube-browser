@@ -3,9 +3,10 @@
  */
 
 import "../../video.css";
-import { fetchSimilarVideosPayload, resolveApiBase } from "../../data/videos";
-import { sendUserAction } from "../../data/user-actions";
-import { addLocalLike } from "../../data/local-likes";
+import { fetchSimilarVideosPayload, resolveApiBase } from "../../api/client";
+import { iconEye, iconThumbDown, iconThumbUp } from "../../components/icons";
+import { renderSimilarVideoCard } from "../../components/video-card";
+import { handleVideoLikeAction, toggleReaction } from "../../state/profile-likes";
 import type { VideoRow } from "../../types/videos";
 
 const titleEl = document.getElementById("video-title");
@@ -24,8 +25,8 @@ const descriptionEl = document.getElementById("video-description");
 const embedEl = document.getElementById("video-embed") as HTMLIFrameElement | null;
 const originalLink = document.getElementById("original-link") as HTMLAnchorElement | null;
 const similarLink = document.getElementById("similar-link") as HTMLAnchorElement | null;
-const likeButton = document.getElementById("like-button");
-const dislikeButton = document.getElementById("dislike-button");
+const likeButton = document.getElementById("like-button") as HTMLButtonElement | null;
+const dislikeButton = document.getElementById("dislike-button") as HTMLButtonElement | null;
 const likeCount = document.getElementById("like-count");
 const dislikeCount = document.getElementById("dislike-count");
 const similarSection = document.getElementById("similar-section");
@@ -235,7 +236,7 @@ async function loadSimilarVideos() {
       similarCards.innerHTML = `<div class="error">No similar videos found.</div>`;
       return;
     }
-    similarCards.innerHTML = rows.map((row) => renderSimilarCard(row)).join("");
+    similarCards.innerHTML = rows.map((row) => renderSimilarVideoCard(row, { views: resolveSimilarStats(row), videoKey: resolveSimilarKey(row) })).join("");
     queueSimilarStats(rows);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load similar videos";
@@ -568,7 +569,7 @@ function getString(source: Record<string, unknown>, keys: string[]) {
 /**
  * Handle resolve asset candidate.
  */
-function resolveAssetCandidate(host: string, value: unknown) {
+function resolveAssetCandidate(host: string, value: unknown): string | null {
   if (!value) return "";
   if (typeof value === "string") return resolveApiAssetUrl(host, value);
   if (Array.isArray(value)) {
@@ -715,7 +716,7 @@ function resolveSimilarStats(row: VideoRow) {
   if (similarStatsCache.has(key)) {
     return similarStatsCache.get(key) ?? null;
   }
-  return normalizeStatValue(row.views ?? row.views_count ?? row.viewsCount) ?? null;
+  return normalizeStatValue(row.views ?? row.viewsCount) ?? null;
 }
 
 /**
@@ -725,7 +726,7 @@ function hasServerStats(row: VideoRow) {
   const hasViews =
     Object.prototype.hasOwnProperty.call(row, "views") ||
     Object.prototype.hasOwnProperty.call(row, "viewsCount") ||
-    Object.prototype.hasOwnProperty.call(row, "views_count");
+    false;
   const hasLikes =
     Object.prototype.hasOwnProperty.call(row, "likes") ||
     Object.prototype.hasOwnProperty.call(row, "likesCount") ||
@@ -747,7 +748,7 @@ function queueSimilarStats(rows: VideoRow[]) {
     const key = `${host}::${id}`;
     if (hasServerStats(row)) {
       if (!similarStatsCache.has(key)) {
-        const views = normalizeStatValue(row.views ?? row.views_count ?? row.viewsCount);
+        const views = normalizeStatValue(row.views ?? row.viewsCount);
         similarStatsCache.set(key, views ?? null);
       }
       continue;
@@ -929,112 +930,17 @@ function thumbnailUrl(row: VideoRow) {
 }
 
 /**
- * Handle render similar card.
- */
-function renderSimilarCard(row: VideoRow) {
-  const title = row.title ?? "Untitled video";
-  const thumb = thumbnailUrl(row);
-  const duration = formatDuration(row.duration ?? null);
-  const channel = channelName(row) ?? "Unknown channel";
-  const key = resolveSimilarKey(row);
-  const views = resolveSimilarStats(row);
-  const publishedAt = publishedAtMs(row);
-  const timeAgo = publishedAt ? formatTimeAgo(publishedAt) : null;
-  const timeSuffix = timeAgo ? ` · ${timeAgo}` : "";
-  const thumbMarkup = thumb
-    ? `<img src="${escapeHtml(thumb)}" alt="${escapeHtml(title)}" loading="lazy" />`
-    : "";
-  const keyAttribute = key ? ` data-video-key="${escapeHtml(key)}"` : "";
-  return `
-    <a class="similar-card-item" href="${escapeHtml(videoPageUrl(row))}"${keyAttribute}>
-      <div class="similar-thumb">
-        ${thumbMarkup}
-        <span class="duration">${escapeHtml(duration)}</span>
-      </div>
-      <h4 class="similar-title">${escapeHtml(title)}</h4>
-      <p class="similar-channel">${escapeHtml(channel)}</p>
-      <p class="similar-meta"><span data-stat="views">${formatStatValue(views)}</span> views${escapeHtml(timeSuffix)}</p>
-    </a>
-  `;
-}
-
-/**
- * Handle format duration.
- */
-function formatDuration(value: number | null) {
-  if (!value || !Number.isFinite(value)) return "0:00";
-  const total = Math.max(0, Math.round(value));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-/**
- * Handle toggle reaction.
- */
-function toggleReaction(active: HTMLButtonElement, other: HTMLButtonElement) {
-  const wasActive = active.classList.contains("active");
-  active.classList.toggle("active", !wasActive);
-  if (!wasActive) {
-    other.classList.remove("active");
-  }
-  return !wasActive;
-}
-
-/**
  * Handle handle like action.
  */
 async function handleLikeAction() {
-  if (!seedId) return;
   if (!(likeButton instanceof HTMLButtonElement)) return;
-  likeButton.disabled = true;
-  try {
-    await sendUserAction(apiBase, {
-      videoId: seedId,
-      host: seedHost,
-      action: "like"
-    });
-  } catch (error) {
-    console.warn("[video] failed to send action", error);
-  } finally {
-    const uuid = resolveLikeUuid(seedId, currentMetadata);
-    const host = resolveLikeHost(seedHost, currentMetadata);
-    if (uuid && host) {
-      addLocalLike(uuid, host);
-    }
-    likeButton.disabled = false;
-  }
-}
-
-/**
- * Handle resolve like uuid.
- */
-function resolveLikeUuid(id: string, metadata: VideoMetadata | null) {
-  const candidate = metadata?.videoUuid ?? "";
-  if (candidate) return candidate;
-  return looksLikeUuid(id) ? id : "";
-}
-
-/**
- * Handle resolve like host.
- */
-function resolveLikeHost(hostParam: string | null, metadata: VideoMetadata | null) {
-  const host = hostParam?.trim();
-  if (host) return host;
-  const metaHost = metadata?.instanceName?.trim();
-  if (metaHost) return metaHost;
-  return "";
-}
-
-/**
- * Handle looks like uuid.
- */
-function looksLikeUuid(value: string) {
-  return /^[0-9a-fA-F-]{32,36}$/.test(value);
+  await handleVideoLikeAction({
+    apiBase,
+    seedId,
+    seedHost,
+    metadata: currentMetadata,
+    likeButton
+  });
 }
 
 /**
@@ -1042,42 +948,6 @@ function looksLikeUuid(value: string) {
  */
 function numberFormat() {
   return new Intl.NumberFormat("en-US");
-}
-
-/**
- * Handle icon eye.
- */
-function iconEye() {
-  return `
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M2 12s3.8-6 10-6 10 6 10 6-3.8 6-10 6-10-6-10-6z" />
-      <circle cx="12" cy="12" r="3.2" />
-    </svg>
-  `;
-}
-
-/**
- * Handle icon thumb up.
- */
-function iconThumbUp() {
-  return `
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M7 11v9M7 20h7.3a2 2 0 0 0 1.95-1.55l1.7-7A2 2 0 0 0 16 9H12V5a2 2 0 0 0-2-2l-3 6" />
-      <rect x="3" y="11" width="4" height="9" rx="1.2" />
-    </svg>
-  `;
-}
-
-/**
- * Handle icon thumb down.
- */
-function iconThumbDown() {
-  return `
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M7 13V4M7 4h7.3a2 2 0 0 1 1.95 1.55l1.7 7A2 2 0 0 1 16 15h-4v4a2 2 0 0 1-2 2l-3-6" />
-      <rect x="3" y="4" width="4" height="9" rx="1.2" />
-    </svg>
-  `;
 }
 
 /**

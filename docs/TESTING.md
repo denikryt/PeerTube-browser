@@ -19,6 +19,7 @@ make test-boundaries
 make build-frontend
 make build-crawler
 make test-crawler-db
+make test-frontend
 make test-smoke-arch
 make test-installers-dry-run
 make lint
@@ -91,6 +92,20 @@ cd engine/crawler && npm run test:db
 ```
 
 Use these tests when changing `engine/crawler/src/db.ts` or modules under `engine/crawler/src/db/`. Missing Node dependencies should be treated as a prerequisite issue, not as a Python/product regression.
+
+
+## Frontend DOM/unit tests
+
+Stage 8 adds Vitest/jsdom tests for extracted frontend rendering and state helpers. These checks require `client/frontend/node_modules` and are not part of `make test` or `make test-fast`:
+
+```bash
+make test-frontend
+
+# Equivalent raw command:
+cd client/frontend && npm run test
+```
+
+Use these tests when changing `client/frontend/src/components`, `client/frontend/src/state`, `client/frontend/src/utils`, or page-controller code that consumes those helpers. Missing Node dependencies should be treated as a prerequisite issue, not as a Python/product regression.
 
 ## Node build checks
 

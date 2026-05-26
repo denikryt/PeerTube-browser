@@ -24,3 +24,27 @@ npm run build
 - Local developer overrides can be placed in:
   - `client/frontend/about.html`
 - Production build always emits `/about.html`. If `client/frontend/about.html` does not exist, Vite temporarily materializes it from `client/frontend/about.template.html` during the build.
+
+## Source layout
+
+Stage 8 keeps the frontend as Vite and vanilla TypeScript while splitting reusable code:
+
+```text
+src/api/          Client-backend-facing facade over existing data modules
+src/components/   reusable string/DOM render helpers
+src/state/        page and browser state helpers
+src/utils/        formatting, escaping, DOM, and video-field helpers
+src/pages/        page lifecycle controllers and event wiring
+```
+
+## Tests
+
+Frontend tests are Node-prerequisite checks and are not part of the root fast Python baseline:
+
+```bash
+npm install
+npm run test
+
+# from repository root:
+make test-frontend
+```
