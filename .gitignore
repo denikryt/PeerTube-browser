@@ -20,6 +20,7 @@ __pycache__/
 /.tmp/
 /tmp
 /dev/nginx
+plans/
 
 client/frontend/run-client-sync-build.sh
 client/frontend/run-client-sync-build-client-dev.sh
