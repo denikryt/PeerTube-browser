@@ -38,6 +38,15 @@ npm install
 npm run build
 ```
 
+Crawler DB module tests are available after installing crawler dependencies:
+
+```bash
+cd engine/crawler
+npm run test:db
+```
+
+These tests verify the TypeScript crawler stores with temporary SQLite files. They do not run PeerTube network crawls.
+
 ### Instance discovery
 Default source is the JoinPeerTube whitelist JSON.
 ```bash

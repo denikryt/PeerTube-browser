@@ -75,6 +75,22 @@ make test-smoke-arch
 make test-installers-dry-run
 ```
 
+
+## Crawler DB module tests
+
+Stage 7 splits the crawler SQLite layer under `engine/crawler/src/db/` while keeping `engine/crawler/src/db.ts` as the compatibility facade. Run the crawler DB tests after installing crawler Node dependencies:
+
+```bash
+cd engine/crawler
+npm install
+npm run test:db
+
+# from repository root:
+make test-crawler-db
+```
+
+`make test-crawler-db` is intentionally separate from `make test` because it depends on the crawler Node environment and the native `better-sqlite3` package.
+
 ## Generated Files
 
 Generated outputs should not be committed:

@@ -1,4 +1,4 @@
-.PHONY: test test-fast test-python test-boundaries test-python-compile test-legacy-interaction-events build-frontend build-crawler test-smoke-arch test-installers-dry-run lint
+.PHONY: test test-fast test-python test-boundaries test-python-compile test-legacy-interaction-events build-frontend build-crawler test-crawler-db test-smoke-arch test-installers-dry-run lint
 
 test: test-fast
 
@@ -31,3 +31,6 @@ test-installers-dry-run:
 
 lint:
 	python3 -m ruff check tests/contracts client/backend/lib/http_utils.py client/backend/lib/time_utils.py client/backend/server.py client/backend/repositories client/backend/services client/backend/schemas.py engine/server/api/handlers/similar.py engine/server/api/routes engine/server/api/services engine/server/api/recommendations/config.py engine/server/api/recommendations/types.py tests/engine_api/conftest.py tests/engine_api/test_engine_route_dispatch_characterization.py tests/engine_api/test_channels_route_characterization.py tests/engine_api/test_internal_video_routes_characterization.py tests/engine_api/test_engine_ingest_mode_characterization.py tests/engine_api/test_similar_route_characterization.py tests/recommendations/test_config_validation.py tests/recommendations/test_types_characterization.py client/backend/db engine/server/db/migrations tests/db
+
+test-crawler-db:
+	cd engine/crawler && npm run test:db

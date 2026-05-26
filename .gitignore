@@ -32,3 +32,6 @@ client/frontend/dist/
 # Python caches
 *.py[cod]
 .pytest_cache/
+
+# Crawler test build output
+engine/crawler/dist-test/

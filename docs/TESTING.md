@@ -18,6 +18,7 @@ make test-python
 make test-boundaries
 make build-frontend
 make build-crawler
+make test-crawler-db
 make test-smoke-arch
 make test-installers-dry-run
 make lint
@@ -76,6 +77,20 @@ bash tests/check-frontend-client-gateway.sh
 ```
 
 `tests/contracts/test_current_boundary_scripts.py` runs these scripts from pytest so the boundary rules appear in the normal Python test baseline.
+
+
+## Crawler database tests
+
+Stage 7 adds TypeScript crawler DB characterization tests. They use temporary SQLite files and Node's built-in test runner after compiling crawler source and tests to `engine/crawler/dist-test/`. These checks require `engine/crawler/node_modules` and are not part of `make test` or `make test-fast`:
+
+```bash
+make test-crawler-db
+
+# Equivalent raw command:
+cd engine/crawler && npm run test:db
+```
+
+Use these tests when changing `engine/crawler/src/db.ts` or modules under `engine/crawler/src/db/`. Missing Node dependencies should be treated as a prerequisite issue, not as a Python/product regression.
 
 ## Node build checks
 

@@ -106,7 +106,19 @@ video_crawl_progress
 Compatibility wrappers:
 
 ```text
-None changed by Stage 6.
+engine/crawler/src/db.ts
+```
+
+Stage 7 database modules:
+
+```text
+engine/crawler/src/db/connection.ts
+engine/crawler/src/db/schema.ts
+engine/crawler/src/db/types.ts
+engine/crawler/src/db/instances.ts
+engine/crawler/src/db/channels.ts
+engine/crawler/src/db/videos.ts
+engine/crawler/src/db/utils.ts
 ```
 
 Allowed Stage 6 changes:
@@ -115,16 +127,29 @@ Allowed Stage 6 changes:
 Document ownership and keep compatibility tests around the schema consumed by Engine read paths.
 ```
 
+Allowed Stage 7 changes:
+
+```text
+Split the TypeScript crawler DB layer into narrow modules while keeping schema.sql, command behavior, and db.ts import compatibility stable.
+```
+
 Deferred changes:
 
 ```text
-engine/crawler/src/db.ts split, TypeScript repository tests, crawler schema redesign, and crawler command behavior.
+crawler schema redesign, crawler command behavior changes, updater/job orchestration, and PeerTube network traversal refactors.
 ```
 
 Tests:
 
 ```text
 tests/engine_data/test_schema_compatibility_snapshot.py
+engine/crawler/test/db/*.test.ts
+```
+
+Compatibility decisions:
+
+```text
+docs/CRAWLER_COMPATIBILITY.md
 ```
 
 ## Engine main dataset DB
