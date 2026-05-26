@@ -7,12 +7,12 @@ This document explains how to navigate and verify the project during refactoring
 ## Main Areas
 
 ```text
-client/backend        browser-facing API, local profile/write state, Engine gateway
+client/backend        browser-facing FastAPI API, local profile/write state, Engine gateway
 client/backend/services  Client backend behavior split behind the HTTP handler
 client/backend/repositories Client-owned SQLite persistence wrappers
 client/backend/db     Client users DB current-shape migration resources
 client/frontend       web UI and Client API calls
-engine/server/api     Engine HTTP API startup and handler adapter
+engine/server/api     Engine HTTP API startup, FastAPI app, and route adapters
 engine/server/api/routes Engine route-specific request/response adapters
 engine/server/api/services Engine API orchestration behind route adapters
 engine/server/data    Engine data access and SQLite read helpers
@@ -140,3 +140,14 @@ make build-frontend
 ```
 
 `make test-frontend` runs Vitest/jsdom DOM and state characterization tests. It is not part of the Python fast regression baseline.
+
+## HTTP Framework Runtime
+
+Client and Engine HTTP services use FastAPI/uvicorn behind the existing executable entrypoints:
+
+```bash
+python3 client/backend/server.py --help
+python3 engine/server/api/server.py --help
+```
+
+The Engine entrypoint still has the existing FAISS runtime prerequisite in environments where FAISS is not installed. Stage 10 does not change that startup dependency. Framework compatibility decisions are documented in `docs/FRAMEWORK_COMPATIBILITY.md`.

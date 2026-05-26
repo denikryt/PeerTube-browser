@@ -22,13 +22,13 @@ The frontend owns page state, rendering, UI interactions, and calls to the Clien
 
 The Client backend owns browser-facing profile and write behavior, local user data, Client API error shaping, and HTTP gateway calls to Engine. It must not import Engine modules or read Engine database files directly.
 
-Internally, `client/backend/server.py` is the stdlib HTTP adapter and process entrypoint. Client profile/write behavior, Engine read proxying, bridge publishing, and Client-owned persistence wrappers live under `client/backend/services/` and `client/backend/repositories/`. This internal split does not change public routes or component boundaries.
+Internally, `client/backend/server.py` remains the executable process entrypoint and now launches the FastAPI app from `client/backend/app.py`. Client profile/write behavior, Engine read proxying, bridge publishing, and Client-owned persistence wrappers live under `client/backend/services/` and `client/backend/repositories/`. This framework migration does not change public routes or component boundaries.
 
 ### Engine API
 
 The Engine API owns recommendation behavior, video/channel metadata reads, internal Client-to-Engine contracts, interaction ingest, and Engine-readable data access. It must not own Client local user profile persistence.
 
-Internally, `engine/server/api/server.py` owns process startup, runtime state, DB/cache/index wiring, and FAISS/index loading. `engine/server/api/handlers/similar.py` is the stdlib HTTP adapter and route dispatcher. Route-specific request/response adapters live under `engine/server/api/routes/`, while non-trivial API orchestration that is not pure data access or recommendation-domain logic lives under `engine/server/api/services/`. Data access remains in `engine/server/data/`, and recommendation internals remain in `engine/server/api/recommendations/`.
+Internally, `engine/server/api/server.py` owns process startup, runtime state, DB/cache/index wiring, FAISS/index loading, and the FastAPI/uvicorn launch. `engine/server/api/app.py` registers the active FastAPI routes. Route-specific request/response adapters live under `engine/server/api/routes/`, while non-trivial API orchestration that is not pure data access or recommendation-domain logic lives under `engine/server/api/services/`. Data access remains in `engine/server/data/`, and recommendation internals remain in `engine/server/api/recommendations/`.
 
 ### Crawler and Jobs
 

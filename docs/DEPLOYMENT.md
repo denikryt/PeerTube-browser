@@ -169,3 +169,7 @@ ENGINE_URL=http://127.0.0.1:7072 CLIENT_URL=http://127.0.0.1:7272 \
 ## Updater entrypoint compatibility
 
 `engine/server/db/jobs/updater-worker.py` remains the stable executable entrypoint for installer-generated services and manual operational runs. Stage 9 splits its internals into `engine/server/db/jobs/updater/` modules without changing installer scripts or systemd unit generation behavior. See `docs/UPDATER_COMPATIBILITY.md` for compatibility decisions.
+
+## FastAPI/uvicorn note
+
+The Client backend and Engine API keep their existing `server.py` executable paths. Internally those entrypoints now launch FastAPI apps with uvicorn. Service installation commands and path assumptions remain unchanged; framework compatibility decisions are recorded in `docs/FRAMEWORK_COMPATIBILITY.md`.

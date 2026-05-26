@@ -19,7 +19,7 @@ Client workspace contains two parts:
 
 ## Backend Layout
 
-`client/backend/server.py` remains the stdlib HTTP entrypoint and route dispatch layer. It owns process startup, request parsing, rate-limit checks, CORS/response writing, and server lifecycle.
+`client/backend/server.py` remains the executable entrypoint and launches the FastAPI app from `client/backend/app.py`. It owns process startup, runtime dependency construction, uvicorn launch, and lifecycle compatibility.
 
 The backend behavior is split into narrow modules:
 

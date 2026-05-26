@@ -26,3 +26,7 @@ This service does not own user write/profile endpoints.
 - Test docs:
   - `engine/server/db/jobs/docs/MODERATION_INTEGRATION_TEST.md`
   - `engine/server/db/jobs/docs/ORCHESTRATOR_SMOKE_TEST.md`
+
+## Runtime Framework
+
+`engine/server/api/server.py` remains the executable entrypoint and launches the FastAPI app from `engine/server/api/app.py` through uvicorn. FAISS/index startup prerequisites are unchanged. Framework compatibility decisions are documented in `docs/FRAMEWORK_COMPATIBILITY.md`.

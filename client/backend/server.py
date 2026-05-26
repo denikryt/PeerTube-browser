@@ -6,7 +6,6 @@ import argparse
 import json
 import logging
 import os
-import signal
 import sqlite3
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,6 +14,8 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
+import uvicorn
+from app import create_app
 from lib.http_utils import (
     RateLimiter,
     read_json_body,
@@ -25,6 +26,7 @@ from lib.http_utils import (
 )
 from lib.time_utils import now_ms
 from repositories.users import UsersRepository
+from runtime import ClientRuntimeState
 from schemas import ProxyBytesResult, ServiceResult
 from services.bridge_publisher import publish_event, resolve_publish_mode
 from services.engine_gateway import (
@@ -393,43 +395,23 @@ class ClientBackendHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    """Run the Client backend HTTP service until interrupted."""
+    """Run the Client backend FastAPI service through the compatibility entrypoint."""
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     run_id = str(uuid4())
-    stop_reason = "unknown"
-
-    def _signal_name(signum: int) -> str:
-        """Return a stable signal name for lifecycle logging."""
-        try:
-            return signal.Signals(signum).name
-        except ValueError:
-            return str(signum)
-
-    def _handle_shutdown_signal(signum: int, _frame: Any) -> None:
-        """Translate SIGTERM/SIGINT into KeyboardInterrupt for graceful shutdown."""
-        nonlocal stop_reason
-        stop_reason = f"signal:{_signal_name(signum)}"
-        raise KeyboardInterrupt
-
-    previous_sigint = signal.getsignal(signal.SIGINT)
-    previous_sigterm = signal.getsignal(signal.SIGTERM)
-    signal.signal(signal.SIGINT, _handle_shutdown_signal)
-    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
 
     users_db_path = (ROOT_DIR / DEFAULT_USERS_DB_PATH).resolve()
     users_db_path.parent.mkdir(parents=True, exist_ok=True)
     user_db = connect_db(users_db_path)
     users = UsersRepository(user_db)
     users.ensure_schema()
-    server = ClientBackendServer(
-        (args.host, int(args.port)),
-        ClientBackendHandler,
+    state = ClientRuntimeState.create(
         user_db,
         args.engine_ingest_base,
         args.publish_mode,
         RateLimiter(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS),
     )
+    app = create_app(state)
     _emit_client_log(
         logging.INFO,
         "service.start",
@@ -441,27 +423,18 @@ def main() -> None:
             "publish_mode": resolve_publish_mode(args.publish_mode),
             "run_id": run_id,
             "pid": os.getpid(),
+            "framework": "fastapi",
         },
     )
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        if stop_reason == "unknown":
-            stop_reason = "keyboard_interrupt"
+        uvicorn.run(app, host=args.host, port=int(args.port), log_level="info", access_log=False)
+    finally:
         _emit_client_log(
             logging.INFO,
             "service.stop",
             "client backend shutting down",
-            {
-                "reason": stop_reason,
-                "run_id": run_id,
-                "pid": os.getpid(),
-            },
+            {"reason": "uvicorn_exit", "run_id": run_id, "pid": os.getpid()},
         )
-    finally:
-        signal.signal(signal.SIGINT, previous_sigint)
-        signal.signal(signal.SIGTERM, previous_sigterm)
-        server.server_close()
         user_db.close()
 
 

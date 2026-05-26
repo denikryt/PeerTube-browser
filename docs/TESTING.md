@@ -21,6 +21,7 @@ make build-crawler
 make test-crawler-db
 make test-frontend
 make test-jobs
+make test-framework
 make test-smoke-arch
 make test-installers-dry-run
 make lint
@@ -198,3 +199,13 @@ These tests prove that the checked-in recommendation defaults validate, legacy `
 ## Schema ownership tests
 
 Stage 6 adds `tests/db` to the fast Python test suite. These tests use temporary SQLite databases to verify current-shape migration resources, legacy `ensure_*` wrapper equivalence, primary-key contracts, idempotency, and the schema ownership documentation. They do not use production DB files, FAISS, Node dependencies, crawler runtime, or network.
+
+## Framework adapter checks
+
+Stage 10 adds FastAPI adapter tests without replacing the existing characterization suite:
+
+```bash
+make test-framework
+```
+
+These tests verify Client and Engine FastAPI route contracts, stable `server.py` entrypoint paths, CORS/OPTIONS behavior, rate-limit responses, and framework compatibility documentation.
