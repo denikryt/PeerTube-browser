@@ -20,6 +20,7 @@ make build-frontend
 make build-crawler
 make test-crawler-db
 make test-frontend
+make test-jobs
 make test-smoke-arch
 make test-installers-dry-run
 make lint
@@ -47,7 +48,7 @@ Current Stage 0 baseline in this environment:
 
 ## Python behavior tests
 
-Stage 0 adds pytest characterization tests around current behavior. Stage 3 extends the Client backend coverage for publish, profile reset, profile read, and proxy failure paths before moving that behavior into services. Stage 4 adds Engine API route-dispatch tests before moving Engine route behavior into `engine/server/api/routes/` and `engine/server/api/services/`. These tests are intended to freeze observable behavior before code is split or moved. Stage 2 configures pytest discovery in `pyproject.toml`, so the complete characterization suite can be run from the repository root with:
+Stage 0 adds pytest characterization tests around current behavior. Stage 3 extends the Client backend coverage for publish, profile reset, profile read, and proxy failure paths before moving that behavior into services. Stage 4 adds Engine API route-dispatch tests before moving Engine route behavior into `engine/server/api/routes/` and `engine/server/api/services/`. Stage 9 adds updater job tests for CLI defaults, command construction, locking, staging helpers, sync helpers, service restart behavior, and pipeline command order before splitting updater internals. These tests are intended to freeze observable behavior before code is split or moved. Stage 2 configures pytest discovery in `pyproject.toml`, so the complete characterization suite can be run from the repository root with:
 
 ```bash
 make test-python
@@ -67,6 +68,20 @@ python3 -m pytest tests/db
 ```
 
 The tests should assert externally visible effects: HTTP status codes, JSON fields, SQLite rows, dedup decisions, forwarded payloads, and route boundary behavior. They should not primarily assert that an internal mock was called.
+
+
+## Job/updater tests
+
+Stage 9 splits updater internals while keeping `engine/server/db/jobs/updater-worker.py` as the executable compatibility entrypoint. The fast Python suite includes the updater tests because they use fake command runners, temporary SQLite databases, and temporary lock files instead of real crawler CLIs, systemctl, FAISS, or network calls.
+
+Run only the updater tests with:
+
+```bash
+make test-jobs
+python3 -m pytest tests/jobs -q
+```
+
+Full operational smoke for the updater remains prerequisite-sensitive because it can require Node crawler builds, FAISS/index artifacts, systemd behavior, and dataset files.
 
 ## Contract and boundary checks
 

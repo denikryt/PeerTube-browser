@@ -32,7 +32,7 @@ Internally, `engine/server/api/server.py` owns process startup, runtime state, D
 
 ### Crawler and Jobs
 
-The crawler and data-build jobs own PeerTube data collection, dataset updates, derived artifacts, and schema production for Engine consumption. Generated crawler JavaScript is a build output, not source code.
+The crawler and data-build jobs own PeerTube data collection, dataset updates, derived artifacts, and schema production for Engine consumption. Generated crawler JavaScript is a build output, not source code. `engine/server/db/jobs/updater-worker.py` remains the stable updater entrypoint, while updater orchestration internals live under `engine/server/db/jobs/updater/`.
 
 ## SQLite Schema Ownership
 

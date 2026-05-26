@@ -21,13 +21,15 @@ All paths below are relative to the repository root.
 You can run the same build/update flow automatically with the updater worker:
 
 - Worker entrypoint: `engine/server/db/jobs/updater-worker.py`
+- Internal updater modules: `engine/server/db/jobs/updater/`
 - It runs: crawl to staging -> embeddings -> merge to prod -> popularity -> ANN rebuild -> similarity precompute.
 - Systemd installation: `install-service.sh --with-updater-timer`
 - Timer runs daily (`OnUnitInactiveSec=1d`).
 
 Detailed behavior, flags, lock/resume logic, and systemd notes are documented in:
 
-- `engine/server/db/jobs/UPDATER_WORKER.md`
+- `engine/server/db/jobs/docs/UPDATER_WORKER.md`
+- `docs/UPDATER_COMPATIBILITY.md`
 
 ## 1) Crawl data
 

@@ -167,3 +167,7 @@ systemctl status peertube-updater.service -l
 journalctl -u peertube-updater.service -f -o cat
 systemctl list-timers --all peertube-updater.timer
 ```
+
+## Internal layout
+
+`updater-worker.py` is the compatibility CLI entrypoint. Its operational internals are split into `engine/server/db/jobs/updater/` modules for CLI parsing, command execution, locks, path resolution, sync helpers, staging helpers, and pipeline orchestration. This split preserves command-line flags, stage order, lock behavior, systemd stop/start behavior, and generated crawler CLI usage. Compatibility decisions are recorded in `docs/UPDATER_COMPATIBILITY.md`.

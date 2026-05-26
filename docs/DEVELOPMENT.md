@@ -17,6 +17,7 @@ engine/server/api/routes Engine route-specific request/response adapters
 engine/server/api/services Engine API orchestration behind route adapters
 engine/server/data    Engine data access and SQLite read helpers
 engine/server/db/jobs data-build, updater, embedding, index, and cache jobs
+engine/server/db/jobs/updater updater internals split behind updater-worker.py
 engine/server/db/migrations Engine runtime/cache current-shape migration resources
 engine/crawler        PeerTube crawler source and schema
 
@@ -50,6 +51,7 @@ Fast refactor checks are available from the repository root:
 
 ```bash
 make test-fast
+make test-jobs
 ```
 
 `make test` is an alias for `make test-fast`. It is the local fast regression baseline, not a full CI substitute.
