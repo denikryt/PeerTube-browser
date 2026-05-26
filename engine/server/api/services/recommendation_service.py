@@ -27,6 +27,7 @@ from recommendations.debug import attach_debug_info
 from recommendations.profile import resolve_profile_config_with_guest
 from recommendations.related_personalization import rerank_related_videos
 from recommendations.scoring import score_and_rank_list
+from recommendations.types import RecommendationResult
 from request_context import (
     clear_request_context,
     fetch_recent_likes_request,
@@ -269,17 +270,16 @@ def respond_rows(
         len(stable_rows),
         duration_ms,
     )
-    respond_json(
-        handler,
-        200,
-        {
-            "generatedAt": int(datetime.now(timezone.utc).timestamp() * 1000),
-            "total": server.embeddings_count,
-            "count": len(stable_rows),
-            "seed": seed_payload,
-            "rows": stable_rows,
-        },
+    # RecommendationResult is an internal adapter boundary only; the explicit
+    # total preserves the existing route contract where total reports the loaded
+    # embedding count instead of the number of returned rows.
+    result = RecommendationResult(
+        rows=tuple(stable_rows),
+        seed=seed_payload,
+        generated_at=int(datetime.now(timezone.utc).timestamp() * 1000),
+        total=server.embeddings_count,
     )
+    respond_json(handler, 200, result.to_response())
 
 
 def handle_random(

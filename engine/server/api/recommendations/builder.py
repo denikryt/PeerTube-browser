@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from recommendations.config import validate_recommendation_config
 from recommendations.candidates.explore_range import ExploreRangeDeps, ExploreRangeGenerator
 from recommendations.candidates.exploit_from_likes import (
     ExploitFromLikesDeps,
@@ -85,6 +86,11 @@ def build_recommendation_strategy(
     Output:
     - MixingRecommendationStrategy configured with exploit/explore/fresh generators.
     """
+    # Stage 5 validates the checked-in/raw dictionary before strategy wiring,
+    # but still passes that raw dictionary into the mixer to preserve existing
+    # fallback and lookup semantics during execution.
+    validate_recommendation_config(config)
+
     def fetch_random_rows_filtered(conn: Any, limit: int) -> list[dict[str, Any]]:
         """Handle fetch random rows filtered."""
         return deps.fetch_random_rows(

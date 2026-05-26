@@ -11,7 +11,9 @@ caps) before returning a batch to the client.
 - **Up Next**: `/videos/similar` or `/videos/{id}/similar` with a seed video.
   The server uses the `upnext` profile and reorders similar items via local scoring.
 
-Profiles live in `RECOMMENDATION_PIPELINE` (see `engine/server/api/server_config.py`).
+Profiles live in `RECOMMENDATION_PIPELINE` (see `engine/server/api/recommendations/config.py`).
+`engine/server/api/server_config.py` re-exports the same config for startup/import compatibility.
+Stage 5 adds Python-level validation only; external YAML/JSON config loading is deferred.
 If the user has no likes, the profile auto-switches to `guest` (guest_home/guest_upnext),
 where only `random/popular/fresh` are active.
 

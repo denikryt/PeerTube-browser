@@ -138,3 +138,13 @@ make lint
 ```
 
 This stage uses `ruff check` only. It does not introduce `ruff format`; broad formatting normalization is deferred so tooling changes do not create unrelated code churn. Stage 4 extends the maintained lint surface to the Engine API handler adapter, route modules, service modules, and new Engine route tests introduced by the route split.
+
+## Recommendation config and internal type checks
+
+Stage 5 adds focused recommendation tests for config validation and internal boundary dataclasses:
+
+```bash
+python3 -m pytest tests/recommendations/test_config_validation.py tests/recommendations/test_types_characterization.py -q
+```
+
+These tests prove that the checked-in recommendation defaults validate, legacy `server_config.py` imports still work, malformed config is rejected early, and internal result objects preserve the current primitive response shape.

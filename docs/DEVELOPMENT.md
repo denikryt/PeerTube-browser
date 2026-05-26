@@ -89,3 +89,9 @@ __pycache__/
 ## Change Discipline
 
 Keep behavior-preserving cleanup separate from behavior changes. If a refactor discovers a real behavior bug, add or update a regression test and plan the behavior change explicitly.
+
+## Recommendation Internals
+
+Recommendation defaults now live in `engine/server/api/recommendations/config.py`. `engine/server/api/server_config.py` remains a compatibility re-export for Engine startup code and existing imports.
+
+Stage 5 adds Python-level config validation and internal dataclasses for route/service boundaries. It does not introduce external YAML/JSON config files, Pydantic/OpenAPI schemas, or recommendation behavior changes.

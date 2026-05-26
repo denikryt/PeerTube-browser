@@ -1,7 +1,8 @@
 # Recommendation Layer Params (explore / exploit / fresh / random / popular)
 
 This document explains which parameters influence candidate volume and final
-output per layer. Config source: `engine/server/api/server_config.py` (RECOMMENDATION_PIPELINE).
+output per layer. Config source: `engine/server/api/recommendations/config.py` (`RECOMMENDATION_PIPELINE`).
+`engine/server/api/server_config.py` remains a compatibility re-export; Stage 5 does not add external YAML/JSON config loading.
 
 Profiles:
 - `home` / `upnext` — primary modes.
