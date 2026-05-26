@@ -61,6 +61,7 @@ python3 -m pytest tests/client_backend
 python3 -m pytest tests/engine_api
 python3 -m pytest tests/recommendations
 python3 -m pytest tests/engine_data
+python3 -m pytest tests/db
 ```
 
 The tests should assert externally visible effects: HTTP status codes, JSON fields, SQLite rows, dedup decisions, forwarded payloads, and route boundary behavior. They should not primarily assert that an internal mock was called.
@@ -148,3 +149,7 @@ python3 -m pytest tests/recommendations/test_config_validation.py tests/recommen
 ```
 
 These tests prove that the checked-in recommendation defaults validate, legacy `server_config.py` imports still work, malformed config is rejected early, and internal result objects preserve the current primitive response shape.
+
+## Schema ownership tests
+
+Stage 6 adds `tests/db` to the fast Python test suite. These tests use temporary SQLite databases to verify current-shape migration resources, legacy `ensure_*` wrapper equivalence, primary-key contracts, idempotency, and the schema ownership documentation. They do not use production DB files, FAISS, Node dependencies, crawler runtime, or network.

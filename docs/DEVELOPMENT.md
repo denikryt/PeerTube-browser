@@ -10,12 +10,14 @@ This document explains how to navigate and verify the project during refactoring
 client/backend        browser-facing API, local profile/write state, Engine gateway
 client/backend/services  Client backend behavior split behind the HTTP handler
 client/backend/repositories Client-owned SQLite persistence wrappers
+client/backend/db     Client users DB current-shape migration resources
 client/frontend       web UI and Client API calls
 engine/server/api     Engine HTTP API startup and handler adapter
 engine/server/api/routes Engine route-specific request/response adapters
 engine/server/api/services Engine API orchestration behind route adapters
 engine/server/data    Engine data access and SQLite read helpers
 engine/server/db/jobs data-build, updater, embedding, index, and cache jobs
+engine/server/db/migrations Engine runtime/cache current-shape migration resources
 engine/crawler        PeerTube crawler source and schema
 
 docs                  product and operational documentation
@@ -95,3 +97,7 @@ Keep behavior-preserving cleanup separate from behavior changes. If a refactor d
 Recommendation defaults now live in `engine/server/api/recommendations/config.py`. `engine/server/api/server_config.py` remains a compatibility re-export for Engine startup code and existing imports.
 
 Stage 5 adds Python-level config validation and internal dataclasses for route/service boundaries. It does not introduce external YAML/JSON config files, Pydantic/OpenAPI schemas, or recommendation behavior changes.
+
+## Schema Ownership
+
+Stage 6 adds current-shape migration resources for Client users DB and Engine runtime/cache tables. Existing `ensure_*` helpers remain compatibility wrappers, so startup and data-build commands do not change. See `docs/SCHEMA_OWNERSHIP.md` for owners, wrappers, and deferred schema work.

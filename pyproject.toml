@@ -6,6 +6,7 @@ testpaths = [
   "tests/engine_api",
   "tests/recommendations",
   "tests/engine_data",
+  "tests/db",
 ]
 pythonpath = ["."]
 addopts = "-q"

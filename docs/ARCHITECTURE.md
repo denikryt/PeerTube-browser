@@ -34,6 +34,10 @@ Internally, `engine/server/api/server.py` owns process startup, runtime state, D
 
 The crawler and data-build jobs own PeerTube data collection, dataset updates, derived artifacts, and schema production for Engine consumption. Generated crawler JavaScript is a build output, not source code.
 
+## SQLite Schema Ownership
+
+SQLite schemas are owned by the component that creates or publishes the database artifact. Client backend owns the local users/likes DB, the crawler owns the raw crawl DB schema, Engine jobs own data-build output shapes, and Engine runtime owns runtime/cache helper tables. Detailed owners, compatibility wrappers, and Stage 6 migration resources are documented in `docs/SCHEMA_OWNERSHIP.md`.
+
 ## Forbidden Coupling
 
 - Frontend code must not bypass the Client backend to call Engine directly.

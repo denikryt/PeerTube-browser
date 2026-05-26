@@ -146,6 +146,8 @@ If the whitelist DB schema is outdated, migrate it:
 python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whitelist.db
 ```
 
+Schema ownership and compatibility wrappers are documented in `docs/SCHEMA_OWNERSHIP.md`. Stage 6 does not change the data-build commands.
+
 ## 3) Build embeddings
 Embeddings use SentenceTransformers. The text payload is built from:
 - `title`

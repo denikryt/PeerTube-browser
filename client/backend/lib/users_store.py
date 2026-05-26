@@ -4,30 +4,21 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+try:
+    from client.backend.db.migrate import apply_client_user_migrations
+except ModuleNotFoundError:  # pragma: no cover - script import fallback
+    from db.migrate import apply_client_user_migrations
+
 from .time_utils import now_ms
 
 
 def ensure_user_schema(conn: sqlite3.Connection) -> None:
-    """Create users/likes tables if missing."""
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-          user_id TEXT PRIMARY KEY,
-          username TEXT,
-          created_at INTEGER NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS likes (
-          user_id TEXT NOT NULL,
-          video_id TEXT NOT NULL,
-          instance_domain TEXT NOT NULL,
-          video_uuid TEXT,
-          updated_at INTEGER NOT NULL,
-          PRIMARY KEY (user_id, video_id, instance_domain)
-        );
-        CREATE INDEX IF NOT EXISTS likes_user_updated_idx
-          ON likes (user_id, updated_at DESC);
-        """
-    )
+    """Create users/likes tables through the current-shape migration wrapper.
+
+    Existing Client startup and repository callers keep using this helper while
+    Stage 6 centralizes the checked-in SQL resource for the same schema.
+    """
+    apply_client_user_migrations(conn)
 
 
 def get_or_create_user(conn: sqlite3.Connection, user_id: str) -> None:
