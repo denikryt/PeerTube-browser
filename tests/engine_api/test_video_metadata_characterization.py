@@ -15,7 +15,6 @@ sys.path.insert(0, str(ROOT / "engine" / "server" / "api"))
 sys.path.insert(0, str(ROOT / "engine" / "server"))
 
 from handlers import video as video_handler  # noqa: E402
-from conftest import CapturingHandler  # noqa: E402
 
 
 def _connect() -> sqlite3.Connection:
@@ -79,7 +78,6 @@ def test_dynamic_video_metadata_overrides_db_fields_and_uses_db_fallbacks(monkey
     """Video response should merge live instance metadata over DB fallback fields."""
     conn = _connect()
     server = SimpleNamespace(db=conn, db_lock=threading.RLock(), video_error_threshold=2)
-    handler = CapturingHandler()
     monkeypatch.setattr(
         video_handler,
         "fetch_instance_video_dynamic",
@@ -93,11 +91,10 @@ def test_dynamic_video_metadata_overrides_db_fields_and_uses_db_fallbacks(monkey
         },
     )
 
-    handled = video_handler.handle_video_request(handler, server, {"id": ["123"], "host": ["example.org"]})
-    body = handler.parsed_body()
+    result = video_handler.handle_video_request(server, {"id": ["123"], "host": ["example.org"]})
+    body = result.payload
 
-    assert handled is True
-    assert handler.status == 200
+    assert result.status == 200
     assert body["title"] == "Dynamic Title"
     assert body["views"] == 99
     assert body["likes"] == 7
@@ -113,12 +110,10 @@ def test_missing_video_id_and_missing_row_return_current_errors() -> None:
     """Video handler error shapes are part of the current Client-facing contract."""
     server = SimpleNamespace(db=_connect(), db_lock=threading.RLock(), video_error_threshold=2)
 
-    missing_id = CapturingHandler()
-    video_handler.handle_video_request(missing_id, server, {})
+    missing_id = video_handler.handle_video_request(server, {})
     assert missing_id.status == 400
-    assert missing_id.parsed_body() == {"error": "Missing video id"}
+    assert missing_id.payload == {"error": "Missing video id"}
 
-    missing_row = CapturingHandler()
-    video_handler.handle_video_request(missing_row, server, {"id": ["missing"], "host": ["example.org"]})
+    missing_row = video_handler.handle_video_request(server, {"id": ["missing"], "host": ["example.org"]})
     assert missing_row.status == 404
-    assert missing_row.parsed_body() == {"error": "Video not found"}
+    assert missing_row.payload == {"error": "Video not found"}

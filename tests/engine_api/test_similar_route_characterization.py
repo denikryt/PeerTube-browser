@@ -1,4 +1,5 @@
 """Characterize Engine similar/recommendation route behavior through FastAPI."""
+
 from __future__ import annotations
 
 import importlib
@@ -9,6 +10,7 @@ import pytest
 from app import create_app
 from conftest import make_engine_state
 from fastapi.testclient import TestClient
+from route_results import RouteResult
 
 
 def test_videos_path_similar_injects_path_id_before_execution(monkeypatch) -> None:
@@ -17,12 +19,10 @@ def test_videos_path_similar_injects_path_id_before_execution(monkeypatch) -> No
 
     captured = {}
 
-    def fake_handle_similar(_handler, _server, params):
+    def fake_handle_similar(_server, params):
         """Capture params passed to the recommendation execution boundary."""
         captured.update(params)
-        from http_utils import respond_json
-
-        respond_json(_handler, 200, {"rows": [], "count": 0})
+        return RouteResult(200, {"rows": [], "count": 0})
 
     monkeypatch.setattr(route, "handle_similar", fake_handle_similar)
     state = make_engine_state()
@@ -104,7 +104,7 @@ def test_request_context_is_cleared_after_recommendation_error(monkeypatch) -> N
     conn.execute("INSERT INTO videos VALUES ('123', 'uuid-123', 'example.org')")
     conn.commit()
 
-    def fail_after_context(_handler, _server, _params):
+    def fail_after_context(_server, _params):
         """Raise after Client likes have been put into request context."""
         assert request_context.fetch_recent_likes_request("local-user", 10) == [
             {"video_id": "123", "video_uuid": "uuid-123", "instance_domain": "example.org"}

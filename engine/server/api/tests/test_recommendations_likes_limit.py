@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import io
-import json
 import sys
 import types
 import unittest
-from email.message import Message
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -15,49 +12,20 @@ from unittest.mock import patch
 
 API_DIR = Path(__file__).resolve().parents[1]
 SERVER_DIR = API_DIR.parent
-if str(SERVER_DIR) not in sys.path:
-    sys.path.insert(0, str(SERVER_DIR))
-if str(API_DIR) not in sys.path:
-    sys.path.insert(0, str(API_DIR))
+for path in (str(SERVER_DIR), str(API_DIR)):
+    if path in sys.path:
+        sys.path.remove(path)
+for path in (str(SERVER_DIR), str(API_DIR)):
+    sys.path.insert(0, path)
+sys.modules.pop("services", None)
 
 fake_ann = types.ModuleType("data.ann")
 fake_ann.search_index = lambda *_args, **_kwargs: ([], [])
 sys.modules.setdefault("data.ann", fake_ann)
 
+from route_results import RouteResult  # noqa: E402
 from services import recommendation_service as rec_service  # noqa: E402
 from server_config import DEFAULT_CLIENT_LIKES_MAX  # noqa: E402
-
-
-class _DummyHandler:
-    """Minimal handler double used to call recommendation service behavior."""
-
-    def __init__(self, path: str, body: dict) -> None:
-        """Initialize the test handler with route path and JSON request body."""
-        self.path = path
-        raw = json.dumps(body).encode("utf-8")
-        self.rfile = io.BytesIO(raw)
-        self.wfile = io.BytesIO()
-        self.headers = Message()
-        self.headers["content-length"] = str(len(raw))
-        self.status: int | None = None
-        self.response_headers: list[tuple[str, str]] = []
-
-    def send_response(self, status: int) -> None:
-        """Capture the response status sent by respond_json."""
-        self.status = status
-
-    def send_header(self, key: str, value: str) -> None:
-        """Capture response headers for handler compatibility."""
-        self.response_headers.append((key, value))
-
-    def end_headers(self) -> None:
-        """Keep structural response-helper compatibility."""
-        return
-
-    def parsed_body(self) -> dict:
-        """Return the JSON body written by the service."""
-        self.wfile.seek(0)
-        return json.loads(self.wfile.read().decode("utf-8"))
 
 
 class RecommendationsLikesLimitTests(unittest.TestCase):
@@ -71,14 +39,13 @@ class RecommendationsLikesLimitTests(unittest.TestCase):
                 {"uuid": f"video-{idx}", "host": "example.com"} for idx in range(over_limit)
             ]
         }
-        handler = _DummyHandler("/recommendations", body)
         server = SimpleNamespace(use_client_likes=True)
 
-        rec_service.handle_similar_request(handler, server, "/recommendations", "POST", {})
+        result = rec_service.handle_similar_request(server, "/recommendations", "POST", {}, body)
 
-        self.assertEqual(handler.status, 400)
+        self.assertEqual(result.status, 400)
         self.assertEqual(
-            handler.parsed_body(),
+            result.payload,
             {
                 "error": "Too many likes in request body",
                 "max_allowed": DEFAULT_CLIENT_LIKES_MAX,
@@ -94,37 +61,35 @@ class RecommendationsLikesLimitTests(unittest.TestCase):
                 {"uuid": f"video-{idx}", "host": "example.com"} for idx in range(at_limit)
             ]
         }
-        handler = _DummyHandler("/recommendations", body)
         server = SimpleNamespace(use_client_likes=True)
         with (
             patch.object(rec_service, "_parse_client_likes", return_value=[]) as parse_likes,
             patch.object(rec_service, "_resolve_client_likes", return_value=[]),
             patch.object(rec_service, "set_request_client_likes") as set_likes,
             patch.object(rec_service, "clear_request_context") as clear_context,
-            patch.object(rec_service, "handle_similar") as handle_similar,
+            patch.object(rec_service, "handle_similar", return_value=RouteResult(200, {})) as handle_similar,
         ):
-            rec_service.handle_similar_request(handler, server, "/recommendations", "POST", {})
+            result = rec_service.handle_similar_request(server, "/recommendations", "POST", {}, body)
 
         parse_likes.assert_called_once_with(body)
         set_likes.assert_called_once_with([], True)
-        handle_similar.assert_called_once_with(handler, server, {})
+        handle_similar.assert_called_once_with(server, {})
         clear_context.assert_called_once()
-        self.assertIsNone(handler.status)
+        self.assertEqual(result.status, 200)
 
     def test_recommendations_rejects_invalid_likes_item_format(self) -> None:
         """Return 400 when likes item has invalid uuid/host format."""
         body = {"likes": [{"uuid": "   ", "host": "example.com"}]}
-        handler = _DummyHandler("/recommendations", body)
         server = SimpleNamespace(use_client_likes=True)
         with (
             patch.object(rec_service, "set_request_client_likes") as set_likes,
             patch.object(rec_service, "clear_request_context") as clear_context,
         ):
-            rec_service.handle_similar_request(handler, server, "/recommendations", "POST", {})
+            result = rec_service.handle_similar_request(server, "/recommendations", "POST", {}, body)
 
-        self.assertEqual(handler.status, 400)
+        self.assertEqual(result.status, 400)
         self.assertEqual(
-            handler.parsed_body(),
+            result.payload,
             {
                 "error": "Invalid likes payload",
                 "reason": "likes.uuid must be a non-empty string",

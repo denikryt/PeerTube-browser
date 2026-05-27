@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 
 from data.time import now_ms
 from data.popularity import compute_popularity
-from http_utils import respond_json
+from route_results import RouteResult
 
 
 def fetch_video_row(
@@ -205,13 +205,12 @@ def fetch_instance_video_dynamic(host: str, video_id: str) -> dict[str, Any]:
     }
 
 
-def handle_video_request(handler: Any, server: Any, params: dict[str, list[str]]) -> bool:
-    """Handle /api/video request and respond with merged metadata."""
+def handle_video_request(server: Any, params: dict[str, list[str]]) -> RouteResult:
+    """Return /api/video merged metadata response data."""
     id_param = params.get("id", params.get("video_id", [None]))[0]
     host_param = params.get("host", params.get("instance_domain", [None]))[0]
     if not id_param:
-        respond_json(handler, 400, {"error": "Missing video id"})
-        return True
+        return RouteResult(400, {"error": "Missing video id"})
     with server.db_lock:
         row = fetch_video_row(
             server.db,
@@ -220,8 +219,7 @@ def handle_video_request(handler: Any, server: Any, params: dict[str, list[str]]
             error_threshold=server.video_error_threshold,
         )
     if not row:
-        respond_json(handler, 404, {"error": "Video not found"})
-        return True
+        return RouteResult(404, {"error": "Video not found"})
 
     instance_domain = row.get("instance_domain") or host_param or ""
     dynamic = fetch_instance_video_dynamic(instance_domain, id_param) if instance_domain else {}
@@ -357,5 +355,4 @@ def handle_video_request(handler: Any, server: Any, params: dict[str, list[str]]
                 exc,
             )
 
-    respond_json(handler, 200, response)
-    return True
+    return RouteResult(200, response)

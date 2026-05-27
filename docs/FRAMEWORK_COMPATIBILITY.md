@@ -139,12 +139,36 @@ Removal condition, if any: The `handlers/similar.py` helper re-export shim can b
 
 ## Legacy handler tests migrated
 
-Decision: Tests no longer execute the removed Client or Engine stdlib route adapters.
+Decision: Tests no longer execute the removed Client or Engine stdlib route adapters or fake handler-shaped response helpers.
 
 Reason: The active HTTP adapter is FastAPI; behavior coverage must exercise the active adapter or narrow service/route harnesses.
 
-Implementation action: Client HTTP scenario tests use FastAPI `TestClient`; Engine route characterization tests use FastAPI `TestClient` or structural handler harnesses for direct route/service helpers.
+Implementation action: Client HTTP scenario tests use FastAPI `TestClient`; Engine route characterization tests use FastAPI `TestClient` or framework-neutral `RouteResult` assertions for direct route/service helpers.
 
 Tests: `tests/client_backend/*`, `tests/engine_api/*`, and `tests/framework/*`.
 
-Removal condition, if any: None. This is the active Stage 11 testing model.
+Removal condition, if any: None. This is the active Stage 12 testing model.
+
+## Handler-shaped HTTP compatibility removed
+
+Decision: Handler-shaped response compatibility is removed from production code and internal route/framework tests.
+
+Reason: FastAPI is the active HTTP adapter. Keeping fake handler streams or callback methods after the adapter cleanup would preserve a second hidden HTTP abstraction and obscure route ownership.
+
+Implementation action: Engine routes now return FastAPI responses through `app.py` or framework-neutral `RouteResult` values. Client and Engine response helpers no longer expose handler-shaped stream/callback interfaces.
+
+Tests: `tests/framework/test_no_legacy_handler_helpers.py`, `tests/framework/*`, `tests/engine_api/*`, and `tests/client_backend/*`.
+
+Removal condition, if any: Complete in Stage 12.
+
+## Services remain framework-neutral after handler cleanup
+
+Decision: Domain and orchestration services remain free of FastAPI imports while handler-shaped compatibility is removed.
+
+Reason: FastAPI is the transport adapter, not the domain model. Services should be testable through plain inputs, repositories, runtime state, and route-result values.
+
+Implementation action: Route modules and `app.py` adapt FastAPI requests/responses. Services return plain Python data or `RouteResult` and do not receive request objects or response callbacks.
+
+Tests: `tests/framework/test_no_legacy_handler_helpers.py` and existing service/route characterization tests.
+
+Removal condition, if any: None.

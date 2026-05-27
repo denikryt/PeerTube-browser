@@ -6,6 +6,7 @@ existing dict-based payloads, response shapes, request-context behavior, and
 recommendation pipeline calls because Stage 4 is a route/service split, not a
 recommendation redesign.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,7 +23,7 @@ from data.random_videos import fetch_random_rows, fetch_random_rows_from_cache
 from data.serving_moderation import apply_serving_moderation_filters
 from data.similarity_candidates import SimilarityCandidatesPolicy, get_similar_candidates
 from data.time import now_ms
-from http_utils import read_json_body, resolve_user_id, respond_json
+from http_utils import resolve_user_id
 from recommendations.debug import attach_debug_info
 from recommendations.profile import resolve_profile_config_with_guest
 from recommendations.related_personalization import rerank_related_videos
@@ -34,8 +35,8 @@ from request_context import (
     set_request_client_likes,
     set_request_id,
 )
+from route_results import RouteResult
 from server_config import (
-    DEFAULT_CLIENT_LIKES_BODY_LIMIT,
     DEFAULT_CLIENT_LIKES_MAX,
     INCLUDE_DYNAMIC_STATS,
     MAX_LIKES,
@@ -169,10 +170,7 @@ def _resolve_client_likes(server: Any, likes: list[dict[str, str]]) -> list[dict
             """,
             params,
         ).fetchall()
-    lookup = {
-        f"{row['video_uuid']}::{row['instance_domain']}": row["video_id"]
-        for row in rows
-    }
+    lookup = {f"{row['video_uuid']}::{row['instance_domain']}": row["video_id"] for row in rows}
     resolved: list[dict[str, Any]] = []
     for entry in unique:
         key = f"{entry['video_uuid']}::{entry['instance_domain']}"
@@ -234,9 +232,7 @@ def _extract_video_id_from_similar_path(path: str) -> str | None:
 
 def fetch_random_rows_from_server(server: Any, limit: int) -> list[dict[str, Any]]:
     """Fetch random rows through the current cache-first fallback contract."""
-    rows = fetch_random_rows_from_cache(
-        server, limit, error_threshold=server.video_error_threshold
-    )
+    rows = fetch_random_rows_from_cache(server, limit, error_threshold=server.video_error_threshold)
     if rows:
         return rows
     with server.db_lock:
@@ -247,19 +243,16 @@ def fetch_random_rows_from_server(server: Any, limit: int) -> list[dict[str, Any
         )
 
 
-def respond_rows(
-    handler: Any,
+def build_rows_response(
     server: Any,
     rows: list[dict[str, Any]],
     include_debug: bool,
     request_id: str,
     started_at: datetime,
     seed_payload: dict[str, Any],
-) -> None:
-    """Serialize recommendation rows and write the current Engine response shape."""
-    filtered_rows, _ = apply_serving_moderation_filters(
-        server, rows, request_id=request_id
-    )
+) -> RouteResult:
+    """Build the current Engine recommendation rows response shape."""
+    filtered_rows, _ = apply_serving_moderation_filters(server, rows, request_id=request_id)
 
     stable_rows = stable_video_rows(filtered_rows)
     stable_rows = maybe_attach_debug(stable_rows, filtered_rows, include_debug)
@@ -279,21 +272,19 @@ def respond_rows(
         generated_at=int(datetime.now(timezone.utc).timestamp() * 1000),
         total=server.embeddings_count,
     )
-    respond_json(handler, 200, result.to_response())
+    return RouteResult(200, result.to_response())
 
 
 def handle_random(
-    handler: Any,
     server: Any,
     limit: int,
     include_debug: bool,
     request_id: str,
     started_at: datetime,
-) -> None:
+) -> RouteResult:
     """Handle explicit random-feed requests with the current response contract."""
     rows = fetch_random_rows_from_server(server, limit)
-    respond_rows(
-        handler,
+    return build_rows_response(
         server,
         rows,
         include_debug,
@@ -304,7 +295,6 @@ def handle_random(
 
 
 def handle_home(
-    handler: Any,
     server: Any,
     user_id: str,
     limit: int,
@@ -313,15 +303,14 @@ def handle_home(
     request_id: str,
     started_at: datetime,
     mode: str,
-) -> None:
+) -> RouteResult:
     """Handle home recommendations and current random fallback behavior."""
     rows = server.recommendation_strategy.generate_recommendations(
         server, user_id, limit, refresh_cache, mode=mode
     )
     if not rows:
         rows = fetch_random_rows_from_server(server, limit)
-        respond_rows(
-            handler,
+        return build_rows_response(
             server,
             rows,
             include_debug,
@@ -329,9 +318,7 @@ def handle_home(
             started_at,
             seed_payload={"user_id": user_id, "random": True, "mode": mode},
         )
-        return
-    respond_rows(
-        handler,
+    return build_rows_response(
         server,
         rows,
         include_debug,
@@ -342,7 +329,6 @@ def handle_home(
 
 
 def handle_seed_with_embedding(
-    handler: Any,
     server: Any,
     seed: dict[str, Any],
     user_id: str,
@@ -352,7 +338,7 @@ def handle_seed_with_embedding(
     request_id: str,
     started_at: datetime,
     mode: str,
-) -> None:
+) -> RouteResult:
     """Handle up-next recommendations when a seed embedding is available."""
     recent_likes = fetch_recent_likes_request(user_id, MAX_LIKES)
     likes_available = bool(recent_likes)
@@ -376,9 +362,7 @@ def handle_seed_with_embedding(
     related_ms = int((perf_counter() - related_start) * 1000)
     if rows:
         score_start = perf_counter()
-        rows = score_and_rank_list(
-            rows, profile_config, layer_name=mode, now_ms_value=now_ms()
-        )
+        rows = score_and_rank_list(rows, profile_config, layer_name=mode, now_ms_value=now_ms())
         score_ms = int((perf_counter() - score_start) * 1000)
         for row in rows:
             row["debug_profile"] = profile_name
@@ -415,10 +399,10 @@ def handle_seed_with_embedding(
             )
         seed_payload = dict(seed.get("meta") or {})
         seed_payload["mode"] = mode
-        respond_rows(handler, server, rows, include_debug, request_id, started_at, seed_payload)
-        return
-    respond_json(
-        handler,
+        return build_rows_response(
+            server, rows, include_debug, request_id, started_at, seed_payload
+        )
+    return RouteResult(
         200,
         {
             "generatedAt": int(datetime.now(timezone.utc).timestamp() * 1000),
@@ -431,25 +415,22 @@ def handle_seed_with_embedding(
 
 
 def handle_vector_search(
-    handler: Any,
     server: Any,
     seed: dict[str, Any],
     limit: int,
     include_debug: bool,
     request_id: str,
     started_at: datetime,
-) -> None:
+) -> RouteResult:
     """Handle the legacy raw-vector ANN search path."""
     if seed["vector"] is None:
-        respond_json(
-            handler,
+        return RouteResult(
             400,
             {
                 "error": "Missing vector or video reference",
                 "hint": "Provide ?id=...&host=... or ensure a user profile exists",
             },
         )
-        return
     vector = seed["vector"]
     if server.normalize_queries:
         vector = normalize_vector(vector)
@@ -480,8 +461,7 @@ def handle_vector_search(
         if not meta:
             continue
         rows.append({**meta, "score": score})
-    respond_rows(
-        handler,
+    return build_rows_response(
         server,
         rows,
         include_debug,
@@ -491,7 +471,7 @@ def handle_vector_search(
     )
 
 
-def handle_similar(handler: Any, server: Any, params: dict[str, list[str]]) -> None:
+def handle_similar(server: Any, params: dict[str, list[str]]) -> RouteResult:
     """Execute the current home, seed, vector, or random recommendation path."""
     limit = _parse_int(params.get("limit", [str(server.default_limit)])[0])
     if limit == 0:
@@ -505,14 +485,12 @@ def handle_similar(handler: Any, server: Any, params: dict[str, list[str]]) -> N
     user_id = resolve_user_id(params.get("user_id", params.get("userId", [None]))[0])
     random_param = params.get("random", [None])[0]
     refresh_cache = (
-        _parse_bool(params.get("refresh_cache", [None])[0])
-        or server.refresh_similarity_cache
+        _parse_bool(params.get("refresh_cache", [None])[0]) or server.refresh_similarity_cache
     )
     debug_requested = _parse_bool(params.get("debug", [None])[0])
     debug_enabled = bool(getattr(server, "recommendations_debug_enabled", False))
     if debug_requested and not debug_enabled:
-        respond_json(handler, 403, {"error": "Debug mode is disabled"})
-        return
+        return RouteResult(403, {"error": "Debug mode is disabled"})
     include_debug = debug_requested and bool(
         getattr(server, "recommendations_debug_enabled", False)
     )
@@ -531,8 +509,7 @@ def handle_similar(handler: Any, server: Any, params: dict[str, list[str]]) -> N
 
     try:
         if random_param and random_param != "0":
-            handle_random(handler, server, limit, include_debug, request_id, started_at)
-            return
+            return handle_random(server, limit, include_debug, request_id, started_at)
         seed_start = perf_counter()
         with server.db_lock:
             seed = (
@@ -553,8 +530,7 @@ def handle_similar(handler: Any, server: Any, params: dict[str, list[str]]) -> N
         mode = "home" if seed is None else "upnext"
 
         if seed is None:
-            handle_home(
-                handler,
+            return handle_home(
                 server,
                 user_id,
                 limit,
@@ -564,11 +540,9 @@ def handle_similar(handler: Any, server: Any, params: dict[str, list[str]]) -> N
                 started_at,
                 mode,
             )
-            return
 
         if seed.get("meta") and seed.get("embedding") is not None:
-            handle_seed_with_embedding(
-                handler,
+            return handle_seed_with_embedding(
                 server,
                 seed,
                 user_id,
@@ -579,22 +553,19 @@ def handle_similar(handler: Any, server: Any, params: dict[str, list[str]]) -> N
                 started_at,
                 mode,
             )
-            return
 
         if seed.get("random"):
             rows = fetch_random_rows_from_server(server, limit)
-            respond_rows(
-        handler,
-        server,
-        rows,
-        include_debug,
-        request_id,
-        started_at,
-        seed_payload=seed["meta"],
-    )
-            return
+            return build_rows_response(
+                server,
+                rows,
+                include_debug,
+                request_id,
+                started_at,
+                seed_payload=seed["meta"],
+            )
 
-        handle_vector_search(handler, server, seed, limit, include_debug, request_id, started_at)
+        return handle_vector_search(server, seed, limit, include_debug, request_id, started_at)
     except ValueError as exc:
         bad_request = {
             "Invalid vector parameter",
@@ -602,56 +573,45 @@ def handle_similar(handler: Any, server: Any, params: dict[str, list[str]]) -> N
             "Vector norm is zero",
         }
         status = 400 if str(exc) in bad_request else 500
-        respond_json(handler, status, {"error": str(exc)})
+        return RouteResult(status, {"error": str(exc)})
     except Exception as exc:  # pragma: no cover
         logging.exception("server error")
-        respond_json(handler, 500, {"error": str(exc)})
+        return RouteResult(500, {"error": str(exc)})
     finally:
         clear_request_context()
 
 
 def handle_similar_request(
-    handler: Any,
     server: Any,
     path: str,
     method: str,
     params: dict[str, list[str]],
-) -> None:
+    body: dict[str, Any] | None = None,
+) -> RouteResult:
     """Parse POST body Client likes and dispatch to the existing similar behavior."""
     client_likes: list[dict[str, Any]] = []
     use_client_likes = bool(getattr(server, "use_client_likes", False))
     if method == "POST":
-        length = handler.headers.get("content-length")
-        size = int(length or "0")
-        if size > DEFAULT_CLIENT_LIKES_BODY_LIMIT:
-            respond_json(handler, 400, {"error": "Invalid JSON body"})
-            return
-        try:
-            body = read_json_body(handler)
-        except ValueError as exc:
-            respond_json(handler, 400, {"error": str(exc)})
-            return
-        if isinstance(body, dict):
-            likes_payload_error = _recommendations_likes_payload_error(
-                path, body, DEFAULT_CLIENT_LIKES_MAX
-            )
-            if likes_payload_error is not None:
-                respond_json(handler, 400, likes_payload_error)
-                return
-            incoming_payload = {
-                "likes": body.get("likes", []),
-                "user_id": body.get("user_id"),
-                "mode": body.get("mode"),
-            }
-            logging.info(
-                "[recommendations] incoming likes body=%s",
-                json.dumps(incoming_payload, ensure_ascii=True, separators=(",", ":")),
-            )
+        body = body or {}
+        likes_payload_error = _recommendations_likes_payload_error(
+            path, body, DEFAULT_CLIENT_LIKES_MAX
+        )
+        if likes_payload_error is not None:
+            return RouteResult(400, likes_payload_error)
+        incoming_payload = {
+            "likes": body.get("likes", []),
+            "user_id": body.get("user_id"),
+            "mode": body.get("mode"),
+        }
+        logging.info(
+            "[recommendations] incoming likes body=%s",
+            json.dumps(incoming_payload, ensure_ascii=True, separators=(",", ":")),
+        )
         parsed = _parse_client_likes(body)
         client_likes = _resolve_client_likes(server, parsed)
     set_request_client_likes(client_likes, use_client_likes)
 
     try:
-        handle_similar(handler, server, params)
+        return handle_similar(server, params)
     finally:
         clear_request_context()

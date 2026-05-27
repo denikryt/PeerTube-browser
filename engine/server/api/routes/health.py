@@ -1,15 +1,14 @@
-"""Health route adapter for the Engine API."""
+"""Health route result builder for the Engine API."""
 from __future__ import annotations
 
 from typing import Any
 
-from http_utils import respond_json
+from route_results import RouteResult
 
 
-def handle_health(handler: Any, server: Any) -> bool:
-    """Write the current ``/api/health`` response from existing server state."""
-    respond_json(
-        handler,
+def handle_health(server: Any) -> RouteResult:
+    """Return the current ``/api/health`` status and payload from server state."""
+    return RouteResult(
         200,
         {
             "ok": True,
@@ -17,4 +16,3 @@ def handle_health(handler: Any, server: Any) -> bool:
             "embeddingDim": server.embeddings_dim,
         },
     )
-    return True

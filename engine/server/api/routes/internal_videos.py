@@ -1,4 +1,4 @@
-"""Internal Client video-read route adapters for the Engine API."""
+"""Internal Client video-read route result builders for the Engine API."""
 from __future__ import annotations
 
 from typing import Any
@@ -7,13 +7,14 @@ from handlers.internal_client_reads import (
     handle_internal_video_resolve,
     handle_internal_videos_metadata,
 )
+from route_results import RouteResult
 
 
-def handle_internal_video_resolve_route(handler: Any, server: Any) -> bool:
-    """Delegate internal identity resolution to the existing handler."""
-    return handle_internal_video_resolve(handler, server)
+def handle_internal_video_resolve_route(server: Any, body: dict[str, Any]) -> RouteResult:
+    """Resolve internal video identity through the current data helper."""
+    return handle_internal_video_resolve(server, body)
 
 
-def handle_internal_videos_metadata_route(handler: Any, server: Any) -> bool:
-    """Delegate internal metadata reads to the existing handler."""
-    return handle_internal_videos_metadata(handler, server)
+def handle_internal_videos_metadata_route(server: Any, body: dict[str, Any]) -> RouteResult:
+    """Return internal batch metadata through the current data helper."""
+    return handle_internal_videos_metadata(server, body)
