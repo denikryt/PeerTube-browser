@@ -212,10 +212,10 @@ These tests verify Client and Engine FastAPI route contracts, stable `server.py`
 
 ## Stage 11 FastAPI-only adapter tests
 
-Stage 11 removes the transitional stdlib HTTP route adapters. Client and Engine HTTP behavior tests now exercise FastAPI app factories through `TestClient`, while direct handler-style harnesses are limited to narrow route/service helpers that still use structural response-helper protocols.
+Stage 11 removed the transitional stdlib HTTP route adapters. Stage 12 removes the remaining handler-shaped response-helper compatibility, so Client and Engine HTTP behavior tests exercise FastAPI app factories through `TestClient` or framework-neutral `RouteResult` assertions.
 
 ```bash
 python3 -m pytest tests/client_backend tests/engine_api tests/framework -q
 ```
 
-Do not add new tests that execute removed stdlib route adapters. Unknown-route, CORS, rate-limit, invalid-body, and path-id compatibility must be covered through the active FastAPI adapter or narrow service harnesses.
+Do not add new tests that execute removed stdlib route adapters or fake handler-shaped response helpers. Unknown-route, CORS, rate-limit, invalid-body, and path-id compatibility must be covered through the active FastAPI adapter or framework-neutral route-result/service harnesses.

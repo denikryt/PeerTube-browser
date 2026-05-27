@@ -79,3 +79,15 @@ Implementation action: `engine/server/api/handlers/similar.py` remains only as a
 Tests: `tests/engine_api/test_engine_route_dispatch_characterization.py`, `tests/engine_api/test_similar_route_characterization.py`, and `tests/framework/test_engine_fastapi_contract.py`.
 
 Removal condition, if any: The helper re-export shim can be removed after downstream imports use `engine/server/api/services/recommendation_service.py` directly.
+
+### Handler-shaped response helper removed
+
+Decision: Engine API route helpers no longer use handler-shaped response capture or fake route-handler objects.
+
+Reason: Stage 12 completes the FastAPI HTTP-layer cleanup. Route behavior remains unchanged, but HTTP response construction now belongs to FastAPI route adapters instead of compatibility helper objects.
+
+Implementation action: Engine route and handler helper modules return framework-neutral `RouteResult` values. `engine/server/api/app.py` converts those results to the current JSON/CORS response contract.
+
+Tests: `tests/framework/test_no_legacy_handler_helpers.py`, `tests/engine_api/*`, `tests/framework/*`, and `engine/server/api/tests/test_recommendations_likes_limit.py`.
+
+Removal condition, if any: Complete in Stage 12.

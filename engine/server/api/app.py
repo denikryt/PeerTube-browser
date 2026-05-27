@@ -1,8 +1,8 @@
 """FastAPI app factory for the Engine API.
 
-Stage 10 changes only the HTTP adapter. The app delegates to the route modules
-introduced in Stage 4, using a small handler adapter so current parsing,
-response, request-context, and debug behavior stay intact.
+The app owns HTTP adaptation: CORS responses, body parsing, rate limiting, and
+conversion from framework-neutral ``RouteResult`` values to FastAPI responses.
+Engine services stay free of FastAPI and legacy handler-shaped abstractions.
 """
 from __future__ import annotations
 
@@ -10,7 +10,8 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request
-from http_adapters import FastAPIHandlerAdapter, adapter_response, cors_json, cors_options
+from http_adapters import cors_json, cors_options, read_json_body_bytes, read_request_body
+from route_results import RouteResult
 from routes.channels import handle_channels
 from routes.health import handle_health
 from routes.internal_events import handle_internal_events_ingest_route
@@ -24,8 +25,14 @@ from routes.recommendations import (
 )
 from routes.videos import handle_video_route
 from runtime import EngineRuntimeState
+from server_config import DEFAULT_CLIENT_LIKES_BODY_LIMIT
 
 SIMILAR_POST_ROUTES = {"/recommendations", "/videos/similar"}
+
+
+def _route_response(result: RouteResult):
+    """Serialize a framework-neutral route result through the Engine JSON contract."""
+    return cors_json(result.status, result.payload)
 
 
 def _rate_limit_or_none(request: Request, state: EngineRuntimeState, path: str):
@@ -46,7 +53,7 @@ def _rate_limit_or_none(request: Request, state: EngineRuntimeState, path: str):
 
 
 def create_app(state: EngineRuntimeState) -> FastAPI:
-    """Create the Engine FastAPI app using existing route/service modules."""
+    """Create the Engine FastAPI app using route-result boundaries."""
     app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
     app.state.runtime = state
 
@@ -57,30 +64,24 @@ def create_app(state: EngineRuntimeState) -> FastAPI:
 
     @app.get("/api/health")
     async def health(request: Request) -> Any:
-        """Return Engine health through the existing route module."""
+        """Return Engine health through the route-result module."""
         if response := _rate_limit_or_none(request, state, "/api/health"):
             return response
-        handler = FastAPIHandlerAdapter(request, state)
-        handle_health(handler, state)
-        return adapter_response(handler)
+        return _route_response(handle_health(state))
 
     @app.get("/api/channels")
     async def channels(request: Request) -> Any:
-        """Return Engine channel rows through existing query parsing."""
+        """Return Engine channel rows through current query parsing."""
         if response := _rate_limit_or_none(request, state, "/api/channels"):
             return response
-        handler = FastAPIHandlerAdapter(request, state)
-        handle_channels(handler, state, dict(parse_qs(request.url.query)))
-        return adapter_response(handler)
+        return _route_response(handle_channels(state, dict(parse_qs(request.url.query))))
 
     @app.get("/api/video")
     async def video(request: Request) -> Any:
-        """Return Engine video metadata through the existing video route."""
+        """Return Engine video metadata through the current video route."""
         if response := _rate_limit_or_none(request, state, "/api/video"):
             return response
-        handler = FastAPIHandlerAdapter(request, state)
-        handle_video_route(handler, state, dict(parse_qs(request.url.query)))
-        return adapter_response(handler)
+        return _route_response(handle_video_route(state, dict(parse_qs(request.url.query))))
 
     @app.get("/videos/{video_id}/similar")
     async def similar_by_path(video_id: str, request: Request) -> Any:
@@ -88,47 +89,58 @@ def create_app(state: EngineRuntimeState) -> FastAPI:
         path = request.url.path
         if response := _rate_limit_or_none(request, state, path):
             return response
-        handler = FastAPIHandlerAdapter(request, state)
         params = dict(parse_qs(request.url.query))
         params.setdefault("id", [video_id])
-        handle_similar_get(handler, state, path, params)
-        return adapter_response(handler)
+        return _route_response(handle_similar_get(state, path, params))
 
     @app.post("/recommendations")
     @app.post("/videos/similar")
     async def similar_post(request: Request) -> Any:
-        """Handle recommendation POST routes through the existing route module."""
+        """Handle recommendation POST routes through parsed-body route results."""
         path = request.url.path
         if response := _rate_limit_or_none(request, state, path):
             return response
-        body = await request.body()
-        handler = FastAPIHandlerAdapter(request, state, body)
-        handle_similar_post(handler, state, path, dict(parse_qs(request.url.query)))
-        return adapter_response(handler)
+        raw_body = await read_request_body(request)
+        declared_size = int(request.headers.get("content-length") or len(raw_body) or 0)
+        if max(len(raw_body), declared_size) > DEFAULT_CLIENT_LIKES_BODY_LIMIT:
+            return cors_json(400, {"error": "Invalid JSON body"})
+        try:
+            body = read_json_body_bytes(raw_body, DEFAULT_CLIENT_LIKES_BODY_LIMIT)
+        except ValueError as exc:
+            return cors_json(400, {"error": str(exc)})
+        return _route_response(
+            handle_similar_post(state, path, dict(parse_qs(request.url.query)), body)
+        )
 
     @app.post("/internal/videos/resolve")
     async def internal_video_resolve(request: Request) -> Any:
-        """Resolve internal video identity through the existing route module."""
-        body = await request.body()
-        handler = FastAPIHandlerAdapter(request, state, body)
-        handle_internal_video_resolve_route(handler, state)
-        return adapter_response(handler)
+        """Resolve internal video identity through parsed JSON body data."""
+        raw_body = await read_request_body(request)
+        try:
+            body = read_json_body_bytes(raw_body)
+        except ValueError as exc:
+            return cors_json(400, {"error": str(exc)})
+        return _route_response(handle_internal_video_resolve_route(state, body))
 
     @app.post("/internal/videos/metadata")
     async def internal_videos_metadata(request: Request) -> Any:
-        """Return internal batch metadata through the existing route module."""
-        body = await request.body()
-        handler = FastAPIHandlerAdapter(request, state, body)
-        handle_internal_videos_metadata_route(handler, state)
-        return adapter_response(handler)
+        """Return internal batch metadata through parsed JSON body data."""
+        raw_body = await read_request_body(request)
+        try:
+            body = read_json_body_bytes(raw_body)
+        except ValueError as exc:
+            return cors_json(400, {"error": str(exc)})
+        return _route_response(handle_internal_videos_metadata_route(state, body))
 
     @app.post("/internal/events/ingest")
     async def internal_events_ingest(request: Request) -> Any:
         """Ingest bridge events while preserving the current ingest-mode gate."""
-        body = await request.body()
-        handler = FastAPIHandlerAdapter(request, state, body)
-        handle_internal_events_ingest_route(handler, state)
-        return adapter_response(handler)
+        raw_body = await read_request_body(request)
+        try:
+            body = read_json_body_bytes(raw_body)
+        except ValueError as exc:
+            return cors_json(400, {"error": str(exc)})
+        return _route_response(handle_internal_events_ingest_route(state, body))
 
     @app.api_route("/{path:path}", methods=["GET", "POST"])
     async def not_found(path: str) -> Any:

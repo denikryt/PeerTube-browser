@@ -1,4 +1,5 @@
 """FastAPI contract tests for the Engine API adapter."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -23,6 +24,7 @@ sys.modules["data.ann"] = fake_ann
 import app as engine_app  # noqa: E402
 from app import create_app  # noqa: E402
 from http_utils import RateLimiter  # noqa: E402
+from route_results import RouteResult  # noqa: E402
 from runtime import EngineRuntimeState  # noqa: E402
 
 
@@ -114,14 +116,11 @@ def test_engine_fastapi_similar_path_injects_id(monkeypatch) -> None:
     state = make_state()
     captured: dict[str, Any] = {}
 
-    def fake_handle(handler: Any, server: Any, path: str, params: dict[str, list[str]]) -> bool:
+    def fake_handle(server: Any, path: str, params: dict[str, list[str]]) -> RouteResult:
         """Capture the params received after path-id injection."""
         captured["path"] = path
         captured["params"] = params
-        from http_utils import respond_json
-
-        respond_json(handler, 200, {"rows": [], "count": 0})
-        return True
+        return RouteResult(200, {"rows": [], "count": 0})
 
     monkeypatch.setattr(engine_app, "handle_similar_get", fake_handle)
     client = TestClient(create_app(state))
@@ -138,19 +137,13 @@ def test_engine_fastapi_internal_video_routes_delegate(monkeypatch) -> None:
     """Internal video resolve and metadata routes use the existing adapters."""
     state = make_state()
 
-    def fake_resolve(handler: Any, server: Any) -> bool:
-        """Return a known resolve payload through the handler response path."""
-        from http_utils import respond_json
+    def fake_resolve(server: Any, body: dict[str, Any]) -> RouteResult:
+        """Return a known resolve payload through the route-result path."""
+        return RouteResult(200, {"video": {"video_id": "123"}})
 
-        respond_json(handler, 200, {"video": {"video_id": "123"}})
-        return True
-
-    def fake_metadata(handler: Any, server: Any) -> bool:
-        """Return a known metadata payload through the handler response path."""
-        from http_utils import respond_json
-
-        respond_json(handler, 200, {"rows": [{"video_id": "123"}]})
-        return True
+    def fake_metadata(server: Any, body: dict[str, Any]) -> RouteResult:
+        """Return a known metadata payload through the route-result path."""
+        return RouteResult(200, {"rows": [{"video_id": "123"}]})
 
     monkeypatch.setattr(engine_app, "handle_internal_video_resolve_route", fake_resolve)
     monkeypatch.setattr(engine_app, "handle_internal_videos_metadata_route", fake_metadata)

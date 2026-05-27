@@ -16,6 +16,11 @@ from fastapi.testclient import TestClient
 RouteMap = dict[tuple[str, str], Callable[[dict[str, Any]], tuple[int, dict[str, Any]]]]
 
 ROOT = Path(__file__).resolve().parents[2]
+for module_name in ("app", "runtime", "http_adapters", "services", "repositories"):
+    sys.modules.pop(module_name, None)
+for path in (str(ROOT / "engine" / "server" / "api"), str(ROOT / "client" / "backend")):
+    if path in sys.path:
+        sys.path.remove(path)
 sys.path.insert(0, str(ROOT / "client" / "backend"))
 
 from app import create_app  # noqa: E402

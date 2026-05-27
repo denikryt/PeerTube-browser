@@ -161,4 +161,4 @@ python3 client/backend/server.py --help
 python3 engine/server/api/server.py --help
 ```
 
-The Engine command still has the existing FAISS prerequisite in environments without FAISS installed. Do not add stdlib HTTP handler fixtures for new tests; use FastAPI `TestClient` or direct route/service harnesses.
+The Engine command still has the existing FAISS prerequisite in environments without FAISS installed. Do not add stdlib HTTP handler fixtures or fake handler-shaped response helpers for new tests; use FastAPI `TestClient` or framework-neutral route/service result assertions.

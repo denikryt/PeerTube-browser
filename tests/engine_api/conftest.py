@@ -1,13 +1,10 @@
 """Shared Engine API characterization test helpers."""
 from __future__ import annotations
 
-import io
-import json
 import sqlite3
 import sys
 import threading
 import types
-from email.message import Message
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -28,40 +25,6 @@ sys.modules.setdefault("data.ann", fake_ann)
 from app import create_app  # noqa: E402
 from data.interaction_events import ensure_interaction_event_schema  # noqa: E402
 from runtime import EngineRuntimeState  # noqa: E402
-
-
-class CapturingHandler:
-    """Structural handler harness for direct route/service tests."""
-
-    def __init__(self, body: dict[str, Any] | None = None) -> None:
-        """Encode the request body and prepare response capture fields."""
-        raw = json.dumps(body or {}).encode("utf-8")
-        self.rfile = io.BytesIO(raw)
-        self.wfile = io.BytesIO()
-        self.headers = Message()
-        self.headers["content-length"] = str(len(raw))
-        self.status: int | None = None
-        self.response_headers: list[tuple[str, str]] = []
-        self.response_body: dict[str, Any] | None = None
-
-    def send_response(self, status: int) -> None:
-        """Capture HTTP status sent by respond_json."""
-        self.status = status
-
-    def send_header(self, key: str, value: str) -> None:
-        """Capture response headers without enforcing header semantics."""
-        self.response_headers.append((key, value))
-
-    def end_headers(self) -> None:
-        """Keep compatibility with respond_json."""
-        return
-
-    def parsed_body(self) -> dict[str, Any]:
-        """Decode the JSON body written by the handler."""
-        self.wfile.seek(0)
-        data = self.wfile.read().decode("utf-8")
-        self.response_body = json.loads(data) if data else {}
-        return self.response_body
 
 
 @pytest.fixture
