@@ -1,9 +1,8 @@
 """Bootstrap Engine-owned SQLite schemas before runtime and job use.
 
 The functions in this module group the current-shape migration resources by
-runtime ownership area. Legacy `ensure_*` wrappers remain available for one
-compatibility stage, but production callers should use these explicit bootstrap
-entrypoints.
+runtime ownership area. Production callers use these explicit bootstrap
+entrypoints instead of transitional ensure wrappers.
 """
 from __future__ import annotations
 

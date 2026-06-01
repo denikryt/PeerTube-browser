@@ -1,10 +1,8 @@
 """Bootstrap the Client backend SQLite databases before runtime use.
 
 This module is the runtime entrypoint for creating the current Client-owned
-users/likes schema. The older `lib.users_store.ensure_user_schema` helper stays
-available for one transitional compatibility stage, but production startup and
-repositories should call this bootstrap layer instead of individual ensure
-wrappers.
+users/likes schema. Production startup and repositories call this bootstrap
+layer directly instead of transitional ensure wrappers.
 """
 from __future__ import annotations
 
@@ -20,7 +18,6 @@ def bootstrap_client_users_db(conn: sqlite3.Connection) -> None:
     """Apply the current Client users/likes schema before runtime use.
 
     This is the explicit runtime bootstrap boundary for the Client DB. It
-    delegates to checked-in current-shape SQL resources and intentionally does
-    not call the transitional `ensure_user_schema` wrapper.
+    delegates to checked-in current-shape SQL resources.
     """
     apply_client_user_migrations(conn)

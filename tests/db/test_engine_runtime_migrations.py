@@ -8,10 +8,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "engine" / "server"))
 
-from data.channels import ensure_channels_indexes  # noqa: E402
-from data.interaction_events import ensure_interaction_event_schema  # noqa: E402
-from data.moderation import ensure_moderation_schema  # noqa: E402
-from data.videos import ensure_video_indexes  # noqa: E402
 from engine.server.db.migrations.apply import apply_main_read_indexes, apply_main_runtime_migrations  # noqa: E402
 
 
@@ -119,22 +115,6 @@ def test_engine_main_runtime_migrations_are_idempotent() -> None:
     apply_main_runtime_migrations(conn)
 
     assert _schema_signature(conn) == before
-
-
-def test_engine_runtime_ensure_wrappers_match_main_runtime_migrations() -> None:
-    """Legacy Engine ensure helpers must match migration-created runtime schema."""
-    migration_conn = _connect()
-    wrapper_conn = _connect()
-    _create_minimal_content_tables(migration_conn)
-    _create_minimal_content_tables(wrapper_conn)
-
-    apply_main_runtime_migrations(migration_conn)
-    ensure_interaction_event_schema(wrapper_conn)
-    ensure_moderation_schema(wrapper_conn)
-    ensure_channels_indexes(wrapper_conn)
-    ensure_video_indexes(wrapper_conn)
-
-    assert _schema_signature(wrapper_conn) == _schema_signature(migration_conn)
 
 
 def test_main_read_indexes_are_noop_when_content_tables_are_missing() -> None:

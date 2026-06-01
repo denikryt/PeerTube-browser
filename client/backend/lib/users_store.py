@@ -4,21 +4,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-try:
-    from client.backend.db.migrate import apply_client_user_migrations
-except ModuleNotFoundError:  # pragma: no cover - script import fallback
-    from db.migrate import apply_client_user_migrations
-
 from .time_utils import now_ms
-
-
-def ensure_user_schema(conn: sqlite3.Connection) -> None:
-    """Create users/likes tables through the current-shape migration wrapper.
-
-    Existing Client startup and repository callers keep using this helper while
-    Stage 6 centralizes the checked-in SQL resource for the same schema.
-    """
-    apply_client_user_migrations(conn)
 
 
 def get_or_create_user(conn: sqlite3.Connection, user_id: str) -> None:

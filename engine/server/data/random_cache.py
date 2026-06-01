@@ -7,22 +7,12 @@ import random
 import sqlite3
 from pathlib import Path
 
-try:
-    from engine.server.db.migrations.apply import apply_random_cache_migrations
-except ModuleNotFoundError:  # pragma: no cover - script import fallback
-    from db.migrations.apply import apply_random_cache_migrations
-
 
 def connect_random_cache_db(path: Path) -> sqlite3.Connection:
     """Handle connect random cache db."""
     conn = sqlite3.connect(path.as_posix(), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
-
-
-def ensure_random_cache_schema(conn: sqlite3.Connection) -> None:
-    """Create the random cache table through the current-shape migration wrapper."""
-    apply_random_cache_migrations(conn)
 
 
 def populate_random_cache(

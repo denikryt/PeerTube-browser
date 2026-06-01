@@ -17,11 +17,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-try:
-    from engine.server.db.migrations.apply import apply_moderation_migration
-except ModuleNotFoundError:  # pragma: no cover - script import fallback
-    from db.migrations.apply import apply_moderation_migration
-
 
 @dataclass(frozen=True)
 class ModerationFilterStats:
@@ -66,15 +61,6 @@ def normalize_host(value: str | None) -> str | None:
     if re.search(r"\s", host):
         return None
     return host
-
-
-def ensure_moderation_schema(conn: sqlite3.Connection) -> None:
-    """Create moderation tables used by denylist and channel blocking flows.
-
-    The public helper remains import-compatible while delegating to the
-    Stage 6 current-shape migration resource for the same table/index SQL.
-    """
-    apply_moderation_migration(conn)
 
 
 def list_active_denied_hosts(conn: sqlite3.Connection) -> set[str]:

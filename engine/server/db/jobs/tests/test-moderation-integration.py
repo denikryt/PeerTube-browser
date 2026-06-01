@@ -28,8 +28,8 @@ if str(api_dir) not in sys.path:
 
 from scripts.cli_format import CompactHelpFormatter
 from server_config import DEFAULT_DB_PATH
+from db.bootstrap import bootstrap_engine_moderation_db
 from data.moderation import (
-    ensure_moderation_schema,
     list_active_denied_hosts,
     normalize_host,
     now_ms,
@@ -348,7 +348,7 @@ def seed_synthetic_fixtures(main_db: Path, similarity_db: Path) -> FixtureContex
 
     with connect(main_db) as conn:
         ensure_main_schema(conn)
-        ensure_moderation_schema(conn)
+        bootstrap_engine_moderation_db(conn)
         with conn:
             hosts = [ctx.allowed_host, ctx.deny_host, ctx.ignored_host, ctx.stale_host]
             conn.executemany(
@@ -762,7 +762,7 @@ def seed_prod_sample_fixtures(
         sampled: dict[str, dict[str, object]] = {}
         with connect(main_db) as dst:
             ensure_main_schema(dst)
-            ensure_moderation_schema(dst)
+            bootstrap_engine_moderation_db(dst)
             with dst:
                 for host in role_hosts:
                     channels = _sample_channels_for_host(src, host, sample_channels_per_host)

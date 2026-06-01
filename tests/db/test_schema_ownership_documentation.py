@@ -1,4 +1,4 @@
-"""Verify Stage 6 schema ownership documentation stays present and scoped."""
+"""Verify schema ownership documentation stays present and scoped."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,22 +19,22 @@ def test_schema_ownership_documentation_contains_required_sections() -> None:
         "Engine similarity cache DB",
         "Engine random cache DB",
         "Engine derived artifacts",
-        "Compatibility wrappers",
+        "Removed transitional schema wrappers",
         "Future ownership by stage",
     ]:
         assert heading in text
 
 
-def test_schema_ownership_documentation_records_compatibility_decisions() -> None:
-    """Stage 6 compatibility decisions must be explicit and test-linked."""
+def test_schema_ownership_documentation_records_removed_wrapper_decisions() -> None:
+    """The document must record the removed transitional wrapper decisions."""
     text = DOC.read_text(encoding="utf-8")
 
     for phrase in [
-        "Decision: keep client/backend/lib/users_store.py::ensure_user_schema",
-        "Decision: keep engine/server/data/interaction_events.py::ensure_interaction_event_schema",
-        "Decision: keep crawler schema ownership in engine/crawler/schema.sql",
+        "Decision: remove client/backend/lib/users_store.py::ensure_user_schema",
+        "Decision: remove engine/server/data/interaction_events.py::ensure_interaction_event_schema",
+        "Decision: remove engine/server/data/channels.py::ensure_channels_indexes",
+        "Decision: remove engine/server/data/similarity_cache.py::ensure_similarity_schema",
         "Implementation action:",
         "Tests:",
-        "Removal condition:",
     ]:
         assert phrase in text

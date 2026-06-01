@@ -8,8 +8,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "engine" / "server"))
 
-from data.random_cache import ensure_random_cache_schema  # noqa: E402
-from data.similarity_cache import ensure_similarity_schema  # noqa: E402
 from engine.server.db.migrations.apply import (  # noqa: E402
     apply_random_cache_migrations,
     apply_similarity_cache_migrations,
@@ -90,19 +88,3 @@ def test_cache_migrations_are_idempotent() -> None:
 
     assert _signature(similarity_conn) == similarity_before
     assert _signature(random_conn) == random_before
-
-
-def test_cache_ensure_wrappers_match_migration_schemas() -> None:
-    """Existing cache ensure helpers must match centralized migration resources."""
-    similarity_migration = _connect()
-    similarity_wrapper = _connect()
-    random_migration = _connect()
-    random_wrapper = _connect()
-
-    apply_similarity_cache_migrations(similarity_migration)
-    ensure_similarity_schema(similarity_wrapper)
-    apply_random_cache_migrations(random_migration)
-    ensure_random_cache_schema(random_wrapper)
-
-    assert _signature(similarity_wrapper) == _signature(similarity_migration)
-    assert _signature(random_wrapper) == _signature(random_migration)
