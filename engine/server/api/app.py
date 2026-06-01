@@ -14,6 +14,7 @@ from http_adapters import cors_json, cors_options, read_json_body_bytes, read_re
 from route_results import RouteResult
 from routes.channels import handle_channels
 from routes.health import handle_health
+from routes.internal_discovery import handle_internal_discovery_route
 from routes.internal_events import handle_internal_events_ingest_route
 from routes.internal_videos import (
     handle_internal_video_resolve_route,
@@ -131,6 +132,24 @@ def create_app(state: EngineRuntimeState) -> FastAPI:
         except ValueError as exc:
             return cors_json(400, {"error": str(exc)})
         return _route_response(handle_internal_videos_metadata_route(state, body))
+
+    @app.get("/internal/discovery/fresh")
+    async def internal_discovery_fresh(request: Request) -> Any:
+        """Return internal fresh discovery provider rows for Client backend."""
+        if response := _rate_limit_or_none(request, state, "/internal/discovery/fresh"):
+            return response
+        return _route_response(
+            handle_internal_discovery_route(state, "fresh", dict(parse_qs(request.url.query)))
+        )
+
+    @app.get("/internal/discovery/popular")
+    async def internal_discovery_popular(request: Request) -> Any:
+        """Return internal popular discovery provider rows for Client backend."""
+        if response := _rate_limit_or_none(request, state, "/internal/discovery/popular"):
+            return response
+        return _route_response(
+            handle_internal_discovery_route(state, "popular", dict(parse_qs(request.url.query)))
+        )
 
     @app.post("/internal/events/ingest")
     async def internal_events_ingest(request: Request) -> Any:

@@ -48,3 +48,8 @@ npm run test
 # from repository root:
 make test-frontend
 ```
+
+
+## Discovery API v1
+
+The frontend loads feeds and video metadata through Client backend v1 routes. It must not send recommendation likes payloads to Engine; local user state is owned by the Client backend.

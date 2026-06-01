@@ -353,16 +353,15 @@ async function fetchVideoMetadata(): Promise<VideoMetadata | null> {
  */
 async function fetchVideoMetadataFromServer(source: { host: string; id: string; url: string }) {
   try {
-    const url = new URL("/api/video", apiBase);
-    url.searchParams.set("id", source.id);
+    const url = new URL(`/api/v1/videos/${encodeURIComponent(source.id)}`, apiBase);
     url.searchParams.set("host", source.host);
     const response = await fetch(url.toString(), { headers: { Accept: "application/json" } });
     if (!response.ok) return null;
     const data = (await response.json()) as Record<string, unknown>;
     const instanceMeta = await fetchInstanceMetadata(source.host);
-    const publishedAt = normalizeTimestampMs(data.publishedAt);
+    const publishedAt = normalizeTimestampMs(data.publishedAt ?? data.published_at);
     return {
-      videoUuid: (data.videoUuid as string | undefined) ?? "",
+      videoUuid: (data.videoUuid as string | undefined) ?? (data.video_uuid as string | undefined) ?? "",
       title: (data.title as string | undefined) ?? fallback.title,
       channelName: (data.channelName as string | undefined) ?? fallback.channel,
       channelUrl: (data.channelUrl as string | undefined) ?? fallback.channelUrl,

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
@@ -21,6 +22,43 @@ def _post_json(url: str, payload: dict[str, Any], timeout: int = 6) -> tuple[int
         method="POST",
         headers={"content-type": "application/json"},
     )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            status = int(response.status)
+            body = response.read().decode("utf-8")
+            parsed = json.loads(body) if body else {}
+            if isinstance(parsed, dict):
+                return status, parsed
+            return status, {}
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8") if exc.fp else ""
+        parsed: dict[str, Any] = {}
+        if body:
+            try:
+                maybe = json.loads(body)
+                if isinstance(maybe, dict):
+                    parsed = maybe
+            except json.JSONDecodeError:
+                parsed = {}
+        return int(exc.code), parsed
+    except (URLError, TimeoutError) as exc:
+        raise EngineApiError(str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise EngineApiError(str(exc)) from exc
+
+
+
+def _get_json(
+    url: str,
+    query: dict[str, Any] | None = None,
+    timeout: int = 6,
+) -> tuple[int, dict[str, Any]]:
+    """Handle get json."""
+    if query:
+        encoded = urlencode({key: value for key, value in query.items() if value is not None})
+        if encoded:
+            url = f"{url}?{encoded}"
+    request = Request(url, method="GET", headers={"accept": "application/json"})
     try:
         with urlopen(request, timeout=timeout) as response:
             status = int(response.status)
@@ -123,3 +161,89 @@ def resolve_videos_by_uuid_host(
             }
         )
     return resolved
+
+
+def fetch_engine_video(
+    engine_base_url: str,
+    video_id_or_uuid: str,
+    host: str,
+) -> tuple[int, dict[str, Any]]:
+    """Fetch one Engine video metadata payload by id/uuid and host."""
+    return _get_json(
+        f"{engine_base_url.rstrip('/')}/api/video",
+        {"id": video_id_or_uuid, "host": host},
+    )
+
+
+def fetch_engine_similar(
+    engine_base_url: str,
+    video_id_or_uuid: str,
+    host: str,
+    limit: int,
+    debug: bool = False,
+) -> dict[str, Any]:
+    """Fetch Engine similar rows using existing path-id route."""
+    query: dict[str, Any] = {"host": host, "limit": limit}
+    if debug:
+        query["debug"] = "1"
+    status, body = _get_json(
+        f"{engine_base_url.rstrip('/')}/videos/{video_id_or_uuid}/similar",
+        query,
+    )
+    if status != 200:
+        raise EngineApiError(f"Engine similar failed (HTTP {status}): {body.get('error') or 'unknown error'}")
+    return body
+
+
+def fetch_engine_recommendations(
+    engine_base_url: str,
+    likes: list[dict[str, str]],
+    user_id: str,
+    limit: int,
+    debug: bool = False,
+) -> dict[str, Any]:
+    """Fetch Engine recommendations via its current POST contract."""
+    query: dict[str, Any] = {"limit": str(limit), "user_id": user_id}
+    if debug:
+        query["debug"] = "1"
+    url = f"{engine_base_url.rstrip('/')}/recommendations"
+    if query:
+        url = f"{url}?{urlencode(query)}"
+    status, body = _post_json(url, {"likes": likes, "user_id": user_id, "mode": "home"})
+    if status != 200:
+        raise EngineApiError(f"Engine recommendations failed (HTTP {status}): {body.get('error') or 'unknown error'}")
+    return body
+
+
+def fetch_engine_random(engine_base_url: str, limit: int, debug: bool = False) -> dict[str, Any]:
+    """Fetch Engine random feed via its current recommendations random mode."""
+    query: dict[str, Any] = {"limit": str(limit), "random": "1"}
+    if debug:
+        query["debug"] = "1"
+    url = f"{engine_base_url.rstrip('/')}/recommendations?{urlencode(query)}"
+    status, body = _post_json(url, {"likes": [], "mode": "home"})
+    if status != 200:
+        raise EngineApiError(f"Engine random failed (HTTP {status}): {body.get('error') or 'unknown error'}")
+    return body
+
+
+def fetch_engine_fresh(engine_base_url: str, limit: int) -> dict[str, Any]:
+    """Fetch Engine internal fresh provider rows."""
+    status, body = _get_json(
+        f"{engine_base_url.rstrip('/')}/internal/discovery/fresh",
+        {"limit": limit},
+    )
+    if status != 200:
+        raise EngineApiError(f"Engine fresh failed (HTTP {status}): {body.get('error') or 'unknown error'}")
+    return body
+
+
+def fetch_engine_popular(engine_base_url: str, limit: int) -> dict[str, Any]:
+    """Fetch Engine internal popular provider rows."""
+    status, body = _get_json(
+        f"{engine_base_url.rstrip('/')}/internal/discovery/popular",
+        {"limit": limit},
+    )
+    if status != 200:
+        raise EngineApiError(f"Engine popular failed (HTTP {status}): {body.get('error') or 'unknown error'}")
+    return body

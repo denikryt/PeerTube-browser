@@ -54,7 +54,8 @@ const state = {
   mode: "random" as "random" | "similar" | "personalized",
   seed: null as SimilarSeed | null,
   visibleCount: CHUNK_SIZE,
-  loading: false
+  loading: false,
+  nextCursor: null as string | null
 };
 let feedObserver: IntersectionObserver | null = null;
 let fallbackListenersAttached = false;
@@ -148,6 +149,7 @@ async function loadVideos() {
     state.seed = Array.isArray(payload)
       ? null
       : ((payload as VideosPayload & { seed?: SimilarSeed }).seed ?? null);
+    state.nextCursor = Array.isArray(payload) ? null : (payload.pagination?.next_cursor ?? null);
     pickSample();
     renderCards(true);
     renderSummary();
@@ -164,20 +166,22 @@ async function loadVideos() {
 /**
  * Handle fetch videos payload.
  */
-async function fetchVideosPayload() {
+async function fetchVideosPayload(cursor: string | null = null) {
   if (useSimilar) {
-    return fetchSimilarVideosPayload(similarQuery);
+    return fetchSimilarVideosPayload({ ...similarQuery, cursor });
   }
   if (feedMode === "random") {
     return fetchSimilarVideosPayload({
       ...similarQuery,
       apiBase,
-      random: "1"
+      random: "1",
+      cursor
     });
   }
   const query = {
     ...similarQuery,
-    apiBase
+    apiBase,
+    cursor
   };
   return fetchSimilarVideosPayload(query);
 }
@@ -260,11 +264,45 @@ function visibleSample() {
  */
 function loadNextChunk() {
   const nextCount = Math.min(state.sample.length, state.visibleCount + CHUNK_SIZE);
-  if (nextCount <= state.visibleCount) return false;
+  if (nextCount <= state.visibleCount) {
+    if (state.nextCursor && !state.loading) {
+      void loadMoreFromCursor();
+    }
+    return false;
+  }
   state.visibleCount = nextCount;
   renderCards();
   renderSummary();
   return true;
+}
+
+/**
+ * Handle loading the next v1 cursor page.
+ */
+async function loadMoreFromCursor() {
+  if (!state.nextCursor || state.loading) return false;
+  state.loading = true;
+  try {
+    const payload = await fetchVideosPayload(state.nextCursor);
+    const rows = Array.isArray(payload) ? payload : payload.rows ?? [];
+    state.nextCursor = Array.isArray(payload) ? null : (payload.pagination?.next_cursor ?? null);
+    const existing = new Set(state.rows.map(resolveVideoKey).filter(Boolean));
+    const added = rows.filter((row) => {
+      const key = resolveVideoKey(row);
+      return !key || !existing.has(key);
+    });
+    state.rows = state.rows.concat(added);
+    state.sample = state.sample.concat(added);
+    state.visibleCount = Math.min(state.sample.length, state.visibleCount + CHUNK_SIZE);
+    renderCards();
+    renderSummary();
+    maybeFillViewport();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    state.loading = false;
+  }
 }
 
 /**

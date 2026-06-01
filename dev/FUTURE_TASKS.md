@@ -55,3 +55,39 @@ Define and implement the public API identity contract for videos:
 ### Not In Current Scope
 
 Milestone 0 must not expose `index_id`, rename API response fields, change frontend URL identity, or redesign public Discovery API routes.
+
+## Evaluate uuid-first video identity model
+
+### Source
+
+`plans/16_discovery_api_v1.md`
+
+### Reason
+
+Discovery API v1 keeps both `video_id` and `video_uuid` in public video payloads. A future migration may evaluate whether `video_uuid + instance_domain` can replace internal `video_id + instance_domain` as the primary project identity.
+
+### Future Work
+
+Evaluate a uuid-first identity model across `videos`, `video_embeddings`, `video_index_ids`, `similarity_cache`, recommendations, likes, resolve logic, and DB migrations.
+
+### Not In Current Scope
+
+Discovery API v1 must not replace the current canonical internal `video_id + instance_domain` model.
+
+## Design seek-based cursors for large discovery feeds
+
+### Source
+
+`plans/16_discovery_api_v1.md`
+
+### Reason
+
+Discovery API v1 starts with opaque Client-owned cursors. The first implementation may use offset-style cursor payloads internally while keeping the cursor opaque to the frontend.
+
+### Future Work
+
+Design feed-specific seek cursors for large/dynamic feeds, especially `fresh`, `popular`, `recommendations`, and deterministic random sessions.
+
+### Not In Current Scope
+
+Discovery API v1 must keep cursors opaque and route-bound, but it does not need full seek-pagination semantics for every feed.

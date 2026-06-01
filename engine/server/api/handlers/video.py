@@ -267,6 +267,9 @@ def handle_video_request(server: Any, params: dict[str, list[str]]) -> RouteResu
             original_url = f"https://{instance_domain}/videos/watch/{quote(video_key)}"
 
     response = {
+        "video_id": row.get("video_id") or "",
+        "video_uuid": row.get("video_uuid") or "",
+        "instance_domain": instance_domain or "",
         "videoUuid": row.get("video_uuid") or "",
         "title": title or "",
         "description": description or "",

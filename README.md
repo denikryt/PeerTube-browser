@@ -176,3 +176,8 @@ If you want to help, contributions are welcome. You can open issues or submit PR
 If you want to support this project, here are quick options:
 - [Donatello](https://donatello.to/nachitima/about)
 - [Patreon](https://www.patreon.com/c/nachitima)
+
+
+## Discovery API v1
+
+Browser-facing discovery reads are owned by the Client backend under `/api/v1/...`. The frontend should call Client routes such as `/api/v1/discovery/recommendations`, `/api/v1/discovery/random`, and `/api/v1/videos/{id}`. Engine routes remain provider/computation routes behind the Client boundary.
