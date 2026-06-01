@@ -224,3 +224,7 @@ python3 -m pytest tests/client_backend tests/engine_api tests/framework -q
 ```
 
 Do not add new tests that execute removed stdlib route adapters or fake handler-shaped response helpers. Unknown-route, CORS, rate-limit, invalid-body, and path-id compatibility must be covered through the active FastAPI adapter or framework-neutral route-result/service harnesses.
+
+## Database bootstrap tests
+
+Fast tests include explicit database bootstrap coverage in `tests/db/test_database_bootstrap.py` and a static guard in `tests/db/test_no_direct_runtime_ensure_calls.py`. Tests that verify old `ensure_*` wrappers remain transitional compatibility coverage until the wrapper-deletion stage.

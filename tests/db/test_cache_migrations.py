@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / "engine" / "server"))
 
 from data.random_cache import ensure_random_cache_schema  # noqa: E402
 from data.similarity_cache import ensure_similarity_schema  # noqa: E402
-from db.migrations.apply import (  # noqa: E402
+from engine.server.db.migrations.apply import (  # noqa: E402
     apply_random_cache_migrations,
     apply_similarity_cache_migrations,
 )

@@ -82,12 +82,12 @@ from data.random_videos import (
     fetch_popular_videos,
 )
 from data.similarity_candidates import get_similar_candidates
-from data.similarity_cache import ensure_similarity_schema
-from data.interaction_events import ensure_interaction_event_schema
 from data.random_cache import connect_random_cache_db, populate_random_cache
-from data.channels import ensure_channels_indexes
-from data.videos import ensure_video_indexes
-from data.moderation import ensure_moderation_schema
+from db.bootstrap import (
+    bootstrap_engine_random_cache_db,
+    bootstrap_engine_runtime_db,
+    bootstrap_engine_similarity_cache_db,
+)
 from recommendations import RecommendationStrategy
 from recommendations.keys import like_key
 from recommendations.builder import (
@@ -235,14 +235,12 @@ def main() -> None:
     random_cache_path = (repo_root / DEFAULT_RANDOM_CACHE_DB_PATH).resolve()
 
     db = connect_db(db_path)
-    ensure_moderation_schema(db)
-    ensure_interaction_event_schema(db)
-    ensure_channels_indexes(db)
-    ensure_video_indexes(db)
+    bootstrap_engine_runtime_db(db)
     similarity_db = connect_similarity_db(similarity_db_path)
-    ensure_similarity_schema(similarity_db)
+    bootstrap_engine_similarity_cache_db(similarity_db)
     random_cache_path.parent.mkdir(parents=True, exist_ok=True)
     random_cache_db = connect_random_cache_db(random_cache_path)
+    bootstrap_engine_random_cache_db(random_cache_db)
     populate_random_cache(
         db,
         random_cache_db,

@@ -4,7 +4,7 @@
 
 This document defines which component owns each SQLite schema used by PeerTube Browser, which helper or migration creates the current shape, and which compatibility wrappers remain during refactoring.
 
-Stage 6 does not introduce a historical migration framework or change production database shapes. It documents ownership, adds current-shape SQL resources, and keeps existing runtime helpers as compatibility wrappers.
+Stage 6 did not introduce a historical migration framework or change production database shapes. It documented ownership, added current-shape SQL resources, and kept existing runtime helpers as compatibility wrappers. The database bootstrap cleanup stage adds explicit runtime bootstrap entrypoints above those migration resources while still keeping the compatibility wrappers for one more stage.
 
 ## Client users DB
 
@@ -14,7 +14,13 @@ Owner:
 Client backend
 ```
 
-Current source:
+Current runtime bootstrap source:
+
+```text
+client/backend/db/bootstrap.py::bootstrap_client_users_db
+```
+
+Current compatibility wrapper:
 
 ```text
 client/backend/lib/users_store.py::ensure_user_schema
@@ -32,6 +38,7 @@ Runtime/job callers:
 ```text
 client/backend/server.py
 client/backend/repositories/users.py::UsersRepository.ensure_schema
+client/backend/db/bootstrap.py::bootstrap_client_users_db
 client/backend/lib/users_store.py::ensure_user_schema
 ```
 
@@ -47,13 +54,19 @@ Compatibility wrappers:
 
 ```text
 client/backend/lib/users_store.py::ensure_user_schema
+```
+
+Current runtime bootstrap path:
+
+```text
 client/backend/repositories/users.py::UsersRepository.ensure_schema
+  -> client/backend/db/bootstrap.py::bootstrap_client_users_db
 ```
 
 Allowed Stage 6 changes:
 
 ```text
-Move the exact current users/likes SQL into checked-in migration resources and keep existing helper names.
+Use `bootstrap_client_users_db` for runtime setup while keeping the old `ensure_user_schema` wrapper for one compatibility stage.
 ```
 
 Deferred changes:
@@ -232,6 +245,14 @@ engine/server/data/channels.py::ensure_channels_indexes
 engine/server/data/videos.py::ensure_video_indexes
 ```
 
+Current runtime bootstrap source:
+
+```text
+engine/server/db/bootstrap.py::bootstrap_engine_runtime_db
+engine/server/db/bootstrap.py::bootstrap_engine_moderation_db
+engine/server/db/bootstrap.py::bootstrap_engine_read_indexes
+```
+
 Stage 6 migration source:
 
 ```text
@@ -281,7 +302,7 @@ engine/server/data/videos.py::ensure_video_indexes
 Allowed Stage 6 changes:
 
 ```text
-Move current table/index SQL into migration resources and keep wrappers import-compatible.
+Use Engine bootstrap functions for runtime startup and jobs while keeping wrapper imports available for one compatibility stage.
 ```
 
 Deferred changes:
@@ -312,6 +333,12 @@ Current source:
 ```text
 engine/server/data/similarity_cache.py::ensure_similarity_schema
 engine/server/db/jobs/precompute-similar-ann.py::ensure_schema
+```
+
+Current runtime bootstrap source:
+
+```text
+engine/server/db/bootstrap.py::bootstrap_engine_similarity_cache_db
 ```
 
 Stage 6 migration source:
@@ -374,6 +401,12 @@ Current source:
 
 ```text
 engine/server/data/random_cache.py::ensure_random_cache_schema
+```
+
+Current runtime bootstrap source:
+
+```text
+engine/server/db/bootstrap.py::bootstrap_engine_random_cache_db
 ```
 
 Stage 6 migration source:
@@ -498,7 +531,7 @@ Implementation action: make it delegate to apply_client_user_migrations(conn).
 
 Tests: test_client_user_migrations.py
 
-Removal condition: only after all callers use an explicit migration command in a later plan.
+Removal condition: only after production callers use `bootstrap_client_users_db` and tests no longer need the transitional wrapper except in wrapper-deletion coverage.
 
 ### Engine interaction events schema
 
@@ -510,7 +543,7 @@ Implementation action: delegate to main runtime migration for interaction tables
 
 Tests: test_engine_runtime_migrations.py and legacy interaction events test.
 
-Removal condition: only after Engine startup uses explicit migration orchestration.
+Removal condition: only after Engine startup and jobs use explicit bootstrap functions and wrapper tests are no longer needed.
 
 ### Engine moderation schema
 
@@ -522,7 +555,7 @@ Implementation action: delegate to the current moderation migration resource whi
 
 Tests: test_engine_runtime_migrations.py.
 
-Removal condition: only after Engine startup uses explicit migration orchestration.
+Removal condition: only after Engine startup and jobs use explicit bootstrap functions and wrapper tests are no longer needed.
 
 ### Engine read indexes
 
@@ -546,7 +579,7 @@ Implementation action: delegate to cache migration resource helpers.
 
 Tests: test_cache_migrations.py.
 
-Removal condition: only after cache DB creation is owned by explicit migration commands.
+Removal condition: only after cache DB creation is owned by explicit bootstrap calls and direct wrapper calls are gone from production.
 
 ### Crawler schema ownership
 

@@ -162,3 +162,7 @@ python3 engine/server/api/server.py --help
 ```
 
 The Engine command still has the existing FAISS prerequisite in environments without FAISS installed. Do not add stdlib HTTP handler fixtures or fake handler-shaped response helpers for new tests; use FastAPI `TestClient` or framework-neutral route/service result assertions.
+
+## Database bootstrap
+
+Runtime code should create current SQLite schemas through explicit bootstrap entrypoints instead of direct `ensure_*` helper calls. Client code uses `bootstrap_client_users_db`; Engine startup and jobs use `engine/server/db/bootstrap.py`. The old wrappers remain for one transitional stage and must not be used by new production code.

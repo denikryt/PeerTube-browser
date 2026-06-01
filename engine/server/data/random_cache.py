@@ -37,7 +37,6 @@ def populate_random_cache(
     """Handle populate random cache."""
     if size <= 0:
         return 0
-    ensure_random_cache_schema(cache_db)
     existing = cache_db.execute("SELECT COUNT(*) FROM random_rowids").fetchone()
     if not refresh and existing and int(existing[0]) >= size:
         return int(existing[0])

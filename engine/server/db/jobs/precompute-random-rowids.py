@@ -10,6 +10,10 @@ from pathlib import Path
 script_dir = Path(__file__).resolve().parent
 sys.path.append(str(script_dir.parents[1]))
 
+try:
+    from engine.server.db.bootstrap import bootstrap_engine_random_cache_db
+except ModuleNotFoundError:  # pragma: no cover - script import fallback.
+    from db.bootstrap import bootstrap_engine_random_cache_db
 from data.random_cache import connect_random_cache_db, populate_random_cache
 
 
@@ -67,6 +71,7 @@ def main() -> None:
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_db = connect_random_cache_db(out_path)
+    bootstrap_engine_random_cache_db(out_db)
     if args.reset:
         out_db.execute("DELETE FROM random_rowids")
         out_db.commit()

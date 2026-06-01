@@ -23,7 +23,7 @@ fake_ann.search_index = lambda *_args, **_kwargs: ([], [])
 sys.modules.setdefault("data.ann", fake_ann)
 
 from app import create_app  # noqa: E402
-from data.interaction_events import ensure_interaction_event_schema  # noqa: E402
+from engine.server.db.bootstrap import bootstrap_engine_runtime_db  # noqa: E402
 from runtime import EngineRuntimeState  # noqa: E402
 
 
@@ -32,7 +32,7 @@ def engine_event_server() -> SimpleNamespace:
     """Provide the server attributes required by internal event ingest handler."""
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    ensure_interaction_event_schema(conn)
+    bootstrap_engine_runtime_db(conn)
     server = SimpleNamespace(db=conn, db_lock=threading.RLock())
     yield server
     conn.close()

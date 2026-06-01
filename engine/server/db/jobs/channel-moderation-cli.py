@@ -20,7 +20,11 @@ if str(api_dir) not in sys.path:
 
 from scripts.cli_format import CompactHelpFormatter
 from server_config import DEFAULT_DB_PATH
-from data.moderation import ensure_moderation_schema, normalize_host, now_ms
+try:
+    from engine.server.db.bootstrap import bootstrap_engine_moderation_db
+except ModuleNotFoundError:  # pragma: no cover - script import fallback.
+    from db.bootstrap import bootstrap_engine_moderation_db
+from data.moderation import normalize_host, now_ms
 
 UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
@@ -210,7 +214,7 @@ def main() -> None:
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
 
         with connect(db_path) as conn:
-            ensure_moderation_schema(conn)
+            bootstrap_engine_moderation_db(conn)
             rows = conn.execute(
                 f"""
                 SELECT
@@ -245,7 +249,7 @@ def main() -> None:
 
     with connect(db_path) as conn:
         with conn:
-            ensure_moderation_schema(conn)
+            bootstrap_engine_moderation_db(conn)
             if args.command == "block":
                 if args.video_url:
                     channel_id, instance_domain = resolve_channel_from_video(

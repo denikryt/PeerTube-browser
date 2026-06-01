@@ -14,8 +14,11 @@ from .paths import SERVER_DIR
 if str(SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(SERVER_DIR))
 
+try:
+    from engine.server.db.bootstrap import bootstrap_engine_moderation_db  # noqa: E402
+except ModuleNotFoundError:  # pragma: no cover - script import fallback.
+    from db.bootstrap import bootstrap_engine_moderation_db  # noqa: E402
 from data.moderation import (  # noqa: E402
-    ensure_moderation_schema,
     list_active_denied_hosts,
     purge_host_data,
     purge_similarity_for_host,
@@ -58,7 +61,7 @@ def load_denied_hosts(db_path: Path) -> set[str]:
     """Load active moderation denylist hosts from the prod DB."""
 
     with sqlite3.connect(db_path) as conn:
-        ensure_moderation_schema(conn)
+        bootstrap_engine_moderation_db(conn)
         return set(list_active_denied_hosts(conn))
 
 
@@ -85,7 +88,7 @@ def purge_hosts(
     if not hosts:
         return aggregate
     with sqlite3.connect(prod_db) as conn:
-        ensure_moderation_schema(conn)
+        bootstrap_engine_moderation_db(conn)
         for host in sorted(hosts):
             result = purge_host_data(conn, host, dry_run=dry_run)
             for key, value in result.items():

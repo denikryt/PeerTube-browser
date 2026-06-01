@@ -12,7 +12,7 @@ from data.channels import ensure_channels_indexes  # noqa: E402
 from data.interaction_events import ensure_interaction_event_schema  # noqa: E402
 from data.moderation import ensure_moderation_schema  # noqa: E402
 from data.videos import ensure_video_indexes  # noqa: E402
-from db.migrations.apply import apply_main_read_indexes, apply_main_runtime_migrations  # noqa: E402
+from engine.server.db.migrations.apply import apply_main_read_indexes, apply_main_runtime_migrations  # noqa: E402
 
 
 def _connect() -> sqlite3.Connection:

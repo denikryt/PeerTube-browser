@@ -16,8 +16,9 @@ from fastapi.testclient import TestClient
 RouteMap = dict[tuple[str, str], Callable[[dict[str, Any]], tuple[int, dict[str, Any]]]]
 
 ROOT = Path(__file__).resolve().parents[2]
-for module_name in ("app", "runtime", "http_adapters", "services", "repositories"):
-    sys.modules.pop(module_name, None)
+for module_name in list(sys.modules):
+    if module_name in {"app", "runtime", "http_adapters", "services", "repositories"} or module_name.startswith(("services.", "repositories.")):
+        sys.modules.pop(module_name, None)
 for path in (str(ROOT / "engine" / "server" / "api"), str(ROOT / "client" / "backend")):
     if path in sys.path:
         sys.path.remove(path)
@@ -25,7 +26,7 @@ sys.path.insert(0, str(ROOT / "client" / "backend"))
 
 from app import create_app  # noqa: E402
 from lib.http_utils import RateLimiter  # noqa: E402
-from lib.users_store import ensure_user_schema  # noqa: E402
+from client.backend.db.bootstrap import bootstrap_client_users_db  # noqa: E402
 from repositories.users import UsersRepository  # noqa: E402
 from runtime import ClientRuntimeState  # noqa: E402
 
@@ -93,7 +94,7 @@ def client_db() -> sqlite3.Connection:
     """Provide a Client users DB with production schema in a temporary database."""
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    ensure_user_schema(conn)
+    bootstrap_client_users_db(conn)
     yield conn
     conn.close()
 
