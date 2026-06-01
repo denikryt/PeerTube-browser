@@ -12,7 +12,8 @@ Main goals:
 - compute embeddings for new content,
 - merge staging into prod with merge rules,
 - refresh popularity/similarity data,
-- rebuild ANN index for prod.
+- sync stable video index ids,
+- rebuild ANN and random index-id artifacts for prod.
 
 ## Inputs and Outputs
 
@@ -25,6 +26,7 @@ Inputs:
 Outputs:
 - Updated prod DB (`whitelist.db`)
 - Rebuilt FAISS index (`whitelist-video-embeddings.faiss` + `.json`)
+- Rebuilt random index-id cache (`random-cache.db`)
 - Updated similarity cache (`similarity-cache.db`)
 
 Temporary output:
@@ -49,10 +51,12 @@ The worker runs this sequence:
 6. Optionally stop API service (unless `--skip-systemctl`).
 7. Merge staging into prod (`merge-staging-db.py` with `merge_rules.json`).
 8. Recompute popularity incrementally (`recompute-popularity.py --incremental`).
-9. Rebuild ANN index from prod (`build-ann-index.py`).
-10. Refresh similarity cache for already-cached source videos (`precompute-similar-ann.py --refresh-existing`).
-11. Start API service back.
-12. Release lock and finish.
+9. Sync stable video index ids (`sync-video-index-ids.py`).
+10. Rebuild ANN index from prod (`build-ann-index.py`).
+11. Rebuild random index-id cache (`precompute-random-index-ids.py --reset`).
+12. Refresh similarity cache for already-cached source videos (`precompute-similar-ann.py --refresh-existing`).
+13. Start API service back.
+14. Release lock and finish.
 
 ## What Exactly Is Collected
 
@@ -101,6 +105,7 @@ Default is `--gpu` unless overridden.
 - `--prod-db`, `--staging-db` paths
 - `--index-path`, `--index-meta-path`
 - `--similarity-db`
+- `--random-cache-db`
 - `--merge-rules`
 - `--service-name`
 - `--systemctl-bin`

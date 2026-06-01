@@ -33,6 +33,7 @@ class ResolvedUpdaterPaths:
     index_path: Path
     index_meta_path: Path
     similarity_db: Path
+    random_cache_db: Path
     merge_rules: Path
     lock_file: Path
 
@@ -53,6 +54,7 @@ def from_args(args) -> ResolvedUpdaterPaths:
         index_path=Path(args.index_path).resolve(),
         index_meta_path=Path(args.index_meta_path).resolve(),
         similarity_db=Path(args.similarity_db).resolve(),
+        random_cache_db=Path(args.random_cache_db).resolve(),
         merge_rules=Path(args.merge_rules).resolve(),
         lock_file=Path(args.lock_file).resolve(),
     )
@@ -74,6 +76,7 @@ def required_runtime_files(paths: ResolvedUpdaterPaths) -> tuple[Path, ...]:
         paths.script_dir / "recompute-popularity.py",
         paths.script_dir / "sync-video-index-ids.py",
         paths.script_dir / "precompute-similar-ann.py",
+        paths.script_dir / "precompute-random-index-ids.py",
         paths.script_dir / "build-ann-index.py",
     )
 

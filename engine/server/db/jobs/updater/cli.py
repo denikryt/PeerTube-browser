@@ -57,13 +57,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     api_dir = REPO_ROOT / "engine" / "server" / "api"
     if str(api_dir) not in sys.path:
         sys.path.insert(0, str(api_dir))
-    from server_config import DEFAULT_DB_PATH, DEFAULT_INDEX_PATH, DEFAULT_SIMILARITY_DB_PATH
+    from server_config import (
+        DEFAULT_DB_PATH,
+        DEFAULT_INDEX_PATH,
+        DEFAULT_RANDOM_CACHE_DB_PATH,
+        DEFAULT_SIMILARITY_DB_PATH,
+    )
 
     default_prod = (REPO_ROOT / DEFAULT_DB_PATH).resolve()
     default_stage = (REPO_ROOT / "engine/server/db/staging-worker.db").resolve()
     default_index = (REPO_ROOT / DEFAULT_INDEX_PATH).resolve()
     default_index_meta = default_index.with_suffix(default_index.suffix + ".json")
     default_similarity = (REPO_ROOT / DEFAULT_SIMILARITY_DB_PATH).resolve()
+    default_random_cache = (REPO_ROOT / DEFAULT_RANDOM_CACHE_DB_PATH).resolve()
     default_rules = (JOBS_DIR / "merge_rules.json").resolve()
     default_logs = (REPO_ROOT / "engine/server/db/updater-worker.log").resolve()
     default_lock = Path("/tmp/peertube-browser-staging-sync.lock")
@@ -91,6 +97,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--similarity-db", default=str(default_similarity), help="Path to similarity cache DB."
+    )
+    parser.add_argument(
+        "--random-cache-db",
+        default=str(default_random_cache),
+        help="Path to random index-id cache DB.",
     )
     parser.add_argument(
         "--merge-rules", default=str(default_rules), help="Path to merge_rules.json."

@@ -12,6 +12,24 @@ import logging
 import time
 from pathlib import Path
 
+try:
+    from engine.server.api.server_config import (
+        DEFAULT_RANDOM_CACHE_FILTERED_MODE,
+        DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR,
+        DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE,
+        DEFAULT_RANDOM_CACHE_SIZE,
+    )
+except ModuleNotFoundError:  # pragma: no cover - direct script execution path.
+    # updater-worker.py adds engine/server to sys.path so the stable executable
+    # path can import updater modules without requiring package-mode PYTHONPATH.
+    # Keep that deployment contour while sharing runtime random-cache defaults.
+    from api.server_config import (
+        DEFAULT_RANDOM_CACHE_FILTERED_MODE,
+        DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR,
+        DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE,
+        DEFAULT_RANDOM_CACHE_SIZE,
+    )
+
 from .commands import CommandRun, run_cmd, run_with_cpu_fallback, systemctl_cmd
 from .locks import single_run_lock
 from .paths import from_args, validate_required_files
@@ -359,6 +377,32 @@ def run_pipeline(
                     cwd=paths.repo_root,
                     runner=command_runner,
                 )
+                # The Engine can populate random cache at startup, but the updater owns
+                # production artifact refresh. Rebuilding here prevents stale rowid-era
+                # random artifacts from surviving a data update.
+                random_cache_cmd = [
+                    args.python_bin,
+                    (paths.script_dir / "precompute-random-index-ids.py").as_posix(),
+                    "--db",
+                    paths.prod_db.as_posix(),
+                    "--out",
+                    paths.random_cache_db.as_posix(),
+                    "--size",
+                    str(DEFAULT_RANDOM_CACHE_SIZE),
+                    "--reset",
+                ]
+                if DEFAULT_RANDOM_CACHE_FILTERED_MODE:
+                    random_cache_cmd.extend(
+                        [
+                            "--filtered",
+                            "--max-per-author",
+                            str(DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR),
+                            "--max-per-instance",
+                            str(DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE),
+                        ]
+                    )
+                _run_cmd(random_cache_cmd, cwd=paths.repo_root, runner=command_runner)
+
                 if args.fail_after_merge_before_similarity:
                     raise RuntimeError(
                         "Injected failure: after merge/ANN and before similarity precompute"
@@ -369,7 +413,6 @@ def run_pipeline(
                     "--db",
                     paths.prod_db.as_posix(),
                     "--index",
-                    paths.index_path.as_posix(),
                     paths.index_path.as_posix(),
                     "--out",
                     paths.similarity_db.as_posix(),
