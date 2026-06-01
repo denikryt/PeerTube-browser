@@ -64,14 +64,14 @@ def test_similarity_cache_migration_creates_current_tables_indexes_and_pk() -> N
     ]
 
 
-def test_random_cache_migration_creates_current_random_rowids_table() -> None:
-    """Random cache migration must preserve the position/video_rowid table shape."""
+def test_random_cache_migration_creates_current_random_index_ids_table() -> None:
+    """Random cache migration must create the stable index-id table shape."""
     conn = _connect()
 
     apply_random_cache_migrations(conn)
 
-    assert "random_rowids" in _tables(conn)
-    assert _pk_columns(conn, "random_rowids") == ["position"]
+    assert "random_index_ids" in _tables(conn)
+    assert _pk_columns(conn, "random_index_ids") == ["position"]
 
 
 def test_cache_migrations_are_idempotent() -> None:

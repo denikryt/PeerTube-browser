@@ -37,7 +37,7 @@ DEFAULT_NPROBE = 24
 DEFAULT_USE_SIMILARITY_CACHE = True
 # Whether to L2-normalize query vectors before ANN search.
 DEFAULT_NORMALIZE_QUERIES = False
-# Precomputed random rowids stored for fast random feed responses.
+# Precomputed random stable index ids stored for fast random feed responses.
 DEFAULT_RANDOM_CACHE_SIZE = 500000
 # When enabled, random cache is built with per-instance/author caps.
 DEFAULT_RANDOM_CACHE_FILTERED_MODE = True

@@ -18,7 +18,7 @@ from typing import Any
 import numpy as np
 from data.ann import search_index
 from data.embeddings import normalize_vector, resolve_seed
-from data.metadata import fetch_metadata
+from data.metadata import fetch_metadata_by_index_ids
 from data.random_videos import fetch_random_rows, fetch_random_rows_from_cache
 from data.serving_moderation import apply_serving_moderation_filters
 from data.similarity_candidates import SimilarityCandidatesPolicy, get_similar_candidates
@@ -437,14 +437,14 @@ def handle_vector_search(
 
     search_start = perf_counter()
     with server.index_lock:
-        rowids, scores = search_index(server.index, vector, limit, seed["exclude_rowid"])
+        index_ids, scores = search_index(server.index, vector, limit, seed["exclude_index_id"])
     search_ms = int((perf_counter() - search_start) * 1000)
 
     meta_start = perf_counter()
     with server.db_lock:
-        metadata = fetch_metadata(
+        metadata = fetch_metadata_by_index_ids(
             server.db,
-            rowids,
+            index_ids,
             error_threshold=server.video_error_threshold,
         )
     meta_ms = int((perf_counter() - meta_start) * 1000)
@@ -456,8 +456,8 @@ def handle_vector_search(
         search_ms + meta_ms,
     )
     rows = []
-    for rowid, score in zip(rowids, scores, strict=True):
-        meta = metadata.get(rowid)
+    for index_id, score in zip(index_ids, scores, strict=True):
+        meta = metadata.get(index_id)
         if not meta:
             continue
         rows.append({**meta, "score": score})

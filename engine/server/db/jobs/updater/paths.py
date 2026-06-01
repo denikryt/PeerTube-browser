@@ -72,6 +72,7 @@ def required_runtime_files(paths: ResolvedUpdaterPaths) -> tuple[Path, ...]:
         paths.script_dir / "merge-staging-db.py",
         paths.script_dir / "build-video-embeddings.py",
         paths.script_dir / "recompute-popularity.py",
+        paths.script_dir / "sync-video-index-ids.py",
         paths.script_dir / "precompute-similar-ann.py",
         paths.script_dir / "build-ann-index.py",
     )

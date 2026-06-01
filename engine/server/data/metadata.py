@@ -102,6 +102,108 @@ def fetch_metadata(
     return result
 
 
+def fetch_metadata_by_index_ids(
+    conn: sqlite3.Connection,
+    index_ids: list[int],
+    error_threshold: int | None = None,
+) -> dict[int, dict[str, Any]]:
+    """Fetch video metadata for stable `video_index_ids.index_id` values.
+
+    ANN and random-cache artifacts store numeric index ids because FAISS and the
+    cache table need compact integers. This helper is the only runtime bridge
+    from those internal ids back to canonical video metadata.
+    """
+    if not index_ids:
+        return {}
+    result: dict[int, dict[str, Any]] = {}
+    for batch in _chunk(index_ids, 900):
+        placeholders = ",".join(["?"] * len(batch))
+        error_clause = ""
+        params: list[Any] = list(batch)
+        if error_threshold is not None and error_threshold > 0:
+            error_clause = "AND (v.error_count IS NULL OR v.error_count < ?)"
+            params.append(error_threshold)
+        rows = conn.execute(
+            f"""
+            SELECT
+              vii.index_id,
+              v.video_id,
+              v.video_uuid,
+              v.video_numeric_id,
+              v.instance_domain,
+              v.channel_id,
+              v.channel_name,
+              v.channel_url,
+              c.display_name AS channel_display_name,
+              c.avatar_url AS channel_avatar_url,
+              v.account_name,
+              v.account_url,
+              v.title,
+              v.description,
+              v.tags_json,
+              v.category,
+              v.published_at,
+              v.video_url,
+              v.duration,
+              v.thumbnail_url,
+              v.embed_path,
+              v.views,
+              v.likes,
+              v.dislikes,
+              v.comments_count,
+              v.nsfw,
+              v.preview_path,
+              v.last_checked_at,
+              e.embedding_dim,
+              e.model_name
+            FROM video_index_ids vii
+            JOIN video_embeddings e
+              ON e.video_id = vii.video_id AND e.instance_domain = vii.instance_domain
+            JOIN videos v
+              ON v.video_id = vii.video_id AND v.instance_domain = vii.instance_domain
+            LEFT JOIN channels c
+              ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
+            WHERE vii.index_id IN ({placeholders})
+              AND vii.is_active = 1
+              {error_clause}
+            """,
+            params,
+        ).fetchall()
+        for row in rows:
+            result[int(row["index_id"])] = {
+                "video_id": row["video_id"],
+                "video_uuid": row["video_uuid"],
+                "video_numeric_id": row["video_numeric_id"],
+                "instance_domain": row["instance_domain"],
+                "channel_id": row["channel_id"],
+                "channel_name": row["channel_name"],
+                "channel_url": row["channel_url"],
+                "channel_display_name": row["channel_display_name"],
+                "channel_avatar_url": row["channel_avatar_url"],
+                "account_name": row["account_name"],
+                "account_url": row["account_url"],
+                "title": row["title"],
+                "description": row["description"],
+                "tags_json": row["tags_json"],
+                "category": row["category"],
+                "published_at": row["published_at"],
+                "video_url": row["video_url"],
+                "duration": row["duration"],
+                "thumbnail_url": row["thumbnail_url"],
+                "embed_path": row["embed_path"],
+                "views": row["views"],
+                "likes": row["likes"],
+                "dislikes": row["dislikes"],
+                "comments_count": row["comments_count"],
+                "nsfw": row["nsfw"],
+                "preview_path": row["preview_path"],
+                "last_checked_at": row["last_checked_at"],
+                "embedding_dim": row["embedding_dim"],
+                "model_name": row["model_name"],
+            }
+    return result
+
+
 def _chunk(values: list[Any], size: int) -> list[list[Any]]:
     """Handle chunk."""
     return [values[index : index + size] for index in range(0, len(values), size)]

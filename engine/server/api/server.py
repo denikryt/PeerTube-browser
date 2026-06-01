@@ -83,6 +83,7 @@ from data.random_videos import (
 )
 from data.similarity_candidates import get_similar_candidates
 from data.random_cache import connect_random_cache_db, populate_random_cache
+from data.ann_artifact import validate_faiss_artifact_metadata
 from db.bootstrap import (
     bootstrap_engine_random_cache_db,
     bootstrap_engine_runtime_db,
@@ -256,6 +257,7 @@ def main() -> None:
     dim_value = int(embeddings_dim[0])
 
     logging.info("loading FAISS index=%s", index_path)
+    validate_faiss_artifact_metadata(index_path)
     index = faiss.read_index(str(index_path), faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY)
     set_nprobe(index, DEFAULT_NPROBE)
 

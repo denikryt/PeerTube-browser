@@ -10,7 +10,7 @@ All paths below are relative to the repository root.
 - `engine/server/db/whitelist.db` filtered dataset used by the API.
 - `engine/server/db/whitelist-video-embeddings.faiss` and `engine/server/db/whitelist-video-embeddings.faiss.json` ANN index + metadata.
 - `engine/server/db/similarity-cache.db` precomputed similar cache (optional).
-- `engine/server/db/random-cache.db` random rowid cache (optional).
+- `engine/server/db/random-cache.db` random index-id cache (optional).
 
 ## Prerequisites
 - Node.js + npm for the crawler (`engine/crawler/package.json`).
@@ -157,7 +157,7 @@ If the whitelist DB schema is outdated, migrate it:
 python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whitelist.db
 ```
 
-Schema ownership and compatibility wrappers are documented in `docs/SCHEMA_OWNERSHIP.md`. Stage 6 does not change the data-build commands.
+Schema ownership is documented in `docs/SCHEMA_OWNERSHIP.md`.
 
 ## 3) Build embeddings
 Embeddings use SentenceTransformers. The text payload is built from:
@@ -180,8 +180,17 @@ Useful flags:
 - `--force` recompute all embeddings.
 - `--gpu` uses CUDA and fails if it is unavailable.
 
-## 4) Build FAISS ANN index
-The index uses `video_embeddings.rowid` as ids.
+## 4) Sync stable index ids
+
+Before building ANN/random/similarity artifacts, sync stable numeric ids for every currently indexable video. A video is indexable when it exists in both `videos` and `video_embeddings`.
+
+```bash
+python3 engine/server/db/jobs/sync-video-index-ids.py \
+  --db engine/server/db/whitelist.db
+```
+
+## 5) Build FAISS ANN index
+The index uses `video_index_ids.index_id` as ids. Old rowid-based FAISS artifacts are incompatible and must be rebuilt.
 
 ```bash
 python3 engine/server/db/jobs/build-ann-index.py \
@@ -196,7 +205,7 @@ Useful flags:
 - `--train-sample` controls training set size.
 - `--batch-size` controls memory usage when adding vectors.
 
-## 5) Precompute similarity cache (optional)
+## 6) Precompute similarity cache (optional)
 This speeds up similar video fetches for the video page.
 ```bash
 python3 engine/server/db/jobs/precompute-similar-ann.py \
@@ -208,10 +217,10 @@ python3 engine/server/db/jobs/precompute-similar-ann.py \
   --reset
 ```
 
-## 6) Precompute random cache (optional)
-This prepares a random rowid pool for the random feed.
+## 7) Precompute random cache (optional)
+This prepares a random stable-index-id pool for the random feed.
 ```bash
-python3 engine/server/db/jobs/precompute-random-rowids.py \
+python3 engine/server/db/jobs/precompute-random-index-ids.py \
   --db engine/server/db/whitelist.db \
   --out engine/server/db/random-cache.db \
   --size 5000 \
@@ -221,7 +230,7 @@ python3 engine/server/db/jobs/precompute-random-rowids.py \
   --reset
 ```
 
-## 7) Recompute popularity (one-time after dataset build)
+## 8) Recompute popularity (one-time after dataset build)
 Materialize a `videos.popularity` score for fast popular queries.
 ```bash
 python3 engine/server/db/jobs/recompute-popularity.py \
@@ -244,5 +253,5 @@ sqlite3 engine/crawler/data/crawl.db "select status, count(*) from video_crawl_p
 sqlite3 engine/server/db/whitelist.db "select count(*) from videos;"
 sqlite3 engine/server/db/whitelist.db "select count(*) from video_embeddings;"
 sqlite3 engine/server/db/similarity-cache.db "select count(*) from similarity_sources;"
-sqlite3 engine/server/db/random-cache.db "select count(*) from random_rowids;"
+sqlite3 engine/server/db/random-cache.db "select count(*) from random_index_ids;"
 ```

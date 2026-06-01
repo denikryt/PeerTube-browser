@@ -103,6 +103,7 @@ def test_normal_run_preserves_command_order_and_gpu_flags(monkeypatch, tmp_path)
         "systemctl",
         "merge-staging-db.py",
         "recompute-popularity.py",
+        "sync-video-index-ids.py",
         "build-ann-index.py",
         "precompute-similar-ann.py",
         "systemctl",

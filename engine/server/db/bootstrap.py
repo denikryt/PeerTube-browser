@@ -15,6 +15,7 @@ try:
         apply_moderation_migration,
         apply_random_cache_migrations,
         apply_similarity_cache_migrations,
+        apply_video_index_ids_migration,
     )
 except ModuleNotFoundError:  # pragma: no cover - script import fallback.
     from db.migrations.apply import (
@@ -23,12 +24,18 @@ except ModuleNotFoundError:  # pragma: no cover - script import fallback.
         apply_moderation_migration,
         apply_random_cache_migrations,
         apply_similarity_cache_migrations,
+        apply_video_index_ids_migration,
     )
 
 
 def bootstrap_engine_runtime_db(conn: sqlite3.Connection) -> None:
     """Apply Engine runtime tables and conditional read indexes."""
     apply_main_runtime_migrations(conn)
+
+
+def bootstrap_engine_video_index_ids(conn: sqlite3.Connection) -> None:
+    """Apply the stable ANN index identity mapping schema."""
+    apply_video_index_ids_migration(conn)
 
 
 def bootstrap_engine_similarity_cache_db(conn: sqlite3.Connection) -> None:

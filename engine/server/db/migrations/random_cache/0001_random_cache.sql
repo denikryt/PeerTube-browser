@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS random_rowids (
+CREATE TABLE IF NOT EXISTS random_index_ids (
   position INTEGER PRIMARY KEY,
-  video_rowid INTEGER NOT NULL
+  index_id INTEGER NOT NULL
 );

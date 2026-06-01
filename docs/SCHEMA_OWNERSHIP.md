@@ -414,13 +414,13 @@ Runtime/job callers:
 ```text
 engine/server/api/server.py
 engine/server/data/random_cache.py
-engine/server/db/jobs/precompute-random-rowids.py
+engine/server/db/jobs/precompute-random-index-ids.py
 ```
 
 Tables/indexes:
 
 ```text
-random_rowids
+random_index_ids
 ```
 
 Removed transitional wrappers:
@@ -429,22 +429,54 @@ Removed transitional wrappers:
 engine/server/data/random_cache.py::ensure_random_cache_schema
 ```
 
-Allowed Stage 6 changes:
+Current behavior:
 
 ```text
-Centralize current table SQL and keep runtime population behavior unchanged.
+Random cache stores `random_index_ids.index_id`, not SQLite rowids.
+Old `random_rowids` artifacts are incompatible and must be rebuilt.
 ```
 
 Deferred changes:
 
 ```text
-Random-cache population policy, cache refresh behavior, and job orchestration.
+Random-cache cleanup policy and broader artifact lifecycle management.
 ```
 
 Tests:
 
 ```text
 tests/db/test_cache_migrations.py
+```
+
+## Engine stable ANN index identity
+
+Owner:
+
+```text
+Engine jobs and Engine runtime read paths
+```
+
+Current source:
+
+```text
+engine/server/db/migrations/main/0004_video_index_ids.sql
+engine/server/db/jobs/sync-video-index-ids.py
+engine/server/data/ann_artifact.py
+```
+
+Tables/indexes:
+
+```text
+video_index_ids
+```
+
+Current behavior:
+
+```text
+FAISS ids are `video_index_ids.index_id`.
+`sync-video-index-ids.py` must run after prod merge/purge and before ANN/random/similarity artifact builds.
+Inactive mappings are retained and excluded from new artifacts.
+`similarity_cache` stores video_id + instance_domain, not index ids.
 ```
 
 ## Engine derived artifacts
@@ -461,7 +493,7 @@ Current source:
 engine/server/db/jobs/build-video-embeddings.py
 engine/server/db/jobs/build-ann-index.py
 engine/server/db/jobs/precompute-similar-ann.py
-engine/server/db/jobs/precompute-random-rowids.py
+engine/server/db/jobs/precompute-random-index-ids.py
 engine/server/db/jobs/recompute-popularity.py
 ```
 

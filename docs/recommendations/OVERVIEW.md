@@ -33,7 +33,7 @@ where only `random/popular/fresh` are active.
    Used as a fast candidate source and can refresh when needed.
    If the cache lacks `score`, it is treated as stale and recomputed (refresh).
 4. **Random cache**
-   Holds a prebuilt list of rowids for quick random pools.
+   Holds a prebuilt list of stable `video_index_ids.index_id` values for quick random pools.
    Can run in **raw** mode (no filters) or **filtered** mode.
    In filtered mode, `max_per_instance` and `max_per_author` are applied during cache build.
    In filtered mode, cache size equals `DEFAULT_RANDOM_CACHE_SIZE` after filtering.
@@ -52,7 +52,7 @@ In guest profiles (no likes), only `random/popular/fresh` are active.
   If there are no likes, the layer is empty (fallback goes to random/popular).
 
 - **explore** — “moderately similar”.
-  Source: random cache (or random from DB if cache is empty).
+  Source: random index-id cache (or random from DB if cache is empty).
   Filter: `similarity_min <= similarity < similarity_max` vs user likes.
   Caps: `max_per_author/max_per_instance` are applied inside the layer.
   Ranking: by `similarity_score`.
@@ -68,7 +68,7 @@ In guest profiles (no likes), only `random/popular/fresh` are active.
   Selection: random sample from the pool after sorting.
 
 - **random** — “random videos”.
-  Source: random cache (or random from DB).
+  Source: random index-id cache (or random from DB).
   Caps: `max_per_instance/max_per_author` are applied inside the layer.
   Optional: keep only items below `explore_min`.
   Selection: random sample from the pool.
@@ -89,8 +89,8 @@ In guest profiles (no likes), only `random/popular/fresh` are active.
 A pool is a layer-local candidate list built before mixing.
 Each layer builds its own pool from its own source:
 - **exploit pool**: ANN or cache from likes, filtered by `similarity >= exploit_min`, then caps.
-- **explore pool**: random cache or DB, filtered by `similarity_min <= similarity < similarity_max`, then caps.
-- **random pool**: random cache; optionally filtered by `similarity < explore_min`, then caps.
+- **explore pool**: random index-id cache or DB, filtered by `similarity_min <= similarity < similarity_max`, then caps.
+- **random pool**: random index-id cache; optionally filtered by `similarity < explore_min`, then caps.
 - **popular pool**: top by likes/views; if likes exist, re-ranked by similarity; then caps.
 - **fresh pool**: latest videos; if likes exist, `similarity_score` is set; then caps.
 

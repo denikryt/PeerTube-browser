@@ -120,9 +120,9 @@ def test_similarity_cache_bootstrap_creates_current_schema() -> None:
 
 
 def test_random_cache_bootstrap_creates_current_schema() -> None:
-    """Random-cache bootstrap must create the current random rowid table."""
+    """Random-cache bootstrap must create the current random index-id table."""
     conn = _connect()
 
     bootstrap_engine_random_cache_db(conn)
 
-    assert "random_rowids" in _tables(conn)
+    assert "random_index_ids" in _tables(conn)

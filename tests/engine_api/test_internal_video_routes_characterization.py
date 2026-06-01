@@ -33,6 +33,17 @@ def _connect_internal_video_db() -> sqlite3.Connection:
           video_id TEXT, instance_domain TEXT, embedding BLOB,
           embedding_dim INTEGER, model_name TEXT
         );
+        CREATE TABLE video_index_ids (
+          index_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          video_id TEXT NOT NULL,
+          instance_domain TEXT NOT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          retired_at INTEGER,
+          retired_reason TEXT,
+          UNIQUE(video_id, instance_domain)
+        );
         """
     )
     conn.execute("INSERT INTO channels VALUES ('c1', 'example.org', 'Channel', '/avatar.png')")
@@ -50,6 +61,12 @@ def _connect_internal_video_db() -> sqlite3.Connection:
     conn.execute(
         "INSERT INTO video_embeddings VALUES ('123', 'example.org', ?, 2, 'test')",
         (embedding,),
+    )
+    conn.execute(
+        """
+        INSERT INTO video_index_ids (index_id, video_id, instance_domain, is_active, created_at, updated_at)
+        VALUES (1, '123', 'example.org', 1, 1, 1)
+        """
     )
     conn.commit()
     return conn
