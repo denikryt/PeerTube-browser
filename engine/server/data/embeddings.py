@@ -178,11 +178,8 @@ def _seed_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
     """Handle seed from row."""
     if not row:
         return None
-    embedding = np.frombuffer(row["embedding"], dtype=np.float32)
-    if embedding.size == 0 or embedding.shape[0] != row["embedding_dim"]:
-        return None
-    return {
-        "index_id": int(row["index_id"]),
+    keys = set(row.keys())
+    seed = {
         "video_id": row["video_id"],
         "video_uuid": row["video_uuid"],
         "channel_id": row["channel_id"],
@@ -190,6 +187,15 @@ def _seed_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
         "title": row["title"],
         "embedding": embedding,
     }
+    if "index_id" in keys:
+        seed["index_id"] = int(row["index_id"])
+    if "embedding" not in keys or "embedding_dim" not in keys:
+        return None if require_embedding else seed
+    embedding = np.frombuffer(row["embedding"], dtype=np.float32)
+    if embedding.size == 0 or embedding.shape[0] != row["embedding_dim"]:
+        return None if require_embedding else seed
+    seed["embedding"] = embedding
+    return seed
 
 
 def fetch_seed_embeddings_for_likes(
@@ -209,6 +215,20 @@ def fetch_seed_embeddings_for_likes(
         if video_id:
             id_pairs.append((str(video_id), str(instance)))
 
+    embedding_select = ",\n              e.embedding,\n              e.embedding_dim" if include_embedding else ""
+    embedding_join = """
+            JOIN video_embeddings e
+              ON e.video_id = v.video_id
+             AND e.instance_domain = v.instance_domain
+    """ if include_embedding else ""
+    index_select = ",\n              vii.index_id AS index_id" if include_embedding else ""
+    index_join = """
+            JOIN video_index_ids vii
+              ON vii.video_id = v.video_id
+             AND vii.instance_domain = v.instance_domain
+             AND vii.is_active = 1
+    """ if include_embedding else ""
+
     rows: list[sqlite3.Row] = []
     if uuid_pairs:
         # Start from the tiny request-local input set and join into the indexed
@@ -223,25 +243,17 @@ def fetch_seed_embeddings_for_likes(
             f"""
             WITH wanted(video_uuid, instance_domain) AS (VALUES {placeholders})
             SELECT
-              vii.index_id AS index_id,
               v.video_id,
               v.video_uuid,
               v.channel_id,
               v.instance_domain,
-              v.title,
-              e.embedding,
-              e.embedding_dim
+              v.title{index_select}{embedding_select}
             FROM wanted w
             JOIN videos v
               ON v.video_uuid = w.video_uuid
              AND v.instance_domain = w.instance_domain
-            JOIN video_embeddings e
-              ON e.video_id = v.video_id
-             AND e.instance_domain = v.instance_domain
-            JOIN video_index_ids vii
-              ON vii.video_id = v.video_id
-             AND vii.instance_domain = v.instance_domain
-             AND vii.is_active = 1
+            {embedding_join}
+            {index_join}
             """,
             params,
         ).fetchall()
@@ -255,25 +267,17 @@ def fetch_seed_embeddings_for_likes(
             f"""
             WITH wanted(video_id, instance_domain) AS (VALUES {placeholders})
             SELECT
-              vii.index_id AS index_id,
               v.video_id,
               v.video_uuid,
               v.channel_id,
               v.instance_domain,
-              v.title,
-              e.embedding,
-              e.embedding_dim
+              v.title{index_select}{embedding_select}
             FROM wanted w
             JOIN videos v
               ON v.video_id = w.video_id
              AND v.instance_domain = w.instance_domain
-            JOIN video_embeddings e
-              ON e.video_id = v.video_id
-             AND e.instance_domain = v.instance_domain
-            JOIN video_index_ids vii
-              ON vii.video_id = v.video_id
-             AND vii.instance_domain = v.instance_domain
-             AND vii.is_active = 1
+            {embedding_join}
+            {index_join}
             """,
             params,
         ).fetchall()

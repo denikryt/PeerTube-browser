@@ -181,3 +181,55 @@ def test_fetch_seed_embeddings_for_likes_resolves_uuid_and_video_id_pairs() -> N
         result["uuid::uuid-1::example.org"]["embedding"],
         np.array([1.0, 0.0, 0.0], dtype=np.float32),
     )
+
+
+def test_fetch_seed_embeddings_for_likes_can_skip_embedding_blobs_for_cache_hits() -> None:
+    """Cache-backed recommendations should resolve seed identity without fetching embedding BLOBs."""
+    conn = _connect_seed_lookup()
+    _insert_seed_video(conn, "v1", "uuid-1", "example.org", [1.0, 0.0, 0.0])
+    conn.commit()
+
+    result = fetch_seed_embeddings_for_likes(
+        conn,
+        [{"video_uuid": "uuid-1", "instance_domain": "example.org"}],
+        include_embedding=False,
+    )
+
+    seed = result["uuid::uuid-1::example.org"]
+    assert seed["video_id"] == "v1"
+    assert seed["instance_domain"] == "example.org"
+    assert "embedding" not in seed
+
+
+def test_cache_seed_lookup_uses_video_identity_only() -> None:
+    """Cache-only seed lookup must not depend on embedding/index artifact tables."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE videos (
+          video_id TEXT NOT NULL,
+          video_uuid TEXT,
+          instance_domain TEXT NOT NULL,
+          channel_id TEXT,
+          title TEXT,
+          PRIMARY KEY(video_id, instance_domain)
+        );
+        CREATE INDEX idx_videos_uuid_instance
+          ON videos(video_uuid, instance_domain);
+        INSERT INTO videos(video_id, video_uuid, instance_domain, channel_id, title)
+        VALUES ('v1', 'uuid-1', 'example.org', 'channel-v1', 'Video v1');
+        """
+    )
+
+    result = fetch_seed_embeddings_for_likes(
+        conn,
+        [{"video_uuid": "uuid-1", "instance_domain": "example.org"}],
+        include_embedding=False,
+    )
+
+    seed = result["uuid::uuid-1::example.org"]
+    assert seed["video_id"] == "v1"
+    assert seed["instance_domain"] == "example.org"
+    assert "embedding" not in seed
+    assert "index_id" not in seed
