@@ -71,7 +71,7 @@ def test_v1_recommendations_limits_local_likes_to_engine_contract(client_db, sta
     response = client.get("/api/v1/discovery/recommendations?limit=1&user_id=u1")
 
     assert response.status_code == 200
-    assert len(fake_engine.requests[0]["body"]["likes"]) == 10
+    assert len(fake_engine.requests[0]["body"]["likes"]) == 5
 
 
 def test_v1_recommendations_without_likes_returns_guest_envelope(start_json_engine, start_client_backend) -> None:

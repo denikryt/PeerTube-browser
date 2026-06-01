@@ -99,8 +99,8 @@ def test_post_recommendations_trims_likes_to_engine_limit(start_json_engine, sta
     )
 
     assert response.status_code == 200
-    assert len(fake_engine.requests[0]["body"]["likes"]) == 10
-    assert fake_engine.requests[0]["body"]["likes"] == likes[:10]
+    assert len(fake_engine.requests[0]["body"]["likes"]) == 5
+    assert fake_engine.requests[0]["body"]["likes"] == likes[:5]
 
 
 def test_post_recommendations_rejects_unknown_body_field(
