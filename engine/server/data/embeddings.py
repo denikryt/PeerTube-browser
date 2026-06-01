@@ -174,7 +174,9 @@ def _fetch_seed_by_id(
     return _seed_from_row(row)
 
 
-def _seed_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
+def _seed_from_row(
+    row: sqlite3.Row | None, *, require_embedding: bool = True
+) -> dict[str, Any] | None:
     """Handle seed from row."""
     if not row:
         return None
@@ -185,7 +187,6 @@ def _seed_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
         "channel_id": row["channel_id"],
         "instance_domain": row["instance_domain"],
         "title": row["title"],
-        "embedding": embedding,
     }
     if "index_id" in keys:
         seed["index_id"] = int(row["index_id"])
@@ -199,7 +200,10 @@ def _seed_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
 
 
 def fetch_seed_embeddings_for_likes(
-    conn: sqlite3.Connection, likes: list[dict[str, Any]]
+    conn: sqlite3.Connection,
+    likes: list[dict[str, Any]],
+    *,
+    include_embedding: bool = True,
 ) -> dict[str, dict[str, Any]]:
     """Fetch seed embeddings for a list of likes in a single batch."""
     if not likes:
