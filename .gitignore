@@ -36,3 +36,6 @@ client/frontend/dist/
 
 # Crawler test build output
 engine/crawler/dist-test/
+
+# Bundle cache
+peertube-browser
