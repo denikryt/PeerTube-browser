@@ -51,14 +51,6 @@ def get_similar_candidates(
     if policy is None:
         policy = SimilarityCandidatesPolicy()
 
-    embedding = seed.get("embedding")
-    if embedding is None:
-        embedding = seed.get("vector")
-    if embedding is None:
-        return []
-    if seed.get("embedding") is None and seed.get("vector") is not None:
-        seed = {**seed, "embedding": seed.get("vector")}
-
     source = _source_from_seed(seed)
     cache_policy = SimilarityCachePolicy(
         refresh=policy.refresh_cache,
@@ -84,6 +76,19 @@ def get_similar_candidates(
                 else "unknown",
             )
             return []
+        embedding = seed.get("embedding")
+        if embedding is None:
+            embedding = seed.get("vector")
+        if embedding is None:
+            logging.info(
+                "[similar-cache] compute unavailable source=%s reason=missing_embedding",
+                f"{source.get('video_id')}@{source.get('instance_domain') or ''}"
+                if source
+                else "unknown",
+            )
+            return []
+        if seed.get("embedding") is None and seed.get("vector") is not None:
+            seed = {**seed, "embedding": seed.get("vector")}
         compute_start = perf_counter()
         entries = _compute_candidates(server, seed, limit)
         timings["compute"] = int((perf_counter() - compute_start) * 1000)
