@@ -21,7 +21,7 @@ from schemas import ServiceResult
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 50
 MIN_LIMIT = 1
-MAX_LIKES = 200
+MAX_ENGINE_RECOMMENDATION_LIKES = 10
 
 ERROR_BAD_REQUEST = "V1_DISCOVERY_BAD_REQUEST"
 ERROR_MISSING_HOST = "V1_DISCOVERY_MISSING_HOST"
@@ -157,7 +157,7 @@ def _engine_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _stored_likes_for_engine(users: UsersRepository, user_id: str) -> list[dict[str, str]]:
     users.get_or_create_user(user_id)
-    rows = users.fetch_recent_likes(user_id, MAX_LIKES)
+    rows = users.fetch_recent_likes(user_id, MAX_ENGINE_RECOMMENDATION_LIKES)
     likes: list[dict[str, str]] = []
     for row in rows:
         uuid = str(row.get("video_uuid") or "").strip()

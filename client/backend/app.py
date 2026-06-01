@@ -43,6 +43,7 @@ from services.user_actions import handle_user_action
 
 MAX_LIKES = 100
 MAX_CLIENT_LIKES = 200
+MAX_ENGINE_RECOMMENDATION_LIKES = 10
 ENGINE_PROXY_TIMEOUT_SECONDS = 10
 ENGINE_PROXY_MAX_BODY_BYTES = 1_000_000
 ENGINE_PROXY_RETRY_COUNT = 1
@@ -262,8 +263,9 @@ def create_app(state: ClientRuntimeState) -> FastAPI:
             return cors_json(400, {"error": str(exc)})
         if not isinstance(body, dict):
             return cors_json(400, {"error": "Invalid JSON body"})
+        max_likes = MAX_ENGINE_RECOMMENDATION_LIKES if path == "/recommendations" else MAX_CLIENT_LIKES
         sanitized = sanitize_post_request(
-            path, dict(parse_qs(request.url.query)), body, MAX_CLIENT_LIKES
+            path, dict(parse_qs(request.url.query)), body, max_likes
         )
         if isinstance(sanitized, ServiceResult):
             return cors_json(sanitized.status, sanitized.body)

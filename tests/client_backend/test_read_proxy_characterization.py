@@ -80,6 +80,29 @@ def test_post_recommendations_forwards_sanitized_body(
     }
 
 
+def test_post_recommendations_trims_likes_to_engine_limit(start_json_engine, start_client_backend) -> None:
+    """Legacy recommendations proxy must not exceed the Engine recommendations likes contract."""
+    fake_engine = start_json_engine(
+        {
+            ("POST", "/recommendations"): lambda _record: (
+                200,
+                {"generatedAt": 1, "total": 0, "count": 0, "seed": None, "rows": []},
+            )
+        }
+    )
+    client = start_client_backend(f"http://127.0.0.1:{fake_engine.server_port}")
+    likes = [{"uuid": f"uuid-{index}", "host": "example.org"} for index in range(15)]
+
+    response = client.post(
+        "/recommendations",
+        json={"likes": likes, "user_id": "local-user", "mode": "home"},
+    )
+
+    assert response.status_code == 200
+    assert len(fake_engine.requests[0]["body"]["likes"]) == 10
+    assert fake_engine.requests[0]["body"]["likes"] == likes[:10]
+
+
 def test_post_recommendations_rejects_unknown_body_field(
     start_json_engine, start_client_backend
 ) -> None:

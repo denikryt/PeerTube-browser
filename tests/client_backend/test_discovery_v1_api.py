@@ -46,6 +46,34 @@ def test_v1_recommendations_get_uses_local_likes(client_db, start_json_engine, s
     ]
 
 
+def test_v1_recommendations_limits_local_likes_to_engine_contract(client_db, start_json_engine, start_client_backend) -> None:
+    repo = UsersRepository(client_db)
+    for index in range(12):
+        repo.record_like(
+            "u1",
+            {
+                "video_id": f"liked-{index}",
+                "video_uuid": f"uuid-liked-{index}",
+                "instance_domain": "example.org",
+            },
+            100,
+        )
+    fake_engine = start_json_engine(
+        {
+            ("POST", "/recommendations"): lambda _record: (
+                200,
+                {"rows": [_row("rec1")]},
+            )
+        }
+    )
+    client = start_client_backend(f"http://127.0.0.1:{fake_engine.server_port}")
+
+    response = client.get("/api/v1/discovery/recommendations?limit=1&user_id=u1")
+
+    assert response.status_code == 200
+    assert len(fake_engine.requests[0]["body"]["likes"]) == 10
+
+
 def test_v1_recommendations_without_likes_returns_guest_envelope(start_json_engine, start_client_backend) -> None:
     fake_engine = start_json_engine(
         {("POST", "/recommendations"): lambda _record: (200, {"rows": [_row("guest")]})}
