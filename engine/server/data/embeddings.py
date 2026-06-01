@@ -278,31 +278,53 @@ def fetch_seed_embeddings_for_likes(
 def fetch_embeddings_by_ids(
     conn: sqlite3.Connection, entries: list[dict[str, Any]]
 ) -> dict[str, np.ndarray]:
-    """Fetch embeddings for (video_id, instance_domain) pairs."""
+    """Fetch embeddings for (video_id, instance_domain) pairs.
+
+    Recommendation layers may request embeddings for thousands of candidate
+    rows. Use a VALUES table joined against the composite primary key instead
+    of a large OR chain; the OR form becomes very slow on real SQLite datasets
+    after the stable index-id migration added extra joins in adjacent paths.
+
+    ``video_index_ids`` is intentionally not joined here. This helper resolves
+    embeddings for already-selected video rows; artifact eligibility is enforced
+    when ANN/random artifacts are built and when index ids are resolved.
+    """
     if not entries:
         return {}
     result: dict[str, np.ndarray] = {}
-    for batch in _chunk(entries, 400):
-        conditions = " OR ".join(
-            ["(v.video_id = ? AND v.instance_domain = ?)"] * len(batch)
-        )
+    seen: set[tuple[str, str]] = set()
+    normalized: list[tuple[str, str]] = []
+    for entry in entries:
+        video_id = entry.get("video_id")
+        if not video_id:
+            continue
+        pair = (str(video_id), str(entry.get("instance_domain") or ""))
+        if pair in seen:
+            continue
+        seen.add(pair)
+        normalized.append(pair)
+    if not normalized:
+        return {}
+
+    for batch in _chunk(normalized, 500):
+        values_sql = ", ".join(["(?, ?)"] * len(batch))
         params: list[Any] = []
-        for entry in batch:
-            params.append(entry.get("video_id"))
-            params.append(entry.get("instance_domain") or "")
+        for video_id, instance_domain in batch:
+            params.extend([video_id, instance_domain])
         rows = conn.execute(
             f"""
+            WITH requested(video_id, instance_domain) AS (
+              VALUES {values_sql}
+            )
             SELECT
-              v.video_id,
-              v.instance_domain,
+              e.video_id,
+              e.instance_domain,
               e.embedding,
               e.embedding_dim
-            FROM video_embeddings e
-            JOIN video_index_ids vii
-              ON vii.video_id = e.video_id AND vii.instance_domain = e.instance_domain AND vii.is_active = 1
-            JOIN videos v
-              ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
-            WHERE {conditions}
+            FROM requested r
+            JOIN video_embeddings e
+              ON e.video_id = r.video_id
+             AND e.instance_domain = r.instance_domain
             """,
             params,
         ).fetchall()
