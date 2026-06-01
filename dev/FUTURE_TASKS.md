@@ -91,3 +91,33 @@ Design feed-specific seek cursors for large/dynamic feeds, especially `fresh`, `
 ### Not In Current Scope
 
 Discovery API v1 must keep cursors opaque and route-bound, but it does not need full seek-pagination semantics for every feed.
+
+## Optimize recommendation mix pool latency
+
+### Source
+
+Post-Discovery API v1 runtime profiling after cache seed lookup and cached similarity fixes.
+
+### Reason
+
+The cache-optimized exploit path is now fast again: seed lookup is near-zero, similarity cache hits return rows, and exploit timing is down to milliseconds on warm runs. Remaining recommendation latency is now dominated by non-cache layers, especially `explore` and `popular` pool construction/scoring.
+
+Recent verbose logs show examples such as:
+
+- `explore` taking roughly 1.7-3.8s depending on cache state;
+- `popular` taking roughly 2.4-5.1s depending on cache state;
+- `exploit` taking roughly 18-65ms after the cache fixes.
+
+### Future Work
+
+Profile and optimize the recommendation mix layers that are still expensive:
+
+- `engine/server/api/recommendations/candidates/explore_range.py`;
+- popular candidate pool construction/scoring;
+- random/fresh pool access only if profiling shows regressions;
+- possible reuse of precomputed pools, prepared queries, smaller candidate pools, or cheaper sampling strategies;
+- clearer per-layer timing tests or benchmark scripts for large SQLite databases.
+
+### Not In Current Scope
+
+The cache seed lookup and cached similarity correctness fixes must not be expanded into recommendation algorithm redesign. This task is a separate performance optimization milestone after the index-migration regressions are resolved.
