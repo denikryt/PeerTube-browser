@@ -215,19 +215,20 @@ def fetch_seed_embeddings_for_likes(
         if video_id:
             id_pairs.append((str(video_id), str(instance)))
 
-    embedding_select = ",\n              e.embedding,\n              e.embedding_dim" if include_embedding else ""
+    needs_embedding = bool(include_embedding)
+    embedding_select = ",\n              e.embedding,\n              e.embedding_dim" if needs_embedding else ""
     embedding_join = """
             JOIN video_embeddings e
               ON e.video_id = v.video_id
              AND e.instance_domain = v.instance_domain
-    """ if include_embedding else ""
-    index_select = ",\n              vii.index_id AS index_id" if include_embedding else ""
+    """ if needs_embedding else ""
+    index_select = ",\n              vii.index_id AS index_id" if needs_embedding else ""
     index_join = """
             JOIN video_index_ids vii
               ON vii.video_id = v.video_id
              AND vii.instance_domain = v.instance_domain
              AND vii.is_active = 1
-    """ if include_embedding else ""
+    """ if needs_embedding else ""
 
     rows: list[sqlite3.Row] = []
     if uuid_pairs:
@@ -284,7 +285,7 @@ def fetch_seed_embeddings_for_likes(
 
     seeds: dict[str, dict[str, Any]] = {}
     for row in rows:
-        seed = _seed_from_row(row)
+        seed = _seed_from_row(row, require_embedding=needs_embedding)
         if not seed:
             continue
         instance = seed.get("instance_domain") or ""
