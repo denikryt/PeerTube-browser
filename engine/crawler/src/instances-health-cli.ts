@@ -3,7 +3,7 @@
  */
 
 import { Command } from "commander";
-import { ChannelStore } from "./db.js";
+import { ChannelStore } from "./db/channels.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 
 interface InstanceHealthOptions {

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
 
-import { CrawlerStore } from "../../src/db.js";
+import { CrawlerStore } from "../../src/db/instances.js";
 import { allRows, createTempDb, getRow } from "./helpers.js";
 
 test("CrawlerStore resume=false resets the database and creates graph state conditionally", () => {

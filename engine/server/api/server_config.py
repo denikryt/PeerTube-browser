@@ -15,26 +15,6 @@ def _resolve_log_profile_env(name: str, default: str) -> str:
     return raw if raw in {"verbose", "focused"} else default
 
 
-# Recommendation-domain defaults live in recommendations.config. This module
-# re-exports them so existing startup code and tests can keep importing from
-# server_config while Stage 5 moves ownership into the recommendation package.
-try:
-    from recommendations.config import (
-        BATCH_SIZE,
-        DEFAULT_FRESH_POOL_SIZE,
-        DEFAULT_POPULAR_POOL_SIZE,
-        RECOMMENDATION_PIPELINE,
-        validate_recommendation_config,
-    )
-except ModuleNotFoundError:  # pragma: no cover - package import fallback.
-    from engine.server.api.recommendations.config import (
-        BATCH_SIZE,
-        DEFAULT_FRESH_POOL_SIZE,
-        DEFAULT_POPULAR_POOL_SIZE,
-        RECOMMENDATION_PIPELINE,
-        validate_recommendation_config,
-    )
-
 # Related videos personalization configuration (watch page).
 # enabled: toggles re-ranking within the existing similar-videos pool.
 # alpha: weight for the base similarity score (video-to-video).

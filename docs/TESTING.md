@@ -107,7 +107,7 @@ make test-crawler-db
 cd engine/crawler && npm run test:db
 ```
 
-Use these tests when changing `engine/crawler/src/db.ts` or modules under `engine/crawler/src/db/`. Missing Node dependencies should be treated as a prerequisite issue, not as a Python/product regression.
+Use these tests when changing modules under `engine/crawler/src/db/`. Missing Node dependencies should be treated as a prerequisite issue, not as a Python/product regression.
 
 
 ## Frontend DOM/unit tests
@@ -168,6 +168,11 @@ Current dependency-heavy baseline in this environment:
 - `python3 -m unittest engine.server.api.tests.test_recommendations_likes_limit`: PASS after Stage 4 moved the test to narrow recommendation service imports.
 - `python3 engine/server/api/server.py --help`: blocked by missing `faiss` because startup still imports the FAISS-backed ANN path.
 
+
+### Compatibility shim-removal tests
+
+`tests/compatibility` contains static guards for internal compatibility shims that have been intentionally removed. These tests prevent the old Engine recommendation helper re-export path, the old crawler `db.ts` facade, and recommendation-domain `server_config.py` re-exports from returning.
+
 ## How to interpret failures
 
 A fast baseline or Stage 0 characterization test failure should be treated as a potential behavior regression unless the failure is clearly caused by a documented missing prerequisite.
@@ -194,7 +199,7 @@ Stage 5 adds focused recommendation tests for config validation and internal bou
 python3 -m pytest tests/recommendations/test_config_validation.py tests/recommendations/test_types_characterization.py -q
 ```
 
-These tests prove that the checked-in recommendation defaults validate, legacy `server_config.py` imports still work, malformed config is rejected early, and internal result objects preserve the current primitive response shape.
+These tests prove that the checked-in recommendation defaults validate, malformed config is rejected early, and internal result objects preserve the current primitive response shape.
 
 ## Schema ownership tests
 

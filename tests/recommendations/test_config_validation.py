@@ -30,15 +30,6 @@ def test_default_config_validation_passes_and_preserves_current_values() -> None
     assert validated.profiles["home"].generators["exploit"].mix_ratio == 0.5
 
 
-def test_legacy_server_config_import_compatibility_remains() -> None:
-    """Existing imports from server_config must remain valid after ownership moves."""
-    from server_config import BATCH_SIZE as legacy_batch_size  # noqa: PLC0415
-    from server_config import RECOMMENDATION_PIPELINE as legacy_pipeline  # noqa: PLC0415
-
-    assert legacy_pipeline == RECOMMENDATION_PIPELINE
-    assert legacy_batch_size == RECOMMENDATION_PIPELINE["profiles"]["home"]["batch_size"]
-
-
 def test_clone_recommendation_config_does_not_mutate_default_config() -> None:
     """Config clones protect validation/edit tests from mutating runtime defaults."""
     cloned = clone_recommendation_config()

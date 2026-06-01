@@ -1,10 +1,10 @@
 """Recommendation and similar-route orchestration for the Engine API.
 
-This module preserves the current ``handlers.similar`` behavior while moving
-non-dispatch logic out of the stdlib HTTP handler. It intentionally keeps the
+This module preserves the current recommendation/similar-route behavior while
+keeping orchestration in a framework-neutral service. It intentionally keeps the
 existing dict-based payloads, response shapes, request-context behavior, and
-recommendation pipeline calls because Stage 4 is a route/service split, not a
-recommendation redesign.
+recommendation pipeline calls because the route split is not a recommendation
+redesign.
 """
 
 from __future__ import annotations

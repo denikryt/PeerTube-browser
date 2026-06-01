@@ -2,7 +2,7 @@
  * Module `engine/crawler/src/channels-videos-count-worker.ts`: provide runtime functionality.
  */
 
-import { ChannelStore } from "./db.js";
+import { ChannelStore } from "./db/channels.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile } from "./host-filters.js";
 

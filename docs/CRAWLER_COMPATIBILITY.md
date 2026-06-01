@@ -6,12 +6,12 @@ This document records crawler compatibility decisions that preserve working craw
 
 ## Stage 7: crawler database split
 
-### `db.ts` remains a facade
+### `db.ts` facade removed
 
 Decision:
 
 ```text
-engine/crawler/src/db.ts remains the public compatibility import path for crawler stores and exported types.
+engine/crawler/src/db.ts has been removed. Crawler source and tests now import store classes and shared row types directly from `engine/crawler/src/db/*` modules.
 ```
 
 Reason:
@@ -23,7 +23,7 @@ Existing workers and local scripts import CrawlerStore, ChannelStore, VideoStore
 Implementation action:
 
 ```text
-Move store implementations into engine/crawler/src/db/*.ts and reduce engine/crawler/src/db.ts to re-exports only.
+Keep store implementations in `engine/crawler/src/db/*.ts` and use those modules directly. Do not reintroduce the `db.ts` facade.
 ```
 
 Tests:
@@ -35,7 +35,7 @@ engine/crawler/test/db/*.test.ts import stores through ../../src/db.js and exerc
 Removal condition, if any:
 
 ```text
-A later crawler caller-migration stage may remove the facade only after repository-wide and documented local-script import compatibility is replaced.
+Already removed. New crawler code must import from `engine/crawler/src/db/instances.ts`, `channels.ts`, `videos.ts`, or `types.ts` directly.
 ```
 
 ### Crawler command names remain unchanged

@@ -21,7 +21,6 @@ if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
 
 from server_config import (
-    BATCH_SIZE,
     DEFAULT_NPROBE,
     DEFAULT_NORMALIZE_QUERIES,
     DEFAULT_RANDOM_CACHE_SIZE,
@@ -29,7 +28,6 @@ from server_config import (
     DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR,
     DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE,
     DEFAULT_RANDOM_CACHE_REFRESH,
-    DEFAULT_FRESH_POOL_SIZE,
     DEFAULT_POPULARITY_LIKE_WEIGHT,
     DEFAULT_SIMILAR_PER_LIKE,
     DEFAULT_SIMILARITY_CACHE_REFRESH,
@@ -48,7 +46,6 @@ from server_config import (
     MAX_LIKES,
     MAX_LIKES_FOR_RECS,
     RECOMMENDATIONS_DEBUG_ENABLED,
-    RECOMMENDATION_PIPELINE,
     RELATED_VIDEOS_PERSONALIZATION,
     VIDEO_ERROR_THRESHOLD,
     DEFAULT_USE_CLIENT_LIKES,
@@ -59,6 +56,18 @@ from server_config import (
     ENGINE_INGEST_MODE,
     DEFAULT_RECOMMENDATIONS_LOG_PROFILE,
 )
+try:
+    from recommendations.config import (
+        BATCH_SIZE,
+        DEFAULT_FRESH_POOL_SIZE,
+        RECOMMENDATION_PIPELINE,
+    )
+except ModuleNotFoundError:  # pragma: no cover - package import fallback.
+    from engine.server.api.recommendations.config import (
+        BATCH_SIZE,
+        DEFAULT_FRESH_POOL_SIZE,
+        RECOMMENDATION_PIPELINE,
+    )
 from logging_profiles import configure_engine_logging
 from data.db import connect_db, connect_similarity_db
 from data.embeddings import (

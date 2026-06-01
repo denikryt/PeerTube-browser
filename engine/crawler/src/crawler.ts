@@ -3,7 +3,7 @@
  */
 
 import { setTimeout as sleep } from "node:timers/promises";
-import { CrawlerStore } from "./db.js";
+import { CrawlerStore } from "./db/instances.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile, normalizeHostToken } from "./host-filters.js";
 import type { CrawlOptions, Page, ServerFollowItem } from "./types.js";

@@ -87,7 +87,7 @@ engine/crawler/schema.sql
 Runtime/job callers:
 
 ```text
-engine/crawler/src/db.ts
+engine/crawler/src/db/* modules
 engine/crawler/src/*.ts
 engine/server/db/jobs/sync-whitelist.py
 ```
@@ -106,7 +106,7 @@ video_crawl_progress
 Compatibility wrappers:
 
 ```text
-engine/crawler/src/db.ts
+engine/crawler/src/db/* modules
 ```
 
 Stage 7 database modules:
@@ -130,7 +130,7 @@ Document ownership and keep compatibility tests around the schema consumed by En
 Allowed Stage 7 changes:
 
 ```text
-Split the TypeScript crawler DB layer into narrow modules while keeping schema.sql, command behavior, and db.ts import compatibility stable.
+Split the TypeScript crawler DB layer into narrow modules while keeping schema.sql, command behavior, and direct db/* imports stable.
 ```
 
 Deferred changes:
@@ -576,7 +576,7 @@ Removal condition: only after a dedicated historical migration plan.
 
 ```text
 Stage 7
-  Split engine/crawler/src/db.ts and add TypeScript crawler repository tests.
+  Split engine/crawler/src/db/* modules and add TypeScript crawler repository tests.
 
 Stage 8
   Refactor frontend UI/API/state code without changing schema ownership.

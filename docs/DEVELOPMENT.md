@@ -80,7 +80,7 @@ make test-installers-dry-run
 
 ## Crawler DB module tests
 
-Stage 7 splits the crawler SQLite layer under `engine/crawler/src/db/` while keeping `engine/crawler/src/db.ts` as the compatibility facade. Run the crawler DB tests after installing crawler Node dependencies:
+The crawler SQLite layer lives under `engine/crawler/src/db/`. Crawler code should import stores and row types from the direct `db/*` modules, not from a `db.ts` facade. Run the crawler DB tests after installing crawler Node dependencies:
 
 ```bash
 cd engine/crawler
@@ -112,7 +112,7 @@ Keep behavior-preserving cleanup separate from behavior changes. If a refactor d
 
 ## Recommendation Internals
 
-Recommendation defaults now live in `engine/server/api/recommendations/config.py`. `engine/server/api/server_config.py` remains a compatibility re-export for Engine startup code and existing imports.
+Recommendation defaults live in `engine/server/api/recommendations/config.py`. Engine startup code and tests import recommendation-domain settings directly from that module; `server_config.py` is for non-recommendation runtime defaults.
 
 Stage 5 adds Python-level config validation and internal dataclasses for route/service boundaries. It does not introduce external YAML/JSON config files, Pydantic/OpenAPI schemas, or recommendation behavior changes.
 

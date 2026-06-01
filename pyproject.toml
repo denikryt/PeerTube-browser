@@ -9,6 +9,7 @@ testpaths = [
   "tests/db",
   "tests/jobs",
   "tests/framework",
+  "tests/compatibility",
 ]
 pythonpath = ["."]
 addopts = "-q"
