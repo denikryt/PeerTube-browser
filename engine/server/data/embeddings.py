@@ -211,12 +211,17 @@ def fetch_seed_embeddings_for_likes(
 
     rows: list[sqlite3.Row] = []
     if uuid_pairs:
+        # Start from the tiny request-local input set and join into the indexed
+        # video identity tables. The old tuple-IN form allowed SQLite to choose
+        # a large-table plan on million-row databases, which made the cached
+        # recommendation seed lookup dominate request latency.
         placeholders = ", ".join(["(?, ?)"] * len(uuid_pairs))
         params: list[Any] = []
         for uuid, instance in uuid_pairs:
             params.extend([uuid, instance])
         rows += conn.execute(
             f"""
+            WITH wanted(video_uuid, instance_domain) AS (VALUES {placeholders})
             SELECT
               vii.index_id AS index_id,
               v.video_id,
@@ -226,12 +231,17 @@ def fetch_seed_embeddings_for_likes(
               v.title,
               e.embedding,
               e.embedding_dim
-            FROM video_embeddings e
-            JOIN video_index_ids vii
-              ON vii.video_id = e.video_id AND vii.instance_domain = e.instance_domain AND vii.is_active = 1
+            FROM wanted w
             JOIN videos v
-              ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
-            WHERE (v.video_uuid, v.instance_domain) IN ({placeholders})
+              ON v.video_uuid = w.video_uuid
+             AND v.instance_domain = w.instance_domain
+            JOIN video_embeddings e
+              ON e.video_id = v.video_id
+             AND e.instance_domain = v.instance_domain
+            JOIN video_index_ids vii
+              ON vii.video_id = v.video_id
+             AND vii.instance_domain = v.instance_domain
+             AND vii.is_active = 1
             """,
             params,
         ).fetchall()
@@ -243,6 +253,7 @@ def fetch_seed_embeddings_for_likes(
             params.extend([video_id, instance])
         rows += conn.execute(
             f"""
+            WITH wanted(video_id, instance_domain) AS (VALUES {placeholders})
             SELECT
               vii.index_id AS index_id,
               v.video_id,
@@ -252,12 +263,17 @@ def fetch_seed_embeddings_for_likes(
               v.title,
               e.embedding,
               e.embedding_dim
-            FROM video_embeddings e
-            JOIN video_index_ids vii
-              ON vii.video_id = e.video_id AND vii.instance_domain = e.instance_domain AND vii.is_active = 1
+            FROM wanted w
             JOIN videos v
-              ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
-            WHERE (v.video_id, v.instance_domain) IN ({placeholders})
+              ON v.video_id = w.video_id
+             AND v.instance_domain = w.instance_domain
+            JOIN video_embeddings e
+              ON e.video_id = v.video_id
+             AND e.instance_domain = v.instance_domain
+            JOIN video_index_ids vii
+              ON vii.video_id = v.video_id
+             AND vii.instance_domain = v.instance_domain
+             AND vii.is_active = 1
             """,
             params,
         ).fetchall()
