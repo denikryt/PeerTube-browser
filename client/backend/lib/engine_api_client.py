@@ -8,12 +8,20 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
+DEFAULT_ENGINE_TIMEOUT_SECONDS = 6
+RECOMMENDATIONS_ENGINE_TIMEOUT_SECONDS = 20
+
+
 class EngineApiError(RuntimeError):
     """Engine API request failed."""
 
 
 
-def _post_json(url: str, payload: dict[str, Any], timeout: int = 6) -> tuple[int, dict[str, Any]]:
+def _post_json(
+    url: str,
+    payload: dict[str, Any],
+    timeout: int = DEFAULT_ENGINE_TIMEOUT_SECONDS,
+) -> tuple[int, dict[str, Any]]:
     """Handle post json."""
     data = json.dumps(payload).encode("utf-8")
     request = Request(
@@ -51,7 +59,7 @@ def _post_json(url: str, payload: dict[str, Any], timeout: int = 6) -> tuple[int
 def _get_json(
     url: str,
     query: dict[str, Any] | None = None,
-    timeout: int = 6,
+    timeout: int = DEFAULT_ENGINE_TIMEOUT_SECONDS,
 ) -> tuple[int, dict[str, Any]]:
     """Handle get json."""
     if query:
@@ -209,7 +217,11 @@ def fetch_engine_recommendations(
     url = f"{engine_base_url.rstrip('/')}/recommendations"
     if query:
         url = f"{url}?{urlencode(query)}"
-    status, body = _post_json(url, {"likes": likes, "user_id": user_id, "mode": "home"})
+    status, body = _post_json(
+        url,
+        {"likes": likes, "user_id": user_id, "mode": "home"},
+        timeout=RECOMMENDATIONS_ENGINE_TIMEOUT_SECONDS,
+    )
     if status != 200:
         raise EngineApiError(f"Engine recommendations failed (HTTP {status}): {body.get('error') or 'unknown error'}")
     return body
@@ -221,7 +233,11 @@ def fetch_engine_random(engine_base_url: str, limit: int, debug: bool = False) -
     if debug:
         query["debug"] = "1"
     url = f"{engine_base_url.rstrip('/')}/recommendations?{urlencode(query)}"
-    status, body = _post_json(url, {"likes": [], "mode": "home"})
+    status, body = _post_json(
+        url,
+        {"likes": [], "mode": "home"},
+        timeout=RECOMMENDATIONS_ENGINE_TIMEOUT_SECONDS,
+    )
     if status != 200:
         raise EngineApiError(f"Engine random failed (HTTP {status}): {body.get('error') or 'unknown error'}")
     return body
