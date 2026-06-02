@@ -1,17 +1,18 @@
 <script setup lang="ts">
 /**
- * Vue video-card renderer for feed, search, and similar results.
+ * Shared YouTube-style video card for Home and Search result grids.
  *
- * The component keeps the existing CSS class contract but builds canonical
- * Vue Router links instead of legacy HTML query-string detail URLs.
+ * This component intentionally owns the feed/search card structure. Similar
+ * videos on the detail page use a separate compact component, but Home and
+ * Search must stay visually identical and must not reintroduce reaction/action
+ * rows that belong to the video-detail surface.
  */
 import { computed } from "vue";
 import type { VideoRow } from "../types/videos";
 import { formatDuration, formatStatValue, formatTimeAgo, normalizeStatValue } from "../utils/format";
 import { channelAvatarUrl, channelInitials, channelName, channelUrl, hasServerStats, publishedAtMs, thumbnailUrl, videoPageUrl } from "../utils/video-fields";
-import { iconThumbDown, iconThumbUp } from "./icons";
 
-const props = defineProps<{ row: VideoRow; compact?: boolean }>();
+const props = defineProps<{ row: VideoRow }>();
 const title = computed(() => props.row.title ?? "Untitled video");
 const thumb = computed(() => thumbnailUrl(props.row));
 const duration = computed(() => formatDuration(props.row.duration ?? null));
@@ -19,50 +20,49 @@ const channelLabel = computed(() => channelName(props.row) || "Unknown channel")
 const channelHref = computed(() => channelUrl(props.row));
 const avatar = computed(() => channelAvatarUrl(props.row));
 const initials = computed(() => channelInitials(props.row));
+const detailUrl = computed(() => videoPageUrl(props.row));
 const published = computed(() => {
   const value = publishedAtMs(props.row);
-  return value ? ` · ${formatTimeAgo(value)}` : "";
+  return value ? formatTimeAgo(value) : "";
 });
-const stats = computed(() => {
-  if (!hasServerStats(props.row)) return { views: null, likes: null, dislikes: null };
-  return {
-    views: normalizeStatValue(props.row.views ?? props.row.viewsCount),
-    likes: normalizeStatValue(props.row.likes ?? props.row.likes_count),
-    dislikes: normalizeStatValue(props.row.dislikes ?? props.row.dislikes_count)
-  };
+const views = computed(() => {
+  if (!hasServerStats(props.row)) return null;
+  return normalizeStatValue(props.row.views ?? props.row.viewsCount);
 });
-const detailUrl = computed(() => videoPageUrl(props.row));
+const metaLine = computed(() => {
+  const parts = [`${formatStatValue(views.value)} views`];
+  if (published.value) parts.push(published.value);
+  return parts.join(" · ");
+});
 </script>
 
 <template>
   <article class="video-card">
-    <RouterLink class="video-link" :to="detailUrl">
+    <RouterLink class="video-card-thumbnail-link" :to="detailUrl" :aria-label="title">
       <div class="video-thumb">
         <img v-if="thumb" :src="thumb" :alt="title" loading="lazy" />
-        <div v-else class="thumb-fallback">No preview</div>
+        <div v-else class="thumb-fallback">{{ title }}</div>
         <span class="duration">{{ duration }}</span>
       </div>
-      <div class="video-body">
-        <h3 class="video-title">{{ title }}</h3>
-        <div class="video-footer">
-          <div class="channel-meta">
-            <div class="channel-avatar" aria-hidden="true">
-              <img v-if="avatar" :src="avatar" alt="" loading="lazy" />
-              <span v-else>{{ initials }}</span>
-            </div>
-            <div class="channel-text">
-              <a class="channel-link" :href="channelHref" target="_blank" rel="noreferrer" @click.stop>
-                {{ channelLabel }}
-              </a>
-              <div class="video-meta"><span data-stat="views">{{ formatStatValue(stats.views) }}</span> views{{ published }}</div>
-            </div>
-          </div>
-          <div class="video-stats">
-            <span class="stat likes" v-html="iconThumbUp()"></span><span data-stat="likes">{{ formatStatValue(stats.likes) }}</span>
-            <span class="stat dislikes" v-html="iconThumbDown()"></span><span data-stat="dislikes">{{ formatStatValue(stats.dislikes) }}</span>
-          </div>
-        </div>
-      </div>
     </RouterLink>
+
+    <div class="video-card-meta">
+      <a class="channel-avatar" :href="channelHref" target="_blank" rel="noreferrer" :aria-label="channelLabel">
+        <img v-if="avatar" :src="avatar" alt="" loading="lazy" />
+        <span v-else>{{ initials }}</span>
+      </a>
+      <div class="video-card-text">
+        <RouterLink class="video-title-link" :to="detailUrl">
+          <h3 class="video-title">{{ title }}</h3>
+        </RouterLink>
+        <a class="channel-link" :href="channelHref" target="_blank" rel="noreferrer">
+          {{ channelLabel }}
+        </a>
+        <div class="video-meta">{{ metaLine }}</div>
+      </div>
+      <button class="video-card-menu" type="button" aria-label="More options" title="More options">
+        <span aria-hidden="true">⋮</span>
+      </button>
+    </div>
   </article>
 </template>

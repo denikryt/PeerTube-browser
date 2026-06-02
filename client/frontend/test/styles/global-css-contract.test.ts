@@ -24,10 +24,11 @@ describe("global CSS route scoping", () => {
     expect(videoCss).toMatch(/align-items:\s*flex-start/);
   });
 
-  it("pins the compact feed-card contract with component-specific selectors", () => {
-    expect(videosCss).toMatch(/\.video-card \.video-title\s*\{/);
-    expect(videosCss).toMatch(/font-size:\s*1\.02rem/);
-    expect(videosCss).toMatch(/\.video-card \.channel-avatar\s*\{/);
-    expect(videosCss).toMatch(/width:\s*34px/);
+  it("pins the shared YouTube-style feed/search card contract", () => {
+    expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*background:\s*transparent;/);
+    expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*box-shadow:\s*none;/);
+    expect(videosCss).toMatch(/\.video-card-meta\s*\{/);
+    expect(videosCss).toMatch(/\.video-card \.video-title\s*\{[\s\S]*font-size:\s*1rem;/);
+    expect(videosCss).toMatch(/\.video-card \.channel-avatar\s*\{[\s\S]*width:\s*38px/);
   });
 });
