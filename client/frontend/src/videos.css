@@ -786,3 +786,47 @@ body {
     align-items: stretch;
   }
 }
+
+/*
+ * Vue imports page styles globally, so component-level contracts must be
+ * stronger than route detail styles. These selectors keep feed/search/similar
+ * cards at the compact legacy scale even when video-detail CSS is loaded.
+ */
+.video-card .video-title {
+  margin: 0;
+  font-size: 1.02rem;
+  line-height: 1.35;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: calc(1.35em * 2);
+}
+
+.video-card .channel-meta {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.video-card .channel-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(180, 87, 55, 0.18);
+  border: 1px solid rgba(31, 27, 22, 0.2);
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+  flex: 0 0 auto;
+}
+
+.video-card .video-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
