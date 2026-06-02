@@ -13,10 +13,10 @@ violations=0
 search_frontend() {
   local pattern="$1"
   if command -v rg >/dev/null 2>&1; then
-    rg -n "${pattern}" "${TARGET_DIR}" --glob '*.ts' --glob '*.tsx' --glob '*.js'
+    rg -n "${pattern}" "${TARGET_DIR}" --glob '*.ts' --glob '*.tsx' --glob '*.js' --glob '*.vue'
     return
   fi
-  grep -RInE --include='*.ts' --include='*.tsx' --include='*.js' "${pattern}" "${TARGET_DIR}"
+  grep -RInE --include='*.ts' --include='*.tsx' --include='*.js' --include='*.vue' "${pattern}" "${TARGET_DIR}"
 }
 
 if search_frontend "resolveEngineApiBase|VITE_ENGINE_API_BASE|VITE_ENGINE_|ENGINE_API_BASE|engineApiBase" >"${TMP_FILE}" 2>/dev/null; then

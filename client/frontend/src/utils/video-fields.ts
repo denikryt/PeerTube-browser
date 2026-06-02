@@ -114,29 +114,12 @@ export function publishedAtMs(row: VideoRow | null) {
   return value;
 }
 
-/** Build current video detail page links while preserving optional api forwarding. */
-export function videoPageUrl(row: VideoRow, apiParam?: string | null) {
-  const params = new URLSearchParams();
-  const host = row.instance_domain ?? row.instanceDomain ?? "";
-  const id = row.video_id ?? row.video_uuid ?? row.videoUuid ?? "";
-  if (id) params.set("id", id);
-  if (host) params.set("host", host);
-  if (row.title) params.set("title", row.title);
-  const channelLabel =
-    row.channel_display_name ??
-    row.channelDisplayName ??
-    row.channel_name ??
-    row.channelName ??
-    "";
-  if (channelLabel) params.set("channel", channelLabel);
-  const channelHref = channelUrl(row);
-  if (channelHref && channelHref !== "#") params.set("channelUrl", channelHref);
-  const embed = embedUrl(row);
-  if (embed) params.set("embed", embed);
-  const original = videoUrl(row);
-  if (original && original !== "#") params.set("url", original);
-  if (apiParam) params.set("api", apiParam);
-  return `/video-page.html?${params.toString()}`;
+/** Build canonical Vue Router video detail links from stable host-scoped identity. */
+export function videoPageUrl(row: VideoRow, _apiParam?: string | null) {
+  const host = encodeURIComponent(resolveInstanceDomain(row));
+  const id = encodeURIComponent(resolveVideoId(row));
+  if (!host || !id) return "/video";
+  return `/video/${host}/${id}`;
 }
 
 /** Check whether server-provided rows already include usable stat fields. */
