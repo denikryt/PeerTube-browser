@@ -1,14 +1,20 @@
 <script setup lang="ts">
-/** Shared app navigation for the Vue SPA. */
+/**
+ * Shared app navigation for the Vue SPA.
+ *
+ * The video-detail route keeps the pre-Vue contextual chrome: only the eyebrow
+ * is shown on the left and the navigation offers the detail-specific similar
+ * videos affordance instead of the catalog/search links used elsewhere.
+ */
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 
 const route = useRoute();
 const githubUrl = "https://github.com/denikryt/PeerTube-browser";
+const isVideoDetail = computed(() => route.name === "video-detail");
 const title = computed(() => {
   if (route.name === "search") return "Search";
   if (route.name === "channels") return "Channels";
-  if (route.name === "video-detail") return "Video";
   if (route.name === "about") return "About";
   return "Home";
 });
@@ -18,13 +24,14 @@ const title = computed(() => {
   <header class="videos-header">
     <div>
       <p class="eyebrow">PeerTube videos</p>
-      <h1>{{ title }}</h1>
-      <p class="subtitle"></p>
+      <h1 v-if="!isVideoDetail">{{ title }}</h1>
+      <p v-if="!isVideoDetail" class="subtitle"></p>
     </div>
     <nav class="header-nav" aria-label="Primary navigation">
       <RouterLink class="nav-link" to="/">Home</RouterLink>
-      <RouterLink class="nav-link" to="/search">Search</RouterLink>
-      <RouterLink class="nav-link" to="/channels">Channels</RouterLink>
+      <a v-if="isVideoDetail" class="nav-link" href="#similar-section">Similar videos</a>
+      <RouterLink v-if="!isVideoDetail" class="nav-link" to="/search">Search</RouterLink>
+      <RouterLink v-if="!isVideoDetail" class="nav-link" to="/channels">Channels</RouterLink>
       <RouterLink class="nav-link" to="/about">About</RouterLink>
       <a
         class="nav-link nav-link-icon"

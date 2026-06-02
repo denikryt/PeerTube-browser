@@ -3,7 +3,7 @@
 import { computed, onMounted, reactive } from "vue";
 import { useRoute } from "vue-router";
 import StatusBlock from "../components/StatusBlock.vue";
-import VideoCard from "../components/VideoCard.vue";
+import SimilarVideoCard from "../components/SimilarVideoCard.vue";
 import { fetchVideoMetadataPayload, type VideoMetadata } from "../data/video-detail";
 import { fetchSimilarVideosPayload } from "../data/videos";
 import { addLocalLike } from "../data/local-likes";
@@ -27,6 +27,24 @@ const host = computed(() => String(route.params.host ?? ""));
 const id = computed(() => String(route.params.id ?? ""));
 const title = computed(() => state.metadata?.title ?? "Video");
 const published = computed(() => state.metadata?.publishedAt ? formatTimeAgo(state.metadata.publishedAt) : "");
+const channelLabel = computed(() => state.metadata?.channelName || "Unknown channel");
+// Preserve the old avatar fallback badges for metadata rows when PeerTube has no image.
+const channelInitials = computed(() => {
+  const label = channelLabel.value.trim();
+  if (!label) return "•";
+  const words = label.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return `${words[0][0]}${words[1][0]}`.toUpperCase();
+});
+// Keep instance/account chips separate from the channel subline to match the legacy detail page hierarchy.
+const instanceLabel = computed(() => state.metadata?.instanceName || host.value);
+const instanceHref = computed(() => state.metadata?.instanceUrl || (host.value ? `https://${host.value}` : "#"));
+const accountLabel = computed(() => state.metadata?.accountName || "");
+const subscribersLabel = computed(() => {
+  const value = state.metadata?.subscribersCount;
+  if (value === null || value === undefined) return "";
+  return `${formatStatValue(value)} subscribers`;
+});
 
 onMounted(async () => {
   await loadVideo();
@@ -93,29 +111,72 @@ function dislike() {
       <div class="player-info">
         <h2 class="video-title">{{ title }}</h2>
         <div class="channel-row">
-          <div class="channel-avatar"><img v-if="state.metadata?.channelAvatarUrl" :src="state.metadata.channelAvatarUrl" alt="" /><span v-else>•</span></div>
+          <div class="channel-avatar" aria-hidden="true">
+            <img v-if="state.metadata?.channelAvatarUrl" :src="state.metadata.channelAvatarUrl" alt="" />
+            <span v-else>{{ channelInitials }}</span>
+          </div>
           <div class="channel-meta">
-            <p class="video-channel"><a v-if="state.metadata?.channelUrl" :href="state.metadata.channelUrl" target="_blank" rel="noreferrer">{{ state.metadata.channelName }}</a><span v-else>{{ state.metadata?.channelName }}</span></p>
-            <div class="video-meta">{{ state.metadata?.instanceName || host }} <span v-if="published">· {{ published }}</span></div>
+            <div class="channel-line">
+              <p class="video-channel">
+                <a v-if="state.metadata?.channelUrl" :href="state.metadata.channelUrl" target="_blank" rel="noreferrer">{{ channelLabel }}</a>
+                <span v-else>{{ channelLabel }}</span>
+              </p>
+              <div class="meta-chips">
+                <div v-if="instanceLabel" class="instance-meta">
+                  <span class="instance-avatar" :class="{ fallback: !state.metadata?.instanceAvatarUrl }" aria-hidden="true">
+                    <img v-if="state.metadata?.instanceAvatarUrl" :src="state.metadata.instanceAvatarUrl" alt="" />
+                    <span v-else>{{ instanceLabel.slice(0, 2).toUpperCase() }}</span>
+                  </span>
+                  <a class="instance-link" :href="instanceHref" target="_blank" rel="noreferrer">{{ instanceLabel }}</a>
+                </div>
+                <div v-if="accountLabel" class="instance-meta">
+                  <span class="instance-avatar" :class="{ fallback: !state.metadata?.accountAvatarUrl }" aria-hidden="true">
+                    <img v-if="state.metadata?.accountAvatarUrl" :src="state.metadata.accountAvatarUrl" alt="" />
+                    <span v-else>{{ accountLabel.slice(0, 2).toUpperCase() }}</span>
+                  </span>
+                  <a class="instance-link" :href="state.metadata?.accountUrl || '#'" target="_blank" rel="noreferrer">{{ accountLabel }}</a>
+                </div>
+              </div>
+            </div>
+            <div class="channel-subline">
+              <span v-if="subscribersLabel" class="channel-subscribers">{{ subscribersLabel }}</span>
+              <span v-if="published" class="channel-published">{{ published }}</span>
+            </div>
           </div>
         </div>
-        <div class="metrics-row">
-          <span class="metric" v-html="iconEye()"></span><span>{{ formatStatValue(state.metadata?.views) }}</span>
-          <button :class="['reaction-button', { active: state.likeActive }]" type="button" @click="like"><span v-html="iconThumbUp()"></span>{{ formatStatValue(state.metadata?.likes) }}</button>
-          <button :class="['reaction-button', { active: state.dislikeActive }]" type="button" @click="dislike"><span v-html="iconThumbDown()"></span>{{ formatStatValue(state.metadata?.dislikes) }}</button>
+        <div class="video-meta-row">
+          <div class="video-metrics">
+            <span class="metric">
+              <span v-html="iconEye()"></span>
+              <span>{{ formatStatValue(state.metadata?.views) }}</span>
+            </span>
+          </div>
+          <div class="player-actions">
+            <button :class="['ghost-button', 'icon-button', { active: state.likeActive }]" type="button" aria-label="Like" @click="like">
+              <span v-html="iconThumbUp()"></span>
+              <span class="count">{{ formatStatValue(state.metadata?.likes) }}</span>
+            </button>
+            <button :class="['ghost-button', 'icon-button', { active: state.dislikeActive }]" type="button" aria-label="Dislike" @click="dislike">
+              <span v-html="iconThumbDown()"></span>
+              <span class="count">{{ formatStatValue(state.metadata?.dislikes) }}</span>
+            </button>
+            <a v-if="state.metadata?.originalUrl" class="ghost-link" :href="state.metadata.originalUrl" target="_blank" rel="noreferrer">Open original</a>
+          </div>
         </div>
-        <p class="video-description">{{ state.metadata?.description || "No description available." }}</p>
-        <a v-if="state.metadata?.originalUrl" class="ghost-link" :href="state.metadata.originalUrl" target="_blank" rel="noreferrer">Open original video</a>
+        <div class="video-description">{{ state.metadata?.description || "No description available." }}</div>
       </div>
     </section>
 
-    <section class="similar-card">
-      <h2>Similar videos</h2>
+    <section id="similar-section" class="similar-card">
+      <div class="section-header">
+        <h3>Similar videos</h3>
+        <RouterLink class="ghost-link" :to="{ name: 'home', query: { id, host } }">Open full list</RouterLink>
+      </div>
       <StatusBlock v-if="state.similarLoading" message="Loading similar videos..." />
       <StatusBlock v-else-if="state.similarError" kind="error" :message="state.similarError" />
       <StatusBlock v-else-if="state.similar.length === 0" kind="empty" message="No similar videos found." />
-      <div v-else class="cards-grid">
-        <VideoCard v-for="row in state.similar" :key="`${row.instance_domain ?? row.instanceDomain}::${row.video_uuid ?? row.videoUuid ?? row.video_id}`" :row="row" />
+      <div v-else class="similar-grid">
+        <SimilarVideoCard v-for="row in state.similar" :key="`${row.instance_domain ?? row.instanceDomain}::${row.video_uuid ?? row.videoUuid ?? row.video_id}`" :row="row" />
       </div>
     </section>
   </main>
