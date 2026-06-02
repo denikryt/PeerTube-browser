@@ -48,4 +48,13 @@ describe("video detail legacy visual contract", () => {
     expect(header).toContain("#similar-section");
     expect(header).toContain("Similar videos");
   });
+  it("reloads video data when similar-card navigation changes route params", () => {
+    expect(detailView).toContain('import { computed, reactive, watch } from "vue"');
+    expect(detailView).toContain(`watch(\n  [host, id],`);
+    expect(detailView).toContain('loadVideo(nextHost, nextId, generation)');
+    expect(detailView).toContain('loadSimilar(nextHost, nextId, generation)');
+    expect(detailView).toContain('routeLoadGeneration');
+    expect(detailView).not.toContain('onMounted(async () =>');
+  });
+
 });

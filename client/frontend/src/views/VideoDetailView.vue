@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Video detail route backed by Client v1 video metadata and similar APIs. */
-import { computed, onMounted, reactive } from "vue";
+import { computed, reactive, watch } from "vue";
 import { useRoute } from "vue-router";
 import StatusBlock from "../components/StatusBlock.vue";
 import SimilarVideoCard from "../components/SimilarVideoCard.vue";
@@ -46,38 +46,62 @@ const subscribersLabel = computed(() => {
   return `${formatStatValue(value)} subscribers`;
 });
 
-onMounted(async () => {
-  await loadVideo();
-  await loadSimilar();
-});
+let routeLoadGeneration = 0;
 
-async function loadVideo() {
-  if (!host.value || !id.value) {
+watch(
+  [host, id],
+  async ([nextHost, nextId]) => {
+    const generation = ++routeLoadGeneration;
+
+    // Vue reuses the same component instance when navigating between
+    // `/video/:host/:id` routes. Watch the route identity explicitly so a click
+    // on a similar-video card loads the next video instead of only scrolling the
+    // current page to the top.
+    await loadVideo(nextHost, nextId, generation);
+    await loadSimilar(nextHost, nextId, generation);
+  },
+  { immediate: true }
+);
+
+async function loadVideo(nextHost: string, nextId: string, generation: number) {
+  if (!nextHost || !nextId) {
     state.error = "Missing video identity";
+    state.metadata = null;
     return;
   }
   state.loading = true;
   state.error = "";
   try {
-    state.metadata = await fetchVideoMetadataPayload({ id: id.value, host: host.value });
-    document.title = `${state.metadata.title ?? "Video"} - PeerTube - Browser`;
+    const metadata = await fetchVideoMetadataPayload({ id: nextId, host: nextHost });
+    if (generation !== routeLoadGeneration) return;
+    state.metadata = metadata;
+    document.title = `${metadata.title ?? "Video"} - PeerTube - Browser`;
   } catch (error) {
+    if (generation !== routeLoadGeneration) return;
+    state.metadata = null;
     state.error = error instanceof Error ? error.message : "Failed to load video";
   } finally {
-    state.loading = false;
+    if (generation === routeLoadGeneration) state.loading = false;
   }
 }
 
-async function loadSimilar() {
+async function loadSimilar(nextHost: string, nextId: string, generation: number) {
+  if (!nextHost || !nextId) {
+    state.similar = [];
+    return;
+  }
   state.similarLoading = true;
   state.similarError = "";
   try {
-    const payload = await fetchSimilarVideosPayload({ id: id.value, host: host.value, limit: "8" });
+    const payload = await fetchSimilarVideosPayload({ id: nextId, host: nextHost, limit: "8" });
+    if (generation !== routeLoadGeneration) return;
     state.similar = payload.rows ?? payload.items ?? [];
   } catch (error) {
+    if (generation !== routeLoadGeneration) return;
+    state.similar = [];
     state.similarError = error instanceof Error ? error.message : "Failed to load similar videos";
   } finally {
-    state.similarLoading = false;
+    if (generation === routeLoadGeneration) state.similarLoading = false;
   }
 }
 
