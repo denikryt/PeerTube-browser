@@ -10,12 +10,15 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const detailView = readFileSync(join(process.cwd(), "src", "views", "VideoDetailView.vue"), "utf8");
+const app = readFileSync(join(process.cwd(), "src", "App.vue"), "utf8");
+const main = readFileSync(join(process.cwd(), "src", "main.ts"), "utf8");
 const header = readFileSync(join(process.cwd(), "src", "components", "AppHeader.vue"), "utf8");
 const similarCard = readFileSync(join(process.cwd(), "src", "components", "SimilarVideoCard.vue"), "utf8");
 
 describe("video detail legacy visual contract", () => {
   it("uses the old player metadata and action row class structure", () => {
     expect(detailView).toContain('class="channel-row"');
+    expect(detailView).toContain('<div class="video-channel"');
     expect(detailView).toContain('class="channel-line"');
     expect(detailView).toContain('class="meta-chips"');
     expect(detailView).toContain('class="video-meta-row"');
@@ -33,6 +36,11 @@ describe("video detail legacy visual contract", () => {
     expect(similarCard).toContain('class="similar-card-item"');
     expect(similarCard).toContain('class="similar-thumb"');
     expect(similarCard).toContain('class="similar-title"');
+  });
+
+  it("keeps the old route shell and route CSS precedence for video detail", () => {
+    expect(app).toContain('route.name === "video-detail" ? "video-page" : "videos-app"');
+    expect(main.indexOf('import "./channels.css";')).toBeLessThan(main.indexOf('import "./video.css";'));
   });
 
   it("keeps video-detail navigation contextual like the old page", () => {

@@ -9,7 +9,7 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import { router } from "./router";
 import "./videos.css";
-import "./video.css";
 import "./channels.css";
+import "./video.css";
 
 createApp(App).use(router).mount("#app");

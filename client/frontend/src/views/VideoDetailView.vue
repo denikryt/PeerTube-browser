@@ -106,7 +106,7 @@ function dislike() {
     <StatusBlock v-else-if="state.error" kind="error" :message="state.error" />
     <section v-else class="player-card">
       <div class="player-frame">
-        <iframe v-if="state.metadata?.embedUrl" :src="state.metadata.embedUrl" allowfullscreen title="PeerTube video"></iframe>
+        <iframe v-if="state.metadata?.embedUrl" :src="state.metadata.embedUrl" allowfullscreen title="Video player" referrerpolicy="no-referrer"></iframe>
       </div>
       <div class="player-info">
         <h2 class="video-title">{{ title }}</h2>
@@ -117,10 +117,10 @@ function dislike() {
           </div>
           <div class="channel-meta">
             <div class="channel-line">
-              <p class="video-channel">
+              <div class="video-channel">
                 <a v-if="state.metadata?.channelUrl" :href="state.metadata.channelUrl" target="_blank" rel="noreferrer">{{ channelLabel }}</a>
                 <span v-else>{{ channelLabel }}</span>
-              </p>
+              </div>
               <div class="meta-chips">
                 <div v-if="instanceLabel" class="instance-meta">
                   <span class="instance-avatar" :class="{ fallback: !state.metadata?.instanceAvatarUrl }" aria-hidden="true">
