@@ -34,6 +34,15 @@
       </header>
 
       <main class="videos-main">
+        <form id="search-form" class="search-bar" role="search">
+          <label class="search-label" for="search-input">Search videos and channels</label>
+          <div class="search-controls">
+            <input id="search-input" class="search-input" name="q" type="search" placeholder="Search by title, channel, tag, category, or instance" />
+            <button class="search-button" type="submit">Search</button>
+            <button id="clear-search" class="ghost-button" type="button" hidden>Clear</button>
+          </div>
+        </form>
+
         <section class="summary" hidden>
           <div>
             <div id="summary-counts"></div>

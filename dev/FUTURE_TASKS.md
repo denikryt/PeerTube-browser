@@ -121,3 +121,24 @@ Profile and optimize the recommendation mix layers that are still expensive:
 ### Not In Current Scope
 
 The cache seed lookup and cached similarity correctness fixes must not be expanded into recommendation algorithm redesign. This task is a separate performance optimization milestone after the index-migration regressions are resolved.
+## Search v1 follow-up work
+
+### Source
+
+`plans/17_search_v1.md`
+
+### Reason
+
+Search API v1 intentionally ships a lightweight SQLite FTS5 index over title, channel name, tags/category, and instance domain only. It avoids heavier indexing and incremental sync so the first search surface remains simple and tied to the current updater lifecycle.
+
+### Future Work
+
+Evaluate and design the deferred search capabilities:
+
+- full-description search indexing;
+- external search engines for advanced ranking/filtering, such as Meilisearch, Typesense, Elasticsearch/OpenSearch, or Tantivy;
+- incremental FTS search index sync instead of full rebuild only.
+
+### Not In Current Scope
+
+Search v1 must not add description indexing, semantic/embedding search, external search services, or incremental FTS synchronization.

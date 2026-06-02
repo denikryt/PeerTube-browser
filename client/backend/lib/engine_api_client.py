@@ -263,3 +263,35 @@ def fetch_engine_popular(engine_base_url: str, limit: int) -> dict[str, Any]:
     if status != 200:
         raise EngineApiError(f"Engine popular failed (HTTP {status}): {body.get('error') or 'unknown error'}")
     return body
+
+
+def fetch_engine_video_search(
+    engine_base_url: str,
+    query: str,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    """Fetch Engine internal video search provider rows over HTTP."""
+    status, body = _get_json(
+        f"{engine_base_url.rstrip('/')}/internal/search/videos",
+        {"q": query, "limit": limit, "cursor": str(offset)},
+    )
+    if status != 200:
+        raise EngineApiError(f"Engine video search failed (HTTP {status}): {body.get('error') or 'unknown error'}")
+    return body
+
+
+def fetch_engine_channel_search(
+    engine_base_url: str,
+    query: str,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    """Fetch Engine channel search rows through the existing channel route."""
+    status, body = _get_json(
+        f"{engine_base_url.rstrip('/')}/api/channels",
+        {"q": query, "limit": limit, "offset": offset},
+    )
+    if status != 200:
+        raise EngineApiError(f"Engine channel search failed (HTTP {status}): {body.get('error') or 'unknown error'}")
+    return body

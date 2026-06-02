@@ -32,6 +32,7 @@ from services.engine_gateway import (
     sanitize_post_request,
     summarize_proxy_likes,
 )
+from services.search_v1 import handle_channel_search, handle_video_search
 from services.profile import (
     get_client_likes_metadata,
     get_profile_likes_metadata,
@@ -208,6 +209,24 @@ def create_app(state: ClientRuntimeState) -> FastAPI:
             user_id,
             dict(parse_qs(request.url.query)),
         )
+        return cors_json(result.status, result.body)
+
+    @app.get("/api/v1/search/videos")
+    async def v1_search_videos(request: Request) -> Any:
+        """Return Client-owned v1 video search results."""
+        path = request.url.path
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        result = handle_video_search(state.engine_ingest_base, dict(parse_qs(request.url.query)))
+        return cors_json(result.status, result.body)
+
+    @app.get("/api/v1/search/channels")
+    async def v1_search_channels(request: Request) -> Any:
+        """Return Client-owned v1 channel search results."""
+        path = request.url.path
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        result = handle_channel_search(state.engine_ingest_base, dict(parse_qs(request.url.query)))
         return cors_json(result.status, result.body)
 
     @app.get("/api/v1/videos/{video_ref}")

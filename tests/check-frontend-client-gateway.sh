@@ -31,7 +31,7 @@ if search_frontend "https?://127\\.0\\.0\\.1:(7070|7071|7072|7171)|https?://loca
   violations=1
 fi
 
-if search_frontend "/internal/videos/resolve|/internal/videos/metadata|/internal/events/ingest" >"${TMP_FILE}" 2>/dev/null; then
+if search_frontend "/internal/videos/resolve|/internal/videos/metadata|/internal/events/ingest|/internal/search/videos" >"${TMP_FILE}" 2>/dev/null; then
   echo "[frontend-client-gateway] FAIL: Engine internal routes are forbidden in frontend src"
   cat "${TMP_FILE}"
   violations=1

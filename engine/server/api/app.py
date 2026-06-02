@@ -16,6 +16,7 @@ from routes.channels import handle_channels
 from routes.health import handle_health
 from routes.internal_discovery import handle_internal_discovery_route
 from routes.internal_events import handle_internal_events_ingest_route
+from routes.internal_search import handle_internal_search_videos_route
 from routes.internal_videos import (
     handle_internal_video_resolve_route,
     handle_internal_videos_metadata_route,
@@ -150,6 +151,13 @@ def create_app(state: EngineRuntimeState) -> FastAPI:
         return _route_response(
             handle_internal_discovery_route(state, "popular", dict(parse_qs(request.url.query)))
         )
+
+    @app.get("/internal/search/videos")
+    async def internal_search_videos(request: Request) -> Any:
+        """Return internal video-search provider rows for Client backend."""
+        if response := _rate_limit_or_none(request, state, "/internal/search/videos"):
+            return response
+        return _route_response(handle_internal_search_videos_route(state, dict(parse_qs(request.url.query))))
 
     @app.post("/internal/events/ingest")
     async def internal_events_ingest(request: Request) -> Any:

@@ -8,4 +8,5 @@ export { addLocalLike, clearLocalLikes, getRandomLikes, getStoredLikes } from ".
 export { sendUserAction } from "../data/user-actions";
 export { fetchUserProfileLikes, resetUserProfileLikes } from "../data/user-profile";
 export { fetchSimilarVideosPayload, fetchStaticVideosPayload, parseSimilarQuery, resolveApiBase, buildSimilarUrl } from "../data/videos";
+export { fetchVideoSearchPayload, fetchChannelSearchPayload, buildVideoSearchUrl, buildChannelSearchUrl } from "../data/search";
 export type { SimilarQuery } from "../data/videos";

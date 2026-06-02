@@ -352,6 +352,18 @@ def run_pipeline(
                     cwd=paths.repo_root,
                     runner=command_runner,
                 )
+                # Search v1 is a full-rebuild artifact: it depends on merged video
+                # rows but not on ANN, random-cache, or similarity artifacts.
+                _run_cmd(
+                    [
+                        args.python_bin,
+                        (paths.script_dir / "rebuild-video-search-index.py").as_posix(),
+                        "--db",
+                        paths.prod_db.as_posix(),
+                    ],
+                    cwd=paths.repo_root,
+                    runner=command_runner,
+                )
                 if args.fail_during_ann_build:
                     raise RuntimeError("Injected failure: ANN build stage")
                 ann_cmd = [
