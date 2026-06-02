@@ -4,20 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="/favicon.png" />
-    <title>PeerTube - Browser</title>
+    <title>Search videos</title>
   </head>
   <body>
-    <div id="app" class="videos-app">
+    <div id="app" class="videos-app" data-search-page="true">
       <header class="videos-header">
         <div>
-          <p class="eyebrow">PeerTube videos</p>
-          <h1>Home</h1>
+          <p class="eyebrow">PeerTube search</p>
+          <h1>Search videos</h1>
           <p class="subtitle"></p>
         </div>
         <nav class="header-nav">
           <a class="nav-link" href="/channels.html">Channels</a>
-          <a class="nav-link active" href="/">Home</a>
-          <a class="nav-link" href="/search.html">Search</a>
+          <a class="nav-link" href="/">Home</a>
+          <a class="nav-link active" href="/search.html">Search</a>
           <a class="nav-link" href="/about.html">About</a>
           <a
             class="nav-link nav-link-icon"
@@ -35,14 +35,23 @@
       </header>
 
       <main class="videos-main">
+        <form id="search-form" class="search-bar" role="search">
+          <label class="search-label" for="search-input">Search videos and channels</label>
+          <div class="search-controls">
+            <input id="search-input" class="search-input" name="q" type="search" placeholder="Search by title, channel, tag, category, or instance" />
+            <button class="search-button" type="submit">Search</button>
+            <button id="clear-search" class="ghost-button" type="button" hidden>Clear</button>
+          </div>
+        </form>
+
         <section class="summary" hidden>
           <div>
             <div id="summary-counts"></div>
             <div id="summary-meta" class="summary-meta"></div>
           </div>
           <div class="summary-actions">
-            <a id="reset-feed" class="ghost-link" href="/">Back to recommended</a>
-            <button id="reset-profile" class="ghost-button" type="button">Reset likes</button>
+            <a id="reset-feed" class="ghost-link" href="/">Back to Home</a>
+            <button id="reset-profile" class="ghost-button" type="button">Reset profile</button>
             <button id="show-profile" class="ghost-button" type="button">My likes</button>
             <button id="show-recommendations" class="ghost-button" type="button">Recommendations</button>
             <button id="show-random" class="ghost-button" type="button">Random</button>

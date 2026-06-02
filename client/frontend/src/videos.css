@@ -614,3 +614,30 @@ body {
   color: var(--muted);
   font-size: 0.86rem;
 }
+
+.search-results-host {
+  display: block;
+  width: 100%;
+}
+
+.search-results .cards-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  align-items: start;
+}
+
+.search-landing {
+  max-width: 760px;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.search-landing h2 {
+  margin: 0 0 0.5rem;
+}
+
+.search-landing p {
+  margin: 0;
+  color: var(--muted);
+}

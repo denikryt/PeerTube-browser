@@ -31,6 +31,7 @@ const profileModalClose = document.getElementById("profile-modal-close") as HTML
 const searchForm = document.getElementById("search-form") as HTMLFormElement | null;
 const searchInput = document.getElementById("search-input") as HTMLInputElement | null;
 const clearSearchButton = document.getElementById("clear-search") as HTMLButtonElement | null;
+const appRoot = document.getElementById("app") as HTMLElement | null;
 
 if (!cards || !summaryCounts || !summaryMeta) {
   throw new Error("Missing videos elements");
@@ -50,11 +51,12 @@ const feedMode = resolveFeedMode(params);
 const useSimilar = Boolean(similarQuery.id);
 const apiBase = resolveApiBase(similarQuery);
 const apiParam = params.get("api");
-let activeSearchQuery = !similarQuery.id ? (params.get("q") ?? "").trim() : "";
+const isDedicatedSearchPage = appRoot?.dataset.searchPage === "true";
+let activeSearchQuery = searchForm && !similarQuery.id ? (params.get("q") ?? "").trim() : "";
 if (searchInput) searchInput.value = activeSearchQuery;
 if (clearSearchButton) clearSearchButton.hidden = !activeSearchQuery;
 
-document.title = "PeerTube - Browser";
+document.title = isDedicatedSearchPage ? "Search videos" : "PeerTube - Browser";
 
 const state = {
   rows: [] as VideoRow[],
@@ -178,9 +180,15 @@ async function loadVideos() {
   }
   state.searchMode = false;
   state.loading = true;
+  setCardsGridLayout();
   summaryCounts.textContent = "";
   summaryMeta.textContent = "";
   if (resetLink) resetLink.hidden = true;
+  if (isDedicatedSearchPage) {
+    state.loading = false;
+    renderSearchLanding();
+    return;
+  }
   cards.innerHTML = `<div class="loading">Loading...</div>`;
   setupInfiniteScroll();
 
@@ -221,6 +229,7 @@ async function loadSearchResults(query: string) {
     feedObserver.disconnect();
     feedObserver = null;
   }
+  setCardsSearchLayout();
   cards.innerHTML = `<div class="loading">Searching...</div>`;
   try {
     const [videoPayload, channelPayload] = await Promise.all([
@@ -238,6 +247,29 @@ async function loadSearchResults(query: string) {
     const message = error instanceof Error ? error.message : "Search error";
     cards.innerHTML = renderError(message);
   }
+}
+
+/** Render the empty dedicated Search page state before the first query. */
+function renderSearchLanding() {
+  setCardsSearchLayout();
+  cards.innerHTML = `
+    <section class="search-landing" aria-label="Search videos">
+      <h2>Search videos</h2>
+      <p>Use the search box above to find videos by title, channel, tag, category, or instance.</p>
+    </section>
+  `;
+}
+
+/** Keep the host section in normal feed grid mode. */
+function setCardsGridLayout() {
+  cards.classList.add("cards-grid");
+  cards.classList.remove("search-results-host");
+}
+
+/** Keep search markup full width instead of nesting it as one feed-grid column. */
+function setCardsSearchLayout() {
+  cards.classList.remove("cards-grid");
+  cards.classList.add("search-results-host");
 }
 
 /** Render the two public search sections required by Search API v1. */
@@ -349,6 +381,7 @@ function renderSummary() {
  * Handle render cards.
  */
 function renderCards(reset = false) {
+  setCardsGridLayout();
   const visibleRows = visibleSample();
   if (!visibleRows.length) {
     cards.innerHTML = `<div class="error">No videos found.</div>`;
