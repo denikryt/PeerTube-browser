@@ -797,15 +797,19 @@ body {
   display: block;
   background: transparent;
   border: 0;
-  border-radius: 14px;
+  border-radius: 18px;
   overflow: visible;
   box-shadow: none;
-  transition: background-color 0.16s ease, transform 0.16s ease;
+  padding: 0.5rem;
+  margin: -0.5rem;
+  transition: background-color 0.16s ease;
 }
 
-.video-card:hover {
-  transform: translateY(-2px);
-  background: rgba(31, 27, 22, 0.045);
+.video-card:hover,
+.video-card:focus-within {
+  transform: none;
+  box-shadow: none;
+  background: rgba(31, 27, 22, 0.14);
 }
 
 .video-card-thumbnail-link,

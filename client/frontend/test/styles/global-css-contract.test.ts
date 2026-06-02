@@ -27,6 +27,9 @@ describe("global CSS route scoping", () => {
   it("pins the shared YouTube-style feed/search card contract", () => {
     expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*background:\s*transparent;/);
     expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*box-shadow:\s*none;/);
+    expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*padding:\s*0\.5rem;/);
+    expect(videosCss).toMatch(/\.video-card:hover,\n\.video-card:focus-within\s*\{[\s\S]*transform:\s*none;/);
+    expect(videosCss).toMatch(/\.video-card:hover,\n\.video-card:focus-within\s*\{[\s\S]*background:\s*rgba\(31, 27, 22, 0\.14\);/);
     expect(videosCss).toMatch(/\.video-card-meta\s*\{/);
     expect(videosCss).toMatch(/\.video-card \.video-title\s*\{[\s\S]*font-size:\s*1rem;/);
     expect(videosCss).toMatch(/\.video-card \.channel-avatar\s*\{[\s\S]*width:\s*38px/);

@@ -39,6 +39,9 @@ describe("Vue feed/search video card contract", () => {
   it("pins the CSS to a borderless feed-card surface with compact text", () => {
     expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*background:\s*transparent;/);
     expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*box-shadow:\s*none;/);
+    expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*padding:\s*0\.5rem;/);
+    expect(videosCss).toMatch(/\.video-card:hover,\n\.video-card:focus-within\s*\{[\s\S]*transform:\s*none;/);
+    expect(videosCss).toMatch(/\.video-card:hover,\n\.video-card:focus-within\s*\{[\s\S]*background:\s*rgba\(31, 27, 22, 0\.14\);/);
     expect(videosCss).toMatch(/\.video-card-meta\s*\{/);
     expect(videosCss).toMatch(/\.video-card-menu\s*\{/);
     expect(videosCss).toMatch(/\.video-card-stats\s*\{/);
