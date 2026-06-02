@@ -19,6 +19,9 @@ describe("global CSS route scoping", () => {
     expect(videoCss).not.toMatch(/^\.channel-meta\s*\{/m);
     expect(videoCss).toMatch(/\.video-main \.video-title\s*\{/);
     expect(videoCss).toMatch(/\.video-main \.channel-avatar\s*\{/);
+    expect(videoCss).toMatch(/\.video-page \.video-main \.channel-meta\s*\{/);
+    expect(videoCss).toMatch(/flex-direction:\s*column/);
+    expect(videoCss).toMatch(/align-items:\s*flex-start/);
   });
 
   it("pins the compact feed-card contract with component-specific selectors", () => {
