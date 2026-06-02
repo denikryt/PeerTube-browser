@@ -2,8 +2,8 @@
  * Regression tests for the Vue feed/search video-card contract.
  *
  * Home and Search must share one YouTube-style card component: thumbnail first,
- * compact metadata row below, no material-card body, and no reaction controls in
- * feed/search contexts. The detail page keeps a separate compact similar-card.
+ * compact metadata row below, no material-card body, and lightweight reaction
+ * counts in feed/search contexts. The detail page keeps a separate compact similar-card.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -27,10 +27,13 @@ describe("Vue feed/search video card contract", () => {
     expect(videoCard).toContain('class="video-card-meta"');
     expect(videoCard).toContain('class="video-card-text"');
     expect(videoCard).toContain('class="video-card-menu"');
+    expect(videoCard).toContain('class="video-card-stats"');
+    expect(videoCard).toContain("iconThumbUp");
+    expect(videoCard).toContain("iconThumbDown");
+    expect(videoCard).toContain('data-stat="likes"');
+    expect(videoCard).toContain('data-stat="dislikes"');
     expect(videoCard).not.toContain('class="video-body"');
     expect(videoCard).not.toContain('class="video-stats"');
-    expect(videoCard).not.toContain("iconThumbUp");
-    expect(videoCard).not.toContain("iconThumbDown");
   });
 
   it("pins the CSS to a borderless feed-card surface with compact text", () => {
@@ -38,6 +41,8 @@ describe("Vue feed/search video card contract", () => {
     expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*box-shadow:\s*none;/);
     expect(videosCss).toMatch(/\.video-card-meta\s*\{/);
     expect(videosCss).toMatch(/\.video-card-menu\s*\{/);
+    expect(videosCss).toMatch(/\.video-card-stats\s*\{/);
+    expect(videosCss).toMatch(/\.video-card-stats \.stat\s*\{/);
     expect(videosCss).toMatch(/\.video-card \.video-title\s*\{[\s\S]*font-size:\s*1rem;/);
   });
 });

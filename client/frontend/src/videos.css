@@ -790,8 +790,8 @@ body {
 /*
  * Home and Search use one YouTube-style video-card surface. The card is
  * intentionally borderless: thumbnail, then compact avatar/title/channel/meta
- * row. Reaction controls stay out of feed/search cards so both pages keep the
- * same dense browsing layout.
+ * row with lightweight like/dislike counts. Home and Search use this same
+ * dense browsing layout.
  */
 .video-card {
   display: block;
@@ -937,6 +937,31 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.video-card-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1;
+}
+
+.video-card-stats .stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.video-card-stats svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
 }
 
 .video-card-menu {

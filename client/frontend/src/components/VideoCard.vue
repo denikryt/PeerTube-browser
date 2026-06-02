@@ -3,12 +3,12 @@
  * Shared YouTube-style video card for Home and Search result grids.
  *
  * This component intentionally owns the feed/search card structure. Similar
- * videos on the detail page use a separate compact component, but Home and
- * Search must stay visually identical and must not reintroduce reaction/action
- * rows that belong to the video-detail surface.
+ * videos on the detail page use a separate compact component, while Home and
+ * Search share the same lightweight reaction-count footer.
  */
 import { computed } from "vue";
 import type { VideoRow } from "../types/videos";
+import { iconThumbDown, iconThumbUp } from "./icons";
 import { formatDuration, formatStatValue, formatTimeAgo, normalizeStatValue } from "../utils/format";
 import { channelAvatarUrl, channelInitials, channelName, channelUrl, hasServerStats, publishedAtMs, thumbnailUrl, videoPageUrl } from "../utils/video-fields";
 
@@ -29,6 +29,8 @@ const views = computed(() => {
   if (!hasServerStats(props.row)) return null;
   return normalizeStatValue(props.row.views ?? props.row.viewsCount);
 });
+const likes = computed(() => normalizeStatValue(props.row.likes ?? props.row.likes_count));
+const dislikes = computed(() => normalizeStatValue(props.row.dislikes ?? props.row.dislikes_count));
 const metaLine = computed(() => {
   const parts = [`${formatStatValue(views.value)} views`];
   if (published.value) parts.push(published.value);
@@ -59,6 +61,10 @@ const metaLine = computed(() => {
           {{ channelLabel }}
         </a>
         <div class="video-meta">{{ metaLine }}</div>
+        <div class="video-card-stats" aria-label="Video reactions">
+          <span class="stat likes"><span v-html="iconThumbUp()"></span><span data-stat="likes">{{ formatStatValue(likes) }}</span></span>
+          <span class="stat dislikes"><span v-html="iconThumbDown()"></span><span data-stat="dislikes">{{ formatStatValue(dislikes) }}</span></span>
+        </div>
       </div>
       <button class="video-card-menu" type="button" aria-label="More options" title="More options">
         <span aria-hidden="true">⋮</span>
