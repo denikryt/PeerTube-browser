@@ -16,7 +16,9 @@ export interface VideoRow {
   title?: string | null;
   video_url?: string | null;
   duration?: number | null;
+  /** Canonical browser-ready card image URL after Client API normalization. */
   thumbnail_url?: string | null;
+  /** Source/legacy PeerTube preview field; not used directly by feed cards. */
   preview_path?: string | null;
   views?: number | null;
   likes?: number | null;

@@ -36,6 +36,11 @@ describe("Vue feed/search video card contract", () => {
     expect(videoCard).not.toContain('class="video-stats"');
   });
 
+  it("does not read preview_path directly inside the shared card", () => {
+    expect(videoCard).not.toContain("preview_path");
+    expect(videoCard).not.toContain("previewPath");
+  });
+
   it("pins the CSS to a borderless feed-card surface with compact text", () => {
     expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*background:\s*transparent;/);
     expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*box-shadow:\s*none;/);

@@ -23,9 +23,9 @@ export function resolveVideoKey(row: VideoRow | null) {
   return `${host}::${id}`;
 }
 
-/** Resolve the current thumbnail/preview aliases. */
+/** Resolve the canonical Client API thumbnail aliases used by feed cards. */
 export function thumbnailUrl(row: VideoRow) {
-  return row.thumbnail_url ?? row.thumbnailUrl ?? row.preview_path ?? row.previewPath ?? null;
+  return row.thumbnail_url ?? row.thumbnailUrl ?? null;
 }
 
 /** Resolve the current channel display label aliases. */
