@@ -22,9 +22,11 @@ test("resolvePreferredThumbnailUrl prefers live detail thumbnail paths over stal
   assert.equal(
     resolvePreferredThumbnailUrl(
       {
-        thumbnailUrl: "https://example.org/lazy-static/thumbnails/stale.jpg",
         thumbnailPath: "/lazy-static/thumbnails/live.jpg",
         previewPath: "/lazy-static/thumbnails/preview.jpg"
+      },
+      {
+        thumbnailUrl: "https://example.org/lazy-static/thumbnails/stale.jpg"
       },
       "example.org",
       "https:"
@@ -37,8 +39,10 @@ test("resolvePreferredThumbnailUrl falls back to previewPath when thumbnailPath 
   assert.equal(
     resolvePreferredThumbnailUrl(
       {
-        thumbnailUrl: "https://example.org/lazy-static/thumbnails/stale.jpg",
         previewPath: "/lazy-static/thumbnails/preview.jpg"
+      },
+      {
+        thumbnailUrl: "https://example.org/lazy-static/thumbnails/stale.jpg"
       },
       "example.org",
       "https:"

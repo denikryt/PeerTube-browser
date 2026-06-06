@@ -14,11 +14,15 @@ import type {
 } from "./db/types.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile } from "./host-filters.js";
-import { resolvePreferredThumbnailUrl } from "./video-media.js";
+import {
+  resolvePreferredPreviewPath,
+  resolvePreferredThumbnailUrl
+} from "./video-media.js";
 
 const PAGE_SIZE = 50;
 const CHANNEL_CONCURRENCY = 2;
 const TAGS_CONCURRENCY = 4;
+const VIDEO_DETAIL_CONCURRENCY = 4;
 
 export interface VideoCrawlOptions {
   dbPath: string;
@@ -122,6 +126,11 @@ interface PeerTubeVideoDetail {
   comments?: number;
   commentsCount?: number;
   comments_count?: number;
+}
+
+interface VideoDetailFetchResult {
+  detail: PeerTubeVideoDetail;
+  protocol: string;
 }
 
 interface ChannelMeta {
@@ -524,22 +533,16 @@ async function crawlChannelVideos(
 
     if (data.length > 0) {
       const checkedAt = Date.now();
-      const rows: VideoUpsertRow[] = [];
-      for (const video of data) {
-        if (existingIds) {
-          const id = toStringId(video.uuid ?? video.id);
-          if (
-            id &&
-            (existingIds.has(id) ||
-              (externalExistingIds ? externalExistingIds.has(id) : false))
-          ) {
-            continue;
-          }
-        }
-        const row = toVideoRow(video, host, protocol, channel, checkedAt);
-        if (!row) continue;
-        rows.push(row);
-      }
+      const rows = await buildVideoRows(
+        data,
+        host,
+        protocol,
+        channel,
+        checkedAt,
+        existingIds,
+        externalExistingIds,
+        options
+      );
       localCount += rows.length;
       store.upsertVideos(rows);
     }
@@ -577,6 +580,48 @@ async function crawlChannelVideos(
   }
 
   return { localCount, totalCount };
+}
+
+/**
+ * Build persisted rows for one page while enriching media from live detail
+ * payloads. Detail failures fall back to list payload media so channel crawls
+ * keep progressing even when a host's detail endpoint is flaky.
+ */
+async function buildVideoRows(
+  videos: PeerTubeVideo[],
+  host: string,
+  protocol: string,
+  channel: {
+    channelId: string;
+    channelSlug: string;
+    displayName: string | null;
+    channelUrl: string | null;
+  },
+  checkedAt: number,
+  existingIds: Set<string> | null,
+  externalExistingIds: Set<string> | null,
+  options: VideoCrawlOptions
+) {
+  const rows = new Array<VideoUpsertRow | null>(videos.length).fill(null);
+
+  await mapWithConcurrency(
+    videos.map((video, index) => ({ video, index })),
+    VIDEO_DETAIL_CONCURRENCY,
+    async ({ video, index }) => {
+      const videoId = toStringId(video.uuid ?? video.id);
+      if (
+        videoId &&
+        (existingIds?.has(videoId) || externalExistingIds?.has(videoId))
+      ) {
+        return;
+      }
+
+      const detailResult = await fetchVideoDetailForMedia(host, video, options, protocol);
+      rows[index] = toVideoRow(video, host, protocol, channel, checkedAt, detailResult);
+    }
+  );
+
+  return rows.filter((row): row is VideoUpsertRow => row !== null);
 }
 
 /**
@@ -652,7 +697,8 @@ function toVideoRow(
     displayName: string | null;
     channelUrl: string | null;
   },
-  checkedAt: number
+  checkedAt: number,
+  detailResult?: VideoDetailFetchResult | null
 ): VideoUpsertRow | null {
   const videoId = toStringId(video.uuid ?? video.id);
   if (!videoId) return null;
@@ -667,7 +713,13 @@ function toVideoRow(
     toNullableString(channelRef?.url) ?? channel.channelUrl ?? null;
 
   const videoUrl = toNullableString(video.url);
-  const thumbnailUrl = resolvePreferredThumbnailUrl(video, host, protocol);
+  const mediaProtocol = detailResult?.protocol ?? protocol;
+  const thumbnailUrl = resolvePreferredThumbnailUrl(
+    detailResult?.detail ?? null,
+    video,
+    host,
+    mediaProtocol
+  );
 
   return {
     videoId,
@@ -695,7 +747,7 @@ function toVideoRow(
     dislikes: toNullableNumber(video.dislikes ?? video.dislikes_count),
     commentsCount: null,
     nsfw: toNullableBoolean(video.nsfw),
-    previewPath: toNullableString(video.previewPath ?? video.preview_path),
+    previewPath: resolvePreferredPreviewPath(detailResult?.detail ?? null, video),
     lastCheckedAt: checkedAt
   };
 }
@@ -860,7 +912,7 @@ async function fetchVideoDetail(
   videoUuid: string,
   options: VideoCrawlOptions,
   protocol: string
-): Promise<{ detail: PeerTubeVideoDetail; protocol: string }> {
+): Promise<VideoDetailFetchResult> {
   const primaryUrl = buildVideoDetailUrl(host, videoUuid, protocol);
   try {
     return {
@@ -880,6 +932,29 @@ async function fetchVideoDetail(
       }),
       protocol: fallbackProtocol
     };
+  }
+}
+
+/**
+ * Attempt to fetch fresher media for one video without turning a media-only
+ * failure into a dropped video row.
+ */
+async function fetchVideoDetailForMedia(
+  host: string,
+  video: PeerTubeVideo,
+  options: VideoCrawlOptions,
+  protocol: string
+): Promise<VideoDetailFetchResult | null> {
+  if (!video.uuid) return null;
+  try {
+    return await fetchVideoDetail(host, video.uuid, options, protocol);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    // Media freshness is best-effort during the main crawl. Falling back to the
+    // list payload preserves the previous ingest behavior when detail calls fail.
+    console.warn(`[videos] media detail fallback ${host}/${video.uuid}: ${message}`);
+    return null;
   }
 }
 
@@ -932,7 +1007,7 @@ async function thumbnailWorkerLoop(
     for (const row of rows) {
       try {
         const { detail, protocol } = await fetchVideoDetail(host, row.videoUuid, options, "https:");
-        const thumbnailUrl = resolvePreferredThumbnailUrl(detail, host, protocol);
+        const thumbnailUrl = resolvePreferredThumbnailUrl(detail, {}, host, protocol);
         if (thumbnailUrl) {
           store.updateVideoThumbnail(row.videoId, row.instanceDomain, thumbnailUrl, Date.now());
         }

@@ -1,55 +1,29 @@
 /**
- * PeerTube video media URL helpers.
+ * Media-selection helpers for PeerTube video payloads.
  *
- * The crawler uses these helpers to turn PeerTube list/detail payload fields
- * into one absolute browser-safe image URL. The ordering prefers canonical
- * live-detail fields so stale list URLs do not persist in SQLite.
+ * The crawler receives media fields from both channel-list payloads and
+ * per-video detail payloads. These helpers centralize the precedence rules so
+ * normal crawls can prefer fresher detail media without duplicating URL logic.
  */
 
-export interface PeerTubeMediaSource {
-  thumbnailUrl?: unknown;
-  thumbnailPath?: unknown;
-  thumbnail_path?: unknown;
-  thumbnail?: unknown;
-  previewPath?: unknown;
-  preview_path?: unknown;
-  previewUrl?: unknown;
-  preview_url?: unknown;
-}
-
-interface PeerTubeAsset {
+interface PeerTubeAssetLike {
   url?: unknown;
   path?: unknown;
   staticPath?: unknown;
 }
 
-interface ThumbnailCandidate {
-  field: string;
-  value: string;
-  url: string;
+export interface PeerTubeVideoMediaLike {
+  thumbnailUrl?: unknown;
+  thumbnailPath?: unknown;
+  thumbnail_path?: unknown;
+  thumbnail?: unknown;
+  previewUrl?: unknown;
+  previewPath?: unknown;
+  preview_path?: unknown;
 }
 
 /**
- * Return a normalized non-empty string or ``null``.
- */
-function toText(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  const text = String(value).trim();
-  return text.length > 0 ? text : null;
-}
-
-/**
- * Extract a path-like asset value from a PeerTube payload field.
- */
-function extractAssetValue(value: unknown): string | null {
-  if (typeof value === "string") return toText(value);
-  if (!value || typeof value !== "object") return null;
-  const asset = value as PeerTubeAsset;
-  return toText(asset.url ?? asset.path ?? asset.staticPath);
-}
-
-/**
- * Resolve one PeerTube asset value into an absolute browser-safe URL.
+ * Resolve one PeerTube asset field into an absolute URL when possible.
  */
 export function resolvePeerTubeMediaUrl(
   value: unknown,
@@ -68,43 +42,74 @@ export function resolvePeerTubeMediaUrl(
 }
 
 /**
- * Build the ordered thumbnail candidates for one PeerTube media payload.
- *
- * Live-detail paths are preferred over list payload URLs because list payloads
- * can lag behind the current asset set for the same video.
- */
-export function buildThumbnailCandidates(
-  source: PeerTubeMediaSource,
-  host: string,
-  protocol: string
-): ThumbnailCandidate[] {
-  const orderedFields: Array<[string, unknown]> = [
-    ["thumbnailPath", source.thumbnailPath],
-    ["previewPath", source.previewPath],
-    ["thumbnailUrl", source.thumbnailUrl],
-    ["previewUrl", source.previewUrl],
-    ["thumbnail_path", source.thumbnail_path],
-    ["preview_path", source.preview_path],
-    ["thumbnail", source.thumbnail]
-  ];
-  const candidates: ThumbnailCandidate[] = [];
-  for (const [field, value] of orderedFields) {
-    const url = resolvePeerTubeMediaUrl(value, host, protocol);
-    if (!url) continue;
-    const text = toText(value);
-    if (!text) continue;
-    candidates.push({ field, value: text, url });
-  }
-  return candidates;
-}
-
-/**
- * Resolve the best browser-visible thumbnail URL from a PeerTube payload.
+ * Prefer fresher thumbnail fields from detail payloads and fall back to list
+ * payloads only when detail media is absent.
  */
 export function resolvePreferredThumbnailUrl(
-  source: PeerTubeMediaSource,
+  detail: PeerTubeVideoMediaLike | null,
+  listVideo: PeerTubeVideoMediaLike,
   host: string,
   protocol: string
 ): string | null {
-  return buildThumbnailCandidates(source, host, protocol)[0]?.url ?? null;
+  const candidates = [
+    detail?.thumbnailPath,
+    detail?.previewPath,
+    detail?.preview_path,
+    detail?.thumbnailUrl,
+    detail?.thumbnail_path,
+    detail?.thumbnail,
+    listVideo.thumbnailPath,
+    listVideo.thumbnailUrl,
+    listVideo.thumbnail_path,
+    listVideo.thumbnail,
+    listVideo.previewPath,
+    listVideo.preview_path
+  ];
+
+  for (const candidate of candidates) {
+    const resolved = resolvePeerTubeMediaUrl(candidate, host, protocol);
+    if (resolved) return resolved;
+  }
+  return null;
+}
+
+/**
+ * Prefer fresher preview path fields from detail payloads while preserving the
+ * existing stored shape as a relative path when PeerTube provides one.
+ */
+export function resolvePreferredPreviewPath(
+  detail: PeerTubeVideoMediaLike | null,
+  listVideo: PeerTubeVideoMediaLike
+): string | null {
+  return toNullableString(
+    detail?.previewPath ??
+      detail?.preview_path ??
+      listVideo.previewPath ??
+      listVideo.preview_path
+  );
+}
+
+/**
+ * Extract the underlying asset path or URL from mixed PeerTube field shapes.
+ */
+function extractAssetValue(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (value && typeof value === "object") {
+    const asset = value as PeerTubeAssetLike;
+    return (
+      toNullableString(asset.url) ??
+      toNullableString(asset.path) ??
+      toNullableString(asset.staticPath)
+    );
+  }
+  return null;
+}
+
+/**
+ * Collapse blank strings to null so storage logic keeps nullable semantics.
+ */
+function toNullableString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
