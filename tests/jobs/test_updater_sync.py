@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 
 from engine.server.db.jobs.updater import sync
 
@@ -93,3 +94,71 @@ def test_load_denied_hosts_reads_named_rows_from_plain_sqlite_connection(tmp_pat
         conn.commit()
 
     assert sync.load_denied_hosts(db) == {"blocked.ex"}
+
+
+def test_purge_hosts_from_staging_uses_real_crawler_schema(tmp_path) -> None:
+    """Denylisted hosts are removed through the real crawler schema columns."""
+
+    db = tmp_path / "staging.db"
+    schema_path = Path(__file__).resolve().parents[2] / "engine" / "crawler" / "schema.sql"
+    with sqlite3.connect(db) as conn:
+        conn.executescript(schema_path.read_text(encoding="utf-8"))
+        conn.execute("INSERT INTO instances(host) VALUES (?)", ("blocked.example",))
+        conn.execute(
+            """
+            INSERT INTO channels(channel_id, channel_name, instance_domain)
+            VALUES (?, ?, ?)
+            """,
+            ("channel-1", "Blocked channel", "blocked.example"),
+        )
+        conn.execute(
+            """
+            INSERT INTO videos(video_id, video_uuid, instance_domain, last_checked_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            ("video-1", "uuid-1", "blocked.example", 1),
+        )
+        conn.execute(
+            """
+            INSERT INTO instance_crawl_progress(host, status, updated_at)
+            VALUES (?, ?, ?)
+            """,
+            ("blocked.example", "done", 1),
+        )
+        conn.execute(
+            """
+            INSERT INTO channel_crawl_progress(instance_domain, status, updated_at)
+            VALUES (?, ?, ?)
+            """,
+            ("blocked.example", "done", 1),
+        )
+        conn.execute(
+            """
+            INSERT INTO video_crawl_progress(
+                instance_domain, channel_id, status, updated_at
+            ) VALUES (?, ?, ?, ?)
+            """,
+            ("blocked.example", "channel-1", "done", 1),
+        )
+        conn.commit()
+
+    result = sync.purge_hosts_from_staging(db, {"BLOCKED.EXAMPLE"})
+
+    assert result == {
+        "videos": 1,
+        "channels": 1,
+        "instances": 1,
+        "video_crawl_progress": 1,
+        "channel_crawl_progress": 1,
+        "instance_crawl_progress": 1,
+    }
+    with sqlite3.connect(db) as conn:
+        for table in (
+            "videos",
+            "channels",
+            "instances",
+            "video_crawl_progress",
+            "channel_crawl_progress",
+            "instance_crawl_progress",
+        ):
+            assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0

@@ -108,22 +108,18 @@ def purge_hosts(
 
 
 def purge_hosts_from_staging(staging_db: Path, hosts: set[str]) -> dict[str, int]:
-    """Delete denylisted hosts from staging tables with current table assumptions."""
+    """Delete denylisted host data from staging through the canonical schema-aware helper."""
 
     if not hosts:
         return {}
-    placeholders = ",".join("?" for _ in hosts)
-    params = sorted(hosts)
+
     deleted: dict[str, int] = {}
     with sqlite3.connect(staging_db) as conn:
-        for table, column in (
-            ("videos", "host"),
-            ("channels", "host"),
-            ("instances", "host"),
-        ):
-            cur = conn.execute(
-                f"DELETE FROM {table} WHERE lower({column}) IN ({placeholders})", params
-            )
-            deleted[table] = cur.rowcount
-        conn.commit()
+        # Staging is produced from the crawler schema, where host identity uses
+        # different columns across tables. Reuse the moderation purge contract
+        # instead of duplicating schema assumptions in the updater pipeline.
+        for host in sorted(hosts):
+            result = purge_host_data(conn, host, dry_run=False)
+            for table, count in result.items():
+                deleted[table] = deleted.get(table, 0) + int(count)
     return deleted
