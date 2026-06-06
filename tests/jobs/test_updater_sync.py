@@ -68,3 +68,28 @@ def test_purge_hosts_aggregates_results(monkeypatch, tmp_path) -> None:
         "videos": 2,
         "similarity_rows": 4,
     }
+
+
+def test_load_denied_hosts_reads_named_rows_from_plain_sqlite_connection(tmp_path) -> None:
+    """Updater denylist loading works with the connection it opens itself."""
+
+    db = tmp_path / "prod.db"
+    with sqlite3.connect(db) as conn:
+        sync.bootstrap_engine_moderation_db(conn)
+        conn.execute(
+            """
+            INSERT INTO instance_denylist(host, reason, note, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, 1, ?, ?)
+            """,
+            ("Blocked.EX", "test", "test", 1, 1),
+        )
+        conn.execute(
+            """
+            INSERT INTO instance_denylist(host, reason, note, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, 0, ?, ?)
+            """,
+            ("inactive.ex", "test", "test", 1, 1),
+        )
+        conn.commit()
+
+    assert sync.load_denied_hosts(db) == {"blocked.ex"}

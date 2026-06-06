@@ -61,6 +61,9 @@ def load_denied_hosts(db_path: Path) -> set[str]:
     """Load active moderation denylist hosts from the prod DB."""
 
     with sqlite3.connect(db_path) as conn:
+        # Moderation helpers access result columns by name, so the updater-owned
+        # connection must preserve the same sqlite3.Row contract as Engine reads.
+        conn.row_factory = sqlite3.Row
         bootstrap_engine_moderation_db(conn)
         return set(list_active_denied_hosts(conn))
 
