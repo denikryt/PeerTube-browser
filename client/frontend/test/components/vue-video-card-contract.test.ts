@@ -10,6 +10,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const videoCard = readFileSync(join(process.cwd(), "src", "components", "VideoCard.vue"), "utf8");
+const similarVideoCard = readFileSync(
+  join(process.cwd(), "src", "components", "SimilarVideoCard.vue"),
+  "utf8"
+);
 const homeView = readFileSync(join(process.cwd(), "src", "views", "HomeView.vue"), "utf8");
 const searchView = readFileSync(join(process.cwd(), "src", "views", "SearchView.vue"), "utf8");
 const videosCss = readFileSync(join(process.cwd(), "src", "videos.css"), "utf8");
@@ -39,6 +43,14 @@ describe("Vue feed/search video card contract", () => {
   it("does not read preview_path directly inside the shared card", () => {
     expect(videoCard).not.toContain("preview_path");
     expect(videoCard).not.toContain("previewPath");
+  });
+
+  it("falls back to a text placeholder when the thumbnail image fails to load", () => {
+    expect(videoCard).toContain("@error=\"thumbErrored = true\"");
+    expect(videoCard).toContain('v-if="thumb && !thumbErrored"');
+    expect(similarVideoCard).toContain("@error=\"thumbErrored = true\"");
+    expect(similarVideoCard).toContain('v-if="thumb && !thumbErrored"');
+    expect(similarVideoCard).toContain('class="thumb-fallback"');
   });
 
   it("pins the CSS to a borderless feed-card surface with compact text", () => {

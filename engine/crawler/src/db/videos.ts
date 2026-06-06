@@ -14,6 +14,7 @@ import type {
   VideoChannelRow,
   VideoCrawlStatus,
   VideoProgressRow,
+  VideoThumbnailRow,
   VideoStoreOptions,
   VideoTagRow,
   VideoUpsertRow
@@ -218,6 +219,28 @@ export class VideoStore {
   }
 
   /**
+   * Handle list videos for thumbnail refresh.
+   *
+   * The refresh job revisits live PeerTube video detail pages so stale feed
+   * thumbnails can be replaced without re-running the full channel crawl.
+   */
+  listVideosForThumbnailRefresh(): VideoThumbnailRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT video_id, video_uuid, instance_domain
+         FROM videos
+         WHERE video_uuid IS NOT NULL
+         ORDER BY instance_domain ASC, video_id ASC`
+      )
+      .all() as { video_id: string; video_uuid: string; instance_domain: string }[];
+    return rows.map((row) => ({
+      videoId: row.video_id,
+      videoUuid: row.video_uuid,
+      instanceDomain: row.instance_domain
+    }));
+  }
+
+  /**
    * Handle prepare video progress.
    */
   prepareVideoProgress(channels: VideoChannelRow[], resume: boolean) {
@@ -379,6 +402,28 @@ export class VideoStore {
       }
     });
     transaction(rows);
+  }
+
+  /**
+   * Handle update video thumbnail URL.
+   *
+   * Thumbnail refresh only updates the browser-visible image URL and the last
+   * checked timestamp. It intentionally leaves the rest of the row unchanged so
+   * backfill jobs do not rewrite unrelated crawl state.
+   */
+  updateVideoThumbnail(
+    videoId: string,
+    instanceDomain: string,
+    thumbnailUrl: string | null,
+    lastCheckedAt: number
+  ) {
+    this.db
+      .prepare(
+        `UPDATE videos
+         SET thumbnail_url = ?, last_checked_at = ?
+         WHERE video_id = ? AND instance_domain = ?`
+      )
+      .run(thumbnailUrl, lastCheckedAt, videoId, instanceDomain);
   }
 
   /**

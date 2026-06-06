@@ -6,7 +6,7 @@
  * contract so the detail page keeps its denser related-video layout instead
  * of inheriting full feed-card dimensions.
  */
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import type { VideoRow } from "../types/videos";
 import { formatDuration, formatStatValue, formatTimeAgo, normalizeStatValue } from "../utils/format";
 import { channelName, publishedAtMs, thumbnailUrl, videoPageUrl } from "../utils/video-fields";
@@ -14,6 +14,7 @@ import { channelName, publishedAtMs, thumbnailUrl, videoPageUrl } from "../utils
 const props = defineProps<{ row: VideoRow }>();
 const title = computed(() => props.row.title ?? "Untitled video");
 const thumb = computed(() => thumbnailUrl(props.row));
+const thumbErrored = ref(false);
 const duration = computed(() => formatDuration(props.row.duration ?? null));
 const channel = computed(() => channelName(props.row) || "Unknown channel");
 const views = computed(() => normalizeStatValue(props.row.views ?? props.row.viewsCount));
@@ -27,7 +28,8 @@ const detailUrl = computed(() => videoPageUrl(props.row));
 <template>
   <RouterLink class="similar-card-item" :to="detailUrl">
     <div class="similar-thumb">
-      <img v-if="thumb" :src="thumb" :alt="title" loading="lazy" />
+      <img v-if="thumb && !thumbErrored" :src="thumb" :alt="title" loading="lazy" @error="thumbErrored = true" />
+      <div v-else class="thumb-fallback">{{ title }}</div>
       <span class="duration">{{ duration }}</span>
     </div>
     <h4 class="similar-title">{{ title }}</h4>

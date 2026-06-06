@@ -25,6 +25,7 @@ npm run crawl:channels:videos-count
 npm run crawl:videos
 npm run crawl:videos:tags
 npm run crawl:videos:comments
+npm run crawl:videos:thumbnails
 ```
 
 ## Tests

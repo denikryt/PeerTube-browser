@@ -6,7 +6,7 @@
  * videos on the detail page use a separate compact component, while Home and
  * Search share the same lightweight reaction-count footer.
  */
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import type { VideoRow } from "../types/videos";
 import { iconThumbDown, iconThumbUp } from "./icons";
 import { formatDuration, formatStatValue, formatTimeAgo, normalizeStatValue } from "../utils/format";
@@ -15,6 +15,7 @@ import { channelAvatarUrl, channelInitials, channelName, channelUrl, hasServerSt
 const props = defineProps<{ row: VideoRow }>();
 const title = computed(() => props.row.title ?? "Untitled video");
 const thumb = computed(() => thumbnailUrl(props.row));
+const thumbErrored = ref(false);
 const duration = computed(() => formatDuration(props.row.duration ?? null));
 const channelLabel = computed(() => channelName(props.row) || "Unknown channel");
 const channelHref = computed(() => channelUrl(props.row));
@@ -42,7 +43,7 @@ const metaLine = computed(() => {
   <article class="video-card">
     <RouterLink class="video-card-thumbnail-link" :to="detailUrl" :aria-label="title">
       <div class="video-thumb">
-        <img v-if="thumb" :src="thumb" :alt="title" loading="lazy" />
+        <img v-if="thumb && !thumbErrored" :src="thumb" :alt="title" loading="lazy" @error="thumbErrored = true" />
         <div v-else class="thumb-fallback">{{ title }}</div>
         <span class="duration">{{ duration }}</span>
       </div>

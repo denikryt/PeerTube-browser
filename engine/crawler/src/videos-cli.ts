@@ -73,6 +73,11 @@ program
     false
   )
   .option(
+    "--refresh-thumbnails",
+    "Thumbnail refresh mode: revisit /api/v1/videos/:uuid and rewrite thumbnail_url from live PeerTube detail fields",
+    false
+  )
+  .option(
     "--host-delay <ms>",
     "Delay between requests per host in tags/comments mode",
     "200"
@@ -101,6 +106,7 @@ try {
     tagsOnly: Boolean(options.tags),
     updateTags: Boolean(options.updateTags),
     commentsOnly: Boolean(options.comments),
+    refreshThumbnails: Boolean(options.refreshThumbnails),
     hostDelayMs: Number(options.hostDelay),
     resume: Boolean(options.resume),
     errorsOnly: Boolean(options.errors)

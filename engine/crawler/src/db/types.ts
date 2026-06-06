@@ -84,6 +84,12 @@ export interface VideoTagRow {
   instanceDomain: string;
 }
 
+export interface VideoThumbnailRow {
+  videoId: string;
+  videoUuid: string;
+  instanceDomain: string;
+}
+
 export interface VideoUpsertRow {
   videoId: string;
   videoUuid: string | null;
