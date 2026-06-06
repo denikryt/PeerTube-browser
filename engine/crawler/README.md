@@ -26,6 +26,7 @@ npm run crawl:videos
 npm run crawl:videos:tags
 npm run crawl:videos:comments
 npm run crawl:videos:thumbnails
+npm run test:live:thumbnails
 ```
 
 ## Tests
@@ -38,6 +39,20 @@ npm run test:db
 ```
 
 These tests use temporary SQLite files and do not run real PeerTube network crawls.
+
+### Live thumbnail contract smoke
+
+Run the live smoke explicitly when validating current PeerTube media contracts:
+
+```bash
+npm run test:live:thumbnails
+npm run test:live:thumbnails -- --report /tmp/peertube-thumbnail-smoke.json
+npm run test:live:thumbnails -- --required-hosts 1 --full-instance
+```
+
+The command is opt-in and network-dependent. By default it walks the JoinPeerTube registry in stable order, accepts the first five hosts that persist real videos through the production crawler stages, limits each host to three channels and one video page per channel, and performs bounded `GET` checks for every persisted `thumbnail_url`. Failed stored URLs trigger `/api/v1/videos/:uuid` diagnostics against current thumbnail and preview fields.
+
+`--full-instance` removes channel and page caps and is intended only for manual exhaustive checks. `--keep-artifacts` preserves candidate SQLite databases; `--report <path>` writes the complete JSON result. Remote uptime and mutable third-party data can make this command slow or fail, so it is not part of `test:db` or required CI. Deterministic `test:db` remains the required crawler suite.
 
 ## Notes
 

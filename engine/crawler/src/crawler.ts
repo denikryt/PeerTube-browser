@@ -6,6 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { CrawlerStore } from "./db/instances.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile, normalizeHostToken } from "./host-filters.js";
+import { fetchInstanceRegistryHosts } from "./instance-registry.js";
 import type { CrawlOptions, Page, ServerFollowItem } from "./types.js";
 
 const PAGE_SIZE = 50;
@@ -23,7 +24,10 @@ export async function crawl(options: CrawlOptions) {
   const whitelistUrl = ensureUrl(options.whitelistUrl);
   const fetchedWhitelistHosts = options.whitelistFile
     ? Array.from(loadHostsFromFile(options.whitelistFile))
-    : await fetchWhitelistHosts(whitelistUrl, options);
+    : await fetchInstanceRegistryHosts(whitelistUrl, {
+        timeoutMs: options.timeoutMs,
+        maxRetries: options.maxRetries
+      });
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const filteredWhitelistHosts = filterHosts(fetchedWhitelistHosts, excludedHosts);
   const whitelistHosts =
@@ -238,69 +242,6 @@ function ensureUrl(input: string) {
     return input;
   }
   return `https://${input}`;
-}
-
-/**
- * Handle fetch whitelist hosts.
- */
-async function fetchWhitelistHosts(url: string, options: CrawlOptions): Promise<string[]> {
-  const payload = await fetchJsonWithRetry<unknown>(url, {
-    timeoutMs: options.timeoutMs,
-    maxRetries: options.maxRetries
-  });
-
-  const entries = extractWhitelistEntries(payload);
-  const hosts = new Set<string>();
-
-  for (const entry of entries) {
-    const hostValue = extractWhitelistHost(entry);
-    if (!hostValue) continue;
-    const normalized = parseHostString(hostValue);
-    if (normalized) {
-      hosts.add(normalized);
-    }
-  }
-
-  if (hosts.size === 0) {
-    throw new Error("Whitelist contained no hosts.");
-  }
-
-  return Array.from(hosts);
-}
-
-/**
- * Handle extract whitelist entries.
- */
-function extractWhitelistEntries(payload: unknown): unknown[] {
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-  if (payload && typeof payload === "object") {
-    const data = (payload as { data?: unknown }).data;
-    if (Array.isArray(data)) {
-      return data;
-    }
-  }
-  throw new Error("Unexpected whitelist JSON shape.");
-}
-
-/**
- * Handle extract whitelist host.
- */
-function extractWhitelistHost(entry: unknown): string | null {
-  if (!entry) return null;
-  if (typeof entry === "string" || typeof entry === "number") {
-    const value = String(entry).trim();
-    return value.length > 0 ? value : null;
-  }
-  if (typeof entry === "object") {
-    const host = (entry as { host?: unknown }).host;
-    if (typeof host === "string" || typeof host === "number") {
-      const value = String(host).trim();
-      return value.length > 0 ? value : null;
-    }
-  }
-  return null;
 }
 
 /**

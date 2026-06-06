@@ -143,30 +143,22 @@ Evaluate and design the deferred search capabilities:
 
 Search v1 must not add description indexing, semantic/embedding search, external search services, or incremental FTS synchronization.
 
-## 7. Live smoke coverage for PeerTube thumbnail contracts
+## 7. Live thumbnail smoke operational follow-up
 
 ### Source
 
-Thumbnail refresh investigation and crawler media-selection follow-up.
+`plans/17_live_peertube_thumbnail_smoke.md`
 
 ### Reason
 
-Current crawler thumbnail tests are deterministic and local by design: they verify the project's media-selection rules without depending on third-party PeerTube uptime or mutable remote data.
-
-The project may still benefit from a separate live verification layer against real PeerTube instances to detect contract drift in `/api/v1/videos/:uuid`, thumbnail path availability, or image-host behavior that local fixture tests cannot observe.
+The crawler now has an opt-in `test:live:thumbnails` command that selects usable hosts from JoinPeerTube, runs the production crawler stages against isolated temporary SQLite databases, validates every persisted thumbnail with a bounded real `GET`, and diagnoses failed stored URLs against current PeerTube detail media fields.
 
 ### Future Work
 
-Design a non-blocking live smoke suite for real PeerTube instances:
-
-- accept a curated list of `host + video_uuid` or similar stable fixture inputs;
-- fetch live `/api/v1/videos/:uuid` payloads and validate the expected thumbnail/preview fields;
-- resolve the browser-facing image URL using the same crawler media-selection rules;
-- verify the resulting URL returns a successful response or image-like content type;
-- report per-instance failures without making the main deterministic test suite flaky;
-- decide whether the smoke runner is manual-only, scheduled, or optional in CI;
-- define how instance fixture churn is maintained when videos disappear or hosts degrade.
+- decide whether to schedule `test:live:thumbnails` as a non-blocking periodic CI job;
+- define alerting and retention policy for JSON reports from scheduled runs;
+- maintain the candidate/registry policy if JoinPeerTube payloads or availability behavior change.
 
 ### Not In Current Scope
 
-Current thumbnail fixes must keep deterministic local regression tests as the required coverage. They must not replace core crawler tests with live network-dependent checks.
+The live smoke remains optional and network-dependent. It must not replace deterministic crawler tests or become a required per-commit check without an explicit CI reliability decision.

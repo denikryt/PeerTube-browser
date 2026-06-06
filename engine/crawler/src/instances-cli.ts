@@ -5,6 +5,7 @@
 import { Command } from "commander";
 import { crawl } from "./crawler.js";
 import { isNoNetworkError } from "./http.js";
+import { DEFAULT_JOINPEERTUBE_WHITELIST_URL } from "./instance-registry.js";
 
 const program = new Command();
 
@@ -12,7 +13,7 @@ program
   .option(
     "--whitelist-url <url>",
     "Whitelist JSON URL",
-    "https://instances.joinpeertube.org/api/v1/instances/hosts?count=5000&healthy=true"
+    DEFAULT_JOINPEERTUBE_WHITELIST_URL
   )
   .option("--db <path>", "SQLite DB path", "data/crawl.db")
   .option(
