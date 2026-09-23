@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import time
+from urllib.parse import urlparse
 from pathlib import Path
 
 
@@ -42,6 +44,183 @@ def shared_columns(conn: sqlite3.Connection, table: str) -> list[str]:
     return [col for col in prod_cols if col in staging_cols]
 
 
+def _table_columns(conn: sqlite3.Connection, schema: str, table: str) -> set[str]:
+    """Return the available columns for one attached SQLite table."""
+
+    return {str(row[1]) for row in conn.execute(f"PRAGMA {schema}.table_info({table})")}
+
+
+def _normalize_host_token(raw_host: str) -> str | None:
+    """Normalize one host token using the same tolerant rules as crawler host files."""
+
+    value = raw_host.strip().lower()
+    if not value:
+        return None
+    if value.startswith(("http://", "https://")):
+        parsed = urlparse(value)
+        return parsed.hostname.lower() if parsed.hostname else None
+    if "/" in value:
+        parsed = urlparse(f"https://{value}")
+        return parsed.hostname.lower() if parsed.hostname else None
+    return value.strip(".") or None
+
+
+def _normalize_host_tokens(raw_hosts: set[str] | None) -> set[str]:
+    """Normalize caller-provided host scopes for exact SQLite comparisons."""
+
+    if not raw_hosts:
+        return set()
+    return {
+        normalized
+        for host in raw_hosts
+        if host
+        for normalized in [_normalize_host_token(host)]
+        if normalized
+    }
+
+
+def load_scoped_hosts_file(hosts_file: Path | None) -> set[str]:
+    """Load and normalize an updater host-scope file using crawler-compatible rules."""
+
+    if hosts_file is None:
+        return set()
+    raw_hosts = {
+        line
+        for line in hosts_file.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    return _normalize_host_tokens(raw_hosts)
+
+
+def _resolve_scope_column(
+    table_columns: set[str],
+    *,
+    preferred: tuple[str, ...],
+) -> str | None:
+    """Pick the host-bearing column used to scope one logical table."""
+
+    for column in preferred:
+        if column in table_columns:
+            return column
+    return None
+
+
+def _host_scope_sql(
+    conn: sqlite3.Connection,
+    *,
+    table: str,
+    alias: str,
+    scoped_hosts: set[str],
+) -> tuple[str, list[str]]:
+    """Build a host-scope predicate for staging rows when a targeted run is active.
+
+    Host-scoped updater runs still seed the full prod `channels` table into
+    staging. Without an explicit staging-side scope, the informational delta
+    counts have to compare the entire seeded table and become the slowest part
+    of the targeted updater run. Restricting the count to the selected hosts
+    keeps the log representative for the current run and avoids scanning the
+    full prod-sized staging copy.
+    """
+
+    if not scoped_hosts:
+        return "", []
+    staging_columns = _table_columns(conn, "staging", table)
+    scope_column = _resolve_scope_column(
+        staging_columns,
+        preferred=("instance_domain", "host"),
+    )
+    if scope_column is None:
+        return "", []
+    placeholders = ", ".join("?" for _ in scoped_hosts)
+    return (
+        f"WHERE lower({alias}.{scope_column}) IN ({placeholders})",
+        sorted(scoped_hosts),
+    )
+
+
+def _identity_join_sql(columns: tuple[str, ...], *, casefold: bool) -> str:
+    """Build the prod/staging identity predicate for one candidate key."""
+
+    if casefold:
+        return " AND ".join(
+            f"lower(COALESCE(p.{column}, '')) = lower(COALESCE(s.{column}, ''))"
+            for column in columns
+        )
+    return " AND ".join(f"p.{column} = s.{column}" for column in columns)
+
+
+def _count_missing_rows(
+    conn: sqlite3.Connection,
+    *,
+    table: str,
+    identity_candidates: list[tuple[str, ...]],
+    scoped_hosts: set[str] | None = None,
+) -> int:
+    """Count staging rows absent from prod using the first compatible identity key.
+
+    The updater has to compare crawler staging tables against whichever whitelist
+    schema is currently deployed. Older tests still use legacy `host/name/uuid`
+    columns while the current production DB uses `instance_domain`, `channel_id`,
+    and `video_id`/`video_uuid`. Choosing the first identity tuple present in
+    both schemas preserves compatibility across both layouts.
+    """
+
+    prod_columns = _table_columns(conn, "main", table)
+    staging_columns = _table_columns(conn, "staging", table)
+
+    normalized_scope = _normalize_host_tokens(scoped_hosts)
+    scope_sql, scope_params = _host_scope_sql(
+        conn,
+        table=table,
+        alias="s",
+        scoped_hosts=normalized_scope,
+    )
+
+    for columns in identity_candidates:
+        if not set(columns).issubset(prod_columns) or not set(columns).issubset(staging_columns):
+            continue
+        # Current whitelist identities are already normalized and indexed, so
+        # exact equality preserves the composite PK/index fast path. Legacy
+        # host/name/uuid layouts keep the historical case-insensitive behavior.
+        casefold = columns in {("host",), ("host", "name"), ("host", "uuid")}
+        join_sql = _identity_join_sql(columns, casefold=casefold)
+        primary_column = columns[0]
+        started_at = time.monotonic()
+        logging.info(
+            "staging delta count start table=%s key=%s scoped_hosts=%d",
+            table,
+            ",".join(columns),
+            len(normalized_scope),
+        )
+        result = int(
+            conn.execute(
+                f"SELECT COUNT(*) FROM staging.{table} s "
+                f"{scope_sql} "
+                f"LEFT JOIN main.{table} p ON {join_sql} "
+                f"WHERE p.{primary_column} IS NULL"
+                if not scope_sql
+                else
+                f"SELECT COUNT(*) FROM ("
+                f"SELECT * FROM staging.{table} s {scope_sql}"
+                f") s LEFT JOIN main.{table} p ON {join_sql} "
+                f"WHERE p.{primary_column} IS NULL",
+                scope_params,
+            ).fetchone()[0]
+        )
+        logging.info(
+            "staging delta count done table=%s key=%s rows=%d elapsed_ms=%d",
+            table,
+            ",".join(columns),
+            result,
+            int((time.monotonic() - started_at) * 1000),
+        )
+        return result
+
+    raise RuntimeError(
+        f"Cannot count staging deltas for table '{table}': no shared identity columns in prod/staging."
+    )
+
+
 def seed_staging_from_prod(prod_db: Path, staging_db: Path) -> None:
     """Seed instances/channels from prod into staging using shared columns only."""
 
@@ -68,25 +247,43 @@ def seed_staging_from_prod(prod_db: Path, staging_db: Path) -> None:
         conn.execute("DETACH DATABASE staging")
 
 
-def count_staging_deltas(prod_db: Path, staging_db: Path) -> dict[str, int]:
-    """Count current staging rows not present in prod by primary identity."""
+def count_staging_deltas(
+    prod_db: Path, staging_db: Path, scoped_hosts: set[str] | None = None
+) -> dict[str, int]:
+    """Count current staging rows not present in prod by primary identity.
+
+    `scoped_hosts` is used for targeted updater runs so informational delta
+    logging reflects only the selected instances instead of the entire seeded
+    staging copy.
+    """
 
     with sqlite3.connect(prod_db) as conn:
         conn.execute("ATTACH DATABASE ? AS staging", (staging_db.as_posix(),))
-        instances_new = conn.execute(
-            "SELECT COUNT(*) FROM staging.instances s "
-            "LEFT JOIN main.instances p ON lower(p.host)=lower(s.host) WHERE p.host IS NULL"
-        ).fetchone()[0]
-        channels_new = conn.execute(
-            "SELECT COUNT(*) FROM staging.channels s "
-            "LEFT JOIN main.channels p ON lower(p.host)=lower(s.host) "
-            "AND p.name=s.name WHERE p.id IS NULL"
-        ).fetchone()[0]
-        videos_new = conn.execute(
-            "SELECT COUNT(*) FROM staging.videos s "
-            "LEFT JOIN main.videos p ON lower(p.host)=lower(s.host) "
-            "AND p.uuid=s.uuid WHERE p.id IS NULL"
-        ).fetchone()[0]
+        instances_new = _count_missing_rows(
+            conn,
+            table="instances",
+            identity_candidates=[("host",)],
+            scoped_hosts=scoped_hosts,
+        )
+        channels_new = _count_missing_rows(
+            conn,
+            table="channels",
+            identity_candidates=[
+                ("channel_id", "instance_domain"),
+                ("host", "name"),
+            ],
+            scoped_hosts=scoped_hosts,
+        )
+        videos_new = _count_missing_rows(
+            conn,
+            table="videos",
+            identity_candidates=[
+                ("video_id", "instance_domain"),
+                ("video_uuid", "instance_domain"),
+                ("host", "uuid"),
+            ],
+            scoped_hosts=scoped_hosts,
+        )
         embeddings_new = 0
         prod_has_embeddings = conn.execute(
             "SELECT COUNT(*) FROM main.sqlite_master WHERE type='table' AND name='video_embeddings'"
@@ -98,11 +295,56 @@ def count_staging_deltas(prod_db: Path, staging_db: Path) -> dict[str, int]:
             
         ).fetchone()[0]
         if prod_has_embeddings and staging_has_embeddings:
-            embeddings_new = conn.execute(
-                "SELECT COUNT(*) FROM staging.video_embeddings s "
-                "LEFT JOIN main.video_embeddings p ON p.video_id=s.video_id "
-                "WHERE p.video_id IS NULL"
-            ).fetchone()[0]
+            embedding_scope = _normalize_host_tokens(scoped_hosts)
+            prod_embedding_columns = _table_columns(conn, "main", "video_embeddings")
+            staging_embedding_columns = _table_columns(conn, "staging", "video_embeddings")
+            composite_identity = {"video_id", "instance_domain"}.issubset(
+                prod_embedding_columns
+            ) and {"video_id", "instance_domain"}.issubset(staging_embedding_columns)
+            identity_label = "video_id,instance_domain" if composite_identity else "video_id"
+            started_at = time.monotonic()
+            logging.info(
+                "staging delta count start table=video_embeddings key=%s scoped_hosts=%d",
+                identity_label,
+                len(embedding_scope),
+            )
+            identity_match = "p.video_id = s.video_id"
+            if composite_identity:
+                identity_match += " AND p.instance_domain = s.instance_domain"
+
+            if embedding_scope:
+                placeholders = ", ".join("?" for _ in embedding_scope)
+                if "instance_domain" in staging_embedding_columns:
+                    scope_expr = f"lower(s.instance_domain) IN ({placeholders})"
+                    scope_join = ""
+                else:
+                    # Legacy embedding tables have no host column, so recover the
+                    # scope through the staging videos table when possible.
+                    scope_expr = f"lower(sv.instance_domain) IN ({placeholders})"
+                    scope_join = "JOIN staging.videos sv ON sv.video_id = s.video_id "
+                embeddings_new = conn.execute(
+                    "SELECT COUNT(*) "
+                    "FROM staging.video_embeddings s "
+                    f"{scope_join}"
+                    f"WHERE {scope_expr} "
+                    "AND NOT EXISTS ("
+                    f"  SELECT 1 FROM main.video_embeddings p WHERE {identity_match}"
+                    ")",
+                    sorted(embedding_scope),
+                ).fetchone()[0]
+            else:
+                embeddings_new = conn.execute(
+                    "SELECT COUNT(*) FROM staging.video_embeddings s "
+                    "WHERE NOT EXISTS ("
+                    f"  SELECT 1 FROM main.video_embeddings p WHERE {identity_match}"
+                    ")"
+                ).fetchone()[0]
+            logging.info(
+                "staging delta count done table=video_embeddings key=%s rows=%d elapsed_ms=%d",
+                identity_label,
+                embeddings_new,
+                int((time.monotonic() - started_at) * 1000),
+            )
         conn.execute("DETACH DATABASE staging")
     return {
         "instances_new": int(instances_new),
@@ -130,7 +372,17 @@ def prune_staging_local_non_ok_instances(*, prod_db: Path, staging_db: Path) -> 
     with sqlite3.connect(staging_db) as conn:
         removed = 0
         for table in ("videos", "channels", "instances"):
-            cur = conn.execute(f"DELETE FROM {table} WHERE lower(host) IN ({placeholders})", params)
+            columns = _table_columns(conn, "main", table)
+            host_column = _resolve_scope_column(
+                columns,
+                preferred=("instance_domain", "host"),
+            )
+            if host_column is None:
+                continue
+            cur = conn.execute(
+                f"DELETE FROM {table} WHERE lower({host_column}) IN ({placeholders})",
+                params,
+            )
             removed += cur.rowcount
         remaining = conn.execute("SELECT COUNT(*) FROM instances").fetchone()[0]
         conn.commit()

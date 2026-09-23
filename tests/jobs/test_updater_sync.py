@@ -71,6 +71,45 @@ def test_purge_hosts_aggregates_results(monkeypatch, tmp_path) -> None:
     }
 
 
+def test_purge_hosts_sets_named_row_contract_for_similarity_helpers(tmp_path) -> None:
+    """Updater similarity purge uses sqlite Row because moderation helpers read named columns."""
+
+    prod = tmp_path / "prod.db"
+    sim = tmp_path / "sim.db"
+    with sqlite3.connect(prod) as conn:
+        sync.bootstrap_engine_moderation_db(conn)
+        conn.commit()
+    with sqlite3.connect(sim) as conn:
+        conn.execute(
+            """
+            CREATE TABLE similarity_items(
+              source_instance_domain TEXT,
+              similar_instance_domain TEXT
+            )
+            """
+        )
+        conn.execute("CREATE TABLE similarity_sources(instance_domain TEXT)")
+        conn.execute(
+            "INSERT INTO similarity_items(source_instance_domain, similar_instance_domain) VALUES (?, ?)",
+            ("target.example", "other.example"),
+        )
+        conn.execute(
+            "INSERT INTO similarity_sources(instance_domain) VALUES (?)",
+            ("target.example",),
+        )
+        conn.commit()
+
+    result = sync.purge_hosts(
+        prod_db=prod,
+        similarity_db=sim,
+        hosts={"target.example"},
+        dry_run=True,
+    )
+
+    assert result["similarity_similarity_items"] == 1
+    assert result["similarity_similarity_sources"] == 1
+
+
 def test_load_denied_hosts_reads_named_rows_from_plain_sqlite_connection(tmp_path) -> None:
     """Updater denylist loading works with the connection it opens itself."""
 

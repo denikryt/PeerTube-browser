@@ -98,6 +98,9 @@ def purge_hosts(
                 aggregate[key] = aggregate.get(key, 0) + int(value)
     if similarity_db is not None:
         with sqlite3.connect(similarity_db) as sim_conn:
+            # Moderation similarity helpers read aggregate rows by column name,
+            # so updater-owned SQLite connections must preserve sqlite3.Row.
+            sim_conn.row_factory = sqlite3.Row
             for host in sorted(hosts):
                 result = purge_similarity_for_host(sim_conn, host, dry_run=dry_run)
                 for key, value in result.items():

@@ -37,6 +37,7 @@ from .staging import (
     count_staging_deltas,
     init_staging_db,
     inject_replace_embedding_for_test,
+    load_scoped_hosts_file,
     prune_staging_local_non_ok_instances,
     seed_staging_from_prod,
 )
@@ -157,6 +158,12 @@ def run_pipeline(
 
             run_crawl_stages = (not args.sync_join_whitelist) or bool(sync_new_hosts)
             if run_crawl_stages:
+                # Keep one host-scope file flowing through every crawler stage so a
+                # targeted updater run stays constrained after instances discovery.
+                host_scope_args: list[str] = []
+                if args.hosts_file:
+                    host_scope_args = ["--hosts-file", args.hosts_file]
+
                 instances_cmd = [
                     args.node_bin,
                     (paths.crawler_dist / "instances-cli.js").as_posix(),
@@ -171,6 +178,7 @@ def run_pipeline(
                     str(args.timeout_ms),
                     "--max-retries",
                     str(args.max_retries),
+                    *host_scope_args,
                 ]
                 if whitelist_hosts_file is not None:
                     instances_cmd.extend(["--whitelist-file", whitelist_hosts_file.as_posix()])
@@ -202,6 +210,7 @@ def run_pipeline(
                     str(args.timeout_ms),
                     "--max-retries",
                     str(args.max_retries),
+                    *host_scope_args,
                 ]
                 if exclude_hosts_file is not None:
                     channels_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
@@ -232,6 +241,7 @@ def run_pipeline(
                     str(args.timeout_ms),
                     "--max-retries",
                     str(args.max_retries),
+                    *host_scope_args,
                 ]
                 if exclude_hosts_file is not None:
                     videos_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
@@ -249,6 +259,7 @@ def run_pipeline(
                     str(args.timeout_ms),
                     "--max-retries",
                     str(args.max_retries),
+                    *host_scope_args,
                 ]
                 if exclude_hosts_file is not None:
                     counts_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
@@ -275,7 +286,13 @@ def run_pipeline(
                         prod_db=paths.prod_db, staging_db=paths.staging_db
                     )
 
-                deltas = count_staging_deltas(paths.prod_db, paths.staging_db)
+                scoped_hosts = load_scoped_hosts_file(Path(args.hosts_file)) if args.hosts_file else set()
+                logging.info("staging delta summary start scoped_hosts=%d", len(scoped_hosts))
+                deltas = count_staging_deltas(
+                    paths.prod_db,
+                    paths.staging_db,
+                    scoped_hosts=scoped_hosts,
+                )
                 logging.info(
                     "staging delta instances=%d channels=%d videos=%d embeddings=%d",
                     deltas["instances_new"],
@@ -434,7 +451,10 @@ def run_pipeline(
                     "16",
                     "--search-batch-size",
                     "1024",
-                    "--recreate-out-db",
+                    # Refresh mode must retain the existing source set: the
+                    # similarity job selects its work from similarity_sources.
+                    # Recreating the DB here would erase that set first and
+                    # silently turn every updater refresh into a no-op.
                     "--refresh-existing",
                 ]
                 if args.use_gpu:

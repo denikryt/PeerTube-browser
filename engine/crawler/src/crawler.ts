@@ -5,7 +5,11 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { CrawlerStore } from "./db/instances.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
-import { filterHosts, loadHostsFromFile, normalizeHostToken } from "./host-filters.js";
+import {
+  loadHostsFromFile,
+  normalizeHostToken,
+  scopeHosts
+} from "./host-filters.js";
 import { fetchInstanceRegistryHosts } from "./instance-registry.js";
 import type { CrawlOptions, Page, ServerFollowItem } from "./types.js";
 
@@ -28,14 +32,19 @@ export async function crawl(options: CrawlOptions) {
         timeoutMs: options.timeoutMs,
         maxRetries: options.maxRetries
       });
+  const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
-  const filteredWhitelistHosts = filterHosts(fetchedWhitelistHosts, excludedHosts);
+  const filteredWhitelistHosts = scopeHosts(
+    fetchedWhitelistHosts,
+    includedHosts,
+    excludedHosts
+  );
   const whitelistHosts =
     options.maxInstances > 0
       ? filteredWhitelistHosts.slice(0, options.maxInstances)
       : filteredWhitelistHosts;
   if (whitelistHosts.length === 0) {
-    throw new Error("Whitelist is empty after exclude-host filtering.");
+    throw new Error("Whitelist is empty after host include/exclude filtering.");
   }
   const whitelistSet = new Set(whitelistHosts);
   const preferredProtocol = new URL(whitelistUrl).protocol;

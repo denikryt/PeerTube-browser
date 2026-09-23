@@ -5,13 +5,14 @@
 import { ChannelStore } from "./db/channels.js";
 import type { ChannelProgressRow, ChannelUpsertRow } from "./db/types.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
-import { filterHosts, loadHostsFromFile } from "./host-filters.js";
+import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
 
 const PAGE_SIZE = 50;
 const HEALTH_CONCURRENCY = 4;
 
 export interface ChannelCrawlOptions {
   dbPath: string;
+  hostsFile: string | null;
   excludeHostsFile: string | null;
   concurrency: number;
   timeoutMs: number;
@@ -67,9 +68,10 @@ interface PeerTubeVideoChannel {
  */
 export async function crawlChannels(options: ChannelCrawlOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
+  const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const hostsAll = store.listInstances();
-  const filteredHosts = filterHosts(hostsAll, excludedHosts);
+  const filteredHosts = scopeHosts(hostsAll, includedHosts, excludedHosts);
   const effectiveHosts =
     options.maxInstances > 0
       ? filteredHosts.slice(0, options.maxInstances)
@@ -101,8 +103,9 @@ export async function crawlChannels(options: ChannelCrawlOptions) {
  */
 export async function checkChannelHealth(options: ChannelCrawlOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
+  const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
-  const hosts = filterHosts(store.listChannelInstances(), excludedHosts);
+  const hosts = scopeHosts(store.listChannelInstances(), includedHosts, excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
 
   console.log(

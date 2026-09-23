@@ -13,7 +13,7 @@ import type {
   VideoUpsertRow
 } from "./db/types.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
-import { filterHosts, loadHostsFromFile } from "./host-filters.js";
+import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
 import {
   resolvePreferredPreviewPath,
   resolvePreferredThumbnailUrl
@@ -26,6 +26,7 @@ const VIDEO_DETAIL_CONCURRENCY = 4;
 
 export interface VideoCrawlOptions {
   dbPath: string;
+  hostsFile: string | null;
   excludeHostsFile: string | null;
   existingDbPath: string | null;
   concurrency: number;
@@ -160,10 +161,11 @@ export async function crawlVideos(options: VideoCrawlOptions) {
     return;
   }
   const store = new VideoStore({ dbPath: options.dbPath });
+  const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const existingDb = openExistingDb(options);
   const hostsAll = store.listInstances();
-  const filteredHosts = filterHosts(hostsAll, excludedHosts);
+  const filteredHosts = scopeHosts(hostsAll, includedHosts, excludedHosts);
   const hosts =
     options.maxInstances > 0
       ? filteredHosts.slice(0, options.maxInstances)
@@ -219,10 +221,11 @@ export async function crawlVideos(options: VideoCrawlOptions) {
  */
 async function crawlVideoComments(options: VideoCrawlOptions) {
   const store = new VideoStore({ dbPath: options.dbPath });
+  const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForComments(options.resume);
   const grouped = groupByInstanceComments(items);
-  const instances = filterHosts(Array.from(grouped.keys()), excludedHosts);
+  const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
 
   console.log(
@@ -244,10 +247,11 @@ async function crawlVideoComments(options: VideoCrawlOptions) {
  */
 async function crawlVideoTags(options: VideoCrawlOptions, mode: "missing" | "present") {
   const store = new VideoStore({ dbPath: options.dbPath });
+  const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForTags(mode);
   const grouped = groupByInstanceTags(items);
-  const instances = filterHosts(Array.from(grouped.keys()), excludedHosts);
+  const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
 
   console.log(
@@ -966,10 +970,11 @@ async function fetchVideoDetailForMedia(
  */
 async function refreshVideoThumbnails(options: VideoCrawlOptions) {
   const store = new VideoStore({ dbPath: options.dbPath });
+  const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForThumbnailRefresh();
   const grouped = groupByInstanceThumbnail(items);
-  const hosts = filterHosts(Array.from(grouped.keys()), excludedHosts);
+  const hosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
 
   console.log(

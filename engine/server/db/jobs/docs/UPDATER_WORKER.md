@@ -114,6 +114,7 @@ Default is `--gpu` unless overridden.
 - `--skip-local-dead`
 - `--resume-staging`
 - `--whitelist-url`
+- `--hosts-file` (scope every crawler stage to an explicit include list)
 - `--concurrency`, `--timeout-ms`, `--max-retries`
 - `--max-instances`, `--max-channels`, `--max-videos-pages` (test caps)
 - `--videos-stop-after-full-pages`
@@ -132,6 +133,19 @@ From repo root:
 ```bash
 ./venv/bin/python3 engine/server/db/jobs/updater-worker.py --gpu --skip-local-dead
 ```
+
+Targeted reruns can constrain the entire crawler portion of the pipeline to a
+small host list:
+
+```bash
+./venv/bin/python3 engine/server/db/jobs/updater-worker.py \
+  --skip-systemctl \
+  --hosts-file /tmp/problem-hosts.txt
+```
+
+`--hosts-file` is passed through to `instances-cli`, `channels-cli`,
+`videos-cli`, and `channels-videos-count-cli`, so the staging crawl, merge, and
+post-merge jobs operate on data collected only for those listed instances.
 
 ## Systemd Run
 

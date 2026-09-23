@@ -43,6 +43,7 @@ def _args(tmp_path: Path, **overrides):
         max_instances=0,
         max_channels=0,
         max_videos_pages=0,
+        hosts_file=None,
         whitelist_url="https://join.example/hosts",
         sync_join_whitelist=False,
         yes=False,
@@ -70,10 +71,11 @@ def _patch_lightweight(monkeypatch, *, denied=frozenset(), join=frozenset(), pro
     monkeypatch.setattr(pipeline, "init_staging_db", lambda staging_db, schema_path: None)
     monkeypatch.setattr(pipeline, "seed_staging_from_prod", lambda prod_db, staging_db: None)
     monkeypatch.setattr(pipeline, "purge_hosts_from_staging", lambda staging_db, hosts: {})
+    monkeypatch.setattr(pipeline, "load_scoped_hosts_file", lambda hosts_file: {"target.example"})
     monkeypatch.setattr(
         pipeline,
         "count_staging_deltas",
-        lambda prod_db, staging_db: {
+        lambda prod_db, staging_db, scoped_hosts=None: {
             "instances_new": 0,
             "channels_new": 0,
             "videos_new": 0,
@@ -134,6 +136,10 @@ def test_normal_run_preserves_command_order_and_gpu_flags(monkeypatch, tmp_path)
     assert "--gpu" not in random_cmd
     precompute = seen[-2]
     assert precompute.count(str(tmp_path / "ann.index")) == 1
+    # Refresh mode derives its source set from the existing cache. Recreating
+    # that cache first would erase every source and turn the refresh into a no-op.
+    assert "--refresh-existing" in precompute
+    assert "--recreate-out-db" not in precompute
 
 
 def test_skip_systemctl_removes_stop_start_only(monkeypatch, tmp_path) -> None:
@@ -227,3 +233,19 @@ def test_cpu_mode_appends_cpu_to_heavy_jobs(monkeypatch, tmp_path) -> None:
     random_cmd = next(cmd for cmd in seen if "precompute-random-index-ids.py" in cmd[1])
     assert "--cpu" not in random_cmd
     assert "--gpu" not in random_cmd
+
+
+def test_hosts_file_scopes_all_crawler_stages(monkeypatch, tmp_path) -> None:
+    """Updater passes host-scope files through every crawler stage command."""
+
+    _patch_lightweight(monkeypatch)
+    seen: list[list[str]] = []
+    pipeline.run_pipeline(
+        _args(tmp_path, hosts_file="/tmp/hosts.txt"),
+        command_runner=lambda cmd, cwd: seen.append(list(cmd)),
+        validate_files=False,
+    )
+    crawler_cmds = [cmd for cmd in seen if cmd[0] == "node"]
+    assert len(crawler_cmds) == 4
+    assert all("--hosts-file" in cmd for cmd in crawler_cmds)
+    assert all("/tmp/hosts.txt" in cmd for cmd in crawler_cmds)

@@ -18,6 +18,7 @@ def test_parse_args_keeps_representative_defaults(monkeypatch) -> None:
     assert args.service_name == "svc-dev"
     assert args.concurrency == 4
     assert args.timeout_ms == 5000
+    assert args.hosts_file is None
     assert args.dry_run is False
     assert args.sync_join_whitelist is False
     assert Path(args.lock_file).name == "peertube-browser-staging-sync.lock"
@@ -47,3 +48,21 @@ def test_random_cache_db_override_is_respected(monkeypatch) -> None:
     monkeypatch.setattr(cli, "resolve_default_engine_service_name", lambda mode: "svc")
     args = cli.parse_args(["--random-cache-db", "/tmp/random.db"])
     assert args.random_cache_db == "/tmp/random.db"
+
+
+def test_hosts_file_override_is_respected(monkeypatch) -> None:
+    """Parser exposes the updater host-scope file for targeted reruns."""
+
+    monkeypatch.setattr(cli, "resolve_default_engine_service_name", lambda mode: "svc")
+    args = cli.parse_args(["--hosts-file", "/tmp/hosts.txt"])
+    assert args.hosts_file == "/tmp/hosts.txt"
+
+
+def test_hosts_file_relative_path_is_resolved_from_invocation_cwd(monkeypatch, tmp_path: Path) -> None:
+    """Relative host-scope paths stay valid after updater changes cwd for crawler CLIs."""
+
+    monkeypatch.setattr(cli, "resolve_default_engine_service_name", lambda mode: "svc")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "tmp").mkdir()
+    args = cli.parse_args(["--hosts-file", "tmp/hosts.txt"])
+    assert args.hosts_file == str((tmp_path / "tmp/hosts.txt").resolve())

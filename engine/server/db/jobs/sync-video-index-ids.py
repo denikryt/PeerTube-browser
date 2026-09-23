@@ -110,11 +110,13 @@ def sync_video_index_ids(conn: sqlite3.Connection, *, dry_run: bool = False) -> 
         )
         return SyncStats(0, before_inactive_indexable, before_retirable, active, before_total)
 
-    # Insert current indexable videos without touching existing mappings; the
-    # UNIQUE key preserves the original index_id for already-known identities.
+    # Insert only identities that are not mapped yet. `INSERT OR IGNORE` is not
+    # sufficient here: with SQLite AUTOINCREMENT, ignored UNIQUE conflicts still
+    # advance sqlite_sequence and create increasingly sparse stable ids on every
+    # no-op updater run.
     conn.execute(
         """
-        INSERT OR IGNORE INTO video_index_ids (
+        INSERT INTO video_index_ids (
           video_id,
           instance_domain,
           is_active,
@@ -128,6 +130,12 @@ def sync_video_index_ids(conn: sqlite3.Connection, *, dry_run: bool = False) -> 
         JOIN videos v
           ON v.video_id = e.video_id
          AND v.instance_domain = e.instance_domain
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM video_index_ids vii
+          WHERE vii.video_id = e.video_id
+            AND vii.instance_domain = e.instance_domain
+        )
         """,
         (now, now),
     )

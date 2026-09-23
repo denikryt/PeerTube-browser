@@ -172,6 +172,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Whitelist URL for instances crawl.",
     )
     parser.add_argument(
+        "--hosts-file",
+        default=None,
+        help=(
+            "Optional host include file passed through every crawler stage so updater "
+            "runs only against the listed instances."
+        ),
+    )
+    parser.add_argument(
         "--sync-join-whitelist",
         action="store_true",
         help=(
@@ -239,6 +247,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.set_defaults(use_gpu=True)
     args = parser.parse_args(argv)
+    if args.hosts_file:
+        # Resolve the operator-supplied file against the updater invocation cwd
+        # before pipeline stages switch cwd to engine/crawler for Node CLIs.
+        args.hosts_file = str(Path(args.hosts_file).resolve())
     if not args.service_name:
         args.service_name = resolve_default_engine_service_name(args.mode)
     return args

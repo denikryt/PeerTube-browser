@@ -11,6 +11,11 @@ const program = new Command();
 program
   .option("--db <path>", "SQLite DB path", "data/crawl.db")
   .option(
+    "--hosts-file <path>",
+    "Optional local file with included hosts (one per line)",
+    ""
+  )
+  .option(
     "--exclude-hosts-file <path>",
     "Optional local file with excluded hosts (one per line)",
     ""
@@ -48,6 +53,7 @@ try {
   const run = options.checkHealth ? checkChannelHealth : crawlChannels;
   await run({
     dbPath: options.db,
+    hostsFile: options.hostsFile || null,
     excludeHostsFile: options.excludeHostsFile || null,
     concurrency: Number(options.concurrency),
     timeoutMs: Number(options.timeout),

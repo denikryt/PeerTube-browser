@@ -22,6 +22,11 @@ program
     ""
   )
   .option(
+    "--hosts-file <path>",
+    "Optional local file with included hosts (one per line)",
+    ""
+  )
+  .option(
     "--exclude-hosts-file <path>",
     "Optional local file with excluded hosts (one per line)",
     ""
@@ -47,6 +52,7 @@ try {
   await crawl({
     whitelistUrl: options.whitelistUrl,
     whitelistFile: options.whitelistFile || null,
+    hostsFile: options.hostsFile || null,
     excludeHostsFile: options.excludeHostsFile || null,
     dbPath: options.db,
     concurrency: Number(options.concurrency),

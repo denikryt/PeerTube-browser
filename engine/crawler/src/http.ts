@@ -59,7 +59,12 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
   while (true) {
     attempt += 1;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
+    let timedOut = false;
+    const startedAt = Date.now();
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, options.timeoutMs);
 
     try {
       let response: Response;
@@ -115,8 +120,17 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
       if (attempt > options.maxRetries) {
         throw error;
       }
-      const reason = extractErrorReason(error);
-      const debug = extractErrorDebug(error);
+      const elapsedMs = Date.now() - startedAt;
+      const reason = extractErrorReason(error, {
+        timedOut,
+        timeoutMs: options.timeoutMs,
+        elapsedMs
+      });
+      const debug = extractErrorDebug(error, {
+        timedOut,
+        timeoutMs: options.timeoutMs,
+        elapsedMs
+      });
       const debugSuffix = debug ? `\n${debug}` : "";
       const logMessage = `---\n[http] error attempt=${attempt}/${options.maxRetries} retry_in_ms=${backoff}\n${url}\nreason=${reason}${debugSuffix}`;
       if (options.log) {
@@ -160,10 +174,19 @@ async function fetchViaCurl(url: string, timeoutMs: number): Promise<Response> {
   }
 }
 
+interface ErrorContext {
+  elapsedMs: number;
+  timedOut: boolean;
+  timeoutMs: number;
+}
+
 /**
  * Handle extract error reason.
  */
-function extractErrorReason(error: unknown): string {
+function extractErrorReason(error: unknown, context: ErrorContext): string {
+  if (context.timedOut) {
+    return `timeout abort after ${context.timeoutMs}ms`;
+  }
   if (error instanceof Error) {
     const reasons = collectErrorDetails(error);
     if (reasons.length > 0) return reasons.join(" ");
@@ -180,13 +203,22 @@ function extractErrorReason(error: unknown): string {
 /**
  * Handle extract error debug.
  */
-function extractErrorDebug(error: unknown): string {
+function extractErrorDebug(error: unknown, context: ErrorContext): string {
   if (!error || typeof error !== "object") return "";
   const err = error as {
+    name?: unknown;
     code?: unknown;
     cause?: { code?: unknown; message?: unknown } | unknown;
   };
   const parts: string[] = [];
+  parts.push(`elapsed_ms=${context.elapsedMs}`);
+  parts.push(`timeout_ms=${context.timeoutMs}`);
+  if (context.timedOut) {
+    parts.push("abort_source=timeout");
+  }
+  if (typeof err.name === "string" && err.name.trim()) {
+    parts.push(`name=${err.name}`);
+  }
   if (typeof err.code === "string" && err.code.trim()) {
     parts.push(`code=${err.code}`);
   }

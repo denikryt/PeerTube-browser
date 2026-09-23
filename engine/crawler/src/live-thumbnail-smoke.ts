@@ -383,6 +383,7 @@ async function runCandidateCrawler(
   await deps.crawlInstances({
     whitelistUrl: options.registryUrl,
     whitelistFile: whitelistPath,
+    hostsFile: null,
     excludeHostsFile: null,
     dbPath,
     concurrency: 1,
@@ -396,6 +397,7 @@ async function runCandidateCrawler(
   });
   await deps.crawlChannelsStage({
     dbPath,
+    hostsFile: null,
     excludeHostsFile: null,
     concurrency: 1,
     timeoutMs: options.timeoutMs,
@@ -407,6 +409,7 @@ async function runCandidateCrawler(
   });
   await deps.crawlCountsStage({
     dbPath,
+    hostsFile: null,
     excludeHostsFile: null,
     concurrency: 1,
     timeoutMs: options.timeoutMs,
@@ -416,6 +419,7 @@ async function runCandidateCrawler(
   });
   await deps.crawlVideosStage({
     dbPath,
+    hostsFile: null,
     excludeHostsFile: null,
     existingDbPath: null,
     concurrency: Math.max(1, options.concurrency),

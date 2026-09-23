@@ -115,6 +115,7 @@ test("crawlVideos prefers live detail media over stale list media during normal 
 
     await crawlVideos({
       dbPath: temp.dbPath,
+      hostsFile: null,
       excludeHostsFile: null,
       existingDbPath: null,
       concurrency: 1,
