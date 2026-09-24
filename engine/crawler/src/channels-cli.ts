@@ -27,7 +27,7 @@ program
   .option("--max-retries <number>", "HTTP retry attempts", "3")
   .option(
     "--new-channels",
-    "Insert only channels that do not exist yet (skip updates for existing rows)",
+    "Insert only new channels; refresh only videos_count for existing rows",
     false
   )
   .option(

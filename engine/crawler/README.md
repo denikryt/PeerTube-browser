@@ -22,6 +22,7 @@ npm run crawl:instances:health
 npm run crawl:channels
 npm run crawl:channels:health
 npm run crawl:channels:videos-count
+npm run crawl:host-pipeline
 npm run crawl:videos
 npm run crawl:videos:tags
 npm run crawl:videos:comments
@@ -69,13 +70,24 @@ Normal `npm run crawl:videos` now enriches thumbnail and preview media from
 fallback when a host's detail endpoint fails, so the crawl remains resilient
 while preferring fresher stored media URLs.
 
-The normal video crawl is also the channel-count pass. Every non-error channel,
-including a previously empty one, is included once per staging progress cycle; the first
-`/video-channels/:channel/videos` response persists its `total` and processes
-the returned video metadata immediately. Existing IDs in staging or the
-production reference DB are skipped, while pagination continues for later
-pages. `crawl:channels:videos-count` remains available only for explicit repair
-of legacy count errors.
+Channel discovery refreshes `videos_count` from the current channel-list
+response even in `--new-channels` mode; existing channel metadata remains
+unchanged, and an omitted count is stored as `NULL`.
+`crawl:channels:videos-count` then requests only channels whose count is still
+`NULL`; every successful row is a durable resume checkpoint. The normal video
+crawl selects only `videos_count > 0`, skips known empty/unresolved channels,
+and stores the next page offset after every fetched page. Existing IDs in
+staging or the production reference DB are skipped while pagination continues
+for later pages.
+
+`crawl:host-pipeline` is the opt-in scheduler used by updater
+`--host-pipeline`. It runs the existing channel, missing-count, and video
+workers with a global queued-work priority: channel lists first, channels whose
+`videos_count` is still `NULL` second, and video metadata third. After every
+stage a free slot chooses by that priority again. Work already in flight is not
+cancelled, so a ready host may reach videos while another host has a slow count
+request. `--concurrency` controls how many different hosts can be active, and
+scoped progress preparation never removes another host's resume rows.
 
 ## HTTP retry policy
 

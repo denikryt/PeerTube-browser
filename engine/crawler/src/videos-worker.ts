@@ -15,6 +15,7 @@ import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
 import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
 import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
+import { createProgressOrdinal, formatMetricLog } from "./log-format.js";
 import {
   resolvePreferredPreviewPath,
   resolvePreferredThumbnailUrl
@@ -47,6 +48,8 @@ export interface VideoCrawlOptions {
   commentsOnly: boolean;
   refreshThumbnails: boolean;
   hostDelayMs: number;
+  /** In-process host scope used by the optional host-level scheduler. */
+  hosts?: readonly string[];
 }
 
 interface Page<T> {
@@ -142,6 +145,10 @@ interface ChannelMeta {
   channelUrl: string | null;
 }
 
+interface NewVideoCounter {
+  total: number;
+}
+
 /**
  * Handle crawl videos.
  */
@@ -163,7 +170,9 @@ export async function crawlVideos(options: VideoCrawlOptions) {
     return;
   }
   const store = new VideoStore({ dbPath: options.dbPath });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = options.hosts
+    ? new Set(options.hosts.map((host) => host.toLowerCase()))
+    : loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const existingDb = openExistingDb(options);
   const hostsAll = store.listInstances();
@@ -172,7 +181,9 @@ export async function crawlVideos(options: VideoCrawlOptions) {
     options.maxInstances > 0
       ? filteredHosts.slice(0, options.maxInstances)
       : filteredHosts;
-  const channelsAll = store.listChannelsForVideoCrawl(hosts);
+  // Counts are resolved by the preceding count stage. Selecting only positive
+  // rows avoids one request per known-empty or still-unknown channel.
+  const channelsAll = store.listChannelsWithVideos(1, hosts);
   const channels =
     options.maxChannels > 0
       ? channelsAll.slice(0, options.maxChannels)
@@ -187,16 +198,20 @@ export async function crawlVideos(options: VideoCrawlOptions) {
       }
     ])
   );
-  store.setState("videos_new_total", "0");
+  // Keep run-local statistics out of SQLite so concurrent host pipelines
+  // cannot reset or increment one another's counters.
+  const newVideos: NewVideoCounter = { total: 0 };
 
-  store.prepareVideoProgress(channels, options.resume);
+  const progressScope = options.hosts ? [...hosts] : undefined;
+  store.prepareVideoProgress(channels, options.resume, progressScope);
   const statuses = (options.errorsOnly
     ? ["error"]
     : ["pending", "in_progress"]) satisfies VideoProgressRow["status"][];
-  const workItems = store.listVideoWorkItems(statuses);
+  const workItems = store.listVideoWorkItems(statuses, progressScope);
   const grouped = groupByInstance(workItems);
   const instances = Array.from(grouped.keys());
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
+  const nextChannelOrdinal = createProgressOrdinal(workItems.length);
 
   console.log(
     `[videos] instances=${instances.length} channels=${workItems.length} concurrency=${workerCount} hostConcurrency=${options.hostConcurrency} resume=${options.resume} errorsOnly=${options.errorsOnly}`
@@ -205,13 +220,20 @@ export async function crawlVideos(options: VideoCrawlOptions) {
   try {
     const queue = instances.slice();
     const workers = Array.from({ length: workerCount }, () =>
-      workerLoop(queue, grouped, channelMeta, store, existingDb, options)
+      workerLoop(
+        queue,
+        grouped,
+        channelMeta,
+        store,
+        existingDb,
+        options,
+        nextChannelOrdinal,
+        newVideos
+      )
     );
     await Promise.all(workers);
 
-    const totalNew = Number(store.getState("videos_new_total") ?? 0);
-    const totalNewText = Number.isFinite(totalNew) ? totalNew : 0;
-    console.log(`[videos] finished new_total=${totalNewText}`);
+    console.log(formatMetricLog("videos", [["new_total", newVideos.total]], "finished"));
   } finally {
     existingDb?.close();
     store.close();
@@ -279,14 +301,25 @@ async function workerLoop(
   channelMeta: Map<string, ChannelMeta>,
   store: VideoStore,
   existingDb: Database.Database | null,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  nextChannelOrdinal: () => string,
+  newVideos: NewVideoCounter
 ) {
   while (true) {
     const host = queue.pop();
     if (!host) return;
     const items = grouped.get(host);
     if (!items) continue;
-    await processInstance(host, items, channelMeta, store, existingDb, options);
+    await processInstance(
+      host,
+      items,
+      channelMeta,
+      store,
+      existingDb,
+      options,
+      nextChannelOrdinal,
+      newVideos
+    );
   }
 }
 
@@ -299,15 +332,30 @@ async function processInstance(
   channelMeta: Map<string, ChannelMeta>,
   store: VideoStore,
   existingDb: Database.Database | null,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  nextChannelOrdinal: () => string,
+  newVideos: NewVideoCounter
 ) {
   const normalizedHost = host.toLowerCase();
   const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
-  console.log(`[videos] start ${normalizedHost} channels=${items.length}`);
+  console.log(formatMetricLog("videos", [["channels", items.length]], "start", normalizedHost));
 
   await mapWithConcurrency(items, CHANNEL_CONCURRENCY, async (item) => {
     const meta = channelMeta.get(item.channelId);
-    await processChannel(normalizedHost, item, meta, store, existingDb, options, requestLimiter);
+    // Allocate before network work begins so every line for this channel keeps
+    // the same crawl-wide position even when completions arrive out of order.
+    const channelOrdinal = nextChannelOrdinal();
+    await processChannel(
+      normalizedHost,
+      item,
+      meta,
+      store,
+      existingDb,
+      options,
+      requestLimiter,
+      channelOrdinal,
+      newVideos
+    );
   });
 
   console.log(`[videos] done ${normalizedHost}`);
@@ -360,7 +408,7 @@ async function processTagInstance(
 ) {
   const normalizedHost = host.toLowerCase();
   const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
-  console.log(`[tags] start ${normalizedHost} videos=${items.length}`);
+  console.log(formatMetricLog("tags", [["videos", items.length]], "start", normalizedHost));
   for (const item of items) {
     try {
       const tagsJson = await fetchVideoTags(normalizedHost, item.videoUuid, options, requestLimiter);
@@ -402,7 +450,7 @@ async function processCommentsInstance(
 ) {
   const normalizedHost = host.toLowerCase();
   const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
-  console.log(`[comments] start ${normalizedHost} videos=${items.length}`);
+  console.log(formatMetricLog("comments", [["videos", items.length]], "start", normalizedHost));
   for (const item of items) {
     try {
       const commentsCount = await fetchVideoComments(normalizedHost, item.videoUuid, options, requestLimiter);
@@ -443,18 +491,34 @@ async function processChannel(
   store: VideoStore,
   existingDb: Database.Database | null,
   options: VideoCrawlOptions,
-  requestLimiter: RequestLimiter
+  requestLimiter: RequestLimiter,
+  channelOrdinal: string,
+  newVideos: NewVideoCounter
 ) {
   const channelSlug = item.channelName ?? meta?.channelSlug ?? null;
   if (!channelSlug) {
     store.updateVideoProgress(host, item.channelId, "error", item.lastStart, "missing channel slug");
-    console.warn(`[videos] skip ${host}/${item.channelId} missing channel slug`);
+    console.warn(
+      formatMetricLog(
+        "videos",
+        [["channel", channelOrdinal]],
+        "skip",
+        `${host}/${item.channelId} missing channel slug`
+      )
+    );
     return;
   }
 
   const startAt = item.status === "in_progress" ? item.lastStart : 0;
   store.updateVideoProgress(host, item.channelId, "in_progress", startAt, null);
-  console.log(`[videos] channel ${host}/${channelSlug} resume=${item.status} start=${startAt}`);
+  console.log(
+    formatMetricLog(
+      "videos",
+      [["channel", channelOrdinal], ["start", startAt], ["resume", item.status]],
+      "",
+      `${host}/${channelSlug}`
+    )
+  );
 
   try {
     const { localCount, totalCount } = await crawlChannelVideos(
@@ -472,14 +536,26 @@ async function processChannel(
       requestLimiter
     );
     store.updateVideoProgress(host, item.channelId, "done", 0, null);
-    store.incrementState("videos_new_total", localCount);
+    newVideos.total += localCount;
     console.log(
-      `[videos] channel done ${host}/${channelSlug} new=${localCount} total=${totalCount}`
+      formatMetricLog(
+        "videos",
+        [["new", localCount], ["total", totalCount], ["channel", channelOrdinal]],
+        "",
+        `${host}/${channelSlug}`
+      )
     );
   } catch (error) {
     const message = formatCrawlError(error);
     store.updateVideoProgress(host, item.channelId, "error", startAt, message);
-    console.warn(`[videos] channel error ${host}/${channelSlug}: ${message}`);
+    console.warn(
+      formatMetricLog(
+        "videos",
+        [["channel", channelOrdinal]],
+        "error",
+        `${host}/${channelSlug}: ${message}`
+      )
+    );
   }
 }
 
@@ -520,8 +596,8 @@ async function crawlChannelVideos(
     pagesFetched += 1;
 
     if (typeof page.total === "number" && Number.isFinite(page.total) && page.total >= 0) {
-      // The list endpoint already paid the cost of computing the channel total.
-      // Persisting it here removes the duplicate one-row count request stage.
+      // Refresh the stored count while paging metadata so deletions or uploads
+      // observed after the count stage are reflected in staging.
       store.updateChannelVideosCount(channel.channelId, host, page.total);
     }
 
@@ -577,7 +653,12 @@ async function crawlChannelVideos(
       fullPagesSeen += 1;
       if (fullPagesSeen >= options.stopAfterFullPages) {
         console.log(
-          `[videos] stop ${host}/${channel.channelSlug} full_pages=${fullPagesSeen} page_start=${start}`
+          formatMetricLog(
+            "videos",
+            [["full_pages", fullPagesSeen], ["page_start", start]],
+            "stop",
+            `${host}/${channel.channelSlug}`
+          )
         );
         break;
       }

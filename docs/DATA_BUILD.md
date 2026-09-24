@@ -22,9 +22,12 @@ You can run the same build/update flow automatically with the updater worker:
 
 - Worker entrypoint: `engine/server/db/jobs/updater-worker.py`
 - Internal updater modules: `engine/server/db/jobs/updater/`
-- It runs: crawl to staging -> embeddings -> merge to prod -> popularity -> index-id sync -> ANN rebuild -> random cache rebuild -> similarity precompute.
+- It runs: instances/channels -> missing video counts -> video metadata to staging -> embeddings -> merge to prod -> popularity -> index-id sync -> ANN rebuild -> random cache rebuild -> similarity precompute.
 - Systemd installation: `install-service.sh --with-updater-timer`
 - Timer runs daily (`OnUnitInactiveSec=1d`).
+- Optional `--host-pipeline` mode overlaps different hosts and reselects queued
+  work after every stage with global priority `channel lists -> NULL counts ->
+  videos`; in-flight work is allowed to finish.
 
 Detailed behavior, flags, lock/resume logic, and systemd notes are documented in:
 
@@ -95,6 +98,8 @@ Useful flags:
 Data source and limits:
 - Uses `GET /api/v1/video-channels?start=<offset>&count=50`.
 - Only channels hosted on the instance itself are stored.
+- `--new-channels` leaves existing metadata unchanged but refreshes the listed
+  `videos_count`; an omitted count becomes `NULL` for the following count stage.
 
 ### Channel video counts
 ```bash
@@ -102,10 +107,11 @@ cd engine/crawler
 npm run crawl:channels:videos-count
 ```
 
-This is now a maintenance command for retrying legacy count-only failures.
-Normal video crawling stores the channel `total` from the same paginated API
-response that supplies video metadata, so the updater does not run this as a
-separate stage.
+The updater runs this after channel discovery. Counts already supplied by
+`GET /api/v1/video-channels` are kept; only rows with `videos_count IS NULL`
+need a per-channel request. Successful counts are committed immediately, so
+`--resume` skips them after an interruption. Recorded errors are left for an
+explicit `--errors` repair pass.
 
 Useful flags:
 - `--resume` skips channels with existing counts or errors.
@@ -125,10 +131,11 @@ Useful flags:
 
 Data source and limits:
 - Uses `GET /api/v1/video-channels/<channel>/videos?start=<offset>&count=50`.
-- Checks previously empty channels once per new staging cycle so their first
-  later upload is discoverable without a separate count pass.
-- The first response stores `total` in `channels.videos_count`; its `data` rows
-  are filtered against staging and production before insertion.
+- Selects only channels with `videos_count > 0`; zero-count and unresolved
+  channels do not cause metadata requests.
+- Each successful page stores its next offset in `video_crawl_progress`, so
+  `--resume` continues an interrupted channel from that page. Returned IDs are
+  filtered against staging and production before insertion.
 - Default host concurrency is limited to avoid rate limiting.
 
 ### Tags and comments enrichment

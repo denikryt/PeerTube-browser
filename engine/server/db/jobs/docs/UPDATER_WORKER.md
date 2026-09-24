@@ -45,7 +45,12 @@ The worker runs this sequence:
    - `instances-cli`
    - optional local health filter (`--skip-local-dead`)
    - `channels-cli --new-channels`
+   - `channels-videos-count-cli --resume`
    - `videos-cli --new-videos --existing-db <prod> --sort -publishedAt`
+   - alternatively, `--host-pipeline` replaces those three commands with one
+     scheduler. Every free slot prioritizes pending channel lists, then channels
+     with `videos_count IS NULL`, then video metadata; already in-flight work
+     continues and different hosts overlap up to `--concurrency`.
 5. Build embeddings in staging (`build-video-embeddings.py`).
 6. Optionally stop API service (unless `--skip-systemctl`).
 7. Merge staging into prod (`merge-staging-db.py` with `merge_rules.json`).
@@ -62,12 +67,14 @@ The worker runs this sequence:
 - Instances: from whitelist source (JoinPeerTube URL by default).
 - Channels:
   - crawler requests channel pages from each instance API;
-  - with `--new-channels`, only channels absent in DB are inserted/kept as new rows.
-- Videos and channel counts: one video-list pass stores the response `total`
-  in `channels.videos_count` and inserts only video IDs absent from staging and
-  prod. Additional pages are fetched only while the channel has more results.
-- Legacy channel-count errors remain repairable through `--retry-errors`; the
-  normal updater no longer performs a duplicate count-only request pass.
+  - with `--new-channels`, only absent channels are inserted, while existing
+    metadata stays unchanged and its listed `videos_count` is refreshed.
+- Channel counts supplied by the instance channel list are reused. The count
+  stage requests only `videos_count IS NULL`, persists each result immediately,
+  and leaves recorded failures for `--retry-errors`.
+- Videos: only channels with `videos_count > 0` are selected. The crawler
+  inserts IDs absent from staging and prod and persists the next page offset
+  after each page.
 - Embeddings: computed for new/required rows in staging.
 
 After merge, prod contains merged changes according to `merge_rules.json`.
@@ -81,7 +88,9 @@ After merge, prod contains merged changes according to `merge_rules.json`.
 ## Resume Staging Behavior
 
 - `--resume-staging` keeps current staging DB and crawler progress tables.
-- This allows continuing from the latest saved crawler position instead of starting a fresh staging cycle.
+- Channel-list pagination resumes from `channel_crawl_progress.last_start`;
+  count collection skips every already persisted count; video pagination
+  resumes from `video_crawl_progress.last_start`.
 - Without `--resume-staging`, staging DB is recreated each run.
 
 ## Service Stop/Start Behavior
@@ -122,6 +131,8 @@ Default is `--gpu` unless overridden.
 - `--host-delay-ms` (minimum spacing between request starts to one host; default 200 ms)
 - `--timeout-ms`, `--max-retries`
 - `--retry-errors` (with `--resume-staging`, retry only recorded crawler errors and stop)
+- `--host-pipeline` (opt-in host-stage scheduling with global channel-list ->
+  NULL-count -> video priority; incompatible with `--retry-errors`)
 - `--max-instances`, `--max-channels`, `--max-videos-pages` (test caps)
 - `--videos-stop-after-full-pages`
 - `--nlist` (FAISS build)
@@ -149,10 +160,9 @@ small host list:
   --hosts-file /tmp/problem-hosts.txt
 ```
 
-`--hosts-file` is passed through to `instances-cli`, `channels-cli`, and
-`videos-cli` during normal updates, plus the legacy count repair command during
-`--retry-errors`. The staging crawl, merge, and post-merge jobs therefore stay
-scoped to the listed instances.
+`--hosts-file` is passed through to `instances-cli`, `channels-cli`,
+`channels-videos-count-cli`, and `videos-cli`. The staging crawl, merge, and
+post-merge jobs therefore stay scoped to the listed instances.
 
 An error-only pass reuses the existing staging DB and does not replay successful
 registry discovery. It retries channel-list progress rows with `status=error`,

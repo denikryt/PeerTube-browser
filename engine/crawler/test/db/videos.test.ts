@@ -125,6 +125,40 @@ test("VideoStore prepares progress, prunes missing channels, and returns work it
   }
 });
 
+test("VideoStore scoped resume preserves another host's completed progress", () => {
+  const temp = createTempDb("crawler-videos-scoped-progress");
+  try {
+    const channels = new ChannelStore({ dbPath: temp.dbPath });
+    channels.markInstanceDone("a.example");
+    channels.markInstanceDone("b.example");
+    channels.upsertChannels([
+      {
+        channelId: "a1", channelName: "a", channelUrl: null, displayName: "A",
+        instanceDomain: "a.example", videosCount: 1, followersCount: 0, avatarUrl: null
+      },
+      {
+        channelId: "b1", channelName: "b", channelUrl: null, displayName: "B",
+        instanceDomain: "b.example", videosCount: 1, followersCount: 0, avatarUrl: null
+      }
+    ]);
+    channels.close();
+
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    const allChannels = store.listChannelsWithVideos(1, ["a.example", "b.example"]);
+    store.prepareVideoProgress(allChannels, false);
+    store.updateVideoProgress("a.example", "a1", "done", 0, null);
+
+    const bChannels = store.listChannelsWithVideos(1, ["b.example"]);
+    store.prepareVideoProgress(bChannels, true, ["b.example"]);
+
+    assert.equal(store.listVideoWorkItems(["done"], ["a.example"]).length, 1);
+    assert.equal(store.listVideoWorkItems(["pending"], ["b.example"]).length, 1);
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
 test("VideoStore upserts videos and preserves tag/comment/error update effects", () => {
   const temp = createTempDb("crawler-videos-updates");
   try {

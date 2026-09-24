@@ -107,12 +107,12 @@ function seedChannel(dbPath: string, host: string, videosCount: number | null = 
   channels.close();
 }
 
-test("crawlVideos stores count and new video metadata for an unknown-count channel", async () => {
+test("crawlVideos stores refreshed count and metadata for a channel known to have videos", async () => {
   const temp = createTempDb("crawler-videos-single-pass");
   const fixture = await startPeerTubeFixtureServer();
 
   try {
-    seedChannel(temp.dbPath, fixture.host, null);
+    seedChannel(temp.dbPath, fixture.host, 1);
 
     await crawlVideos({
       dbPath: temp.dbPath,
@@ -166,9 +166,11 @@ test("crawlVideos stores count and new video metadata for an unknown-count chann
   }
 });
 
-test("crawlVideos rechecks a known empty channel and keeps it done when still empty", async () => {
+test("crawlVideos skips a channel whose stored video count is zero", async () => {
   const temp = createTempDb("crawler-videos-single-pass-empty");
+  let requests = 0;
   const server = http.createServer((_request, response) => {
+    requests += 1;
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ total: 0, data: [] }));
   });
@@ -203,19 +205,118 @@ test("crawlVideos rechecks a known empty channel and keeps it done when still em
       hostDelayMs: 0
     });
 
-    assert.deepEqual(
-      getRow<{ videos_count: number; status: string }>(
+    assert.equal(requests, 0);
+    assert.equal(
+      getRow<{ count: number }>(
         temp.dbPath,
-        `SELECT c.videos_count, p.status
-         FROM channels c JOIN video_crawl_progress p
-           ON p.channel_id = c.channel_id AND p.instance_domain = c.instance_domain
-         WHERE c.channel_id = ? AND c.instance_domain = ?`,
+        "SELECT COUNT(*) AS count FROM video_crawl_progress WHERE channel_id = ? AND instance_domain = ?",
         "c1",
         host
-      ),
-      { videos_count: 0, status: "done" }
+      ).count,
+      0
     );
     assert.equal(getRow<{ count: number }>(temp.dbPath, "SELECT COUNT(*) AS count FROM videos").count, 0);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    temp.cleanup();
+  }
+});
+
+test("crawlVideos leaves an unknown-count channel for the count stage", async () => {
+  const temp = createTempDb("crawler-videos-unknown-count");
+  let requests = 0;
+  const server = http.createServer((_request, response) => {
+    requests += 1;
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ total: 1, data: [] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const host = `127.0.0.1:${address.port}`;
+
+  try {
+    seedChannel(temp.dbPath, host, null);
+    await crawlVideos({
+      dbPath: temp.dbPath,
+      hostsFile: null,
+      excludeHostsFile: null,
+      existingDbPath: null,
+      concurrency: 1,
+      hostConcurrency: 1,
+      timeoutMs: 1000,
+      maxRetries: 0,
+      resume: true,
+      errorsOnly: false,
+      newOnly: true,
+      stopAfterFullPages: 2,
+      sort: "-publishedAt",
+      maxInstances: 0,
+      maxChannels: 0,
+      maxVideosPages: 0,
+      tagsOnly: false,
+      updateTags: false,
+      commentsOnly: false,
+      refreshThumbnails: false,
+      hostDelayMs: 0
+    });
+
+    assert.equal(requests, 0);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    temp.cleanup();
+  }
+});
+
+test("crawlVideos resumes an interrupted channel from its persisted page offset", async () => {
+  const temp = createTempDb("crawler-videos-resume-offset");
+  const starts: string[] = [];
+  const server = http.createServer((request, response) => {
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    if (url.pathname.includes("/api/v1/video-channels/")) {
+      starts.push(url.searchParams.get("start") ?? "");
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ total: 51, data: [] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const host = `127.0.0.1:${address.port}`;
+
+  try {
+    seedChannel(temp.dbPath, host, 51);
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    const channels = store.listChannelsWithVideos(1, [host]);
+    store.prepareVideoProgress(channels, false);
+    store.updateVideoProgress(host, "c1", "in_progress", 50, null);
+    store.close();
+
+    await crawlVideos({
+      dbPath: temp.dbPath,
+      hostsFile: null,
+      excludeHostsFile: null,
+      existingDbPath: null,
+      concurrency: 1,
+      hostConcurrency: 1,
+      timeoutMs: 1000,
+      maxRetries: 0,
+      resume: true,
+      errorsOnly: false,
+      newOnly: true,
+      stopAfterFullPages: 2,
+      sort: "-publishedAt",
+      maxInstances: 0,
+      maxChannels: 0,
+      maxVideosPages: 0,
+      tagsOnly: false,
+      updateTags: false,
+      commentsOnly: false,
+      refreshThumbnails: false,
+      hostDelayMs: 0
+    });
+
+    assert.deepEqual(starts, ["50"]);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     temp.cleanup();
@@ -301,7 +402,7 @@ test("crawlVideos does not mistake overlapping staging and prod IDs for a fully 
   const host = `127.0.0.1:${address.port}`;
 
   try {
-    seedChannel(temp.dbPath, host, null);
+    seedChannel(temp.dbPath, host, 51);
     new VideoStore({ dbPath: prod.dbPath }).close();
     execSql(
       temp.dbPath,

@@ -91,8 +91,8 @@ def _patch_lightweight(monkeypatch, *, denied=frozenset(), join=frozenset(), pro
     monkeypatch.setattr(pipeline, "prune_staging_local_non_ok_instances", lambda **kwargs: {})
 
 
-def test_normal_run_uses_single_video_crawl_for_counts_and_metadata(monkeypatch, tmp_path) -> None:
-    """Normal updates do not issue a separate per-channel count pass."""
+def test_normal_run_counts_unknown_channels_before_crawling_video_metadata(monkeypatch, tmp_path) -> None:
+    """Normal updates resolve missing counts before selecting channels with videos."""
 
     _patch_lightweight(monkeypatch)
     seen: list[list[str]] = []
@@ -105,6 +105,7 @@ def test_normal_run_uses_single_video_crawl_for_counts_and_metadata(monkeypatch,
     assert names == [
         "instances-cli.js",
         "channels-cli.js",
+        "channels-videos-count-cli.js",
         "videos-cli.js",
         "build-video-embeddings.py",
         "systemctl",
@@ -117,8 +118,8 @@ def test_normal_run_uses_single_video_crawl_for_counts_and_metadata(monkeypatch,
         "precompute-similar-ann.py",
         "systemctl",
     ]
-    assert "--gpu" in seen[3]
-    assert seen[4] == ["systemctl", "stop", "svc"]
+    assert "--gpu" in seen[4]
+    assert seen[5] == ["systemctl", "stop", "svc"]
     assert seen[-1] == ["systemctl", "start", "svc"]
     search_cmd = next(cmd for cmd in seen if "rebuild-video-search-index.py" in cmd[1])
     sync_index = names.index("sync-video-index-ids.py")
@@ -144,6 +145,24 @@ def test_normal_run_uses_single_video_crawl_for_counts_and_metadata(monkeypatch,
     # that cache first would erase every source and turn the refresh into a no-op.
     assert "--refresh-existing" in precompute
     assert "--recreate-out-db" not in precompute
+
+
+def test_host_pipeline_mode_replaces_three_global_crawler_stages(monkeypatch, tmp_path) -> None:
+    """Opt-in host scheduling uses one crawler command after instance discovery."""
+
+    _patch_lightweight(monkeypatch)
+    seen: list[list[str]] = []
+    pipeline.run_pipeline(
+        _args(tmp_path, host_pipeline=True),
+        command_runner=lambda cmd, cwd: seen.append(list(cmd)),
+        validate_files=False,
+    )
+
+    crawler_names = [Path(cmd[1]).name for cmd in seen if cmd[0] == "node"]
+    assert crawler_names == ["instances-cli.js", "host-pipeline-cli.js"]
+    host_command = next(cmd for cmd in seen if "host-pipeline-cli.js" in cmd[1])
+    assert host_command[host_command.index("--concurrency") + 1] == "4"
+    assert "--resume" in host_command
 
 
 def test_skip_systemctl_removes_stop_start_only(monkeypatch, tmp_path) -> None:
@@ -250,7 +269,7 @@ def test_hosts_file_scopes_all_crawler_stages(monkeypatch, tmp_path) -> None:
         validate_files=False,
     )
     crawler_cmds = [cmd for cmd in seen if cmd[0] == "node"]
-    assert len(crawler_cmds) == 3
+    assert len(crawler_cmds) == 4
     assert all("--hosts-file" in cmd for cmd in crawler_cmds)
     assert all("/tmp/hosts.txt" in cmd for cmd in crawler_cmds)
 

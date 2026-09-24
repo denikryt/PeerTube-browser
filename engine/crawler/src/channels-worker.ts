@@ -8,6 +8,7 @@ import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
 import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
 import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
+import { formatMetricLog } from "./log-format.js";
 
 const PAGE_SIZE = 50;
 
@@ -25,6 +26,8 @@ export interface ChannelCrawlOptions {
   maxChannels: number;
   resume: boolean;
   errorsOnly: boolean;
+  /** In-process host scope used by the optional host-level scheduler. */
+  hosts?: readonly string[];
 }
 
 interface ChannelInsertLimitState {
@@ -72,7 +75,9 @@ interface PeerTubeVideoChannel {
  */
 export async function crawlChannels(options: ChannelCrawlOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = options.hosts
+    ? new Set(options.hosts.map((host) => host.toLowerCase()))
+    : loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const hostsAll = store.listInstances();
   const filteredHosts = scopeHosts(hostsAll, includedHosts, excludedHosts);
@@ -85,9 +90,11 @@ export async function crawlChannels(options: ChannelCrawlOptions) {
     remaining: options.maxChannels > 0 ? options.maxChannels : null
   };
 
-  store.prepareChannelProgress(effectiveHosts, options.resume);
+  const progressScope = options.hosts ? [...effectiveHosts] : undefined;
+  store.prepareChannelProgress(effectiveHosts, options.resume, progressScope);
   const workItems = store.listChannelWorkItems(
-    options.errorsOnly ? ["error"] : ["pending", "in_progress"]
+    options.errorsOnly ? ["error"] : ["pending", "in_progress"],
+    progressScope
   );
 
   console.log(
@@ -175,7 +182,14 @@ async function processInstance(
   const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
   const startAt = item.status === "in_progress" ? item.lastStart : 0;
   store.updateChannelProgress(normalizedHost, "in_progress", startAt);
-  console.log(`[channels] start ${normalizedHost} resume=${item.status} start=${startAt}`);
+  console.log(
+    formatMetricLog(
+      "channels",
+      [["start", startAt], ["resume", item.status]],
+      "host",
+      normalizedHost
+    )
+  );
 
   try {
     const { localCount, totalCount } = await crawlInstanceChannels(
@@ -189,7 +203,14 @@ async function processInstance(
 
     store.updateChannelProgress(normalizedHost, "done", 0);
     store.markInstanceDone(normalizedHost);
-    console.log(`[channels] done ${normalizedHost} local=${localCount} total=${totalCount}`);
+    console.log(
+      formatMetricLog(
+        "channels",
+        [["local", localCount], ["total", totalCount]],
+        "host",
+        normalizedHost
+      )
+    );
   } catch (error) {
     if (isNoNetworkError(error)) {
       throw error;
@@ -237,12 +258,12 @@ async function processHealthInstance(
   const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
   const channels = store.listChannelsForInstance(normalizedHost);
   if (channels.length === 0) {
-    console.log(`[channels-health] skip ${normalizedHost} channels=0`);
+    console.log(formatMetricLog("channels-health", [["channels", 0]], "skip", normalizedHost));
     return;
   }
 
   console.log(
-    `[channels-health] start ${normalizedHost} channels=${channels.length}`
+    formatMetricLog("channels-health", [["channels", channels.length]], "start", normalizedHost)
   );
 
   let hadError = false;
@@ -278,7 +299,7 @@ async function processHealthInstance(
     }
   });
 
-  console.log(`[channels-health] done ${normalizedHost} error=${hadError}`);
+  console.log(formatMetricLog("channels-health", [["error", hadError]], "done", normalizedHost));
 }
 
 /**
@@ -330,15 +351,13 @@ async function crawlInstanceChannels(
         ? store.listExistingChannelIds(host, ids)
         : null;
       const rows: ChannelUpsertRow[] = [];
+      const existingRows: ChannelUpsertRow[] = [];
       for (const channel of data) {
         const channelHost = extractChannelHost(channel);
         if (channelHost !== host) continue;
         const channelId = channel.id !== undefined ? String(channel.id) : null;
         if (!channelId) continue;
-        if (existingIds && existingIds.has(channelId)) {
-          continue;
-        }
-        rows.push({
+        const row: ChannelUpsertRow = {
           channelId,
           channelName: toNullableString(channel.name),
           channelUrl: toNullableString(channel.url),
@@ -347,8 +366,16 @@ async function crawlInstanceChannels(
           videosCount: toNullableNumber(channel.videosCount ?? channel.videos_count),
           followersCount: toNullableNumber(channel.followersCount ?? channel.followers_count),
           avatarUrl: getChannelAvatarUrl(channel, host, protocol)
-        });
+        };
+        if (existingIds && existingIds.has(channelId)) {
+          // Existing metadata remains untouched in --new-channels mode, while
+          // the fresh count still controls the following count/video stages.
+          existingRows.push(row);
+          continue;
+        }
+        rows.push(row);
       }
+      store.refreshChannelVideoCountsFromListing(existingRows);
       const acceptedRows = takeRowsWithinLimit(rows, limitState);
       localCount += acceptedRows.length;
       store.upsertChannels(acceptedRows);

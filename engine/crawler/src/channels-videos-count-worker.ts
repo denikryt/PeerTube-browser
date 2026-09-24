@@ -7,6 +7,7 @@ import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
 import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
 import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
+import { formatMetricLog } from "./log-format.js";
 
 const CHANNEL_CONCURRENCY = 2;
 
@@ -21,6 +22,8 @@ export interface ChannelVideosCountOptions {
   maxRetries: number;
   resume: boolean;
   errorsOnly: boolean;
+  /** In-process host scope used by the optional host-level scheduler. */
+  hosts?: readonly string[];
 }
 
 interface ChannelVideoPage {
@@ -46,7 +49,9 @@ type StatusReporter = (message: string) => void;
  */
 export async function crawlChannelVideosCount(options: ChannelVideosCountOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = options.hosts
+    ? new Set(options.hosts.map((host) => host.toLowerCase()))
+    : loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const hosts = scopeHosts(store.listInstances(), includedHosts, excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
@@ -112,7 +117,12 @@ async function processInstance(
       requestLimiter
     );
     updateStatus(
-      `[channels-videos] done ${normalizedHost} updated=${updated} total=${total}`
+      formatMetricLog(
+        "channels-videos",
+        [["updated", updated], ["total", total]],
+        "host",
+        normalizedHost
+      )
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -130,32 +140,13 @@ async function updateVideosCountForInstance(
   progress: ChannelProgressState,
   requestLimiter: RequestLimiter
 ) {
-  const channels = store.listChannelsForInstance(host);
+  const channels = store.listChannelsForVideoCount(host, options.resume, options.errorsOnly);
   let updated = 0;
 
   await mapWithConcurrency(channels, CHANNEL_CONCURRENCY, async (channel) => {
+    // The repository query already excludes completed rows and, during normal
+    // resume, recorded errors. This worker therefore performs network work only.
     if (!channel.channel_name) return;
-    if (channel.videos_count !== null) {
-      updateStatus(
-        `[channels-videos] skip ${host}/${channel.channel_name} videos_count=${channel.videos_count}`
-      );
-      updateProgress(progress);
-      return;
-    }
-    if (options.errorsOnly && channel.last_error_source !== "videos_count") {
-      updateStatus(
-        `[channels-videos] skip ${host}/${channel.channel_name} no_error`
-      );
-      updateProgress(progress);
-      return;
-    }
-    if (options.resume && !options.errorsOnly && channel.last_error_source === "videos_count") {
-      updateStatus(
-        `[channels-videos] skip ${host}/${channel.channel_name} error=${channel.last_error ?? "unknown"}`
-      );
-      updateProgress(progress);
-      return;
-    }
     const hadError = channel.last_error_source === "videos_count";
     const videosCount = await fetchChannelVideosCount(
       host,
@@ -177,12 +168,21 @@ async function updateVideosCountForInstance(
     store.updateChannelVideosCount(channel.channel_id, host, videosCount.total);
     updated += 1;
     progress.updatedThisRun += 1;
-    progress.channelsWithVideosCount += 1;
+    // ``with_videos`` is a content metric, not a count-completeness metric:
+    // resolved empty channels must not inflate it.
+    if (videosCount.total > 0) {
+      progress.channelsWithVideosCount += 1;
+    }
     if (hadError) {
       progress.channelsWithError = Math.max(0, progress.channelsWithError - 1);
     }
     updateStatus(
-      `[channels-videos] done ${host}/${channel.channel_name} videos_count=${videosCount.total}`
+      formatMetricLog(
+        "channels-videos",
+        [["videos_count", videosCount.total]],
+        "channel",
+        `${host}/${channel.channel_name}`
+      )
     );
     updateProgress(progress);
   });
@@ -296,7 +296,16 @@ async function mapWithConcurrency<T>(
 function formatProgress(progress: ChannelProgressState) {
   const total = Math.max(0, progress.totalChannels);
   const withVideos = Math.max(0, progress.channelsWithVideosCount);
-  return `[channels-videos] progress updated=${progress.updatedThisRun} errors=${progress.channelsWithError} with_videos=${withVideos} total=${total}`;
+  return formatMetricLog(
+    "channels-videos",
+    [
+      ["updated", progress.updatedThisRun],
+      ["errors", progress.channelsWithError],
+      ["with_videos", withVideos],
+      ["total", total]
+    ],
+    "progress"
+  );
 }
 
 /**

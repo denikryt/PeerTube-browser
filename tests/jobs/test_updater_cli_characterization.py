@@ -93,3 +93,12 @@ def test_retry_errors_requires_resumed_staging(monkeypatch) -> None:
     monkeypatch.setattr(cli, "resolve_default_engine_service_name", lambda mode: "svc")
     with pytest.raises(SystemExit):
         cli.parse_args(["--retry-errors"])
+
+
+def test_host_pipeline_mode_is_exposed_and_rejects_error_only_mode(monkeypatch) -> None:
+    """Host scheduling is opt-in and does not ambiguously combine with repair mode."""
+
+    monkeypatch.setattr(cli, "resolve_default_engine_service_name", lambda mode: "svc")
+    assert cli.parse_args(["--host-pipeline"]).host_pipeline is True
+    with pytest.raises(SystemExit):
+        cli.parse_args(["--resume-staging", "--retry-errors", "--host-pipeline"])

@@ -78,10 +78,13 @@ def run_pipeline(
     service_stopped = False
     pipeline_start = time.monotonic()
     retry_errors = bool(getattr(args, "retry_errors", False))
+    host_pipeline = bool(getattr(args, "host_pipeline", False))
     if args.dry_run and not args.sync_join_whitelist:
         raise RuntimeError("--dry-run is supported only together with --sync-join-whitelist.")
     if retry_errors and (not args.resume_staging or not paths.staging_db.exists()):
         raise RuntimeError("--retry-errors requires an existing --resume-staging database.")
+    if retry_errors and host_pipeline:
+        raise RuntimeError("--host-pipeline cannot be combined with --retry-errors.")
 
     temp_files: list[Path] = []
     try:
@@ -231,7 +234,6 @@ def run_pipeline(
                     channels_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
                 if retry_errors:
                     channels_cmd.append("--errors")
-                _run_cmd(channels_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
                 videos_cmd = [
                     args.node_bin,
@@ -291,13 +293,55 @@ def run_pipeline(
                     counts_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
                 if retry_errors:
                     counts_cmd.append("--errors")
-                    # Preserve a repair path for count errors written by older
-                    # staging runs. Normal runs now persist totals in videos-cli.
+
+                if host_pipeline:
+                    # One process owns the shared SQLite scheduler. Within it,
+                    # hosts overlap but each host observes strict stage order.
+                    host_pipeline_cmd = [
+                        args.node_bin,
+                        (paths.crawler_dist / "host-pipeline-cli.js").as_posix(),
+                        "--db",
+                        paths.staging_db.as_posix(),
+                        "--existing-db",
+                        paths.prod_db.as_posix(),
+                        "--resume",
+                        "--sort",
+                        "-publishedAt",
+                        "--max-instances",
+                        str(args.max_instances),
+                        "--max-channels",
+                        str(args.max_channels),
+                        "--max-videos-pages",
+                        str(args.max_videos_pages),
+                        "--stop-after-full-pages",
+                        str(args.videos_stop_after_full_pages),
+                        "--concurrency",
+                        str(args.concurrency),
+                        "--host-concurrency",
+                        str(host_concurrency),
+                        "--host-delay",
+                        str(host_delay_ms),
+                        "--timeout",
+                        str(args.timeout_ms),
+                        "--max-retries",
+                        str(args.max_retries),
+                        *host_scope_args,
+                    ]
+                    if exclude_hosts_file is not None:
+                        host_pipeline_cmd.extend(
+                            ["--exclude-hosts-file", exclude_hosts_file.as_posix()]
+                        )
+                    _run_cmd(host_pipeline_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                else:
+                    _run_cmd(channels_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                    # Resolve only missing counts before videos-cli selects rows
+                    # with videos_count > 0. Each successful channel write is its
+                    # own resume checkpoint inside the count worker.
                     _run_cmd(counts_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
-                # videos-cli consumes each channel video-list response once:
-                # its total updates videos_count and its data feeds new rows.
-                _run_cmd(videos_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                    # Video progress stores the next page offset after every
+                    # successful page, so a resumed run continues within a channel.
+                    _run_cmd(videos_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
                 if retry_errors:
                     # Error retry is deliberately a staging-repair operation.

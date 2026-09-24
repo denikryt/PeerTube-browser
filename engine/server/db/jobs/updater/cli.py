@@ -208,6 +208,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--host-pipeline",
+        action="store_true",
+        help=(
+            "Schedule hosts by global stage priority: channel lists, missing counts, "
+            "then videos; different hosts still run concurrently."
+        ),
+    )
+    parser.add_argument(
         "--yes",
         action="store_true",
         help="Confirm destructive host purge in --sync-join-whitelist mode.",
@@ -269,6 +277,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.retry_errors and not args.resume_staging:
         parser.error("--retry-errors requires --resume-staging so recorded failures are preserved.")
+    if args.retry_errors and args.host_pipeline:
+        parser.error("--host-pipeline cannot be combined with --retry-errors.")
     if args.host_concurrency < 1:
         parser.error("--host-concurrency must be at least 1.")
     if args.host_delay_ms < 0:

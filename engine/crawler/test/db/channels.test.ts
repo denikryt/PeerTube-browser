@@ -167,3 +167,106 @@ test("ChannelStore preserves channel health fields", () => {
     temp.cleanup();
   }
 });
+
+test("ChannelStore count resume selects only unfinished rows and isolates recorded errors", () => {
+  const temp = createTempDb("crawler-channel-count-resume");
+  try {
+    const store = new ChannelStore({ dbPath: temp.dbPath });
+    store.upsertChannels([
+      { ...channel, channelId: "done", channelName: "done", videosCount: 4 },
+      { ...channel, channelId: "pending", channelName: "pending", videosCount: null },
+      { ...channel, channelId: "failed", channelName: "failed", videosCount: null }
+    ]);
+    store.updateChannelVideosCountError("failed", "example.org", "[timeout] prior failure");
+
+    assert.deepEqual(
+      store.listChannelsForVideoCount("example.org", true, false).map((row) => row.channel_id),
+      ["pending"]
+    );
+    assert.deepEqual(
+      store.listChannelsForVideoCount("example.org", true, true).map((row) => row.channel_id),
+      ["failed"]
+    );
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("ChannelStore refreshes only the listed count and clears a resolved count error", () => {
+  const temp = createTempDb("crawler-channel-listed-count");
+  try {
+    const store = new ChannelStore({ dbPath: temp.dbPath });
+    store.upsertChannels([{ ...channel, videosCount: 5 }]);
+
+    store.refreshChannelVideoCountsFromListing([{ ...channel, videosCount: null }]);
+    store.updateChannelVideosCountError("c1", "example.org", "[timeout] count failed");
+    store.refreshChannelVideoCountsFromListing([{ ...channel, videosCount: 7 }]);
+
+    assert.deepEqual(
+      getRow<{
+        videos_count: number;
+        display_name: string;
+        last_error: string | null;
+        last_error_source: string | null;
+      }>(
+        temp.dbPath,
+        `SELECT videos_count, display_name, last_error, last_error_source
+         FROM channels WHERE channel_id = ? AND instance_domain = ?`,
+        "c1",
+        "example.org"
+      ),
+      {
+        videos_count: 7,
+        display_name: "Music",
+        last_error: null,
+        last_error_source: null
+      }
+    );
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("ChannelStore reports withVideos as channels whose count is positive", () => {
+  const temp = createTempDb("crawler-channel-positive-counts");
+  try {
+    const store = new ChannelStore({ dbPath: temp.dbPath });
+    store.upsertChannels([
+      { ...channel, channelId: "positive", videosCount: 3 },
+      { ...channel, channelId: "empty", videosCount: 0 },
+      { ...channel, channelId: "unknown", videosCount: null }
+    ]);
+
+    assert.deepEqual(store.getChannelCounts(), {
+      total: 3,
+      withVideos: 1,
+      withError: 0
+    });
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("ChannelStore scoped resume preserves progress belonging to other hosts", () => {
+  const temp = createTempDb("crawler-channel-scoped-resume");
+  try {
+    const store = new ChannelStore({ dbPath: temp.dbPath });
+    store.prepareChannelProgress(["a.example", "b.example"], false);
+    store.updateChannelProgress("a.example", "done", 0);
+
+    store.prepareChannelProgress(["b.example"], true, ["b.example"]);
+
+    assert.deepEqual(store.listChannelWorkItems(["done"], ["a.example"]), [
+      { instanceDomain: "a.example", status: "done", lastStart: 0 }
+    ]);
+    assert.deepEqual(store.listChannelWorkItems(["pending"], ["b.example"]), [
+      { instanceDomain: "b.example", status: "pending", lastStart: 0 }
+    ]);
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});

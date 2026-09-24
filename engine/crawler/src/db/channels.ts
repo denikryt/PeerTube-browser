@@ -201,11 +201,15 @@ export class ChannelStore {
   /**
    * Handle prepare channel progress.
    */
-  prepareChannelProgress(hosts: string[], resume: boolean) {
+  prepareChannelProgress(hosts: string[], resume: boolean, scopedHosts?: string[]) {
     if (!resume) {
-      this.db.prepare("DELETE FROM channel_crawl_progress").run();
+      if (scopedHosts) {
+        this.deleteChannelProgressForHosts(scopedHosts);
+      } else {
+        this.db.prepare("DELETE FROM channel_crawl_progress").run();
+      }
     }
-    this.pruneChannelProgress(hosts);
+    this.pruneChannelProgress(hosts, scopedHosts);
 
     const now = Date.now();
     const insertStmt = this.db.prepare(
@@ -224,7 +228,12 @@ export class ChannelStore {
   /**
    * Handle prune channel progress.
    */
-  private pruneChannelProgress(hosts: string[]) {
+  private pruneChannelProgress(hosts: string[], scopedHosts?: string[]) {
+    if (scopedHosts) {
+      const keep = new Set(hosts);
+      this.deleteChannelProgressForHosts(scopedHosts.filter((host) => !keep.has(host)));
+      return;
+    }
     if (hosts.length === 0) {
       this.db.prepare("DELETE FROM channel_crawl_progress").run();
       return;
@@ -238,21 +247,40 @@ export class ChannelStore {
       .run(...hosts);
   }
 
+  /** Delete channel progress only for the explicitly scoped hosts. */
+  private deleteChannelProgressForHosts(hosts: string[]) {
+    if (hosts.length === 0) return;
+    const placeholders = hosts.map(() => "?").join(", ");
+    this.db
+      .prepare(`DELETE FROM channel_crawl_progress WHERE instance_domain IN (${placeholders})`)
+      .run(...hosts);
+  }
+
   /**
    * Handle list channel work items.
    */
   listChannelWorkItems(
-    statuses: ChannelCrawlStatus[] = ["pending", "in_progress"]
+    statuses: ChannelCrawlStatus[] = ["pending", "in_progress"],
+    scopedHosts?: string[]
   ): ChannelProgressRow[] {
+    if (scopedHosts && scopedHosts.length === 0) return [];
     const placeholders = statuses.map(() => "?").join(", ");
+    const hostFilter = scopedHosts
+      ? `AND instance_domain IN (${scopedHosts.map(() => "?").join(", ")})`
+      : "";
     const rows = this.db
       .prepare(
         `SELECT instance_domain, status, last_start
          FROM channel_crawl_progress
          WHERE status IN (${placeholders})
+         ${hostFilter}
          ORDER BY instance_domain ASC`
       )
-      .all(...statuses) as { instance_domain: string; status: ChannelCrawlStatus; last_start: number }[];
+      .all(...statuses, ...(scopedHosts ?? [])) as {
+        instance_domain: string;
+        status: ChannelCrawlStatus;
+        last_start: number;
+      }[];
     return rows.map((row) => ({
       instanceDomain: row.instance_domain,
       status: row.status,
@@ -296,6 +324,48 @@ export class ChannelStore {
   }
 
   /**
+   * Refresh counts returned by channel-list pages without rewriting metadata.
+   *
+   * ``--new-channels`` must preserve existing channel fields, but its fresh
+   * count (including NULL when omitted) decides whether the count stage must
+   * probe that channel. A newly supplied count also resolves an old count-only
+   * error. One page is committed atomically to keep pagination resume safe.
+   */
+  refreshChannelVideoCountsFromListing(rows: ChannelUpsertRow[]) {
+    if (rows.length === 0) return;
+    const statement = this.db.prepare(
+      `UPDATE channels
+       SET videos_count = ?,
+           last_error = CASE
+             WHEN ? IS NOT NULL AND last_error_source = 'videos_count' THEN NULL
+             ELSE last_error
+           END,
+           last_error_at = CASE
+             WHEN ? IS NOT NULL AND last_error_source = 'videos_count' THEN NULL
+             ELSE last_error_at
+           END,
+           last_error_source = CASE
+             WHEN ? IS NOT NULL AND last_error_source = 'videos_count' THEN NULL
+             ELSE last_error_source
+           END
+       WHERE channel_id = ? AND instance_domain = ?`
+    );
+    const transaction = this.db.transaction((items: ChannelUpsertRow[]) => {
+      for (const row of items) {
+        statement.run(
+          row.videosCount,
+          row.videosCount,
+          row.videosCount,
+          row.videosCount,
+          row.channelId,
+          row.instanceDomain
+        );
+      }
+    });
+    transaction(rows);
+  }
+
+  /**
    * Handle list channels for instance.
    */
   listChannelsForInstance(instanceDomain: string): ChannelRow[] {
@@ -312,6 +382,38 @@ export class ChannelStore {
   }
 
   /**
+   * List only channels requiring a video-count request in the selected mode.
+   *
+   * Successful rows are excluded by ``videos_count IS NULL``. Normal resume
+   * also leaves recorded failures for explicit error retry, making each count
+   * write a durable checkpoint without scanning already completed channels.
+   */
+  listChannelsForVideoCount(
+    instanceDomain: string,
+    resume: boolean,
+    errorsOnly: boolean
+  ): ChannelRow[] {
+    const errorFilter = errorsOnly
+      ? "AND last_error_source = 'videos_count'"
+      : resume
+        ? "AND COALESCE(last_error_source, '') != 'videos_count'"
+        : "";
+    return this.db
+      .prepare(
+        `SELECT channel_id, channel_name, instance_domain, videos_count,
+                health_status, health_checked_at, health_error,
+                last_error, last_error_at, last_error_source
+         FROM channels
+         WHERE instance_domain = ?
+           AND channel_name IS NOT NULL
+           AND videos_count IS NULL
+           ${errorFilter}
+         ORDER BY channel_id ASC`
+      )
+      .all(instanceDomain) as ChannelRow[];
+  }
+
+  /**
    * Handle get channel counts.
    */
   getChannelCounts(): ChannelCounts {
@@ -319,7 +421,7 @@ export class ChannelStore {
       .prepare(
         `SELECT
            COUNT(*) AS total,
-           COALESCE(SUM(videos_count IS NOT NULL), 0) AS with_videos,
+           COALESCE(SUM(videos_count > 0), 0) AS with_videos,
            COALESCE(SUM(videos_count IS NULL AND last_error_source = 'videos_count'), 0) AS with_error
          FROM channels`
       )

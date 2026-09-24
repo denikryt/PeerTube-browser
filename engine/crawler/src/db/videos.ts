@@ -173,27 +173,6 @@ export class VideoStore {
     return rows;
   }
 
-  /**
-   * List channels eligible for the combined count-and-video crawl.
-   *
-   * Every non-error channel is included once per staging progress lifecycle so
-   * an empty channel can later publish its first video. The first video-list
-   * response both persists ``total`` and ingests its metadata.
-   */
-  listChannelsForVideoCrawl(instances: string[]): VideoChannelRow[] {
-    if (instances.length === 0) return [];
-    const placeholders = instances.map(() => "?").join(", ");
-    return this.db
-      .prepare(
-        `SELECT channel_id, channel_name, display_name, channel_url, instance_domain, videos_count
-         FROM channels
-         WHERE COALESCE(last_error_source, '') != 'videos_count'
-           AND channel_name IS NOT NULL
-           AND instance_domain IN (${placeholders})`
-      )
-      .all(...instances) as VideoChannelRow[];
-  }
-
   /** Persist the authoritative total returned by a channel video-list page. */
   updateChannelVideosCount(channelId: string, instanceDomain: string, videosCount: number) {
     this.db
@@ -278,11 +257,15 @@ export class VideoStore {
   /**
    * Handle prepare video progress.
    */
-  prepareVideoProgress(channels: VideoChannelRow[], resume: boolean) {
+  prepareVideoProgress(channels: VideoChannelRow[], resume: boolean, scopedInstances?: string[]) {
     if (!resume) {
-      this.db.prepare("DELETE FROM video_crawl_progress").run();
+      if (scopedInstances) {
+        deleteInstancesInChunks(this.db, scopedInstances);
+      } else {
+        this.db.prepare("DELETE FROM video_crawl_progress").run();
+      }
     }
-    this.pruneVideoProgress(channels);
+    this.pruneVideoProgress(channels, scopedInstances);
 
     const now = Date.now();
     const insertStmt = this.db.prepare(
@@ -301,18 +284,16 @@ export class VideoStore {
   /**
    * Handle prune video progress.
    */
-  private pruneVideoProgress(channels: VideoChannelRow[]) {
-    if (channels.length === 0) {
+  private pruneVideoProgress(channels: VideoChannelRow[], scopedInstances?: string[]) {
+    if (channels.length === 0 && !scopedInstances) {
       this.db.prepare("DELETE FROM video_crawl_progress").run();
       return;
     }
     const instanceSet = new Set(channels.map((channel) => channel.instance_domain));
-    const existingInstances = this.db
+    const targetInstances = scopedInstances ?? (this.db
       .prepare("SELECT DISTINCT instance_domain FROM video_crawl_progress")
-      .all() as { instance_domain: string }[];
-    const instancesToRemove = existingInstances
-      .map((row) => row.instance_domain)
-      .filter((instance) => !instanceSet.has(instance));
+      .all() as { instance_domain: string }[]).map((row) => row.instance_domain);
+    const instancesToRemove = targetInstances.filter((instance) => !instanceSet.has(instance));
     deleteInstancesInChunks(this.db, instancesToRemove);
 
     const tempTable = "temp_video_channels";
@@ -349,16 +330,21 @@ export class VideoStore {
   /**
    * Handle list video work items.
    */
-  listVideoWorkItems(statuses: VideoCrawlStatus[]): VideoProgressRow[] {
+  listVideoWorkItems(statuses: VideoCrawlStatus[], scopedInstances?: string[]): VideoProgressRow[] {
+    if (scopedInstances && scopedInstances.length === 0) return [];
     const placeholders = statuses.map(() => "?").join(", ");
+    const instanceFilter = scopedInstances
+      ? `AND instance_domain IN (${scopedInstances.map(() => "?").join(", ")})`
+      : "";
     const rows = this.db
       .prepare(
         `SELECT instance_domain, channel_id, channel_name, status, last_start, last_error
          FROM video_crawl_progress
          WHERE status IN (${placeholders})
+         ${instanceFilter}
          ORDER BY instance_domain ASC, channel_id ASC`
       )
-      .all(...statuses) as {
+      .all(...statuses, ...(scopedInstances ?? [])) as {
       instance_domain: string;
       channel_id: string;
       channel_name: string | null;
