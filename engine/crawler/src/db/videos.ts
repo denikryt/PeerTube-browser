@@ -174,6 +174,44 @@ export class VideoStore {
   }
 
   /**
+   * List channels eligible for the combined count-and-video crawl.
+   *
+   * Unknown counts must be included so the first video-list response can both
+   * persist ``total`` and ingest its metadata. Known empty channels remain out
+   * of the incremental pass because they have no video rows to retrieve.
+   */
+  listChannelsForVideoCrawl(instances: string[]): VideoChannelRow[] {
+    if (instances.length === 0) return [];
+    const placeholders = instances.map(() => "?").join(", ");
+    return this.db
+      .prepare(
+        `SELECT channel_id, channel_name, display_name, channel_url, instance_domain, videos_count
+         FROM channels
+         WHERE (
+           videos_count > 0
+           OR (videos_count IS NULL AND COALESCE(last_error_source, '') != 'videos_count')
+         )
+           AND channel_name IS NOT NULL
+           AND instance_domain IN (${placeholders})`
+      )
+      .all(...instances) as VideoChannelRow[];
+  }
+
+  /** Persist the authoritative total returned by a channel video-list page. */
+  updateChannelVideosCount(channelId: string, instanceDomain: string, videosCount: number) {
+    this.db
+      .prepare(
+        `UPDATE channels
+         SET videos_count = ?,
+             last_error = CASE WHEN last_error_source = 'videos_count' THEN NULL ELSE last_error END,
+             last_error_at = CASE WHEN last_error_source = 'videos_count' THEN NULL ELSE last_error_at END,
+             last_error_source = CASE WHEN last_error_source = 'videos_count' THEN NULL ELSE last_error_source END
+         WHERE channel_id = ? AND instance_domain = ?`
+      )
+      .run(videosCount, channelId, instanceDomain);
+  }
+
+  /**
    * Handle list videos for tags.
    */
   listVideosForTags(mode: "missing" | "present" = "missing"): VideoTagRow[] {

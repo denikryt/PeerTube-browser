@@ -69,6 +69,14 @@ Normal `npm run crawl:videos` now enriches thumbnail and preview media from
 fallback when a host's detail endpoint fails, so the crawl remains resilient
 while preferring fresher stored media URLs.
 
+The normal video crawl is also the channel-count pass. Channels whose
+`videos_count` is unknown are included in `video_crawl_progress`; the first
+`/video-channels/:channel/videos` response persists its `total` and processes
+the returned video metadata immediately. Existing IDs in staging or the
+production reference DB are skipped, while pagination continues for later
+pages. `crawl:channels:videos-count` remains available only for explicit repair
+of legacy count errors.
+
 ## HTTP retry policy
 
 All crawler and health CLIs share one categorized HTTP policy. Timeouts,

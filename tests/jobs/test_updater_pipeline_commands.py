@@ -91,8 +91,8 @@ def _patch_lightweight(monkeypatch, *, denied=frozenset(), join=frozenset(), pro
     monkeypatch.setattr(pipeline, "prune_staging_local_non_ok_instances", lambda **kwargs: {})
 
 
-def test_normal_run_counts_channel_videos_before_crawling_video_rows(monkeypatch, tmp_path) -> None:
-    """A run makes formerly unknown non-empty channels eligible before video crawl."""
+def test_normal_run_uses_single_video_crawl_for_counts_and_metadata(monkeypatch, tmp_path) -> None:
+    """Normal updates do not issue a separate per-channel count pass."""
 
     _patch_lightweight(monkeypatch)
     seen: list[list[str]] = []
@@ -105,7 +105,6 @@ def test_normal_run_counts_channel_videos_before_crawling_video_rows(monkeypatch
     assert names == [
         "instances-cli.js",
         "channels-cli.js",
-        "channels-videos-count-cli.js",
         "videos-cli.js",
         "build-video-embeddings.py",
         "systemctl",
@@ -118,8 +117,8 @@ def test_normal_run_counts_channel_videos_before_crawling_video_rows(monkeypatch
         "precompute-similar-ann.py",
         "systemctl",
     ]
-    assert "--gpu" in seen[4]
-    assert seen[5] == ["systemctl", "stop", "svc"]
+    assert "--gpu" in seen[3]
+    assert seen[4] == ["systemctl", "stop", "svc"]
     assert seen[-1] == ["systemctl", "start", "svc"]
     search_cmd = next(cmd for cmd in seen if "rebuild-video-search-index.py" in cmd[1])
     sync_index = names.index("sync-video-index-ids.py")
@@ -251,7 +250,7 @@ def test_hosts_file_scopes_all_crawler_stages(monkeypatch, tmp_path) -> None:
         validate_files=False,
     )
     crawler_cmds = [cmd for cmd in seen if cmd[0] == "node"]
-    assert len(crawler_cmds) == 4
+    assert len(crawler_cmds) == 3
     assert all("--hosts-file" in cmd for cmd in crawler_cmds)
     assert all("/tmp/hosts.txt" in cmd for cmd in crawler_cmds)
 

@@ -45,7 +45,6 @@ The worker runs this sequence:
    - `instances-cli`
    - optional local health filter (`--skip-local-dead`)
    - `channels-cli --new-channels`
-   - `channels-videos-count-cli`
    - `videos-cli --new-videos --existing-db <prod> --sort -publishedAt`
 5. Build embeddings in staging (`build-video-embeddings.py`).
 6. Optionally stop API service (unless `--skip-systemctl`).
@@ -64,9 +63,11 @@ The worker runs this sequence:
 - Channels:
   - crawler requests channel pages from each instance API;
   - with `--new-channels`, only channels absent in DB are inserted/kept as new rows.
-- Videos: new videos only (`--new-videos`) using prod DB as reference.
-- Channel video counts: filled before video crawling so channels promoted from
-  an unknown count to a positive count are ingested in the same updater run.
+- Videos and channel counts: one video-list pass stores the response `total`
+  in `channels.videos_count` and inserts only video IDs absent from staging and
+  prod. Additional pages are fetched only while the channel has more results.
+- Legacy channel-count errors remain repairable through `--retry-errors`; the
+  normal updater no longer performs a duplicate count-only request pass.
 - Embeddings: computed for new/required rows in staging.
 
 After merge, prod contains merged changes according to `merge_rules.json`.
@@ -148,9 +149,10 @@ small host list:
   --hosts-file /tmp/problem-hosts.txt
 ```
 
-`--hosts-file` is passed through to `instances-cli`, `channels-cli`,
-`videos-cli`, and `channels-videos-count-cli`, so the staging crawl, merge, and
-post-merge jobs operate on data collected only for those listed instances.
+`--hosts-file` is passed through to `instances-cli`, `channels-cli`, and
+`videos-cli` during normal updates, plus the legacy count repair command during
+`--retry-errors`. The staging crawl, merge, and post-merge jobs therefore stay
+scoped to the listed instances.
 
 An error-only pass reuses the existing staging DB and does not replay successful
 registry discovery. It retries channel-list progress rows with `status=error`,

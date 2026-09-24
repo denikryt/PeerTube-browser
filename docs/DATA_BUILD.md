@@ -102,6 +102,11 @@ cd engine/crawler
 npm run crawl:channels:videos-count
 ```
 
+This is now a maintenance command for retrying legacy count-only failures.
+Normal video crawling stores the channel `total` from the same paginated API
+response that supplies video metadata, so the updater does not run this as a
+separate stage.
+
 Useful flags:
 - `--resume` skips channels with existing counts or errors.
 - `--errors` processes only channels with recorded errors.
@@ -120,6 +125,8 @@ Useful flags:
 
 Data source and limits:
 - Uses `GET /api/v1/video-channels/<channel>/videos?start=<offset>&count=50`.
+- The first response stores `total` in `channels.videos_count`; its `data` rows
+  are filtered against staging and production before insertion.
 - Default host concurrency is limited to avoid rate limiting.
 
 ### Tags and comments enrichment

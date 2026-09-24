@@ -172,7 +172,7 @@ export async function crawlVideos(options: VideoCrawlOptions) {
     options.maxInstances > 0
       ? filteredHosts.slice(0, options.maxInstances)
       : filteredHosts;
-  const channelsAll = store.listChannelsWithVideos(1, hosts);
+  const channelsAll = store.listChannelsForVideoCrawl(hosts);
   const channels =
     options.maxChannels > 0
       ? channelsAll.slice(0, options.maxChannels)
@@ -519,6 +519,12 @@ async function crawlChannelVideos(
     protocol = usedProtocol;
     pagesFetched += 1;
 
+    if (typeof page.total === "number" && Number.isFinite(page.total) && page.total >= 0) {
+      // The list endpoint already paid the cost of computing the channel total.
+      // Persisting it here removes the duplicate one-row count request stage.
+      store.updateChannelVideosCount(channel.channelId, host, page.total);
+    }
+
     const data = Array.isArray(page.data) ? page.data : [];
     const ids = options.newOnly
       ? Array.from(
@@ -555,13 +561,19 @@ async function crawlChannelVideos(
 
     store.updateVideoProgress(host, channel.channelId, "in_progress", nextStart, null);
 
+    const knownIds = options.newOnly
+      ? new Set([...(existingIds ?? []), ...(externalExistingIds ?? [])])
+      : null;
     if (
       options.newOnly &&
       options.stopAfterFullPages > 0 &&
       ids.length > 0 &&
-      existingIds &&
-      existingIds.size + (externalExistingIds?.size ?? 0) >= ids.length
+      knownIds &&
+      knownIds.size >= ids.length
     ) {
+      // The same video can exist in both staging and prod after a resumed or
+      // partially merged run. Count the union so overlap cannot hide a new ID
+      // and stop pagination before later pages are inspected.
       fullPagesSeen += 1;
       if (fullPagesSeen >= options.stopAfterFullPages) {
         console.log(

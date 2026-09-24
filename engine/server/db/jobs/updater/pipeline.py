@@ -291,11 +291,12 @@ def run_pipeline(
                     counts_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
                 if retry_errors:
                     counts_cmd.append("--errors")
-                _run_cmd(counts_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                    # Preserve a repair path for count errors written by older
+                    # staging runs. Normal runs now persist totals in videos-cli.
+                    _run_cmd(counts_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
-                # Resolve missing channel counts before selecting video work.
-                # Otherwise channels promoted from NULL to a positive count are
-                # invisible to this run and require an unnecessary second resume.
+                # videos-cli consumes each channel video-list response once:
+                # its total updates videos_count and its data feeds new rows.
                 _run_cmd(videos_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
                 if retry_errors:
