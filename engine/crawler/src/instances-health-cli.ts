@@ -4,12 +4,15 @@
 
 import { Command } from "commander";
 import { ChannelStore } from "./db/channels.js";
+import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
 import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
+import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
 
 interface InstanceHealthOptions {
   dbPath: string;
   concurrency: number;
+  hostDelayMs: number;
   timeoutMs: number;
   maxRetries: number;
   minAgeDays: number | null;
@@ -34,6 +37,7 @@ program
     ""
   )
   .option("--concurrency <number>", "Concurrent instances", "4")
+  .option("--host-delay <ms>", "Minimum delay between request starts to one host", "200")
   .option("--timeout <ms>", "HTTP timeout in ms", "5000")
   .option("--max-retries <number>", "HTTP retry attempts", "3")
   .option("--host <host>", "Check only a single instance host")
@@ -59,6 +63,7 @@ try {
   await checkInstancesHealth({
     dbPath: options.db,
     concurrency: Number(options.concurrency),
+    hostDelayMs: Number(options.hostDelay),
     timeoutMs: Number(options.timeout),
     maxRetries: Number(options.maxRetries),
     minAgeDays: parseOptionalNumber(options.minAgeDays),
@@ -141,21 +146,27 @@ async function processInstance(
   nextProcessed: () => number
 ) {
   const normalizedHost = host.toLowerCase();
+  const requestLimiter = createRequestLimiter(1, options.hostDelayMs);
   const current = nextProcessed();
   console.log(`[instances-health] start ${current}/${total} ${normalizedHost}`);
 
   try {
-    await fetchInstanceHealth(normalizedHost, options, "https:");
+    await fetchInstanceHealth(normalizedHost, options, "https:", requestLimiter);
     store.markInstanceHealthOk(normalizedHost);
-    console.log(`[instances-health] done ${normalizedHost}`);
+    console.log(`[instances-health] ok ${normalizedHost}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (isNoNetworkError(error)) {
-      console.warn(`[instances-health] network issue ${normalizedHost}: ${message}`);
+      console.warn(
+        `[instances-health] unchanged ${normalizedHost} local_network=${message}`
+      );
       return;
     }
-    store.markInstanceHealthError(normalizedHost, message);
-    console.warn(`[instances-health] error ${normalizedHost}: ${message}`);
+    const storedError = formatCrawlError(error);
+    store.markInstanceHealthError(normalizedHost, storedError);
+    console.warn(
+      `[instances-health] error ${normalizedHost} error=${storedError}`
+    );
   }
 }
 
@@ -165,21 +176,23 @@ async function processInstance(
 async function fetchInstanceHealth(
   host: string,
   options: InstanceHealthOptions,
-  protocol: string
+  protocol: string,
+  requestLimiter: RequestLimiter
 ) {
   const url = buildHealthUrl(host, protocol);
   try {
-    return await fetchJsonWithRetry<HealthPage>(url, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<HealthPage>(url, {
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries
-    });
-  } catch {
+    }));
+  } catch (error) {
+    if (!shouldTryAlternateProtocol(error)) throw error;
     const alternate = protocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildHealthUrl(host, alternate);
-    return await fetchJsonWithRetry<HealthPage>(alternateUrl, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<HealthPage>(alternateUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
-    });
+    }));
   }
 }
 

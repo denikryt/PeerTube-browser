@@ -45,8 +45,8 @@ The worker runs this sequence:
    - `instances-cli`
    - optional local health filter (`--skip-local-dead`)
    - `channels-cli --new-channels`
-   - `videos-cli --new-videos --existing-db <prod> --sort -publishedAt`
    - `channels-videos-count-cli`
+   - `videos-cli --new-videos --existing-db <prod> --sort -publishedAt`
 5. Build embeddings in staging (`build-video-embeddings.py`).
 6. Optionally stop API service (unless `--skip-systemctl`).
 7. Merge staging into prod (`merge-staging-db.py` with `merge_rules.json`).
@@ -65,7 +65,8 @@ The worker runs this sequence:
   - crawler requests channel pages from each instance API;
   - with `--new-channels`, only channels absent in DB are inserted/kept as new rows.
 - Videos: new videos only (`--new-videos`) using prod DB as reference.
-- Channel video counts: refreshed in staging for crawled channels.
+- Channel video counts: filled before video crawling so channels promoted from
+  an unknown count to a positive count are ingested in the same updater run.
 - Embeddings: computed for new/required rows in staging.
 
 After merge, prod contains merged changes according to `merge_rules.json`.
@@ -115,7 +116,11 @@ Default is `--gpu` unless overridden.
 - `--resume-staging`
 - `--whitelist-url`
 - `--hosts-file` (scope every crawler stage to an explicit include list)
-- `--concurrency`, `--timeout-ms`, `--max-retries`
+- `--concurrency` (parallel instance workers)
+- `--host-concurrency` (strict maximum simultaneous HTTP requests to one host)
+- `--host-delay-ms` (minimum spacing between request starts to one host; default 200 ms)
+- `--timeout-ms`, `--max-retries`
+- `--retry-errors` (with `--resume-staging`, retry only recorded crawler errors and stop)
 - `--max-instances`, `--max-channels`, `--max-videos-pages` (test caps)
 - `--videos-stop-after-full-pages`
 - `--nlist` (FAISS build)
@@ -146,6 +151,31 @@ small host list:
 `--hosts-file` is passed through to `instances-cli`, `channels-cli`,
 `videos-cli`, and `channels-videos-count-cli`, so the staging crawl, merge, and
 post-merge jobs operate on data collected only for those listed instances.
+
+An error-only pass reuses the existing staging DB and does not replay successful
+registry discovery. It retries channel-list progress rows with `status=error`,
+video progress rows with `status=error`, and channel video-count rows whose
+`last_error_source` is `videos_count`. The worker then exits without embeddings,
+production merge, FAISS, or cache rebuilds. A subsequent normal
+`--resume-staging` run performs those remaining pipeline stages:
+
+```bash
+./venv/bin/python3 engine/server/db/jobs/updater-worker.py \
+  --resume-staging \
+  --retry-errors \
+  --host-concurrency 1 \
+  --timeout-ms 15000
+```
+
+Crawler and instance-health failures retain their original message and add a category such as
+`[timeout]`, `[http_502]`, `[tls]`, or `[invalid_json]` in the existing
+`last_error` column. No additional schema columns are required.
+
+Resume selection is status-aware: missing progress rows are inserted as
+`pending`; normal channel/video crawls process `pending` and `in_progress`, and
+skip both `done` and `error`. Video-count resume skips existing counts and
+previous `videos_count` errors. This keeps error retries explicit and prevents a
+normal resume from repeatedly hammering failing hosts.
 
 ## Systemd Run
 

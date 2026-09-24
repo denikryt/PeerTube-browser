@@ -5,22 +5,26 @@
 import { ChannelStore } from "./db/channels.js";
 import type { ChannelProgressRow, ChannelUpsertRow } from "./db/types.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
+import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
+import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
 import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
 
 const PAGE_SIZE = 50;
-const HEALTH_CONCURRENCY = 4;
 
 export interface ChannelCrawlOptions {
   dbPath: string;
   hostsFile: string | null;
   excludeHostsFile: string | null;
   concurrency: number;
+  hostConcurrency: number;
+  hostDelayMs: number;
   timeoutMs: number;
   maxRetries: number;
   newOnly: boolean;
   maxInstances: number;
   maxChannels: number;
   resume: boolean;
+  errorsOnly: boolean;
 }
 
 interface ChannelInsertLimitState {
@@ -82,10 +86,12 @@ export async function crawlChannels(options: ChannelCrawlOptions) {
   };
 
   store.prepareChannelProgress(effectiveHosts, options.resume);
-  const workItems = store.listChannelWorkItems();
+  const workItems = store.listChannelWorkItems(
+    options.errorsOnly ? ["error"] : ["pending", "in_progress"]
+  );
 
   console.log(
-    `[channels] instances=${effectiveHosts.length} work=${workItems.length} concurrency=${workerCount} resume=${options.resume}`
+    `[channels] instances=${effectiveHosts.length} work=${workItems.length} concurrency=${workerCount} hostConcurrency=${options.hostConcurrency} resume=${options.resume} errorsOnly=${options.errorsOnly}`
   );
 
   const queue = workItems.slice();
@@ -166,6 +172,7 @@ async function processInstance(
   limitState: ChannelInsertLimitState
 ) {
   const normalizedHost = item.instanceDomain.toLowerCase();
+  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
   const startAt = item.status === "in_progress" ? item.lastStart : 0;
   store.updateChannelProgress(normalizedHost, "in_progress", startAt);
   console.log(`[channels] start ${normalizedHost} resume=${item.status} start=${startAt}`);
@@ -176,7 +183,8 @@ async function processInstance(
       startAt,
       store,
       options,
-      limitState
+      limitState,
+      requestLimiter
     );
 
     store.updateChannelProgress(normalizedHost, "done", 0);
@@ -187,31 +195,32 @@ async function processInstance(
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);
+    const storedError = formatCrawlError(error);
     const status = extractHttpStatus(message);
 
     if (status && status >= 400 && status < 500) {
       store.updateChannelProgress(normalizedHost, "error", startAt);
-      store.markInstanceError(normalizedHost, `HTTP ${status}`);
+      store.markInstanceError(normalizedHost, storedError);
       console.warn(`[channels] skip ${normalizedHost} status=${status}`);
       return;
     }
 
     if (status && status >= 500) {
       store.updateChannelProgress(normalizedHost, "error", startAt);
-      store.markInstanceError(normalizedHost, `HTTP ${status}`);
+      store.markInstanceError(normalizedHost, storedError);
       console.warn(`[channels] error ${normalizedHost} status=${status}`);
       return;
     }
 
     if (error instanceof SyntaxError) {
       store.updateChannelProgress(normalizedHost, "error", startAt);
-      store.markInstanceError(normalizedHost, "invalid JSON");
+      store.markInstanceError(normalizedHost, storedError);
       console.warn(`[channels] invalid JSON ${normalizedHost}`);
       return;
     }
 
     store.updateChannelProgress(normalizedHost, "error", startAt);
-    store.markInstanceError(normalizedHost, message);
+    store.markInstanceError(normalizedHost, storedError);
     console.warn(`[channels] error ${normalizedHost}: ${message}`);
   }
 }
@@ -225,6 +234,7 @@ async function processHealthInstance(
   options: ChannelCrawlOptions
 ) {
   const normalizedHost = host.toLowerCase();
+  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
   const channels = store.listChannelsForInstance(normalizedHost);
   if (channels.length === 0) {
     console.log(`[channels-health] skip ${normalizedHost} channels=0`);
@@ -245,14 +255,14 @@ async function processHealthInstance(
     processedChannels += 1;
     return processedChannels;
   };
-  await mapWithConcurrency(channels, HEALTH_CONCURRENCY, async (channel) => {
+  await mapWithConcurrency(channels, options.hostConcurrency, async (channel) => {
     if (!channel.channel_name) return;
     const current = nextProcessed();
     console.log(
       `[channels-health] start ${current}/${totalChannels} ${normalizedHost}/${channel.channel_name}`
     );
     try {
-      await fetchChannelHealth(normalizedHost, channel.channel_name, options);
+      await fetchChannelHealth(normalizedHost, channel.channel_name, options, requestLimiter);
       store.updateChannelHealthOk(channel.channel_id, normalizedHost);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -279,7 +289,8 @@ async function crawlInstanceChannels(
   startAt: number,
   store: ChannelStore,
   options: ChannelCrawlOptions,
-  limitState: ChannelInsertLimitState
+  limitState: ChannelInsertLimitState,
+  requestLimiter: RequestLimiter
 ) {
   let start = startAt;
   let protocol = "https:";
@@ -290,7 +301,13 @@ async function crawlInstanceChannels(
     if (limitState.remaining !== null && limitState.remaining <= 0) {
       break;
     }
-    const { page, protocol: usedProtocol } = await fetchPage(host, start, options, protocol);
+    const { page, protocol: usedProtocol } = await fetchPage(
+      host,
+      start,
+      options,
+      protocol,
+      requestLimiter
+    );
     protocol = usedProtocol;
 
     const data = Array.isArray(page.data) ? page.data : [];
@@ -378,23 +395,25 @@ async function fetchPage(
   host: string,
   start: number,
   options: ChannelCrawlOptions,
-  protocol: string
+  protocol: string,
+  requestLimiter: RequestLimiter
 ) {
   const primaryUrl = buildUrl(host, start, PAGE_SIZE, protocol);
 
   try {
-    const page = await fetchJsonWithRetry<Page<PeerTubeVideoChannel>>(primaryUrl, {
+    const page = await requestLimiter.run(() => fetchJsonWithRetry<Page<PeerTubeVideoChannel>>(primaryUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries
-    });
+    }));
     return { page, protocol };
   } catch (error) {
+    if (!shouldTryAlternateProtocol(error)) throw error;
     const fallbackProtocol = protocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildUrl(host, start, PAGE_SIZE, fallbackProtocol);
-    const page = await fetchJsonWithRetry<Page<PeerTubeVideoChannel>>(alternateUrl, {
+    const page = await requestLimiter.run(() => fetchJsonWithRetry<Page<PeerTubeVideoChannel>>(alternateUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
-    });
+    }));
     return { page, protocol: fallbackProtocol };
   }
 }
@@ -412,9 +431,10 @@ function buildUrl(host: string, start: number, count: number, protocol: string) 
 async function fetchChannelHealth(
   host: string,
   channelName: string,
-  options: ChannelCrawlOptions
+  options: ChannelCrawlOptions,
+  requestLimiter: RequestLimiter
 ) {
-  await fetchWithFallback(host, channelName, options, "https:");
+  await fetchWithFallback(host, channelName, options, "https:", requestLimiter);
 }
 
 /**
@@ -424,21 +444,23 @@ async function fetchWithFallback(
   host: string,
   channelName: string,
   options: ChannelCrawlOptions,
-  protocol: string
+  protocol: string,
+  requestLimiter: RequestLimiter
 ) {
   const url = buildChannelVideosUrl(host, channelName, 0, 1, protocol);
   try {
-    return await fetchJsonWithRetry<Page<unknown>>(url, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<Page<unknown>>(url, {
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries
-    });
-  } catch {
+    }));
+  } catch (error) {
+    if (!shouldTryAlternateProtocol(error)) throw error;
     const alternate = protocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildChannelVideosUrl(host, channelName, 0, 1, alternate);
-    return await fetchJsonWithRetry<Page<unknown>>(alternateUrl, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<Page<unknown>>(alternateUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
-    });
+    }));
   }
 }
 

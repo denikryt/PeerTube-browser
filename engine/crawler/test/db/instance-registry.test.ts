@@ -55,3 +55,56 @@ test("registry fetch preserves retry behavior before parsing normalized hosts", 
     );
   }
 });
+
+test("registry fetch does not retry a permanent HTTP client error", async () => {
+  let requests = 0;
+  const server = http.createServer((_request, response) => {
+    requests += 1;
+    response.writeHead(406, { "content-type": "application/json" }).end("{}");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    await assert.rejects(
+      fetchInstanceRegistryHosts(
+        `http://127.0.0.1:${address.port}/instances`,
+        { timeoutMs: 1000, maxRetries: 5 }
+      ),
+      /HTTP 406/
+    );
+    assert.equal(requests, 1);
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())
+    );
+  }
+});
+
+test("registry fetch bounds rate-limit retries by maxRetries", async () => {
+  let requests = 0;
+  const server = http.createServer((_request, response) => {
+    requests += 1;
+    response.writeHead(429, {
+      "content-type": "application/json",
+      "retry-after": "0"
+    }).end("{}");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    await assert.rejects(
+      fetchInstanceRegistryHosts(
+        `http://127.0.0.1:${address.port}/instances`,
+        { timeoutMs: 1000, maxRetries: 1 }
+      ),
+      /HTTP 429/
+    );
+    assert.equal(requests, 2);
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())
+    );
+  }
+});

@@ -68,3 +68,26 @@ Normal `npm run crawl:videos` now enriches thumbnail and preview media from
 `/api/v1/videos/:uuid` during ingestion. The list payload is still kept as a
 fallback when a host's detail endpoint fails, so the crawl remains resilient
 while preferring fresher stored media URLs.
+
+## HTTP retry policy
+
+All crawler and health CLIs share one categorized HTTP policy. Timeouts,
+`408`, `425`, `429`, `5xx`, and transient connection resets use bounded
+exponential-backoff retries. Permanent client errors such as `400`, `401`,
+`403`, `404`, `405`, `406`, `410`, and `422`, invalid JSON, certificate/TLS
+failures, and terminal network errors fail immediately. `--max-retries` also
+bounds `429` responses.
+
+HTTPS-to-HTTP fallback is attempted only when changing protocol can plausibly
+help, such as a timeout or an HTTP-only server reached through HTTPS. HTTP
+status responses and certificate failures do not trigger a second protocol
+pass. The same classification supplies persisted `[timeout]`, `[http_406]`,
+`[tls]`, and related error prefixes without duplicating retry rules.
+
+`--host-concurrency` caps simultaneous requests to one PeerTube instance, while
+`--host-delay <ms>` sets the minimum spacing between request starts to that
+instance. The delay applies consistently to instance graph/health checks,
+channel discovery/health, normal video crawling and detail enrichment,
+video-count collection, tags, comments, and thumbnail refresh. The updater
+exposes the same value as `--host-delay-ms` and forwards it to every crawler
+stage.

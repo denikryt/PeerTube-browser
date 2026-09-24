@@ -4,6 +4,8 @@
 
 import { ChannelStore } from "./db/channels.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
+import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
+import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
 import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
 
 const CHANNEL_CONCURRENCY = 2;
@@ -13,6 +15,8 @@ export interface ChannelVideosCountOptions {
   hostsFile: string | null;
   excludeHostsFile: string | null;
   concurrency: number;
+  hostConcurrency: number;
+  hostDelayMs: number;
   timeoutMs: number;
   maxRetries: number;
   resume: boolean;
@@ -55,7 +59,7 @@ export async function crawlChannelVideosCount(options: ChannelVideosCountOptions
     updatedThisRun: 0
   };
   updateStatus(
-    `[channels-videos] instances=${hosts.length} concurrency=${workerCount} resume=${options.resume} errorsOnly=${options.errorsOnly}`
+    `[channels-videos] instances=${hosts.length} concurrency=${workerCount} hostConcurrency=${options.hostConcurrency} resume=${options.resume} errorsOnly=${options.errorsOnly}`
   );
   updateProgress(progress);
   updateStatus("[channels-videos] idle");
@@ -96,6 +100,7 @@ async function processInstance(
   progress: ChannelProgressState
 ) {
   const normalizedHost = host.toLowerCase();
+  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
   updateStatus(`[channels-videos] start ${normalizedHost}`);
 
   try {
@@ -103,7 +108,8 @@ async function processInstance(
       normalizedHost,
       store,
       options,
-      progress
+      progress,
+      requestLimiter
     );
     updateStatus(
       `[channels-videos] done ${normalizedHost} updated=${updated} total=${total}`
@@ -121,7 +127,8 @@ async function updateVideosCountForInstance(
   host: string,
   store: ChannelStore,
   options: ChannelVideosCountOptions,
-  progress: ChannelProgressState
+  progress: ChannelProgressState,
+  requestLimiter: RequestLimiter
 ) {
   const channels = store.listChannelsForInstance(host);
   let updated = 0;
@@ -142,7 +149,7 @@ async function updateVideosCountForInstance(
       updateProgress(progress);
       return;
     }
-    if (options.resume && channel.last_error_source === "videos_count") {
+    if (options.resume && !options.errorsOnly && channel.last_error_source === "videos_count") {
       updateStatus(
         `[channels-videos] skip ${host}/${channel.channel_name} error=${channel.last_error ?? "unknown"}`
       );
@@ -154,7 +161,8 @@ async function updateVideosCountForInstance(
       host,
       channel.channel_name,
       options,
-      (message) => updateStatus(message)
+      (message) => updateStatus(message),
+      requestLimiter
     );
     if (videosCount.error) {
       store.updateChannelVideosCountError(channel.channel_id, host, videosCount.error);
@@ -189,20 +197,28 @@ async function fetchChannelVideosCount(
   host: string,
   channelName: string,
   options: ChannelVideosCountOptions,
-  reportStatus: StatusReporter
+  reportStatus: StatusReporter,
+  requestLimiter: RequestLimiter
 ): Promise<ChannelVideoCountResult> {
   try {
-    const page = await fetchWithFallback(host, channelName, options, "https:", reportStatus);
+    const page = await fetchWithFallback(
+      host,
+      channelName,
+      options,
+      "https:",
+      reportStatus,
+      requestLimiter
+    );
     const total = page.total;
     if (typeof total === "number" && Number.isFinite(total)) {
       return { total, error: null };
     }
-    return { total: null, error: "invalid total in response" };
+    return { total: null, error: "[invalid_response] invalid total in response" };
   } catch (error) {
     if (isNoNetworkError(error)) {
       throw error;
     }
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatCrawlError(error);
     reportStatus(`[channels-videos] count error ${host}/${channelName}: ${message}`);
     return { total: null, error: message };
   }
@@ -216,23 +232,25 @@ async function fetchWithFallback(
   channelName: string,
   options: ChannelVideosCountOptions,
   protocol: string,
-  reportStatus: StatusReporter
+  reportStatus: StatusReporter,
+  requestLimiter: RequestLimiter
 ) {
   const url = buildChannelVideosUrl(host, channelName, 0, 1, protocol);
   try {
-    return await fetchJsonWithRetry<ChannelVideoPage>(url, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<ChannelVideoPage>(url, {
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries,
       log: reportStatus
-    });
-  } catch {
+    }));
+  } catch (error) {
+    if (!shouldTryAlternateProtocol(error)) throw error;
     const alternate = protocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildChannelVideosUrl(host, channelName, 0, 1, alternate);
-    return await fetchJsonWithRetry<ChannelVideoPage>(alternateUrl, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<ChannelVideoPage>(alternateUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: Math.max(1, Math.floor(options.maxRetries / 2)),
       log: reportStatus
-    });
+    }));
   }
 }
 

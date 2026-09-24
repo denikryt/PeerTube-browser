@@ -5,6 +5,8 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { CrawlerStore } from "./db/instances.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
+import { shouldTryAlternateProtocol } from "./error-classification.js";
+import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
 import {
   loadHostsFromFile,
   normalizeHostToken,
@@ -147,8 +149,9 @@ async function processHost(
 ) {
   // Nothing to do unless we are collecting edges or expanding discovery.
   if (!options.collectGraph && !options.expandBeyondWhitelist) return;
+  const requestLimiter = createRequestLimiter(1, options.hostDelayMs);
 
-  const following = await fetchAll(host, "following", options, preferredProtocol);
+  const following = await fetchAll(host, "following", options, preferredProtocol, requestLimiter);
   console.log(`[crawl] ${host} following=${following.length}`);
   for (const item of following) {
     const targetHost = extractFollowingHost(item, host);
@@ -163,7 +166,7 @@ async function processHost(
     }
   }
 
-  const followers = await fetchAll(host, "followers", options, preferredProtocol);
+  const followers = await fetchAll(host, "followers", options, preferredProtocol, requestLimiter);
   console.log(`[crawl] ${host} followers=${followers.length}`);
   for (const item of followers) {
     const followerHost = extractFollowerHost(item, host);
@@ -186,13 +189,14 @@ async function fetchAll(
   host: string,
   kind: "following" | "followers",
   options: CrawlOptions,
-  preferredProtocol: string
+  preferredProtocol: string,
+  requestLimiter: RequestLimiter
 ) {
   const results: ServerFollowItem[] = [];
   let start = 0;
 
   while (true) {
-    const page = await fetchPage(host, kind, start, options, preferredProtocol);
+    const page = await fetchPage(host, kind, start, options, preferredProtocol, requestLimiter);
     const data = Array.isArray(page.data) ? page.data : [];
     results.push(...data);
 
@@ -216,22 +220,24 @@ async function fetchPage(
   kind: string,
   start: number,
   options: CrawlOptions,
-  preferredProtocol: string
+  preferredProtocol: string,
+  requestLimiter: RequestLimiter
 ) {
   const primaryUrl = buildUrl(host, kind, start, PAGE_SIZE, preferredProtocol);
 
   try {
-    return await fetchJsonWithRetry<Page<ServerFollowItem>>(primaryUrl, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<Page<ServerFollowItem>>(primaryUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries
-    });
-  } catch {
+    }));
+  } catch (error) {
+    if (!shouldTryAlternateProtocol(error)) throw error;
     const alternateProtocol = preferredProtocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildUrl(host, kind, start, PAGE_SIZE, alternateProtocol);
-    return await fetchJsonWithRetry<Page<ServerFollowItem>>(alternateUrl, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<Page<ServerFollowItem>>(alternateUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
-    });
+    }));
   }
 }
 

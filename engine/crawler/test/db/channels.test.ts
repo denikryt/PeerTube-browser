@@ -105,6 +105,10 @@ test("ChannelStore upserts channels and preserves progress/videos_count behavior
       ).last_start,
       123
     );
+    store.updateChannelProgress("example.org", "error", 123);
+    assert.deepEqual(store.listChannelWorkItems(["error"]), [
+      { instanceDomain: "example.org", status: "error", lastStart: 123 }
+    ]);
 
     store.updateChannelVideosCount("c1", "example.org", 5);
     assert.equal(

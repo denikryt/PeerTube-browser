@@ -140,6 +140,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--python-bin", default=sys.executable, help="Python executable for DB jobs."
     )
     parser.add_argument("--concurrency", type=int, default=4, help="Crawler concurrency.")
+    parser.add_argument(
+        "--host-concurrency",
+        type=int,
+        default=2,
+        help="Maximum simultaneous crawler HTTP requests to one PeerTube host.",
+    )
+    parser.add_argument(
+        "--host-delay-ms",
+        type=int,
+        default=200,
+        help="Minimum delay between crawler HTTP request starts to one PeerTube host.",
+    )
     parser.add_argument("--timeout-ms", type=int, default=5000, help="HTTP timeout in ms.")
     parser.add_argument("--max-retries", type=int, default=3, help="HTTP retries.")
     parser.add_argument(
@@ -185,6 +197,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Strict sync mode: reconcile prod hosts with JoinPeerTube and "
             "ingest only missing hosts."
+        ),
+    )
+    parser.add_argument(
+        "--retry-errors",
+        action="store_true",
+        help=(
+            "Retry only failed channel, video, and video-count records already "
+            "stored in a resumed staging DB, then stop before embeddings and merge."
         ),
     )
     parser.add_argument(
@@ -247,6 +267,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.set_defaults(use_gpu=True)
     args = parser.parse_args(argv)
+    if args.retry_errors and not args.resume_staging:
+        parser.error("--retry-errors requires --resume-staging so recorded failures are preserved.")
+    if args.host_concurrency < 1:
+        parser.error("--host-concurrency must be at least 1.")
+    if args.host_delay_ms < 0:
+        parser.error("--host-delay-ms must be non-negative.")
     if args.hosts_file:
         # Resolve the operator-supplied file against the updater invocation cwd
         # before pipeline stages switch cwd to engine/crawler for Node CLIs.

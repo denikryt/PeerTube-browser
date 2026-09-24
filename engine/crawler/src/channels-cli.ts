@@ -21,6 +21,8 @@ program
     ""
   )
   .option("--concurrency <number>", "Concurrent instances", "4")
+  .option("--host-concurrency <number>", "Maximum simultaneous requests to one host", "2")
+  .option("--host-delay <ms>", "Minimum delay between request starts to one host", "200")
   .option("--timeout <ms>", "HTTP timeout in ms", "5000")
   .option("--max-retries <number>", "HTTP retry attempts", "3")
   .option(
@@ -44,6 +46,7 @@ program
     false
   )
   .option("--resume", "Resume from existing progress", false);
+program.option("--errors", "Process only instances with recorded channel crawl errors", false);
 
 program.parse(process.argv);
 
@@ -56,12 +59,15 @@ try {
     hostsFile: options.hostsFile || null,
     excludeHostsFile: options.excludeHostsFile || null,
     concurrency: Number(options.concurrency),
+    hostConcurrency: Number(options.hostConcurrency),
+    hostDelayMs: Number(options.hostDelay),
     timeoutMs: Number(options.timeout),
     maxRetries: Number(options.maxRetries),
     newOnly: Boolean(options.newChannels),
     maxInstances: Number(options.maxInstances),
     maxChannels: Number(options.maxChannels),
-    resume: Boolean(options.resume)
+    resume: Boolean(options.resume),
+    errorsOnly: Boolean(options.errors)
   });
 } catch (error) {
   if (isNoNetworkError(error)) {

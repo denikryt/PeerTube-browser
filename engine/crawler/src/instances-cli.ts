@@ -32,6 +32,7 @@ program
     ""
   )
   .option("--concurrency <number>", "Concurrent workers", "4")
+  .option("--host-delay <ms>", "Minimum delay between request starts to one host", "200")
   .option("--timeout <ms>", "HTTP timeout in ms", "5000")
   .option("--max-retries <number>", "HTTP retry attempts", "3")
   .option("--max-errors <number>", "Retries per host", "3")
@@ -56,6 +57,7 @@ try {
     excludeHostsFile: options.excludeHostsFile || null,
     dbPath: options.db,
     concurrency: Number(options.concurrency),
+    hostDelayMs: Number(options.hostDelay),
     timeoutMs: Number(options.timeout),
     resume: Boolean(options.resume),
     maxRetries: Number(options.maxRetries),

@@ -119,6 +119,7 @@ test("crawlVideos prefers live detail media over stale list media during normal 
       excludeHostsFile: null,
       existingDbPath: null,
       concurrency: 1,
+      hostConcurrency: 1,
       timeoutMs: 2000,
       maxRetries: 1,
       resume: false,
@@ -150,6 +151,136 @@ test("crawlVideos prefers live detail media over stale list media during normal 
     assert.ok(fixture.requests.includes("/api/v1/videos/uuid-1"));
   } finally {
     await fixture.close();
+    temp.cleanup();
+  }
+});
+
+test("crawlVideos limits simultaneous requests to one PeerTube host", async () => {
+  const temp = createTempDb("crawler-videos-host-limit");
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
+  const server = http.createServer((request, response) => {
+    activeRequests += 1;
+    maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    setTimeout(() => {
+      if (url.pathname.includes("/api/v1/video-channels/")) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ total: 0, data: [] }));
+      } else {
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "not found" }));
+      }
+      activeRequests -= 1;
+    }, 40);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const host = `127.0.0.1:${address.port}`;
+  const channels = new ChannelStore({ dbPath: temp.dbPath });
+  channels.markInstanceDone(host);
+  channels.upsertChannels(["one", "two"].map((name, index) => ({
+    channelId: `c${index + 1}`,
+    channelName: name,
+    channelUrl: `http://${host}/video-channels/${name}`,
+    displayName: name,
+    instanceDomain: host,
+    videosCount: 1,
+    followersCount: 0,
+    avatarUrl: null
+  })));
+  channels.close();
+
+  try {
+    await crawlVideos({
+      dbPath: temp.dbPath,
+      hostsFile: null,
+      excludeHostsFile: null,
+      existingDbPath: null,
+      concurrency: 1,
+      hostConcurrency: 1,
+      timeoutMs: 1000,
+      maxRetries: 0,
+      resume: false,
+      errorsOnly: false,
+      newOnly: false,
+      stopAfterFullPages: 0,
+      sort: "-publishedAt",
+      maxInstances: 0,
+      maxChannels: 0,
+      maxVideosPages: 1,
+      tagsOnly: false,
+      updateTags: false,
+      commentsOnly: false,
+      refreshThumbnails: false,
+      hostDelayMs: 0
+    });
+    assert.equal(maxActiveRequests, 1);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    temp.cleanup();
+  }
+});
+
+test("crawlVideos spaces normal crawl requests to one PeerTube host", async () => {
+  const temp = createTempDb("crawler-videos-host-delay");
+  const requestStartedAt: number[] = [];
+  const server = http.createServer((_request, response) => {
+    requestStartedAt.push(Date.now());
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ total: 0, data: [] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const host = `127.0.0.1:${address.port}`;
+  const channels = new ChannelStore({ dbPath: temp.dbPath });
+  channels.markInstanceDone(host);
+  channels.upsertChannels(["one", "two"].map((name, index) => ({
+    channelId: `c${index + 1}`,
+    channelName: name,
+    channelUrl: `http://${host}/video-channels/${name}`,
+    displayName: name,
+    instanceDomain: host,
+    videosCount: 1,
+    followersCount: 0,
+    avatarUrl: null
+  })));
+  channels.close();
+
+  try {
+    await crawlVideos({
+      dbPath: temp.dbPath,
+      hostsFile: null,
+      excludeHostsFile: null,
+      existingDbPath: null,
+      concurrency: 1,
+      hostConcurrency: 2,
+      timeoutMs: 1000,
+      maxRetries: 0,
+      resume: false,
+      errorsOnly: false,
+      newOnly: false,
+      stopAfterFullPages: 0,
+      sort: "-publishedAt",
+      maxInstances: 0,
+      maxChannels: 0,
+      maxVideosPages: 1,
+      tagsOnly: false,
+      updateTags: false,
+      commentsOnly: false,
+      refreshThumbnails: false,
+      hostDelayMs: 60
+    });
+
+    assert.equal(requestStartedAt.length, 2);
+    assert.ok(
+      requestStartedAt[1] - requestStartedAt[0] >= 45,
+      `requests started only ${requestStartedAt[1] - requestStartedAt[0]}ms apart`
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     temp.cleanup();
   }
 });

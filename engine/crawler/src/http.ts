@@ -6,6 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { setDefaultResultOrder } from "node:dns";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { classifyCrawlError } from "./error-classification.js";
 
 // Prefer IPv4 first to avoid IPv6 timeouts on some instances.
 setDefaultResultOrder("ipv4first");
@@ -82,33 +83,12 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
         response = await fetchViaCurl(url, options.timeoutMs);
       }
 
-      if (response.status === 429) {
-        const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
-        const delay = retryAfter ?? backoff;
-        const message = `---\n[http] 429 attempt=${attempt}/${options.maxRetries} retry_in_ms=${delay}\n${url}`;
-        if (options.log) {
-          options.log(message);
-        } else {
-          console.warn(message);
-        }
-        await sleep(delay);
-        backoff = Math.min(backoff * 2, 30000);
-        continue;
-      }
-
       if (!response.ok) {
-        if (response.status >= 500 && attempt <= options.maxRetries) {
-          const message = `---\n[http] ${response.status} attempt=${attempt}/${options.maxRetries} retry_in_ms=${backoff}\n${url}`;
-          if (options.log) {
-            options.log(message);
-          } else {
-            console.warn(message);
-          }
-          await sleep(backoff);
-          backoff = Math.min(backoff * 2, 30000);
-          continue;
-        }
-        throw new Error(`HTTP ${response.status} for ${url}`);
+        const statusError = new Error(`HTTP ${response.status} for ${url}`) as Error & {
+          retryAfterMs?: number | null;
+        };
+        statusError.retryAfterMs = parseRetryAfter(response.headers.get("retry-after"));
+        throw statusError;
       }
 
       return (await response.json()) as T;
@@ -117,7 +97,8 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
         const message = error instanceof Error ? error.message : String(error);
         throw new NoNetworkError(message);
       }
-      if (attempt > options.maxRetries) {
+      const classification = classifyCrawlError(error);
+      if (!classification.retryable || attempt > options.maxRetries) {
         throw error;
       }
       const elapsedMs = Date.now() - startedAt;
@@ -132,13 +113,18 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
         elapsedMs
       });
       const debugSuffix = debug ? `\n${debug}` : "";
-      const logMessage = `---\n[http] error attempt=${attempt}/${options.maxRetries} retry_in_ms=${backoff}\n${url}\nreason=${reason}${debugSuffix}`;
+      const retryAfterMs =
+        error && typeof error === "object" && "retryAfterMs" in error
+          ? (error as { retryAfterMs?: number | null }).retryAfterMs
+          : null;
+      const delay = retryAfterMs ?? backoff;
+      const logMessage = `---\n[http] retry kind=${classification.kind} attempt=${attempt}/${options.maxRetries} retry_in_ms=${delay}\n${url}\nreason=${reason}${debugSuffix}`;
       if (options.log) {
         options.log(logMessage);
       } else {
         console.warn(logMessage);
       }
-      await sleep(backoff);
+      await sleep(delay);
       backoff = Math.min(backoff * 2, 30000);
     } finally {
       clearTimeout(timeout);

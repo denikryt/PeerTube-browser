@@ -30,6 +30,7 @@ program
     "Number of concurrent instance workers",
     "4"
   )
+  .option("--host-concurrency <number>", "Maximum simultaneous requests to one host", "2")
   .option("--timeout <ms>", "HTTP timeout per request in ms", "5000")
   .option("--max-retries <number>", "HTTP retry attempts per request", "3")
   .option(
@@ -84,7 +85,7 @@ program
   )
   .option(
     "--host-delay <ms>",
-    "Delay between requests per host in tags/comments mode",
+    "Minimum delay between request starts to one host in every mode",
     "200"
   )
   .option("--resume", "Resume from existing progress tables", false)
@@ -101,6 +102,7 @@ try {
     excludeHostsFile: options.excludeHostsFile || null,
     existingDbPath: options.existingDb || null,
     concurrency: Number(options.concurrency),
+    hostConcurrency: Number(options.hostConcurrency),
     timeoutMs: Number(options.timeout),
     maxRetries: Number(options.maxRetries),
     newOnly: Boolean(options.newVideos),

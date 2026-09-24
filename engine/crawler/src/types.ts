@@ -11,6 +11,7 @@ export interface CrawlOptions {
   excludeHostsFile: string | null;
   dbPath: string;
   concurrency: number;
+  hostDelayMs: number;
   timeoutMs: number;
   resume: boolean;
   maxRetries: number;

@@ -77,8 +77,11 @@ def run_pipeline(
     logging.info("worker start prod_db=%s staging_db=%s", paths.prod_db, paths.staging_db)
     service_stopped = False
     pipeline_start = time.monotonic()
+    retry_errors = bool(getattr(args, "retry_errors", False))
     if args.dry_run and not args.sync_join_whitelist:
         raise RuntimeError("--dry-run is supported only together with --sync-join-whitelist.")
+    if retry_errors and (not args.resume_staging or not paths.staging_db.exists()):
+        raise RuntimeError("--retry-errors requires an existing --resume-staging database.")
 
     temp_files: list[Path] = []
     try:
@@ -156,7 +159,9 @@ def run_pipeline(
                 if whitelist_hosts_file is not None:
                     temp_files.append(whitelist_hosts_file)
 
-            run_crawl_stages = (not args.sync_join_whitelist) or bool(sync_new_hosts)
+            host_concurrency = int(getattr(args, "host_concurrency", 2))
+            host_delay_ms = int(getattr(args, "host_delay_ms", 200))
+            run_crawl_stages = retry_errors or (not args.sync_join_whitelist) or bool(sync_new_hosts)
             if run_crawl_stages:
                 # Keep one host-scope file flowing through every crawler stage so a
                 # targeted updater run stays constrained after instances discovery.
@@ -164,29 +169,35 @@ def run_pipeline(
                 if args.hosts_file:
                     host_scope_args = ["--hosts-file", args.hosts_file]
 
-                instances_cmd = [
-                    args.node_bin,
-                    (paths.crawler_dist / "instances-cli.js").as_posix(),
-                    "--db",
-                    paths.staging_db.as_posix(),
-                    "--resume",
-                    "--max-instances",
-                    str(args.max_instances),
-                    "--concurrency",
-                    str(args.concurrency),
-                    "--timeout",
-                    str(args.timeout_ms),
-                    "--max-retries",
-                    str(args.max_retries),
-                    *host_scope_args,
-                ]
-                if whitelist_hosts_file is not None:
-                    instances_cmd.extend(["--whitelist-file", whitelist_hosts_file.as_posix()])
-                else:
-                    instances_cmd.extend(["--whitelist-url", args.whitelist_url])
-                if exclude_hosts_file is not None:
-                    instances_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
-                _run_cmd(instances_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                # Registry discovery has no error-only selector. A retry run
+                # intentionally preserves the staging host set and revisits the
+                # three crawler stages that persist retryable record errors.
+                if not retry_errors:
+                    instances_cmd = [
+                        args.node_bin,
+                        (paths.crawler_dist / "instances-cli.js").as_posix(),
+                        "--db",
+                        paths.staging_db.as_posix(),
+                        "--resume",
+                        "--max-instances",
+                        str(args.max_instances),
+                        "--concurrency",
+                        str(args.concurrency),
+                        "--host-delay",
+                        str(host_delay_ms),
+                        "--timeout",
+                        str(args.timeout_ms),
+                        "--max-retries",
+                        str(args.max_retries),
+                        *host_scope_args,
+                    ]
+                    if whitelist_hosts_file is not None:
+                        instances_cmd.extend(["--whitelist-file", whitelist_hosts_file.as_posix()])
+                    else:
+                        instances_cmd.extend(["--whitelist-url", args.whitelist_url])
+                    if exclude_hosts_file is not None:
+                        instances_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
+                    _run_cmd(instances_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
                 if args.skip_local_dead:
                     prune_staging_local_non_ok_instances(
@@ -206,6 +217,10 @@ def run_pipeline(
                     str(args.max_channels),
                     "--concurrency",
                     str(args.concurrency),
+                    "--host-concurrency",
+                    str(host_concurrency),
+                    "--host-delay",
+                    str(host_delay_ms),
                     "--timeout",
                     str(args.timeout_ms),
                     "--max-retries",
@@ -214,6 +229,8 @@ def run_pipeline(
                 ]
                 if exclude_hosts_file is not None:
                     channels_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
+                if retry_errors:
+                    channels_cmd.append("--errors")
                 _run_cmd(channels_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
                 videos_cmd = [
@@ -237,6 +254,10 @@ def run_pipeline(
                     str(args.videos_stop_after_full_pages),
                     "--concurrency",
                     str(args.concurrency),
+                    "--host-concurrency",
+                    str(host_concurrency),
+                    "--host-delay",
+                    str(host_delay_ms),
                     "--timeout",
                     str(args.timeout_ms),
                     "--max-retries",
@@ -245,7 +266,8 @@ def run_pipeline(
                 ]
                 if exclude_hosts_file is not None:
                     videos_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
-                _run_cmd(videos_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                if retry_errors:
+                    videos_cmd.append("--errors")
 
                 counts_cmd = [
                     args.node_bin,
@@ -255,6 +277,10 @@ def run_pipeline(
                     "--resume",
                     "--concurrency",
                     str(args.concurrency),
+                    "--host-concurrency",
+                    str(host_concurrency),
+                    "--host-delay",
+                    str(host_delay_ms),
                     "--timeout",
                     str(args.timeout_ms),
                     "--max-retries",
@@ -263,7 +289,23 @@ def run_pipeline(
                 ]
                 if exclude_hosts_file is not None:
                     counts_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
+                if retry_errors:
+                    counts_cmd.append("--errors")
                 _run_cmd(counts_cmd, cwd=paths.crawler_dir, runner=command_runner)
+
+                # Resolve missing channel counts before selecting video work.
+                # Otherwise channels promoted from NULL to a positive count are
+                # invisible to this run and require an unnecessary second resume.
+                _run_cmd(videos_cmd, cwd=paths.crawler_dir, runner=command_runner)
+
+                if retry_errors:
+                    # Error retry is deliberately a staging-repair operation.
+                    # Keeping merge and derived builds for the following normal
+                    # resume run lets operators inspect remaining failures first.
+                    logging.info(
+                        "retry-errors finished crawler stages; staging retained without merge"
+                    )
+                    return
 
                 embeddings_cmd = [
                     args.python_bin,

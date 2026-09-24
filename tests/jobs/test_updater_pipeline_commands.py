@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from engine.server.db.jobs.updater import pipeline
 
 
@@ -37,6 +39,8 @@ def _args(tmp_path: Path, **overrides):
         node_bin="node",
         python_bin="python",
         concurrency=4,
+        host_concurrency=2,
+        host_delay_ms=200,
         timeout_ms=5000,
         max_retries=3,
         videos_stop_after_full_pages=2,
@@ -46,6 +50,7 @@ def _args(tmp_path: Path, **overrides):
         hosts_file=None,
         whitelist_url="https://join.example/hosts",
         sync_join_whitelist=False,
+        retry_errors=False,
         yes=False,
         dry_run=False,
         skip_local_dead=False,
@@ -86,8 +91,8 @@ def _patch_lightweight(monkeypatch, *, denied=frozenset(), join=frozenset(), pro
     monkeypatch.setattr(pipeline, "prune_staging_local_non_ok_instances", lambda **kwargs: {})
 
 
-def test_normal_run_preserves_command_order_and_gpu_flags(monkeypatch, tmp_path) -> None:
-    """Normal runs emit the current crawler/job/systemctl command order."""
+def test_normal_run_counts_channel_videos_before_crawling_video_rows(monkeypatch, tmp_path) -> None:
+    """A run makes formerly unknown non-empty channels eligible before video crawl."""
 
     _patch_lightweight(monkeypatch)
     seen: list[list[str]] = []
@@ -100,8 +105,8 @@ def test_normal_run_preserves_command_order_and_gpu_flags(monkeypatch, tmp_path)
     assert names == [
         "instances-cli.js",
         "channels-cli.js",
-        "videos-cli.js",
         "channels-videos-count-cli.js",
+        "videos-cli.js",
         "build-video-embeddings.py",
         "systemctl",
         "merge-staging-db.py",
@@ -249,3 +254,66 @@ def test_hosts_file_scopes_all_crawler_stages(monkeypatch, tmp_path) -> None:
     assert len(crawler_cmds) == 4
     assert all("--hosts-file" in cmd for cmd in crawler_cmds)
     assert all("/tmp/hosts.txt" in cmd for cmd in crawler_cmds)
+
+
+def test_host_concurrency_is_forwarded_to_per_host_crawler_stages(monkeypatch, tmp_path) -> None:
+    """Updater gives every host-local crawler stage the requested request limit."""
+
+    _patch_lightweight(monkeypatch)
+    seen: list[list[str]] = []
+    pipeline.run_pipeline(
+        _args(tmp_path, host_concurrency=1),
+        command_runner=lambda cmd, cwd: seen.append(list(cmd)),
+        validate_files=False,
+    )
+    crawler_cmds = [cmd for cmd in seen if cmd[0] == "node" and Path(cmd[1]).name != "instances-cli.js"]
+    assert crawler_cmds
+    assert all(cmd[cmd.index("--host-concurrency") + 1] == "1" for cmd in crawler_cmds)
+
+
+def test_host_delay_is_forwarded_to_every_per_host_crawler_stage(monkeypatch, tmp_path) -> None:
+    """Updater applies one pacing value to channels, videos, and count requests."""
+
+    _patch_lightweight(monkeypatch)
+    seen: list[list[str]] = []
+    pipeline.run_pipeline(
+        _args(tmp_path, host_delay_ms=750),
+        command_runner=lambda cmd, cwd: seen.append(list(cmd)),
+        validate_files=False,
+    )
+    crawler_cmds = [cmd for cmd in seen if cmd[0] == "node"]
+    assert crawler_cmds
+    assert all(cmd[cmd.index("--host-delay") + 1] == "750" for cmd in crawler_cmds)
+
+
+def test_retry_errors_runs_only_error_capable_crawler_stages(monkeypatch, tmp_path) -> None:
+    """Retry mode revisits failed staging records without replaying successful discovery."""
+
+    _patch_lightweight(monkeypatch)
+    seen: list[list[str]] = []
+    (tmp_path / "staging.db").touch()
+    pipeline.run_pipeline(
+        _args(tmp_path, retry_errors=True, resume_staging=True),
+        command_runner=lambda cmd, cwd: seen.append(list(cmd)),
+        validate_files=False,
+    )
+    crawler_cmds = [cmd for cmd in seen if cmd[0] == "node"]
+    assert [Path(cmd[1]).name for cmd in crawler_cmds] == [
+        "channels-cli.js",
+        "channels-videos-count-cli.js",
+        "videos-cli.js",
+    ]
+    assert all("--errors" in cmd for cmd in crawler_cmds)
+    assert seen == crawler_cmds
+
+
+def test_retry_errors_refuses_missing_staging(monkeypatch, tmp_path) -> None:
+    """Retry mode cannot silently initialize an empty DB and discard the error set."""
+
+    _patch_lightweight(monkeypatch)
+    with pytest.raises(RuntimeError, match="existing --resume-staging"):
+        pipeline.run_pipeline(
+            _args(tmp_path, retry_errors=True, resume_staging=True),
+            command_runner=lambda cmd, cwd: None,
+            validate_files=False,
+        )

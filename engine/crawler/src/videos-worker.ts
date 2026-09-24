@@ -2,7 +2,6 @@
  * Module `engine/crawler/src/videos-worker.ts`: provide runtime functionality.
  */
 
-import { setTimeout as sleep } from "node:timers/promises";
 import Database from "better-sqlite3";
 import { VideoStore } from "./db/videos.js";
 import type {
@@ -13,6 +12,8 @@ import type {
   VideoUpsertRow
 } from "./db/types.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
+import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
+import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
 import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
 import {
   resolvePreferredPreviewPath,
@@ -30,6 +31,7 @@ export interface VideoCrawlOptions {
   excludeHostsFile: string | null;
   existingDbPath: string | null;
   concurrency: number;
+  hostConcurrency: number;
   timeoutMs: number;
   maxRetries: number;
   resume: boolean;
@@ -197,7 +199,7 @@ export async function crawlVideos(options: VideoCrawlOptions) {
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
 
   console.log(
-    `[videos] instances=${instances.length} channels=${workItems.length} concurrency=${workerCount} resume=${options.resume} errorsOnly=${options.errorsOnly}`
+    `[videos] instances=${instances.length} channels=${workItems.length} concurrency=${workerCount} hostConcurrency=${options.hostConcurrency} resume=${options.resume} errorsOnly=${options.errorsOnly}`
   );
 
   try {
@@ -300,11 +302,12 @@ async function processInstance(
   options: VideoCrawlOptions
 ) {
   const normalizedHost = host.toLowerCase();
+  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
   console.log(`[videos] start ${normalizedHost} channels=${items.length}`);
 
   await mapWithConcurrency(items, CHANNEL_CONCURRENCY, async (item) => {
     const meta = channelMeta.get(item.channelId);
-    await processChannel(normalizedHost, item, meta, store, existingDb, options);
+    await processChannel(normalizedHost, item, meta, store, existingDb, options, requestLimiter);
   });
 
   console.log(`[videos] done ${normalizedHost}`);
@@ -356,11 +359,11 @@ async function processTagInstance(
   options: VideoCrawlOptions
 ) {
   const normalizedHost = host.toLowerCase();
+  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
   console.log(`[tags] start ${normalizedHost} videos=${items.length}`);
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
+  for (const item of items) {
     try {
-      const tagsJson = await fetchVideoTags(normalizedHost, item.videoUuid, options);
+      const tagsJson = await fetchVideoTags(normalizedHost, item.videoUuid, options, requestLimiter);
       if (tagsJson !== null) {
         store.updateVideoTags(item.videoId, normalizedHost, tagsJson);
       }
@@ -383,9 +386,6 @@ async function processTagInstance(
         console.warn(`[tags] error ${normalizedHost}/${item.videoUuid}: ${message}`);
       }
     }
-    if (options.hostDelayMs > 0 && index < items.length - 1) {
-      await sleep(options.hostDelayMs);
-    }
   }
 
   console.log(`[tags] done ${normalizedHost}`);
@@ -401,11 +401,11 @@ async function processCommentsInstance(
   options: VideoCrawlOptions
 ) {
   const normalizedHost = host.toLowerCase();
+  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
   console.log(`[comments] start ${normalizedHost} videos=${items.length}`);
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
+  for (const item of items) {
     try {
-      const commentsCount = await fetchVideoComments(normalizedHost, item.videoUuid, options);
+      const commentsCount = await fetchVideoComments(normalizedHost, item.videoUuid, options, requestLimiter);
       if (commentsCount !== null) {
         store.updateVideoComments(item.videoId, normalizedHost, commentsCount);
       }
@@ -428,9 +428,6 @@ async function processCommentsInstance(
         console.warn(`[comments] error ${normalizedHost}/${item.videoUuid}: ${message}`);
       }
     }
-    if (options.hostDelayMs > 0 && index < items.length - 1) {
-      await sleep(options.hostDelayMs);
-    }
   }
 
   console.log(`[comments] done ${normalizedHost}`);
@@ -445,7 +442,8 @@ async function processChannel(
   meta: ChannelMeta | undefined,
   store: VideoStore,
   existingDb: Database.Database | null,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  requestLimiter: RequestLimiter
 ) {
   const channelSlug = item.channelName ?? meta?.channelSlug ?? null;
   if (!channelSlug) {
@@ -470,7 +468,8 @@ async function processChannel(
       startAt,
       store,
       existingDb,
-      options
+      options,
+      requestLimiter
     );
     store.updateVideoProgress(host, item.channelId, "done", 0, null);
     store.incrementState("videos_new_total", localCount);
@@ -478,7 +477,7 @@ async function processChannel(
       `[videos] channel done ${host}/${channelSlug} new=${localCount} total=${totalCount}`
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatCrawlError(error);
     store.updateVideoProgress(host, item.channelId, "error", startAt, message);
     console.warn(`[videos] channel error ${host}/${channelSlug}: ${message}`);
   }
@@ -498,7 +497,8 @@ async function crawlChannelVideos(
   startAt: number,
   store: VideoStore,
   existingDb: Database.Database | null,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  requestLimiter: RequestLimiter
 ) {
   let start = startAt;
   let protocol = "https:";
@@ -513,7 +513,8 @@ async function crawlChannelVideos(
       channel.channelSlug,
       start,
       options,
-      protocol
+      protocol,
+      requestLimiter
     );
     protocol = usedProtocol;
     pagesFetched += 1;
@@ -545,7 +546,8 @@ async function crawlChannelVideos(
         checkedAt,
         existingIds,
         externalExistingIds,
-        options
+        options,
+        requestLimiter
       );
       localCount += rows.length;
       store.upsertVideos(rows);
@@ -604,7 +606,8 @@ async function buildVideoRows(
   checkedAt: number,
   existingIds: Set<string> | null,
   externalExistingIds: Set<string> | null,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  requestLimiter: RequestLimiter
 ) {
   const rows = new Array<VideoUpsertRow | null>(videos.length).fill(null);
 
@@ -620,7 +623,13 @@ async function buildVideoRows(
         return;
       }
 
-      const detailResult = await fetchVideoDetailForMedia(host, video, options, protocol);
+      const detailResult = await fetchVideoDetailForMedia(
+        host,
+        video,
+        options,
+        protocol,
+        requestLimiter
+      );
       rows[index] = toVideoRow(video, host, protocol, channel, checkedAt, detailResult);
     }
   );
@@ -636,7 +645,8 @@ async function fetchPage(
   channelName: string,
   start: number,
   options: VideoCrawlOptions,
-  protocol: string
+  protocol: string,
+  requestLimiter: RequestLimiter
 ) {
   const primaryUrl = buildChannelVideosUrl(
     host,
@@ -648,12 +658,13 @@ async function fetchPage(
   );
 
   try {
-    const page = await fetchJsonWithRetry<Page<PeerTubeVideo>>(primaryUrl, {
+    const page = await requestLimiter.run(() => fetchJsonWithRetry<Page<PeerTubeVideo>>(primaryUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries
-    });
+    }));
     return { page, protocol };
-  } catch {
+  } catch (error) {
+    if (!shouldTryAlternateProtocol(error)) throw error;
     const fallbackProtocol = protocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildChannelVideosUrl(
       host,
@@ -663,10 +674,10 @@ async function fetchPage(
       fallbackProtocol,
       options.sort
     );
-    const page = await fetchJsonWithRetry<Page<PeerTubeVideo>>(alternateUrl, {
+    const page = await requestLimiter.run(() => fetchJsonWithRetry<Page<PeerTubeVideo>>(alternateUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
-    });
+    }));
     return { page, protocol: fallbackProtocol };
   }
 }
@@ -915,25 +926,27 @@ async function fetchVideoDetail(
   host: string,
   videoUuid: string,
   options: VideoCrawlOptions,
-  protocol: string
+  protocol: string,
+  requestLimiter: RequestLimiter
 ): Promise<VideoDetailFetchResult> {
   const primaryUrl = buildVideoDetailUrl(host, videoUuid, protocol);
   try {
     return {
-      detail: await fetchJsonWithRetry<PeerTubeVideoDetail>(primaryUrl, {
+      detail: await requestLimiter.run(() => fetchJsonWithRetry<PeerTubeVideoDetail>(primaryUrl, {
         timeoutMs: options.timeoutMs,
         maxRetries: options.maxRetries
-      }),
+      })),
       protocol
     };
-  } catch {
+  } catch (error) {
+    if (!shouldTryAlternateProtocol(error)) throw error;
     const fallbackProtocol = protocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildVideoDetailUrl(host, videoUuid, fallbackProtocol);
     return {
-      detail: await fetchJsonWithRetry<PeerTubeVideoDetail>(alternateUrl, {
+      detail: await requestLimiter.run(() => fetchJsonWithRetry<PeerTubeVideoDetail>(alternateUrl, {
         timeoutMs: options.timeoutMs,
         maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
-      }),
+      })),
       protocol: fallbackProtocol
     };
   }
@@ -947,11 +960,12 @@ async function fetchVideoDetailForMedia(
   host: string,
   video: PeerTubeVideo,
   options: VideoCrawlOptions,
-  protocol: string
+  protocol: string,
+  requestLimiter: RequestLimiter
 ): Promise<VideoDetailFetchResult | null> {
   if (!video.uuid) return null;
   try {
-    return await fetchVideoDetail(host, video.uuid, options, protocol);
+    return await fetchVideoDetail(host, video.uuid, options, protocol, requestLimiter);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
@@ -1009,9 +1023,16 @@ async function thumbnailWorkerLoop(
     const host = queue.shift();
     if (!host) return;
     const rows = grouped.get(host) ?? [];
+    const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
     for (const row of rows) {
       try {
-        const { detail, protocol } = await fetchVideoDetail(host, row.videoUuid, options, "https:");
+        const { detail, protocol } = await fetchVideoDetail(
+          host,
+          row.videoUuid,
+          options,
+          "https:",
+          requestLimiter
+        );
         const thumbnailUrl = resolvePreferredThumbnailUrl(detail, {}, host, protocol);
         if (thumbnailUrl) {
           store.updateVideoThumbnail(row.videoId, row.instanceDomain, thumbnailUrl, Date.now());
@@ -1019,9 +1040,6 @@ async function thumbnailWorkerLoop(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         store.updateVideoError(row.videoId, row.instanceDomain, message);
-      }
-      if (options.hostDelayMs > 0) {
-        await sleep(options.hostDelayMs);
       }
     }
   }
@@ -1033,9 +1051,16 @@ async function thumbnailWorkerLoop(
 async function fetchVideoTags(
   host: string,
   videoUuid: string,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  requestLimiter: RequestLimiter
 ): Promise<string | null> {
-  const { detail } = await fetchVideoDetail(host, videoUuid, options, "https:");
+  const { detail } = await fetchVideoDetail(
+    host,
+    videoUuid,
+    options,
+    "https:",
+    requestLimiter
+  );
   return toTagsJson(detail.tags);
 }
 
@@ -1045,9 +1070,16 @@ async function fetchVideoTags(
 async function fetchVideoComments(
   host: string,
   videoUuid: string,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  requestLimiter: RequestLimiter
 ): Promise<number | null> {
-  const { detail } = await fetchVideoDetail(host, videoUuid, options, "https:");
+  const { detail } = await fetchVideoDetail(
+    host,
+    videoUuid,
+    options,
+    "https:",
+    requestLimiter
+  );
   return toCommentsCount(detail.comments ?? detail.commentsCount ?? detail.comments_count);
 }
 

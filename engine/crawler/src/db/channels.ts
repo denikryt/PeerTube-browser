@@ -241,15 +241,18 @@ export class ChannelStore {
   /**
    * Handle list channel work items.
    */
-  listChannelWorkItems(): ChannelProgressRow[] {
+  listChannelWorkItems(
+    statuses: ChannelCrawlStatus[] = ["pending", "in_progress"]
+  ): ChannelProgressRow[] {
+    const placeholders = statuses.map(() => "?").join(", ");
     const rows = this.db
       .prepare(
         `SELECT instance_domain, status, last_start
          FROM channel_crawl_progress
-         WHERE status IN ('pending', 'in_progress')
+         WHERE status IN (${placeholders})
          ORDER BY instance_domain ASC`
       )
-      .all() as { instance_domain: string; status: ChannelCrawlStatus; last_start: number }[];
+      .all(...statuses) as { instance_domain: string; status: ChannelCrawlStatus; last_start: number }[];
     return rows.map((row) => ({
       instanceDomain: row.instance_domain,
       status: row.status,
