@@ -125,6 +125,8 @@ Useful flags:
 
 Data source and limits:
 - Uses `GET /api/v1/video-channels/<channel>/videos?start=<offset>&count=50`.
+- Checks previously empty channels once per new staging cycle so their first
+  later upload is discoverable without a separate count pass.
 - The first response stores `total` in `channels.videos_count`; its `data` rows
   are filtered against staging and production before insertion.
 - Default host concurrency is limited to avoid rate limiting.

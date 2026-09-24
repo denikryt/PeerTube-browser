@@ -166,7 +166,7 @@ test("crawlVideos stores count and new video metadata for an unknown-count chann
   }
 });
 
-test("crawlVideos marks an unknown empty channel done without creating videos", async () => {
+test("crawlVideos rechecks a known empty channel and keeps it done when still empty", async () => {
   const temp = createTempDb("crawler-videos-single-pass-empty");
   const server = http.createServer((_request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
@@ -178,7 +178,7 @@ test("crawlVideos marks an unknown empty channel done without creating videos", 
   const host = `127.0.0.1:${address.port}`;
 
   try {
-    seedChannel(temp.dbPath, host, null);
+    seedChannel(temp.dbPath, host, 0);
     await crawlVideos({
       dbPath: temp.dbPath,
       hostsFile: null,

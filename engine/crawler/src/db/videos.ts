@@ -176,9 +176,9 @@ export class VideoStore {
   /**
    * List channels eligible for the combined count-and-video crawl.
    *
-   * Unknown counts must be included so the first video-list response can both
-   * persist ``total`` and ingest its metadata. Known empty channels remain out
-   * of the incremental pass because they have no video rows to retrieve.
+   * Every non-error channel is included once per staging progress lifecycle so
+   * an empty channel can later publish its first video. The first video-list
+   * response both persists ``total`` and ingests its metadata.
    */
   listChannelsForVideoCrawl(instances: string[]): VideoChannelRow[] {
     if (instances.length === 0) return [];
@@ -187,10 +187,7 @@ export class VideoStore {
       .prepare(
         `SELECT channel_id, channel_name, display_name, channel_url, instance_domain, videos_count
          FROM channels
-         WHERE (
-           videos_count > 0
-           OR (videos_count IS NULL AND COALESCE(last_error_source, '') != 'videos_count')
-         )
+         WHERE COALESCE(last_error_source, '') != 'videos_count'
            AND channel_name IS NOT NULL
            AND instance_domain IN (${placeholders})`
       )
