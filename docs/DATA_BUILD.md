@@ -175,6 +175,44 @@ python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whiteli
 
 Schema ownership is documented in `docs/SCHEMA_OWNERSHIP.md`.
 
+
+### Metadata-v1 ingestion and historical backfill
+
+Normal `crawl:videos` ingestion now persists detail metadata needed by the browser and by a future ActivityPub adapter: language/category/licence identifiers, source timestamps, sensitive summary, live flags, support/aspect ratio, account identity, and canonical thumbnail dimensions. Fresh rows also persist detail tags.
+
+Historical rows must be migrated before the metadata maintenance command is used:
+
+```bash
+python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whitelist.db
+cd engine/crawler
+npm run crawl:videos:metadata -- --db ../server/db/whitelist.db
+```
+
+The metadata command is a data-only operation. It validates the current metadata schema read-only and does not run crawler schema migrations against `whitelist.db`. `--update-metadata` explicitly revisits rows that already completed the current metadata version.
+
+Existing embedding-source fields are protected during ordinary repeat crawl and metadata backfill: `title`, `description`, `tags_json`, `category`, and `channel_name`. Intentionally changing any of those fields after embeddings exist requires a full embedding/artifact rebuild. The legacy tags maintenance commands remain embedding-affecting for existing rows. `comments_count` is dynamic metadata and is **not** an embedding input.
+
+### Embedding recipe migration barrier
+
+The semantic embedding recipe is `title + description + tags + category + channel name`; it no longer includes `comments_count`. Existing production embeddings created by the old recipe must be rebuilt as one isolated maintenance operation. Do not allow updater merges or Engine serving while the production embedding/ANN/similarity set is partially rebuilt.
+
+Operational barrier:
+
+```text
+1. disable/prevent updater-worker/timer and verify no updater run is active
+2. stop peertube-browser Engine
+3. deploy/activate the code with the new embedding recipe
+4. build-video-embeddings.py --force (using the deployment's normal CPU/GPU flags)
+5. sync-video-index-ids.py
+6. build-ann-index.py (using the deployment's normal output/CPU/GPU flags)
+7. precompute-similar-ann.py --reset (using the deployment's normal paths/flags)
+8. validate DB integrity/counts, stable IDs, FAISS metadata/ntotal, similarity cache
+9. start peertube-browser Engine
+10. re-enable updater execution
+```
+
+If any rebuild/validation step fails, keep Engine stopped and updater disabled until the reconstructible derived artifacts are rebuilt successfully. A normal updater merge independently force-rebuilds all staging embeddings with the currently deployed recipe immediately before delta calculation/merge, including `--resume-staging`; therefore an old resumed staging DB cannot reintroduce vectors from the previous recipe.
+
 ## 3) Build embeddings
 Embeddings use SentenceTransformers. The text payload is built from:
 - `title`
@@ -182,7 +220,6 @@ Embeddings use SentenceTransformers. The text payload is built from:
 - `tags_json`
 - `category`
 - `channel_name`
-- `comments_count`
 
 Default model is `all-MiniLM-L6-v2`.
 ```bash

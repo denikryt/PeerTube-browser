@@ -34,6 +34,7 @@ from .commands import CommandRun, run_cmd, run_with_cpu_fallback, systemctl_cmd
 from .locks import single_run_lock
 from .paths import from_args, validate_required_files
 from .staging import (
+    assert_production_schema_compatible,
     count_staging_deltas,
     init_staging_db,
     inject_replace_embedding_for_test,
@@ -89,6 +90,9 @@ def run_pipeline(
     temp_files: list[Path] = []
     try:
         with single_run_lock(paths.lock_file):
+            # The updater must fail before any network request or production mutation
+            # when crawler-owned columns have not been migrated into whitelist.db.
+            assert_production_schema_compatible(paths.prod_db, paths.schema_path)
             denied_hosts = load_denied_hosts(paths.prod_db)
             logging.info("moderation deny_hosts_active=%d", len(denied_hosts))
 
@@ -352,46 +356,54 @@ def run_pipeline(
                     )
                     return
 
-                embeddings_cmd = [
-                    args.python_bin,
-                    (paths.script_dir / "build-video-embeddings.py").as_posix(),
-                    "--db-path",
-                    paths.staging_db.as_posix(),
-                ]
-                if args.use_gpu:
-                    embeddings_cmd.append("--gpu")
-                else:
-                    embeddings_cmd.append("--cpu")
-                _run_with_fallback(
-                    embeddings_cmd,
-                    stage="build-video-embeddings",
-                    cwd=paths.repo_root,
-                    runner=command_runner,
-                )
-                if args.inject_replace_embedding_for_test:
-                    inject_replace_embedding_for_test(
-                        prod_db=paths.prod_db, staging_db=paths.staging_db
-                    )
-
-                scoped_hosts = load_scoped_hosts_file(Path(args.hosts_file)) if args.hosts_file else set()
-                logging.info("staging delta summary start scoped_hosts=%d", len(scoped_hosts))
-                deltas = count_staging_deltas(
-                    paths.prod_db,
-                    paths.staging_db,
-                    scoped_hosts=scoped_hosts,
-                )
-                logging.info(
-                    "staging delta instances=%d channels=%d videos=%d embeddings=%d",
-                    deltas["instances_new"],
-                    deltas["channels_new"],
-                    deltas["videos_new"],
-                    deltas["embeddings_new"],
-                )
             else:
                 logging.info("sync-join ingest skipped: no new hosts after denylist filtering")
                 if not sync_stale_hosts:
                     logging.info("sync-join no changes detected; finishing early")
                     return
+
+            # Staging is disposable working state. Rebuild embeddings with the
+            # currently deployed recipe immediately before every production merge,
+            # including --resume-staging, so stale pre-deploy vectors can never leak
+            # back into production. A failed rebuild naturally aborts before merge.
+            embeddings_cmd = [
+                args.python_bin,
+                (paths.script_dir / "build-video-embeddings.py").as_posix(),
+                "--db-path",
+                paths.staging_db.as_posix(),
+                "--force",
+            ]
+            if args.use_gpu:
+                embeddings_cmd.append("--gpu")
+            else:
+                embeddings_cmd.append("--cpu")
+            _run_with_fallback(
+                embeddings_cmd,
+                stage="build-video-embeddings",
+                cwd=paths.repo_root,
+                runner=command_runner,
+            )
+            if args.inject_replace_embedding_for_test:
+                inject_replace_embedding_for_test(
+                    prod_db=paths.prod_db, staging_db=paths.staging_db
+                )
+
+            scoped_hosts = (
+                load_scoped_hosts_file(Path(args.hosts_file)) if args.hosts_file else set()
+            )
+            logging.info("staging delta summary start scoped_hosts=%d", len(scoped_hosts))
+            deltas = count_staging_deltas(
+                paths.prod_db,
+                paths.staging_db,
+                scoped_hosts=scoped_hosts,
+            )
+            logging.info(
+                "staging delta instances=%d channels=%d videos=%d embeddings=%d",
+                deltas["instances_new"],
+                deltas["channels_new"],
+                deltas["videos_new"],
+                deltas["embeddings_new"],
+            )
 
             if args.fail_before_merge:
                 raise RuntimeError("Injected failure: before merge stage")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 from engine.server.db.jobs.updater.staging import (
     count_staging_deltas,
@@ -272,3 +273,105 @@ def test_prune_staging_local_non_ok_instances_removes_bad_hosts(tmp_path) -> Non
         conn.commit()
     result = prune_staging_local_non_ok_instances(prod_db=prod, staging_db=staging)
     assert result == {"removed": 3, "remaining": 0}
+
+
+def _load_merge_job():
+    """Load merge-staging-db.py for direct boundary tests."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "engine/server/db/jobs/merge-staging-db.py"
+    spec = importlib.util.spec_from_file_location("merge_staging_job", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_merge_schema_rejects_stage_only_columns_before_any_dml(tmp_path) -> None:
+    """A producer-new column cannot be silently discarded by a stale production DB."""
+    mod = _load_merge_job()
+    prod = tmp_path / "prod-merge.db"
+    stage = tmp_path / "stage-merge.db"
+    with sqlite3.connect(prod) as conn:
+        conn.execute("CREATE TABLE videos(video_id TEXT PRIMARY KEY, title TEXT)")
+        conn.execute("INSERT INTO videos VALUES ('old', 'old title')")
+        conn.commit()
+    with sqlite3.connect(stage) as conn:
+        conn.execute("CREATE TABLE videos(video_id TEXT PRIMARY KEY, title TEXT, language TEXT)")
+        conn.execute("INSERT INTO videos VALUES ('new', 'new title', 'en')")
+        conn.commit()
+
+    conn = sqlite3.connect(prod)
+    conn.execute("ATTACH DATABASE ? AS stage", (stage.as_posix(),))
+    try:
+        with __import__("pytest").raises(RuntimeError, match="language.*migrate-whitelist"):
+            mod.validate_merge_schema(
+                conn,
+                [{"name": "videos", "strategy": "INSERT_ONLY", "keys": ["video_id"]}],
+            )
+        assert conn.execute("SELECT video_id, title FROM videos").fetchall() == [
+            ("old", "old title")
+        ]
+    finally:
+        conn.close()
+
+
+def test_merge_schema_allows_production_only_columns(tmp_path) -> None:
+    """Engine-owned destination columns do not make a crawler staging DB incompatible."""
+    mod = _load_merge_job()
+    prod = tmp_path / "prod-extra.db"
+    stage = tmp_path / "stage-extra.db"
+    with sqlite3.connect(prod) as conn:
+        conn.execute(
+            "CREATE TABLE videos(video_id TEXT PRIMARY KEY, title TEXT, popularity REAL DEFAULT 0)"
+        )
+    with sqlite3.connect(stage) as conn:
+        conn.execute("CREATE TABLE videos(video_id TEXT PRIMARY KEY, title TEXT)")
+    conn = sqlite3.connect(prod)
+    conn.execute("ATTACH DATABASE ? AS stage", (stage.as_posix(),))
+    try:
+        prepared = mod.validate_merge_schema(
+            conn,
+            [{"name": "videos", "strategy": "INSERT_ONLY", "keys": ["video_id"]}],
+        )
+        assert prepared[0]["merge_columns"] == ["video_id", "title"]
+    finally:
+        conn.close()
+
+
+def test_production_schema_preflight_requires_all_crawler_owned_columns(tmp_path) -> None:
+    """Updater rejects a stale destination before any staging or production mutation."""
+    from engine.server.db.jobs.updater.staging import assert_production_schema_compatible
+
+    schema_path = Path(__file__).resolve().parents[2] / "engine/crawler/schema.sql"
+    prod = tmp_path / "prod-stale-schema.db"
+    with sqlite3.connect(prod) as conn:
+        conn.execute("CREATE TABLE instances(host TEXT PRIMARY KEY)")
+        conn.execute(
+            "CREATE TABLE channels(channel_id TEXT, instance_domain TEXT, "
+            "PRIMARY KEY(channel_id, instance_domain))"
+        )
+        conn.execute(
+            "CREATE TABLE videos(video_id TEXT, instance_domain TEXT, "
+            "PRIMARY KEY(video_id, instance_domain))"
+        )
+        conn.commit()
+
+    with __import__("pytest").raises(RuntimeError, match="migrate-whitelist"):
+        assert_production_schema_compatible(prod, schema_path)
+
+
+def test_production_schema_preflight_allows_engine_owned_extra_columns(tmp_path) -> None:
+    """Crawler-owned schema is a subset contract; production-only columns are valid."""
+    from engine.server.db.jobs.updater.staging import assert_production_schema_compatible
+
+    schema_path = Path(__file__).resolve().parents[2] / "engine/crawler/schema.sql"
+    prod = tmp_path / "prod-current-schema.db"
+    schema_sql = schema_path.read_text(encoding="utf-8")
+    with sqlite3.connect(prod) as conn:
+        conn.executescript(schema_sql)
+        conn.execute("ALTER TABLE videos ADD COLUMN popularity REAL DEFAULT 0")
+        conn.commit()
+
+    assert_production_schema_compatible(prod, schema_path)

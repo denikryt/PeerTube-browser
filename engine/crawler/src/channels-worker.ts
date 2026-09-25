@@ -9,6 +9,7 @@ import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classifica
 import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
 import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
 import { formatMetricLog } from "./log-format.js";
+import { extractAccountIdentity } from "./video-metadata.js";
 
 const PAGE_SIZE = 50;
 
@@ -50,6 +51,10 @@ interface PeerTubeAccountRef {
   host?: string;
   url?: string;
   name?: string;
+  displayName?: string;
+  display_name?: string;
+  avatar?: PeerTubeAvatar;
+  avatars?: PeerTubeAvatar[];
 }
 
 interface PeerTubeVideoChannel {
@@ -357,6 +362,11 @@ async function crawlInstanceChannels(
         if (channelHost !== host) continue;
         const channelId = channel.id !== undefined ? String(channel.id) : null;
         if (!channelId) continue;
+        const owner = extractAccountIdentity(
+          channel.ownerAccount ?? channel.account ?? null,
+          host,
+          protocol
+        );
         const row: ChannelUpsertRow = {
           channelId,
           channelName: toNullableString(channel.name),
@@ -365,7 +375,11 @@ async function crawlInstanceChannels(
           instanceDomain: host,
           videosCount: toNullableNumber(channel.videosCount ?? channel.videos_count),
           followersCount: toNullableNumber(channel.followersCount ?? channel.followers_count),
-          avatarUrl: getChannelAvatarUrl(channel, host, protocol)
+          avatarUrl: getChannelAvatarUrl(channel, host, protocol),
+          ownerAccountUsername: owner.username,
+          ownerAccountDisplayName: owner.displayName,
+          ownerAccountUrl: owner.url,
+          ownerAccountAvatarUrl: owner.avatarUrl
         };
         if (existingIds && existingIds.has(channelId)) {
           // Existing metadata remains untouched in --new-channels mode, while

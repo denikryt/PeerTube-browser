@@ -36,6 +36,69 @@ def init_staging_db(staging_db: Path, schema_path: Path) -> None:
         conn.commit()
 
 
+
+
+def _schema_contract(db_path: Path, *, schema_sql: str | None = None) -> dict[str, tuple[set[str], tuple[str, ...]]]:
+    """Return crawler-owned columns and primary-key order for merge-managed tables.
+
+    When ``schema_sql`` is provided the contract is read from an in-memory
+    crawler schema. Otherwise it is read from an existing SQLite database.
+    The updater uses this narrow contract instead of exact schema equality so
+    Engine-owned production columns remain valid.
+    """
+
+    tables = ("instances", "channels", "videos")
+    if schema_sql is None:
+        conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+    else:
+        conn = sqlite3.connect(":memory:")
+        conn.executescript(schema_sql)
+    try:
+        contract: dict[str, tuple[set[str], tuple[str, ...]]] = {}
+        for table in tables:
+            rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+            if not rows:
+                raise RuntimeError(f"Required table is missing: {table}")
+            columns = {str(row[1]) for row in rows}
+            primary_key = tuple(
+                str(row[1])
+                for row in sorted((row for row in rows if int(row[5]) > 0), key=lambda row: int(row[5]))
+            )
+            contract[table] = (columns, primary_key)
+        return contract
+    finally:
+        conn.close()
+
+
+def assert_production_schema_compatible(prod_db: Path, schema_path: Path) -> None:
+    """Fail before updater work when prod lacks crawler-owned current-shape columns.
+
+    Production may own additional columns such as ``videos.popularity``. The
+    unsafe direction is the reverse: a staging column missing from production
+    would be silently unmergeable. Production schema changes remain owned by
+    ``migrate-whitelist.py`` rather than updater/crawler bootstrap code.
+    """
+
+    expected = _schema_contract(schema_path, schema_sql=schema_path.read_text(encoding="utf-8"))
+    actual = _schema_contract(prod_db)
+    problems: list[str] = []
+    for table, (required_columns, required_pk) in expected.items():
+        actual_columns, actual_pk = actual[table]
+        missing = sorted(required_columns - actual_columns)
+        if missing:
+            problems.append(f"{table} missing columns: {', '.join(missing)}")
+        if actual_pk != required_pk:
+            problems.append(
+                f"{table} primary key mismatch: expected {required_pk!r}, found {actual_pk!r}"
+            )
+    if problems:
+        raise RuntimeError(
+            "Production whitelist schema is older than the crawler-owned schema; "
+            "run engine/server/db/jobs/migrate-whitelist.py before updater. "
+            + "; ".join(problems)
+        )
+
+
 def shared_columns(conn: sqlite3.Connection, table: str) -> list[str]:
     """Return ordered columns shared by prod main and attached staging table."""
 

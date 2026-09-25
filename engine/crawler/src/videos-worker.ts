@@ -4,8 +4,12 @@
 
 import Database from "better-sqlite3";
 import { VideoStore } from "./db/videos.js";
+import { assertMetadataMaintenanceSchema } from "./db/schema.js";
 import type {
+  ExistingVideoRefresh,
+  VideoActivityPubMetadataPatch,
   VideoChannelRow,
+  VideoDetailMetadataPatch,
   VideoProgressRow,
   VideoThumbnailRow,
   VideoTagRow,
@@ -18,8 +22,14 @@ import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
 import { createProgressOrdinal, formatMetricLog } from "./log-format.js";
 import {
   resolvePreferredPreviewPath,
+  resolvePreferredThumbnail,
   resolvePreferredThumbnailUrl
 } from "./video-media.js";
+import { normalizeVideoMetadata } from "./video-metadata.js";
+import {
+  fetchActivityPubLiveMetadata,
+  type ActivityPubLiveMetadata
+} from "./video-activitypub.js";
 
 const PAGE_SIZE = 50;
 const CHANNEL_CONCURRENCY = 2;
@@ -47,6 +57,10 @@ export interface VideoCrawlOptions {
   updateTags: boolean;
   commentsOnly: boolean;
   refreshThumbnails: boolean;
+  metadataOnly?: boolean;
+  updateMetadata?: boolean;
+  /** Metadata-only DB-backed host scope that excludes error/unknown instances. */
+  onlyHealthyHosts?: boolean;
   hostDelayMs: number;
   /** In-process host scope used by the optional host-level scheduler. */
   hosts?: readonly string[];
@@ -58,6 +72,8 @@ interface Page<T> {
 }
 
 interface PeerTubeAccountRef {
+  avatar?: unknown;
+  avatars?: unknown;
   id?: number | string;
   name?: string;
   displayName?: string;
@@ -84,6 +100,7 @@ interface PeerTubeCategory {
 }
 
 interface PeerTubeVideo {
+  [key: string]: unknown;
   id?: number | string;
   uuid?: string;
   name?: string;
@@ -119,7 +136,14 @@ interface PeerTubeVideo {
   preview_path?: string;
 }
 
-interface PeerTubeVideoDetail {
+interface BuiltVideoPersistence {
+  row: VideoUpsertRow;
+  refresh: ExistingVideoRefresh;
+}
+
+interface PeerTubeVideoDetail extends PeerTubeVideo {
+  [key: string]: unknown;
+  thumbnails?: unknown;
   thumbnailUrl?: string;
   thumbnailPath?: string;
   thumbnail_path?: string;
@@ -132,6 +156,17 @@ interface PeerTubeVideoDetail {
   comments?: number;
   commentsCount?: number;
   comments_count?: number;
+  licence?: unknown;
+  license?: unknown;
+  language?: unknown;
+  nsfwSummary?: string;
+  originallyPublishedAt?: string;
+  updatedAt?: string;
+  isLive?: boolean;
+  permanentLive?: boolean | null;
+  liveSaveReplay?: boolean | null;
+  aspectRatio?: number;
+  support?: string;
 }
 
 interface VideoDetailFetchResult {
@@ -153,6 +188,10 @@ interface NewVideoCounter {
  * Handle crawl videos.
  */
 export async function crawlVideos(options: VideoCrawlOptions) {
+  if (options.metadataOnly || options.updateMetadata) {
+    await crawlVideoMetadata(options);
+    return;
+  }
   if (options.updateTags) {
     await crawlVideoTags(options, "present");
     return;
@@ -248,7 +287,7 @@ async function crawlVideoComments(options: VideoCrawlOptions) {
   const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForComments(options.resume);
-  const grouped = groupByInstanceComments(items);
+  const grouped = groupByInstance(items);
   const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
 
@@ -274,7 +313,7 @@ async function crawlVideoTags(options: VideoCrawlOptions, mode: "missing" | "pre
   const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForTags(mode);
-  const grouped = groupByInstanceTags(items);
+  const grouped = groupByInstance(items);
   const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
 
@@ -602,19 +641,20 @@ async function crawlChannelVideos(
     }
 
     const data = Array.isArray(page.data) ? page.data : [];
-    const ids = options.newOnly
-      ? Array.from(
-          new Set(
-            data
-              .map((video) => toStringId(video.uuid ?? video.id))
-              .filter((value): value is string => Boolean(value))
-          )
-        )
-      : [];
-    const existingIds = options.newOnly ? store.listExistingVideoIds(host, ids) : null;
+    // Novelty is a persistence invariant, not a --new-videos optimization.
+    // Always know which local rows already exist so repeated full crawls cannot
+    // route them through full semantic-field insertion/upsert behavior.
+    const ids = Array.from(
+      new Set(
+        data
+          .map((video) => toStringId(video.uuid ?? video.id))
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+    const existingIds = store.listExistingVideoIds(host, ids);
     const externalExistingIds = options.newOnly
       ? queryExternalExistingVideoIds(existingDb, host, ids)
-      : null;
+      : new Set<string>();
     const nextStart = start + PAGE_SIZE;
     totalCount += data.length;
 
@@ -631,14 +671,15 @@ async function crawlChannelVideos(
         options,
         requestLimiter
       );
-      localCount += rows.length;
-      store.upsertVideos(rows);
+      localCount += rows.newRows.length;
+      store.insertNewVideos(rows.newRows);
+      store.refreshExistingVideoMetadata(rows.existingRows);
     }
 
     store.updateVideoProgress(host, channel.channelId, "in_progress", nextStart, null);
 
     const knownIds = options.newOnly
-      ? new Set([...(existingIds ?? []), ...(externalExistingIds ?? [])])
+      ? new Set([...existingIds, ...externalExistingIds])
       : null;
     if (
       options.newOnly &&
@@ -697,37 +738,56 @@ async function buildVideoRows(
     channelUrl: string | null;
   },
   checkedAt: number,
-  existingIds: Set<string> | null,
-  externalExistingIds: Set<string> | null,
+  existingIds: Set<string>,
+  externalExistingIds: Set<string>,
   options: VideoCrawlOptions,
   requestLimiter: RequestLimiter
-) {
-  const rows = new Array<VideoUpsertRow | null>(videos.length).fill(null);
+): Promise<{ newRows: VideoUpsertRow[]; existingRows: ExistingVideoRefresh[] }> {
+  const built = new Array<{ value: BuiltVideoPersistence; existing: boolean } | null>(videos.length).fill(null);
 
   await mapWithConcurrency(
     videos.map((video, index) => ({ video, index })),
     VIDEO_DETAIL_CONCURRENCY,
     async ({ video, index }) => {
       const videoId = toStringId(video.uuid ?? video.id);
-      if (
-        videoId &&
-        (existingIds?.has(videoId) || externalExistingIds?.has(videoId))
-      ) {
+      if (!videoId) return;
+      const existsLocally = existingIds.has(videoId);
+      if (options.newOnly && (existsLocally || externalExistingIds.has(videoId))) {
         return;
       }
 
-      const detailResult = await fetchVideoDetailForMedia(
+      const detailResult = await fetchVideoDetailBestEffort(
         host,
         video,
         options,
         protocol,
         requestLimiter
       );
-      rows[index] = toVideoRow(video, host, protocol, channel, checkedAt, detailResult);
+      const value = await toVideoRow(
+        video,
+        host,
+        protocol,
+        channel,
+        checkedAt,
+        detailResult,
+        options,
+        requestLimiter
+      );
+      if (value) built[index] = { value, existing: existsLocally };
     }
   );
 
-  return rows.filter((row): row is VideoUpsertRow => row !== null);
+  const newRows: VideoUpsertRow[] = [];
+  const existingRows: ExistingVideoRefresh[] = [];
+  for (const item of built) {
+    if (!item) continue;
+    if (item.existing) {
+      existingRows.push(item.value.refresh);
+    } else {
+      newRows.push(item.value.row);
+    }
+  }
+  return { newRows, existingRows };
 }
 
 /**
@@ -795,115 +855,186 @@ function buildChannelVideosUrl(
 /**
  * Handle to video row.
  */
-function toVideoRow(
+async function toVideoRow(
   video: PeerTubeVideo,
   host: string,
   protocol: string,
   channel: {
-    channelId: string;
+    channelId: string | null;
     channelSlug: string;
     displayName: string | null;
     channelUrl: string | null;
   },
   checkedAt: number,
-  detailResult?: VideoDetailFetchResult | null
-): VideoUpsertRow | null {
+  detailResult: VideoDetailFetchResult | null,
+  options: VideoCrawlOptions,
+  requestLimiter: RequestLimiter
+): Promise<BuiltVideoPersistence | null> {
   const videoId = toStringId(video.uuid ?? video.id);
   if (!videoId) return null;
 
-  const channelRef = video.channel;
-  const account =
-    video.account ?? channelRef?.account ?? channelRef?.ownerAccount ?? null;
-
-  const channelName =
-    channel.displayName ?? toNullableString(channelRef?.displayName ?? channelRef?.display_name);
-  const channelUrl =
-    toNullableString(channelRef?.url) ?? channel.channelUrl ?? null;
-
-  const videoUrl = toNullableString(video.url);
+  const detail = detailResult?.detail ?? null;
   const mediaProtocol = detailResult?.protocol ?? protocol;
-  const thumbnailUrl = resolvePreferredThumbnailUrl(
-    detailResult?.detail ?? null,
-    video,
-    host,
-    mediaProtocol
-  );
+  const detailRecord = detail as Record<string, unknown> | null;
+  const listRecord = video as Record<string, unknown>;
 
-  return {
+  let normalized = normalizeVideoMetadata({
+    listVideo: listRecord,
+    detail: detailRecord,
+    host,
+    protocol: mediaProtocol
+  });
+
+  const candidateVideoUrl = toNullableString(detail?.url ?? video.url);
+  let activityPub: ActivityPubLiveMetadata | null = null;
+  if (
+    normalized.isLive === 1 &&
+    (normalized.permanentLive === null || normalized.liveSaveReplay === null) &&
+    candidateVideoUrl
+  ) {
+    try {
+      const live = await requestLimiter.run(() =>
+        fetchActivityPubLiveMetadata(
+          candidateVideoUrl,
+          host,
+          toNullableString(detail?.uuid ?? video.uuid),
+          { timeoutMs: options.timeoutMs, maxRetries: options.maxRetries }
+        )
+      );
+      activityPub = live;
+      normalized = normalizeVideoMetadata({
+        listVideo: listRecord,
+        detail: detailRecord,
+        activityPub: live as unknown as Record<string, unknown>,
+        host,
+        protocol: mediaProtocol
+      });
+    } catch (error) {
+      // Public AP parity is best-effort. REST metadata remains usable and a
+      // version-0 live row can be retried later by metadata maintenance.
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[videos] ActivityPub live metadata fallback ${host}/${videoId}: ${message}`);
+    }
+  }
+
+  const sourceChannel =
+    (detail?.channel as PeerTubeVideoChannel | undefined) ?? video.channel ?? null;
+  const incomingChannelId =
+    toStringId(sourceChannel?.id) ?? (channel.channelId || null);
+  const incomingChannelName =
+    toNullableString(sourceChannel?.displayName ?? sourceChannel?.display_name) ??
+    channel.displayName;
+  const incomingChannelUrl =
+    toNullableString(sourceChannel?.url) ?? channel.channelUrl ?? null;
+  const thumbnail = resolvePreferredThumbnail(detail, video, host, mediaProtocol);
+
+  const row: VideoUpsertRow = {
     videoId,
-    videoUuid: toNullableString(video.uuid),
-    videoNumericId: toNullableNumber(video.id),
+    videoUuid: toNullableString(video.uuid ?? detail?.uuid),
+    videoNumericId: toNullableNumber(detail?.id ?? video.id),
     instanceDomain: host,
-    channelId: channel.channelId,
-    channelName,
-    channelUrl,
-    accountName: toNullableString(account?.displayName ?? account?.display_name ?? account?.name),
-    accountUrl: toNullableString(account?.url),
-    title: toNullableString(video.name ?? video.title),
-    description: toNullableString(video.description),
-    tagsJson: null,
-    category: extractCategory(video.category),
-    publishedAt: toNullableTimestamp(
-      video.publishedAt ?? video.published_at ?? video.createdAt ?? video.created_at
+    channelId: incomingChannelId,
+    channelName: incomingChannelName,
+    channelUrl: incomingChannelUrl,
+    accountName: normalized.accountName,
+    accountUrl: normalized.accountUrl,
+    title: normalized.title,
+    description: normalized.description,
+    tagsJson: normalized.tagsJson,
+    category: normalized.category,
+    categoryId: normalized.categoryId,
+    licenceId: normalized.licenceId,
+    licence: normalized.licence,
+    language: normalized.language,
+    languageLabel: normalized.languageLabel,
+    publishedAt: normalized.publishedAt,
+    originallyPublishedAt: normalized.originallyPublishedAt,
+    updatedAt: normalized.updatedAt,
+    videoUrl: candidateVideoUrl,
+    duration: toNullableNumber(detail?.duration ?? video.duration),
+    thumbnailUrl: thumbnail.url,
+    thumbnailWidth: thumbnail.width,
+    thumbnailHeight: thumbnail.height,
+    embedPath: toNullableString(detail?.embedPath ?? detail?.embed_path ?? video.embedPath ?? video.embed_path),
+    views: toNullableNumber(detail?.views ?? detail?.views_count ?? video.views ?? video.views_count),
+    likes: toNullableNumber(detail?.likes ?? detail?.likes_count ?? video.likes ?? video.likes_count),
+    dislikes: toNullableNumber(detail?.dislikes ?? detail?.dislikes_count ?? video.dislikes ?? video.dislikes_count),
+    commentsCount: toCommentsCount(
+      detail?.comments ?? detail?.commentsCount ?? detail?.comments_count ??
+      video.comments ?? video.commentsCount ?? video.comments_count
     ),
-    videoUrl,
-    duration: toNullableNumber(video.duration),
-    thumbnailUrl,
-    embedPath: toNullableString(video.embedPath ?? video.embed_path),
-    views: toNullableNumber(video.views ?? video.views_count),
-    likes: toNullableNumber(video.likes ?? video.likes_count),
-    dislikes: toNullableNumber(video.dislikes ?? video.dislikes_count),
-    commentsCount: null,
-    nsfw: toNullableBoolean(video.nsfw),
-    previewPath: resolvePreferredPreviewPath(detailResult?.detail ?? null, video),
+    nsfw: normalized.nsfw,
+    sensitiveSummary: normalized.sensitiveSummary,
+    isLive: normalized.isLive,
+    permanentLive: normalized.permanentLive,
+    liveSaveReplay: normalized.liveSaveReplay,
+    aspectRatio: normalized.aspectRatio,
+    support: normalized.support,
+    accountUsername: normalized.accountUsername,
+    accountAvatarUrl: normalized.accountAvatarUrl,
+    metadataVersion: normalized.metadataVersion,
+    previewPath: resolvePreferredPreviewPath(detail, video),
     lastCheckedAt: checkedAt
+  };
+
+  const detailPatch = detailRecord ? buildDetailMetadataPatch(normalized, detailRecord) : undefined;
+  const activityPubPatch = activityPub ? buildActivityPubMetadataPatch(activityPub) : undefined;
+  return {
+    row,
+    refresh: {
+      base: row,
+      ...(detailPatch ? { detail: detailPatch } : {}),
+      ...(activityPubPatch ? { activityPub: activityPubPatch } : {})
+    }
   };
 }
 
-/**
- * Handle group by instance.
- */
-function groupByInstance(items: VideoProgressRow[]) {
-  const grouped = new Map<string, VideoProgressRow[]>();
-  for (const item of items) {
-    const list = grouped.get(item.instanceDomain) ?? [];
-    list.push(item);
-    grouped.set(item.instanceDomain, list);
-  }
-  return grouped;
+/** Build detail-owned values only after a successful detail response. */
+function buildDetailMetadataPatch(
+  normalized: ReturnType<typeof normalizeVideoMetadata>,
+  detail: Record<string, unknown>
+): VideoDetailMetadataPatch {
+  return {
+    categoryId: normalized.categoryId,
+    category: normalized.category,
+    licenceId: normalized.licenceId,
+    licence: normalized.licence,
+    language: normalized.language,
+    languageLabel: normalized.languageLabel,
+    sensitiveSummary: normalized.sensitiveSummary,
+    originallyPublishedAt: normalized.originallyPublishedAt,
+    updatedAt: normalized.updatedAt,
+    aspectRatio: normalized.aspectRatio,
+    support: normalized.support,
+    accountUsername: normalized.accountUsername,
+    accountAvatarUrl: normalized.accountAvatarUrl,
+    ...(hasOwn(detail, "permanentLive") || hasOwn(detail, "permanent_live")
+      ? { permanentLive: normalized.permanentLive }
+      : {}),
+    ...(hasOwn(detail, "liveSaveReplay") || hasOwn(detail, "live_save_replay")
+      ? { liveSaveReplay: normalized.liveSaveReplay }
+      : {})
+  };
 }
 
-/**
- * Handle group by instance tags.
- */
-function groupByInstanceTags(items: VideoTagRow[]) {
-  const grouped = new Map<string, VideoTagRow[]>();
-  for (const item of items) {
-    const list = grouped.get(item.instanceDomain) ?? [];
-    list.push(item);
-    grouped.set(item.instanceDomain, list);
-  }
-  return grouped;
+/** Build a sparse AP patch so absent/null fields never erase stored values. */
+function buildActivityPubMetadataPatch(
+  live: ActivityPubLiveMetadata
+): VideoActivityPubMetadataPatch | undefined {
+  const patch: VideoActivityPubMetadataPatch = {};
+  if (live.permanentLive !== null) patch.permanentLive = live.permanentLive ? 1 : 0;
+  if (live.liveSaveReplay !== null) patch.liveSaveReplay = live.liveSaveReplay ? 1 : 0;
+  return Object.keys(patch).length > 0 ? patch : undefined;
 }
 
-/**
- * Handle group by instance comments.
- */
-function groupByInstanceComments(items: VideoTagRow[]) {
-  const grouped = new Map<string, VideoTagRow[]>();
-  for (const item of items) {
-    const list = grouped.get(item.instanceDomain) ?? [];
-    list.push(item);
-    grouped.set(item.instanceDomain, list);
-  }
-  return grouped;
+/** Check whether a successful detail payload explicitly supplied one field. */
+function hasOwn(value: Record<string, unknown> | null, key: string): boolean {
+  return Boolean(value && Object.prototype.hasOwnProperty.call(value, key));
 }
 
-/**
- * Handle group by instance for thumbnail refresh work.
- */
-function groupByInstanceThumbnail(items: VideoThumbnailRow[]) {
-  const grouped = new Map<string, VideoThumbnailRow[]>();
+/** Group work rows by PeerTube instance while preserving their concrete row type. */
+function groupByInstance<T extends { instanceDomain: string }>(items: T[]): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
   for (const item of items) {
     const list = grouped.get(item.instanceDomain) ?? [];
     list.push(item);
@@ -998,21 +1129,6 @@ function toStringId(value: unknown): string | null {
 }
 
 /**
- * Handle extract category.
- */
-function extractCategory(value: PeerTubeVideo["category"]): string | null {
-  if (typeof value === "string" && value.length > 0) return value;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (value && typeof value === "object") {
-    const label = toNullableString(value.label ?? value.name);
-    if (label) return label;
-    const id = toStringId(value.id);
-    if (id) return id;
-  }
-  return null;
-}
-
-/**
  * Handle fetch video detail.
  */
 async function fetchVideoDetail(
@@ -1046,10 +1162,11 @@ async function fetchVideoDetail(
 }
 
 /**
- * Attempt to fetch fresher media for one video without turning a media-only
- * failure into a dropped video row.
+ * Attempt per-video detail enrichment without turning a detail-endpoint
+ * failure into a dropped list row. Existing-row persistence preserves
+ * last-known-good enrichment fields when this request fails.
  */
-async function fetchVideoDetailForMedia(
+async function fetchVideoDetailBestEffort(
   host: string,
   video: PeerTubeVideo,
   options: VideoCrawlOptions,
@@ -1062,12 +1179,158 @@ async function fetchVideoDetailForMedia(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    // Media freshness is best-effort during the main crawl. Falling back to the
-    // list payload preserves the previous ingest behavior when detail calls fail.
-    console.warn(`[videos] media detail fallback ${host}/${video.uuid}: ${message}`);
+    // Detail enrichment is best-effort during the main crawl. Falling back to
+    // the list payload keeps ingestion moving while the absence of a detail
+    // patch prevents destructive refresh of last-known-good enrichment.
+    console.warn(`[videos] detail fallback ${host}/${video.uuid}: ${message}`);
     return null;
   }
 }
+
+/**
+ * Backfill metadata-v1 fields in an already-migrated crawler/whitelist DB.
+ *
+ * Schema validation is deliberately read-only and happens before any network
+ * work so this maintenance command can never become an implicit production
+ * schema migration path.
+ */
+async function crawlVideoMetadata(options: VideoCrawlOptions) {
+  assertMetadataMaintenanceSchema(options.dbPath);
+  const store = new VideoStore({ dbPath: options.dbPath, initializeSchema: false });
+  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
+  const items = store.listVideosForMetadata(Boolean(options.updateMetadata));
+  const grouped = groupByInstance(items);
+  const allHosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
+  // Health is a persisted host-level observation, so apply it after explicit
+  // include/exclude filters without probing every failed video again.
+  const healthyHosts = options.onlyHealthyHosts ? store.listHealthyInstanceHosts() : null;
+  const healthyScopedHosts = healthyHosts
+    ? allHosts.filter((host) => healthyHosts.has(host.toLowerCase()))
+    : allHosts;
+  const hosts = options.maxInstances > 0
+    ? healthyScopedHosts.slice(0, options.maxInstances)
+    : healthyScopedHosts;
+  // Count only work that survived host scoping so the initial total remains a
+  // truthful denominator when operators run a targeted/resumed maintenance pass.
+  const scopedVideoCount = hosts.reduce((total, host) => total + (grouped.get(host)?.length ?? 0), 0);
+  const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
+  const nextVideoOrdinal = createProgressOrdinal(scopedVideoCount);
+  let updated = 0;
+  let errors = 0;
+
+  console.log(
+    `[metadata] instances=${hosts.length} videos=${scopedVideoCount} concurrency=${workerCount} update=${Boolean(options.updateMetadata)} healthy_only=${Boolean(options.onlyHealthyHosts)}`
+  );
+
+  try {
+    const queue = hosts.slice();
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const host = queue.shift();
+        if (!host) return;
+        const limiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
+        for (const item of grouped.get(host) ?? []) {
+          // Allocate before awaiting I/O so concurrent host workers expose one
+          // stable crawl-wide ordinal instead of ambiguous host-local counters.
+          const videoOrdinal = nextVideoOrdinal();
+          const subject = `${item.instanceDomain}/${item.videoId}`;
+          try {
+            const detailResult = await fetchVideoDetail(
+              host,
+              item.videoUuid,
+              options,
+              "https:",
+              limiter
+            );
+            const detail = detailResult.detail;
+            const channelRef = detail.channel;
+            const built = await toVideoRow(
+              detail,
+              host,
+              detailResult.protocol,
+              {
+                channelId: toStringId(channelRef?.id),
+                channelSlug: toNullableString(channelRef?.name) ?? "",
+                displayName: toNullableString(
+                  channelRef?.displayName ?? channelRef?.display_name
+                ),
+                channelUrl: toNullableString(channelRef?.url)
+              },
+              Date.now(),
+              detailResult,
+              options,
+              limiter
+            );
+            if (!built) {
+              store.updateVideoError(item.videoId, item.instanceDomain, "metadata detail missing video identity");
+              errors += 1;
+              console.warn(
+                formatMetricLog(
+                  "metadata",
+                  [["video", videoOrdinal], ["updated", updated], ["errors", errors]],
+                  "error",
+                  subject
+                )
+              );
+              continue;
+            }
+            // Persist against the stable local identity selected before the
+            // request; remote numeric/UUID variants must not retarget a row.
+            const localBase = {
+              ...built.refresh.base,
+              videoId: item.videoId,
+              videoUuid: item.videoUuid,
+              instanceDomain: item.instanceDomain
+            };
+            store.applyMetadataBackfill({
+              ...built.refresh,
+              base: localBase
+            });
+            updated += 1;
+            console.log(
+              formatMetricLog(
+                "metadata",
+                [["video", videoOrdinal], ["updated", updated], ["errors", errors]],
+                "done",
+                subject
+              )
+            );
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            const status = extractHttpStatus(message);
+            // A successful PeerTube detail response that says the resource is
+            // gone is definitive for this stored UUID. Transient transport,
+            // rate-limit, and server failures deliberately remain resumable.
+            if (status === 404 || status === 410) {
+              store.updateVideoInvalid(
+                item.videoId,
+                item.instanceDomain,
+                status === 404 ? "not_found" : "gone"
+              );
+            } else {
+              store.updateVideoError(item.videoId, item.instanceDomain, message);
+            }
+            errors += 1;
+            console.warn(
+              formatMetricLog(
+                "metadata",
+                [["video", videoOrdinal], ["updated", updated], ["errors", errors]],
+                status === 404 || status === 410 ? "invalid" : "error",
+                subject
+              )
+            );
+          }
+        }
+      }
+    });
+    await Promise.all(workers);
+    console.log("[metadata] finished");
+  } finally {
+    store.close();
+  }
+}
+
 
 /**
  * Handle refresh video thumbnails.
@@ -1080,7 +1343,7 @@ async function refreshVideoThumbnails(options: VideoCrawlOptions) {
   const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForThumbnailRefresh();
-  const grouped = groupByInstanceThumbnail(items);
+  const grouped = groupByInstance(items);
   const hosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
 

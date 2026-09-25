@@ -270,3 +270,40 @@ test("ChannelStore scoped resume preserves progress belonging to other hosts", (
     temp.cleanup();
   }
 });
+
+
+// ActivityPub-aligned channel owner identity persistence.
+test("ChannelStore persists and refreshes owner account identity from normal channel rows", () => {
+  const temp = createTempDb("crawler-channel-owner");
+  try {
+    const store = new ChannelStore({ dbPath: temp.dbPath });
+    store.upsertChannels([{
+      channelId: "c1", channelName: "music", channelUrl: "https://example.org/video-channels/music",
+      displayName: "Music", instanceDomain: "example.org", videosCount: 1, followersCount: 2,
+      avatarUrl: null, ownerAccountUsername: "alice", ownerAccountDisplayName: "Alice",
+      ownerAccountUrl: "https://example.org/accounts/alice", ownerAccountAvatarUrl: "https://example.org/a.jpg"
+    }]);
+    store.upsertChannels([{
+      channelId: "c1", channelName: "music", channelUrl: "https://example.org/video-channels/music",
+      displayName: "Music", instanceDomain: "example.org", videosCount: 1, followersCount: 3,
+      avatarUrl: null, ownerAccountUsername: "alice", ownerAccountDisplayName: "Alice New",
+      ownerAccountUrl: "https://example.org/accounts/alice", ownerAccountAvatarUrl: "https://example.org/a2.jpg"
+    }]);
+    store.close();
+
+    assert.deepEqual(
+      getRow<{ owner_account_username: string; owner_account_display_name: string; owner_account_url: string; owner_account_avatar_url: string }>(
+        temp.dbPath,
+        "SELECT owner_account_username, owner_account_display_name, owner_account_url, owner_account_avatar_url FROM channels WHERE channel_id='c1'"
+      ),
+      {
+        owner_account_username: "alice",
+        owner_account_display_name: "Alice New",
+        owner_account_url: "https://example.org/accounts/alice",
+        owner_account_avatar_url: "https://example.org/a2.jpg"
+      }
+    );
+  } finally {
+    temp.cleanup();
+  }
+});

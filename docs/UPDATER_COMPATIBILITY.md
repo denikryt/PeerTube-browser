@@ -89,3 +89,12 @@ Implementation action: Move staging helpers to `updater/staging.py` without edit
 Tests: `tests/jobs/test_updater_staging.py`.
 
 Removal condition, if any: Schema or merge behavior changes belong to separate DB/data-build plans.
+
+
+### Current-schema and staging embedding barriers
+
+Before JoinPeerTube fetches, stale-host planning/purge, staging initialization, or crawler commands, the updater validates under `single_run_lock` that production contains all crawler-owned current-shape columns and expected keys. Production-only columns remain valid. A stale destination fails with an instruction to run `migrate-whitelist.py`.
+
+`merge-staging-db.py` is the generic correctness boundary for every caller: all merge rules are validated before DML, keys must exist on both sides, and `stage_columns - prod_columns` must be empty. Production-only columns are allowed. This prevents a newer staging schema from being silently truncated by an older destination.
+
+Staging embeddings are disposable. Every normal path that can reach production merge, including `--resume-staging`, runs `build-video-embeddings.py --force` immediately before delta calculation/merge. Existing staging vectors are never treated as proof of the current embedding recipe. `--retry-errors` remains a staging-repair-only run and exits before embeddings/merge; the subsequent normal resume performs the forced rebuild. A failed forced rebuild aborts before merge.

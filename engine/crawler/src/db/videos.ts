@@ -9,11 +9,16 @@ import Database from "better-sqlite3";
 
 import { openCrawlerDatabase } from "./connection.js";
 import { applyBaseSchema } from "./schema.js";
+import { CURRENT_VIDEO_METADATA_VERSION } from "../video-metadata.js";
 import { deleteInstancesInChunks } from "./utils.js";
 import type {
+  ExistingVideoRefresh,
+  VideoActivityPubMetadataPatch,
   VideoChannelRow,
   VideoCrawlStatus,
+  VideoDetailMetadataPatch,
   VideoProgressRow,
+  VideoMetadataWorkRow,
   VideoThumbnailRow,
   VideoStoreOptions,
   VideoTagRow,
@@ -22,79 +27,102 @@ import type {
 
 export class VideoStore {
   private db: Database.Database;
-  private upsertStmt: Database.Statement;
+  private insertStmt: Database.Statement;
+  private baseRefreshStmt: Database.Statement;
+  private detailRefreshStmt: Database.Statement;
+  private categoryIdRefreshStmt: Database.Statement;
+  private permanentLiveRefreshStmt: Database.Statement;
+  private liveSaveReplayRefreshStmt: Database.Statement;
   private state = new Map<string, string>();
 
-  /**
-   * Initialize the instance.
-   */
+  /** Open crawler persistence, optionally skipping schema mutation for maintenance. */
   constructor(options: VideoStoreOptions) {
     this.db = openCrawlerDatabase(options.dbPath);
-    this.initSchema();
-    this.upsertStmt = this.db.prepare(
-      `INSERT INTO videos (
-        video_id,
-        video_uuid,
-        video_numeric_id,
-        instance_domain,
-        channel_id,
-        channel_name,
-        channel_url,
-        account_name,
-        account_url,
-        title,
-        description,
-        tags_json,
-        category,
-        published_at,
-        video_url,
-        duration,
-        thumbnail_url,
-        embed_path,
-        views,
-        likes,
-        dislikes,
-        comments_count,
-        nsfw,
-        preview_path,
-        last_checked_at,
-        last_error,
-        last_error_at,
-        error_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0)
-      ON CONFLICT(video_id, instance_domain) DO UPDATE SET
-        video_uuid = excluded.video_uuid,
-        video_numeric_id = excluded.video_numeric_id,
-        channel_id = excluded.channel_id,
-        channel_name = excluded.channel_name,
-        channel_url = excluded.channel_url,
-        account_name = excluded.account_name,
-        account_url = excluded.account_url,
-        title = excluded.title,
-        description = excluded.description,
-        tags_json = excluded.tags_json,
-        category = excluded.category,
-        published_at = excluded.published_at,
-        video_url = excluded.video_url,
-        duration = excluded.duration,
-        thumbnail_url = excluded.thumbnail_url,
-        embed_path = excluded.embed_path,
-        views = excluded.views,
-        likes = excluded.likes,
-        dislikes = excluded.dislikes,
-        comments_count = excluded.comments_count,
-        nsfw = excluded.nsfw,
-        preview_path = excluded.preview_path,
-        last_checked_at = excluded.last_checked_at,
+    if (options.initializeSchema !== false) {
+      this.initSchema();
+    }
+    this.insertStmt = this.db.prepare(`
+      INSERT OR IGNORE INTO videos (
+        video_id, video_uuid, video_numeric_id, instance_domain,
+        channel_id, channel_name, channel_url, account_name, account_url,
+        title, description, tags_json, category, category_id, licence_id, licence,
+        language, language_label, published_at, originally_published_at, updated_at,
+        video_url, duration, thumbnail_url, thumbnail_width, thumbnail_height,
+        embed_path, views, likes, dislikes, comments_count, nsfw, sensitive_summary,
+        is_live, permanent_live, live_save_replay, aspect_ratio, support,
+        account_username, account_avatar_url, metadata_version, preview_path,
+        last_checked_at, last_error, last_error_at, error_count
+      ) VALUES (
+        @videoId, @videoUuid, @videoNumericId, @instanceDomain,
+        @channelId, @channelName, @channelUrl, @accountName, @accountUrl,
+        @title, @description, @tagsJson, @category, @categoryId, @licenceId, @licence,
+        @language, @languageLabel, @publishedAt, @originallyPublishedAt, @updatedAt,
+        @videoUrl, @duration, @thumbnailUrl, @thumbnailWidth, @thumbnailHeight,
+        @embedPath, @views, @likes, @dislikes, @commentsCount, @nsfw, @sensitiveSummary,
+        @isLive, @permanentLive, @liveSaveReplay, @aspectRatio, @support,
+        @accountUsername, @accountAvatarUrl, @metadataVersion, @previewPath,
+        @lastCheckedAt, NULL, NULL, 0
+      )
+    `);
+    this.baseRefreshStmt = this.db.prepare(`
+      UPDATE videos SET
+        video_uuid = @videoUuid,
+        video_numeric_id = @videoNumericId,
+        channel_id = @safeChannelId,
+        channel_url = @safeChannelUrl,
+        account_name = @accountName,
+        account_url = @accountUrl,
+        published_at = @publishedAt,
+        video_url = @videoUrl,
+        duration = @duration,
+        thumbnail_url = @thumbnailUrl,
+        thumbnail_width = @thumbnailWidth,
+        thumbnail_height = @thumbnailHeight,
+        embed_path = @embedPath,
+        views = COALESCE(@views, views),
+        likes = COALESCE(@likes, likes),
+        dislikes = COALESCE(@dislikes, dislikes),
+        comments_count = COALESCE(@commentsCount, comments_count),
+        nsfw = @nsfw,
+        is_live = @isLive,
+        preview_path = @previewPath,
+        metadata_version = MAX(metadata_version, @metadataVersion),
+        last_checked_at = @lastCheckedAt,
         last_error = NULL,
         last_error_at = NULL,
-        error_count = 0`
-    );
+        error_count = 0
+      WHERE video_id = @videoId AND instance_domain = @instanceDomain
+    `);
+    this.detailRefreshStmt = this.db.prepare(`
+      UPDATE videos SET
+        language = @language,
+        language_label = @languageLabel,
+        licence_id = @licenceId,
+        licence = @licence,
+        sensitive_summary = @sensitiveSummary,
+        originally_published_at = @originallyPublishedAt,
+        updated_at = @updatedAt,
+        aspect_ratio = @aspectRatio,
+        support = @support,
+        account_username = @accountUsername,
+        account_avatar_url = @accountAvatarUrl
+      WHERE video_id = @videoId AND instance_domain = @instanceDomain
+    `);
+    this.categoryIdRefreshStmt = this.db.prepare(`
+      UPDATE videos SET category_id = @categoryId
+      WHERE video_id = @videoId AND instance_domain = @instanceDomain
+    `);
+    this.permanentLiveRefreshStmt = this.db.prepare(`
+      UPDATE videos SET permanent_live = @permanentLive
+      WHERE video_id = @videoId AND instance_domain = @instanceDomain
+    `);
+    this.liveSaveReplayRefreshStmt = this.db.prepare(`
+      UPDATE videos SET live_save_replay = @liveSaveReplay
+      WHERE video_id = @videoId AND instance_domain = @instanceDomain
+    `);
   }
 
-  /**
-   * Handle init schema.
-   */
+  /** Apply the normal crawler schema/migration path. */
   private initSchema() {
     applyBaseSchema(this.db);
   }
@@ -386,43 +414,206 @@ export class VideoStore {
       );
   }
 
-  /**
-   * Handle upsert videos.
-   */
-  upsertVideos(rows: VideoUpsertRow[]) {
+  /** Insert newly discovered videos without rewriting an existing row on conflict. */
+  insertNewVideos(rows: VideoUpsertRow[]) {
     if (rows.length === 0) return;
     const transaction = this.db.transaction((items: VideoUpsertRow[]) => {
       for (const row of items) {
-        this.upsertStmt.run(
-          row.videoId,
-          row.videoUuid,
-          row.videoNumericId,
-          row.instanceDomain,
-          row.channelId,
-          row.channelName,
-          row.channelUrl,
-          row.accountName,
-          row.accountUrl,
-          row.title,
-          row.description,
-          row.tagsJson,
-          row.category,
-          row.publishedAt,
-          row.videoUrl,
-          row.duration,
-          row.thumbnailUrl,
-          row.embedPath,
-          row.views,
-          row.likes,
-          row.dislikes,
-          row.commentsCount,
-          row.nsfw,
-          row.previewPath,
-          row.lastCheckedAt
-        );
+        this.insertStmt.run(this.bindRow(row));
       }
     });
     transaction(rows);
+  }
+
+  /**
+   * Refresh only non-embedding metadata for existing rows. Protected semantic
+   * fields are deliberately absent from the UPDATE statement.
+   */
+  refreshExistingVideoMetadata(rows: ExistingVideoRefresh[]) {
+    if (rows.length === 0) return;
+    const transaction = this.db.transaction((items: ExistingVideoRefresh[]) => {
+      for (const refresh of items) {
+        this.applySafeRefresh(refresh);
+      }
+    });
+    transaction(rows);
+  }
+
+  /** Return rows eligible for metadata-v1 maintenance. */
+  listVideosForMetadata(updateCompleted: boolean): VideoMetadataWorkRow[] {
+    const versionPredicate = updateCompleted
+      ? "metadata_version >= 0"
+      : `metadata_version < ${CURRENT_VIDEO_METADATA_VERSION}`;
+    return this.db
+      .prepare(
+        `SELECT video_id AS videoId, video_uuid AS videoUuid,
+                instance_domain AS instanceDomain, metadata_version AS metadataVersion,
+                video_url AS videoUrl
+         FROM videos
+         WHERE video_uuid IS NOT NULL
+           AND invalid_reason IS NULL
+           AND ${versionPredicate}
+         ORDER BY instance_domain ASC, video_id ASC`
+      )
+      .all() as VideoMetadataWorkRow[];
+  }
+
+  /** Return the normalized instance hosts currently eligible for healthy-only metadata work. */
+  listHealthyInstanceHosts(): Set<string> {
+    return new Set(
+      (this.db
+        .prepare("SELECT host FROM instances WHERE health_status = 'ok' ORDER BY host ASC")
+        .all() as { host: string }[])
+        .map((row) => row.host.toLowerCase())
+    );
+  }
+
+  /**
+   * Apply one historical metadata item atomically with opportunistic channel
+   * owner enrichment. The version checkpoint commits only with the video row.
+   */
+  applyMetadataBackfill(refresh: ExistingVideoRefresh) {
+    const transaction = this.db.transaction((item: ExistingVideoRefresh) => {
+      const row = item.base;
+      const stored = this.getStoredIdentity(row.videoId, row.instanceDomain);
+      if (!stored) return;
+      const sameChannel = isSameChannelIdentity(stored, row);
+      if (sameChannel && stored.channel_id) {
+        this.db
+          .prepare(
+            `UPDATE channels SET
+               owner_account_username = COALESCE(?, owner_account_username),
+               owner_account_display_name = COALESCE(?, owner_account_display_name),
+               owner_account_url = COALESCE(?, owner_account_url),
+               owner_account_avatar_url = COALESCE(?, owner_account_avatar_url)
+             WHERE channel_id = ? AND instance_domain = ?`
+          )
+          .run(
+            item.detail?.accountUsername ?? null,
+            row.accountName,
+            row.accountUrl,
+            item.detail?.accountAvatarUrl ?? null,
+            stored.channel_id,
+            row.instanceDomain
+          );
+      }
+      this.applySafeRefresh(item, stored);
+    });
+    transaction(refresh);
+  }
+
+  /** Build named bindings and normalize optional metadata fields to SQLite nulls. */
+  private bindRow(row: VideoUpsertRow) {
+    return {
+      ...row,
+      categoryId: row.categoryId ?? null,
+      licenceId: row.licenceId ?? null,
+      licence: row.licence ?? null,
+      language: row.language ?? null,
+      languageLabel: row.languageLabel ?? null,
+      originallyPublishedAt: row.originallyPublishedAt ?? null,
+      updatedAt: row.updatedAt ?? null,
+      thumbnailWidth: row.thumbnailWidth ?? null,
+      thumbnailHeight: row.thumbnailHeight ?? null,
+      sensitiveSummary: row.sensitiveSummary ?? null,
+      isLive: row.isLive ?? null,
+      permanentLive: row.permanentLive ?? null,
+      liveSaveReplay: row.liveSaveReplay ?? null,
+      aspectRatio: row.aspectRatio ?? null,
+      support: row.support ?? null,
+      accountUsername: row.accountUsername ?? null,
+      accountAvatarUrl: row.accountAvatarUrl ?? null,
+      metadataVersion: row.metadataVersion ?? 0
+    };
+  }
+
+  /** Apply the protected existing-row semantics using the stored identity tuple. */
+  private applySafeRefresh(
+    refresh: ExistingVideoRefresh,
+    preloaded?: StoredVideoIdentity | null
+  ) {
+    const row = refresh.base;
+    const stored = preloaded ?? this.getStoredIdentity(row.videoId, row.instanceDomain);
+    if (!stored) return;
+    const sameChannel = isSameChannelIdentity(stored, row);
+
+    this.baseRefreshStmt.run({
+      ...this.bindRow(row),
+      safeChannelId: sameChannel ? row.channelId ?? stored.channel_id : stored.channel_id,
+      safeChannelUrl: sameChannel ? row.channelUrl ?? stored.channel_url : stored.channel_url
+    });
+
+    if (refresh.detail) {
+      this.applyDetailRefresh(row, refresh.detail, stored);
+    }
+    if (refresh.activityPub) {
+      this.applyActivityPubRefresh(row, refresh.activityPub);
+    }
+  }
+
+  /** Apply fields that are trustworthy only after a successful detail request. */
+  private applyDetailRefresh(
+    row: VideoUpsertRow,
+    detail: VideoDetailMetadataPatch,
+    stored: StoredVideoIdentity
+  ) {
+    this.detailRefreshStmt.run({
+      videoId: row.videoId,
+      instanceDomain: row.instanceDomain,
+      ...detail
+    });
+
+    // Category label is an embedding input, so its identifier is safe only
+    // when it still describes the protected stored label.
+    if (detail.categoryId !== null && detail.category !== null && detail.category === stored.category) {
+      this.categoryIdRefreshStmt.run({
+        videoId: row.videoId,
+        instanceDomain: row.instanceDomain,
+        categoryId: detail.categoryId
+      });
+    }
+    this.applyLivePatch(row, detail);
+  }
+
+  /** Apply optional AP live fields without inventing values for absent keys. */
+  private applyActivityPubRefresh(
+    row: VideoUpsertRow,
+    activityPub: VideoActivityPubMetadataPatch
+  ) {
+    this.applyLivePatch(row, activityPub);
+  }
+
+  /** Apply only explicitly supplied live values from a successful source. */
+  private applyLivePatch(
+    row: VideoUpsertRow,
+    patch: Pick<VideoDetailMetadataPatch, "permanentLive" | "liveSaveReplay">
+  ) {
+    if (patch.permanentLive !== undefined && patch.permanentLive !== null) {
+      this.permanentLiveRefreshStmt.run({
+        videoId: row.videoId,
+        instanceDomain: row.instanceDomain,
+        permanentLive: patch.permanentLive
+      });
+    }
+    if (patch.liveSaveReplay !== undefined && patch.liveSaveReplay !== null) {
+      this.liveSaveReplayRefreshStmt.run({
+        videoId: row.videoId,
+        instanceDomain: row.instanceDomain,
+        liveSaveReplay: patch.liveSaveReplay
+      });
+    }
+  }
+
+  /** Read only the protected identity fields needed to decide a safe refresh. */
+  private getStoredIdentity(videoId: string, instanceDomain: string): StoredVideoIdentity | null {
+    return (
+      (this.db
+        .prepare(
+          `SELECT channel_id, channel_url, channel_name, category, category_id
+           FROM videos WHERE video_id = ? AND instance_domain = ?`
+        )
+        .get(videoId, instanceDomain) as StoredVideoIdentity | undefined) ?? null
+    );
   }
 
   /**
@@ -497,5 +688,39 @@ export class VideoStore {
          WHERE video_id = ? AND instance_domain = ?`
       )
       .run(message, Date.now(), videoId, instanceDomain);
+  }
+}
+
+interface StoredVideoIdentity {
+  channel_id: string | null;
+  channel_url: string | null;
+  channel_name: string | null;
+  category: string | null;
+  category_id: string | null;
+}
+
+/**
+ * Prove that incoming channel identity is the same before filling identity
+ * fields while the embedding-protected channel_name remains unchanged.
+ */
+function isSameChannelIdentity(stored: StoredVideoIdentity, incoming: VideoUpsertRow): boolean {
+  if (stored.channel_url && incoming.channelUrl) {
+    return canonicalProtocolUrl(stored.channel_url) === canonicalProtocolUrl(incoming.channelUrl);
+  }
+  if (stored.channel_id && incoming.channelId) {
+    return stored.channel_id === incoming.channelId;
+  }
+  return false;
+}
+
+/** Canonicalize protocol URLs only for equality checks; invalid values never match. */
+function canonicalProtocolUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    const text = url.toString();
+    return text.endsWith("/") ? text.slice(0, -1) : text;
+  } catch {
+    return value.trim();
   }
 }

@@ -16,6 +16,10 @@ export interface HttpOptions {
   timeoutMs: number;
   maxRetries: number;
   log?: (message: string) => void;
+  /** Optional response content type used by protocol-specific callers. */
+  accept?: string;
+  /** Fetch-compatible redirect policy; REST callers keep the default follow behavior. */
+  redirect?: "follow" | "error";
 }
 
 /**
@@ -72,15 +76,16 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
       try {
         response = await fetch(url, {
           signal: controller.signal,
+          redirect: options.redirect ?? "follow",
           headers: {
-            "accept": "application/json"
+            "accept": options.accept ?? "application/json"
           }
         });
       } catch (error) {
         if (!isNoNetworkError(error)) {
           throw error;
         }
-        response = await fetchViaCurl(url, options.timeoutMs);
+        response = await fetchViaCurl(url, options);
       }
 
       if (!response.ok) {
@@ -135,29 +140,51 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
 /**
  * Handle fetch via curl.
  */
-async function fetchViaCurl(url: string, timeoutMs: number): Promise<Response> {
-  const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
+async function fetchViaCurl(url: string, options: HttpOptions): Promise<Response> {
   try {
-    const { stdout } = await execFileAsync("curl", [
-      "--silent",
-      "--show-error",
-      "--location",
-      "--max-time",
-      String(timeoutSec),
-      "--connect-timeout",
-      String(timeoutSec),
-      "--header",
-      "accept: application/json",
-      url
-    ]);
-    // Emulate a minimal Response for downstream handling.
-    return new Response(stdout, { status: 200 });
+    const { stdout } = await execFileAsync("curl", buildCurlArgs(url, options));
+    const marker = "\n__PEERTUBE_STATUS__=";
+    const markerIndex = stdout.lastIndexOf(marker);
+    if (markerIndex < 0) {
+      throw new Error("curl response missing HTTP status marker");
+    }
+    const body = stdout.slice(0, markerIndex);
+    const status = Number(stdout.slice(markerIndex + marker.length).trim());
+    if (!Number.isInteger(status) || status < 100 || status > 599) {
+      throw new Error("curl returned invalid HTTP status");
+    }
+    return new Response(body, { status });
   } catch (error) {
     const err = error as { stderr?: string; message?: string };
     const stderr = typeof err.stderr === "string" ? err.stderr.trim() : "";
     const message = stderr || err.message || "curl failed";
     throw new Error(`curl: ${message}`);
   }
+}
+
+/**
+ * Build curl arguments with the same Accept and redirect semantics as native
+ * fetch. Exporting this pure boundary keeps the fallback contract testable.
+ */
+export function buildCurlArgs(url: string, options: HttpOptions): string[] {
+  const timeoutSec = Math.max(1, Math.ceil(options.timeoutMs / 1000));
+  const args = [
+    "--silent",
+    "--show-error",
+    "--max-time",
+    String(timeoutSec),
+    "--connect-timeout",
+    String(timeoutSec),
+    "--header",
+    `accept: ${options.accept ?? "application/json"}`,
+    "--write-out",
+    "\n__PEERTUBE_STATUS__=%{http_code}"
+  ];
+  if (options.redirect !== "error") {
+    args.push("--location");
+  }
+  args.push(url);
+  return args;
 }
 
 interface ErrorContext {

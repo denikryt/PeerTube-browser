@@ -27,6 +27,7 @@ npm run crawl:videos
 npm run crawl:videos:tags
 npm run crawl:videos:comments
 npm run crawl:videos:thumbnails
+npm run crawl:videos:metadata
 npm run test:live:thumbnails
 ```
 
@@ -111,3 +112,24 @@ channel discovery/health, normal video crawling and detail enrichment,
 video-count collection, tags, comments, and thumbnail refresh. The updater
 exposes the same value as `--host-delay-ms` and forwards it to every crawler
 stage.
+
+
+## ActivityPub-aligned metadata-v1
+
+Normal `crawl:videos` uses the existing public `/api/v1/videos/:uuid` detail request to persist language, category/licence identifiers, source timestamps, sensitive summary, live flag, aspect ratio/support, account identity, detail tags, and canonical thumbnail URL/dimensions. Channel discovery also stores owner-account identity when PeerTube already includes it in the channel payload. No additional owner request is introduced.
+
+For live videos only, when public REST detail does not expose `permanentLive` / `liveSaveReplay`, the crawler may best-effort GET the video's public ActivityPub object. The candidate URL is validated before network access: only HTTP(S), no credentials, same crawled host. The request uses ActivityPub Accept headers and rejects redirects; returned `Video` type/object ID/UUID are validated before the two live fields are accepted. The crawler does not use the OAuth live endpoint and does not implement an ActivityPub inbox.
+
+Historical backfill requires a DB already migrated to the current shape:
+
+```bash
+# Production whitelist first:
+python3 ../server/db/jobs/migrate-whitelist.py --db ../server/db/whitelist.db
+
+# Then data-only metadata maintenance:
+npm run crawl:videos:metadata -- --db ../server/db/whitelist.db
+# Explicitly revisit completed rows:
+npm run crawl:videos:metadata -- --db ../server/db/whitelist.db --update-metadata
+```
+
+The metadata command validates schema read-only before requests/writes and never runs crawler schema migration on the target DB. `metadata_version` is a monotonic completion checkpoint rather than a freshness timestamp.

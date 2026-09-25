@@ -602,3 +602,14 @@ Future migration-policy stage
 ```
 
 The deferred items above are not Stage 6 gaps. Stage 6 established ownership and current-shape migration resources; later bootstrap cleanup moved production callers to explicit bootstrap entrypoints, and the legacy ensure-wrapper cleanup removed the transitional schema wrappers.
+
+
+## Metadata-v1 crawler / whitelist ownership
+
+The crawler owns the canonical producer columns added for PeerTube REST / ActivityPub-aligned metadata. `engine/crawler/schema.sql` defines the crawler current shape; `engine/crawler/src/db/schema.ts` may add those known columns to crawler databases. Production `whitelist.db` migration remains owned by `engine/server/db/jobs/migrate-whitelist.py` / `whitelist_migrations.py`; crawler maintenance commands must not mutate production schema.
+
+Crawler-owned video metadata-v1 includes `metadata_version`, language/category/licence identifiers and labels, source timestamps, sensitive summary, live metadata, aspect ratio/support, account username/avatar, and thumbnail dimensions. Channel metadata-v1 includes owner-account identity fields. Historical rows start at `metadata_version=0`; completion is monotonic and failed enrichment preserves last-known-good enrichment values.
+
+Schema compatibility is directional: crawler-owned columns must be present in whitelist production, while Engine-owned destination columns such as `videos.popularity` are allowed. The merge boundary rejects staging-only columns before DML.
+
+Embedding-source fields are intentionally protected on existing rows: `title`, `description`, `tags_json`, `category`, and `channel_name`. `comments_count` is refreshable product metadata and is not part of the semantic embedding recipe. `category/category_id` and the video channel tuple have conditional persistence rules so identifiers cannot contradict protected labels.

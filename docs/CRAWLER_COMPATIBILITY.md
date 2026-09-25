@@ -165,3 +165,22 @@ Removal condition, if any:
 ```text
 Only a later build/deployment plan may change generated output paths.
 ```
+
+
+## ActivityPub-aligned metadata-v1 crawl semantics
+
+### Ordinary repeat video crawl is embedding-safe
+
+`--new-videos` controls whether known rows are skipped; it no longer determines whether a row is considered new for persistence. The worker always checks local video identity. New rows receive full canonical metadata (including detail tags); existing rows receive an explicit safe refresh that preserves `title`, `description`, `tags_json`, `category`, and `channel_name`.
+
+`category_id` is refreshed only when the incoming category label still matches the stored protected `category`. `channel_id/channel_url` are refreshed only when URL-first / ID-fallback comparison proves the incoming video still belongs to the same channel. A real category/channel move therefore cannot create a hybrid row with an old embedding label and a new identity.
+
+Metadata enrichment is non-destructive for existing rows: failed detail/ActivityPub enrichment does not erase last-known-good enrichment values and `metadata_version` never decreases.
+
+### Metadata maintenance is validate-only for schema
+
+`npm run crawl:videos:metadata` backfills rows below the current metadata version; `--update-metadata` explicitly revisits completed rows. Before any HTTP request or write it requires the current metadata-v1 `videos`/`channels` columns and keys. Missing production columns fail with an instruction to run `migrate-whitelist.py`; the command opens `VideoStore` without `applyBaseSchema()` and is not a production migration path.
+
+Channel-owner enrichment and the video's metadata completion checkpoint are committed in one SQLite transaction. An unproven/different incoming channel is not used to enrich another channel row.
+
+The existing `--tags` / `--update-tags` maintenance modes may change `tags_json`, which is an embedding input. When used on already-embedded production data they must be paired with the documented full embedding/artifact rebuild. `comments_count` maintenance remains safe and does not invalidate embeddings.

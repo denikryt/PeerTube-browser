@@ -69,6 +69,7 @@ def _args(tmp_path: Path, **overrides):
 def _patch_lightweight(monkeypatch, *, denied=frozenset(), join=frozenset(), prod=frozenset()):
     """Patch heavy DB/network helpers while exercising real pipeline command construction."""
 
+    monkeypatch.setattr(pipeline, "assert_production_schema_compatible", lambda prod_db, schema_path: None)
     monkeypatch.setattr(pipeline, "load_denied_hosts", lambda prod_db: set(denied))
     monkeypatch.setattr(pipeline, "fetch_join_hosts", lambda url: set(join))
     monkeypatch.setattr(pipeline, "list_prod_hosts", lambda prod_db: set(prod))
@@ -119,6 +120,7 @@ def test_normal_run_counts_unknown_channels_before_crawling_video_metadata(monke
         "systemctl",
     ]
     assert "--gpu" in seen[4]
+    assert "--force" in seen[4]
     assert seen[5] == ["systemctl", "stop", "svc"]
     assert seen[-1] == ["systemctl", "start", "svc"]
     search_cmd = next(cmd for cmd in seen if "rebuild-video-search-index.py" in cmd[1])
@@ -335,3 +337,72 @@ def test_retry_errors_refuses_missing_staging(monkeypatch, tmp_path) -> None:
             command_runner=lambda cmd, cwd: None,
             validate_files=False,
         )
+
+
+def test_schema_preflight_runs_before_any_sync_purge(monkeypatch, tmp_path) -> None:
+    """Stale production schema aborts before sync code can mutate production."""
+
+    events: list[str] = []
+    _patch_lightweight(monkeypatch, join={"new.ex"}, prod={"old.ex"})
+
+    def fail_preflight(prod_db, schema_path):
+        events.append("preflight")
+        raise RuntimeError("Run migrate-whitelist.py")
+
+    monkeypatch.setattr(pipeline, "assert_production_schema_compatible", fail_preflight)
+    monkeypatch.setattr(
+        pipeline,
+        "purge_hosts",
+        lambda **kwargs: events.append("purge") or {},
+    )
+
+    with pytest.raises(RuntimeError, match="migrate-whitelist"):
+        pipeline.run_pipeline(
+            _args(tmp_path, sync_join_whitelist=True, yes=True),
+            command_runner=lambda cmd, cwd: events.append("command"),
+            validate_files=False,
+        )
+
+    assert events == ["preflight"]
+
+
+def test_resume_staging_force_rebuilds_embeddings_before_merge(monkeypatch, tmp_path) -> None:
+    """A resumed staging DB never contributes pre-existing recipe embeddings to prod."""
+
+    _patch_lightweight(monkeypatch)
+    (tmp_path / "staging.db").touch()
+    seen: list[list[str]] = []
+    pipeline.run_pipeline(
+        _args(tmp_path, resume_staging=True),
+        command_runner=lambda cmd, cwd: seen.append(list(cmd)),
+        validate_files=False,
+    )
+
+    embeddings_index = next(
+        i for i, cmd in enumerate(seen) if len(cmd) > 1 and "build-video-embeddings.py" in cmd[1]
+    )
+    merge_index = next(
+        i for i, cmd in enumerate(seen) if len(cmd) > 1 and "merge-staging-db.py" in cmd[1]
+    )
+    assert "--force" in seen[embeddings_index]
+    assert embeddings_index < merge_index
+
+
+def test_staging_embedding_rebuild_failure_prevents_merge(monkeypatch, tmp_path) -> None:
+    """Merge is fail-closed when the mandatory current-recipe staging rebuild fails."""
+
+    _patch_lightweight(monkeypatch)
+    seen: list[list[str]] = []
+
+    def runner(cmd, cwd):
+        seen.append(list(cmd))
+        if len(cmd) > 1 and "build-video-embeddings.py" in cmd[1]:
+            raise RuntimeError("embedding rebuild failed")
+
+    with pytest.raises(RuntimeError, match="embedding rebuild failed"):
+        pipeline.run_pipeline(_args(tmp_path), command_runner=runner, validate_files=False)
+
+    assert not any(
+        len(cmd) > 1 and "merge-staging-db.py" in cmd[1]
+        for cmd in seen
+    )

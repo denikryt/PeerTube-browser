@@ -84,6 +84,21 @@ program
     false
   )
   .option(
+    "--metadata",
+    "Metadata-v1 backfill mode for rows below the current metadata version",
+    false
+  )
+  .option(
+    "--update-metadata",
+    "Metadata-v1 maintenance mode that explicitly revisits completed rows",
+    false
+  )
+  .option(
+    "--only-healthy-hosts",
+    "Metadata-v1 mode: process only instances whose stored health_status is ok",
+    false
+  )
+  .option(
     "--host-delay <ms>",
     "Minimum delay between request starts to one host in every mode",
     "200"
@@ -115,6 +130,9 @@ try {
     updateTags: Boolean(options.updateTags),
     commentsOnly: Boolean(options.comments),
     refreshThumbnails: Boolean(options.refreshThumbnails),
+    metadataOnly: Boolean(options.metadata),
+    updateMetadata: Boolean(options.updateMetadata),
+    onlyHealthyHosts: Boolean(options.onlyHealthyHosts),
     hostDelayMs: Number(options.hostDelay),
     resume: Boolean(options.resume),
     errorsOnly: Boolean(options.errors)

@@ -80,6 +80,56 @@ def load_rules(path: Path) -> list[dict[str, Any]]:
     return tables
 
 
+def validate_merge_schema(
+    conn: sqlite3.Connection,
+    rules: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Validate every merge rule before any production DML can execute."""
+    prepared: list[dict[str, Any]] = []
+    for rule in rules:
+        table = str(rule.get("name", "")).strip()
+        strategy = str(rule.get("strategy", "")).strip().upper()
+        keys = [str(key) for key in rule.get("keys", [])]
+        if not table:
+            raise ValueError("merge rule table name is empty")
+        if not keys:
+            raise ValueError(f"merge rule for '{table}' has no keys")
+        if strategy not in {"INSERT_ONLY", "INSERT_OR_REPLACE", "UPSERT"}:
+            raise ValueError(f"unsupported strategy '{strategy}' for table '{table}'")
+        if not table_exists(conn, table, "main"):
+            raise ValueError(f"table missing in prod DB: {table}")
+        if not table_exists(conn, table, "stage"):
+            raise ValueError(f"table missing in staging DB: {table}")
+
+        prod_columns = table_columns(conn, table, "main")
+        stage_columns_list = table_columns(conn, table, "stage")
+        stage_columns = set(stage_columns_list)
+        if any(key not in prod_columns for key in keys):
+            raise ValueError(f"keys {keys} are not present in prod table '{table}'")
+        if any(key not in stage_columns for key in keys):
+            raise ValueError(f"keys {keys} are not present in staging table '{table}'")
+
+        stage_only = sorted(stage_columns - set(prod_columns))
+        if stage_only:
+            raise RuntimeError(
+                f"staging table '{table}' has columns missing from production: "
+                f"{', '.join(stage_only)}. Run migrate-whitelist.py before merge."
+            )
+        merge_columns = [column for column in prod_columns if column in stage_columns]
+        if not merge_columns or any(key not in merge_columns for key in keys):
+            raise ValueError(f"keys {keys} are missing from merge columns for table '{table}'")
+        prepared.append(
+            {
+                "rule": rule,
+                "table": table,
+                "strategy": strategy,
+                "keys": keys,
+                "merge_columns": merge_columns,
+            }
+        )
+    return prepared
+
+
 def build_upsert_sql(
     table: str,
     columns: list[str],
@@ -121,42 +171,17 @@ def main() -> None:
     conn.execute("ATTACH DATABASE ? AS stage", (staging_db.as_posix(),))
 
     try:
+        # Validate the complete schema boundary before acquiring the write
+        # transaction. A later rule must never discover incompatible staging
+        # columns after earlier tables have already been merged.
+        prepared_rules = validate_merge_schema(conn, rules)
         conn.execute("BEGIN IMMEDIATE")
-        for rule in rules:
-            table = str(rule.get("name", "")).strip()
-            strategy = str(rule.get("strategy", "")).strip().upper()
-            keys = [str(key) for key in rule.get("keys", [])]
-            if not table:
-                raise ValueError("merge rule table name is empty")
-            if not keys:
-                raise ValueError(f"merge rule for '{table}' has no keys")
-            if strategy not in {"INSERT_ONLY", "INSERT_OR_REPLACE", "UPSERT"}:
-                raise ValueError(
-                    f"unsupported strategy '{strategy}' for table '{table}'"
-                )
-            if not table_exists(conn, table, "main"):
-                raise ValueError(f"table missing in prod DB: {table}")
-            if not table_exists(conn, table, "stage"):
-                raise ValueError(f"table missing in staging DB: {table}")
-
-            prod_columns = table_columns(conn, table, "main")
-            stage_columns = set(table_columns(conn, table, "stage"))
-            if any(key not in prod_columns for key in keys):
-                raise ValueError(
-                    f"keys {keys} are not present in prod table '{table}'"
-                )
-            if any(key not in stage_columns for key in keys):
-                raise ValueError(
-                    f"keys {keys} are not present in staging table '{table}'"
-                )
-            merge_columns = [column for column in prod_columns if column in stage_columns]
-            if not merge_columns:
-                raise ValueError(f"no common columns to merge for table '{table}'")
-            if any(key not in merge_columns for key in keys):
-                raise ValueError(
-                    f"keys {keys} are missing from common columns for table '{table}'"
-                )
-
+        for prepared in prepared_rules:
+            rule = prepared["rule"]
+            table = prepared["table"]
+            strategy = prepared["strategy"]
+            keys = prepared["keys"]
+            merge_columns = prepared["merge_columns"]
             before = count_rows(conn, "main", table)
             cols = ", ".join(merge_columns)
             if strategy == "INSERT_ONLY":

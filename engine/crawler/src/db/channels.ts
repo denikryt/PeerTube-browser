@@ -37,15 +37,23 @@ export class ChannelStore {
         instance_domain,
         videos_count,
         followers_count,
-        avatar_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        avatar_url,
+        owner_account_username,
+        owner_account_display_name,
+        owner_account_url,
+        owner_account_avatar_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(channel_id, instance_domain) DO UPDATE SET
         channel_name = excluded.channel_name,
         channel_url = excluded.channel_url,
         display_name = excluded.display_name,
         videos_count = excluded.videos_count,
         followers_count = excluded.followers_count,
-        avatar_url = excluded.avatar_url`
+        avatar_url = excluded.avatar_url,
+        owner_account_username = excluded.owner_account_username,
+        owner_account_display_name = excluded.owner_account_display_name,
+        owner_account_url = excluded.owner_account_url,
+        owner_account_avatar_url = excluded.owner_account_avatar_url`
     );
   }
 
@@ -316,7 +324,11 @@ export class ChannelStore {
           row.instanceDomain,
           row.videosCount,
           row.followersCount,
-          row.avatarUrl
+          row.avatarUrl,
+          row.ownerAccountUsername ?? null,
+          row.ownerAccountDisplayName ?? null,
+          row.ownerAccountUrl ?? null,
+          row.ownerAccountAvatarUrl ?? null
         );
       }
     });
