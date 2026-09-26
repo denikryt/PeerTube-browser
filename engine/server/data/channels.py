@@ -18,27 +18,6 @@ DEFAULT_SORT_DIR = "desc"
 ALLOWED_SORT_DIRS = {"asc", "desc"}
 
 
-def ensure_channels_indexes(conn: sqlite3.Connection) -> None:
-    """Create indexes used by /api/channels filtering and ordering."""
-    table_exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'channels' LIMIT 1"
-    ).fetchone()
-    if not table_exists:
-        return
-    conn.executescript(
-        """
-        CREATE INDEX IF NOT EXISTS idx_channels_followers_videos_name
-          ON channels (followers_count DESC, videos_count DESC, channel_name ASC);
-        CREATE INDEX IF NOT EXISTS idx_channels_videos
-          ON channels (videos_count DESC);
-        CREATE INDEX IF NOT EXISTS idx_channels_name
-          ON channels (channel_name);
-        CREATE INDEX IF NOT EXISTS idx_channels_instance
-          ON channels (instance_domain);
-        """
-    )
-
-
 def fetch_channels(
     conn: sqlite3.Connection,
     *,

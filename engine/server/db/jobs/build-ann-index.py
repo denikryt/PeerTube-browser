@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a FAISS ANN index from video_embeddings in a SQLite database."""
+"""Build a FAISS ANN index from active stable video index ids."""
 import argparse
 import json
 import logging
@@ -29,8 +29,8 @@ except ImportError as exc:  # pragma: no cover
 
 @dataclass
 class EmbeddingRow:
-    """Represent embedding row behavior."""
-    rowid: int
+    """Represent one active embedding and its stable FAISS id."""
+    index_id: int
     embedding: np.ndarray
 
 
@@ -48,13 +48,13 @@ def iter_embeddings(
         if not rows:
             break
         batch: list[EmbeddingRow] = []
-        for rowid, embedding_blob, embedding_dim in rows:
+        for index_id, embedding_blob, embedding_dim in rows:
             if embedding_dim != dim:
                 continue
             embedding = np.frombuffer(embedding_blob, dtype=np.float32)
             if embedding.shape[0] != dim:
                 continue
-            batch.append(EmbeddingRow(rowid=rowid, embedding=embedding))
+            batch.append(EmbeddingRow(index_id=index_id, embedding=embedding))
         if batch:
             yield batch
 
@@ -65,21 +65,25 @@ def fetch_training_samples(
     sample_size: int,
 ) -> np.ndarray:
     """Handle fetch training samples."""
-    total = conn.execute("SELECT COUNT(*) FROM video_embeddings").fetchone()[0]
+    total = conn.execute("SELECT COUNT(*) FROM video_index_ids WHERE is_active = 1").fetchone()[0]
     if total == 0:
-        raise RuntimeError("No embeddings found.")
+        raise RuntimeError("No active video_index_ids found. Run sync-video-index-ids.py before build-ann-index.py.")
     step = max(total // sample_size, 1)
     cursor = conn.execute(
         """
-        SELECT rowid, embedding, embedding_dim
-        FROM video_embeddings
-        WHERE (rowid % ?) = 0
+        SELECT vii.index_id, e.embedding, e.embedding_dim
+        FROM video_index_ids vii
+        JOIN video_embeddings e
+          ON e.video_id = vii.video_id AND e.instance_domain = vii.instance_domain
+        JOIN videos v
+          ON v.video_id = vii.video_id AND v.instance_domain = vii.instance_domain
+        WHERE vii.is_active = 1 AND (vii.index_id % ?) = 0
         LIMIT ?
         """,
         (step, sample_size),
     )
     vectors: list[np.ndarray] = []
-    for rowid, embedding_blob, embedding_dim in cursor:
+    for index_id, embedding_blob, embedding_dim in cursor:
         if embedding_dim != dim:
             continue
         embedding = np.frombuffer(embedding_blob, dtype=np.float32)
@@ -219,8 +223,10 @@ def main() -> None:
     dim = int(row["embedding_dim"])
     model_name = row["model_name"]
 
-    total = conn.execute("SELECT COUNT(*) FROM video_embeddings").fetchone()[0]
-    logging.info("embeddings=%d dim=%d", total, dim)
+    total = conn.execute("SELECT COUNT(*) FROM video_index_ids WHERE is_active = 1").fetchone()[0]
+    if total == 0:
+        raise RuntimeError("No active video_index_ids found. Run sync-video-index-ids.py before build-ann-index.py.")
+    logging.info("active_index_ids=%d dim=%d", total, dim)
 
     logging.info("sampling training vectors=%d", args.train_sample)
     train_vectors = fetch_training_samples(conn, dim, args.train_sample)
@@ -252,9 +258,17 @@ def main() -> None:
 
     logging.info("adding vectors in batches size=%d", args.batch_size)
     added = 0
-    query = "SELECT rowid, embedding, embedding_dim FROM video_embeddings"
+    query = """
+        SELECT vii.index_id, e.embedding, e.embedding_dim
+        FROM video_index_ids vii
+        JOIN video_embeddings e
+          ON e.video_id = vii.video_id AND e.instance_domain = vii.instance_domain
+        JOIN videos v
+          ON v.video_id = vii.video_id AND v.instance_domain = vii.instance_domain
+        WHERE vii.is_active = 1
+        """
     for batch in iter_embeddings(conn, query, (), dim, args.batch_size):
-        ids = np.array([item.rowid for item in batch], dtype=np.int64)
+        ids = np.array([item.index_id for item in batch], dtype=np.int64)
         vectors = np.vstack([item.embedding for item in batch])
         if args.normalize:
             normalize_vectors(vectors)
@@ -286,7 +300,8 @@ def main() -> None:
         "nbits": args.nbits,
         "normalized": bool(args.normalize),
         "acceleration": "gpu" if args.use_gpu else "cpu",
-        "id_source": "video_embeddings.rowid",
+        "schema_version": 2,
+        "id_source": "video_index_ids.index_id",
     }
     meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 

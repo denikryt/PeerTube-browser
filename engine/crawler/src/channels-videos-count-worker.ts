@@ -2,20 +2,28 @@
  * Module `engine/crawler/src/channels-videos-count-worker.ts`: provide runtime functionality.
  */
 
-import { ChannelStore } from "./db.js";
+import { ChannelStore } from "./db/channels.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
-import { filterHosts, loadHostsFromFile } from "./host-filters.js";
+import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
+import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
+import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
+import { formatMetricLog } from "./log-format.js";
 
 const CHANNEL_CONCURRENCY = 2;
 
 export interface ChannelVideosCountOptions {
   dbPath: string;
+  hostsFile: string | null;
   excludeHostsFile: string | null;
   concurrency: number;
+  hostConcurrency: number;
+  hostDelayMs: number;
   timeoutMs: number;
   maxRetries: number;
   resume: boolean;
   errorsOnly: boolean;
+  /** In-process host scope used by the optional host-level scheduler. */
+  hosts?: readonly string[];
 }
 
 interface ChannelVideoPage {
@@ -41,8 +49,11 @@ type StatusReporter = (message: string) => void;
  */
 export async function crawlChannelVideosCount(options: ChannelVideosCountOptions) {
   const store = new ChannelStore({ dbPath: options.dbPath });
+  const includedHosts = options.hosts
+    ? new Set(options.hosts.map((host) => host.toLowerCase()))
+    : loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
-  const hosts = filterHosts(store.listInstances(), excludedHosts);
+  const hosts = scopeHosts(store.listInstances(), includedHosts, excludedHosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
 
   const counts = store.getChannelCounts();
@@ -53,7 +64,7 @@ export async function crawlChannelVideosCount(options: ChannelVideosCountOptions
     updatedThisRun: 0
   };
   updateStatus(
-    `[channels-videos] instances=${hosts.length} concurrency=${workerCount} resume=${options.resume} errorsOnly=${options.errorsOnly}`
+    `[channels-videos] instances=${hosts.length} concurrency=${workerCount} hostConcurrency=${options.hostConcurrency} resume=${options.resume} errorsOnly=${options.errorsOnly}`
   );
   updateProgress(progress);
   updateStatus("[channels-videos] idle");
@@ -94,6 +105,7 @@ async function processInstance(
   progress: ChannelProgressState
 ) {
   const normalizedHost = host.toLowerCase();
+  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
   updateStatus(`[channels-videos] start ${normalizedHost}`);
 
   try {
@@ -101,10 +113,16 @@ async function processInstance(
       normalizedHost,
       store,
       options,
-      progress
+      progress,
+      requestLimiter
     );
     updateStatus(
-      `[channels-videos] done ${normalizedHost} updated=${updated} total=${total}`
+      formatMetricLog(
+        "channels-videos",
+        [["updated", updated], ["total", total]],
+        "host",
+        normalizedHost
+      )
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -119,40 +137,23 @@ async function updateVideosCountForInstance(
   host: string,
   store: ChannelStore,
   options: ChannelVideosCountOptions,
-  progress: ChannelProgressState
+  progress: ChannelProgressState,
+  requestLimiter: RequestLimiter
 ) {
-  const channels = store.listChannelsForInstance(host);
+  const channels = store.listChannelsForVideoCount(host, options.resume, options.errorsOnly);
   let updated = 0;
 
   await mapWithConcurrency(channels, CHANNEL_CONCURRENCY, async (channel) => {
+    // The repository query already excludes completed rows and, during normal
+    // resume, recorded errors. This worker therefore performs network work only.
     if (!channel.channel_name) return;
-    if (channel.videos_count !== null) {
-      updateStatus(
-        `[channels-videos] skip ${host}/${channel.channel_name} videos_count=${channel.videos_count}`
-      );
-      updateProgress(progress);
-      return;
-    }
-    if (options.errorsOnly && channel.last_error_source !== "videos_count") {
-      updateStatus(
-        `[channels-videos] skip ${host}/${channel.channel_name} no_error`
-      );
-      updateProgress(progress);
-      return;
-    }
-    if (options.resume && channel.last_error_source === "videos_count") {
-      updateStatus(
-        `[channels-videos] skip ${host}/${channel.channel_name} error=${channel.last_error ?? "unknown"}`
-      );
-      updateProgress(progress);
-      return;
-    }
     const hadError = channel.last_error_source === "videos_count";
     const videosCount = await fetchChannelVideosCount(
       host,
       channel.channel_name,
       options,
-      (message) => updateStatus(message)
+      (message) => updateStatus(message),
+      requestLimiter
     );
     if (videosCount.error) {
       store.updateChannelVideosCountError(channel.channel_id, host, videosCount.error);
@@ -167,12 +168,21 @@ async function updateVideosCountForInstance(
     store.updateChannelVideosCount(channel.channel_id, host, videosCount.total);
     updated += 1;
     progress.updatedThisRun += 1;
-    progress.channelsWithVideosCount += 1;
+    // ``with_videos`` is a content metric, not a count-completeness metric:
+    // resolved empty channels must not inflate it.
+    if (videosCount.total > 0) {
+      progress.channelsWithVideosCount += 1;
+    }
     if (hadError) {
       progress.channelsWithError = Math.max(0, progress.channelsWithError - 1);
     }
     updateStatus(
-      `[channels-videos] done ${host}/${channel.channel_name} videos_count=${videosCount.total}`
+      formatMetricLog(
+        "channels-videos",
+        [["videos_count", videosCount.total]],
+        "channel",
+        `${host}/${channel.channel_name}`
+      )
     );
     updateProgress(progress);
   });
@@ -187,20 +197,28 @@ async function fetchChannelVideosCount(
   host: string,
   channelName: string,
   options: ChannelVideosCountOptions,
-  reportStatus: StatusReporter
+  reportStatus: StatusReporter,
+  requestLimiter: RequestLimiter
 ): Promise<ChannelVideoCountResult> {
   try {
-    const page = await fetchWithFallback(host, channelName, options, "https:", reportStatus);
+    const page = await fetchWithFallback(
+      host,
+      channelName,
+      options,
+      "https:",
+      reportStatus,
+      requestLimiter
+    );
     const total = page.total;
     if (typeof total === "number" && Number.isFinite(total)) {
       return { total, error: null };
     }
-    return { total: null, error: "invalid total in response" };
+    return { total: null, error: "[invalid_response] invalid total in response" };
   } catch (error) {
     if (isNoNetworkError(error)) {
       throw error;
     }
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatCrawlError(error);
     reportStatus(`[channels-videos] count error ${host}/${channelName}: ${message}`);
     return { total: null, error: message };
   }
@@ -214,23 +232,25 @@ async function fetchWithFallback(
   channelName: string,
   options: ChannelVideosCountOptions,
   protocol: string,
-  reportStatus: StatusReporter
+  reportStatus: StatusReporter,
+  requestLimiter: RequestLimiter
 ) {
   const url = buildChannelVideosUrl(host, channelName, 0, 1, protocol);
   try {
-    return await fetchJsonWithRetry<ChannelVideoPage>(url, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<ChannelVideoPage>(url, {
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries,
       log: reportStatus
-    });
-  } catch {
+    }));
+  } catch (error) {
+    if (!shouldTryAlternateProtocol(error)) throw error;
     const alternate = protocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildChannelVideosUrl(host, channelName, 0, 1, alternate);
-    return await fetchJsonWithRetry<ChannelVideoPage>(alternateUrl, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<ChannelVideoPage>(alternateUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: Math.max(1, Math.floor(options.maxRetries / 2)),
       log: reportStatus
-    });
+    }));
   }
 }
 
@@ -276,7 +296,16 @@ async function mapWithConcurrency<T>(
 function formatProgress(progress: ChannelProgressState) {
   const total = Math.max(0, progress.totalChannels);
   const withVideos = Math.max(0, progress.channelsWithVideosCount);
-  return `[channels-videos] progress updated=${progress.updatedThisRun} errors=${progress.channelsWithError} with_videos=${withVideos} total=${total}`;
+  return formatMetricLog(
+    "channels-videos",
+    [
+      ["updated", progress.updatedThisRun],
+      ["errors", progress.channelsWithError],
+      ["with_videos", withVideos],
+      ["total", total]
+    ],
+    "progress"
+  );
 }
 
 /**

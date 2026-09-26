@@ -12,7 +12,8 @@ server_dir = script_dir.parents[2]
 if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
 
-from data.interaction_events import ensure_interaction_event_schema, ingest_interaction_event
+from db.bootstrap import bootstrap_engine_runtime_db
+from data.interaction_events import ingest_interaction_event
 
 
 def assert_eq(actual: object, expected: object, message: str) -> None:
@@ -25,7 +26,7 @@ def main() -> None:
     """Handle main."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    ensure_interaction_event_schema(conn)
+    bootstrap_engine_runtime_db(conn)
 
     base = {
         "actor_id": "user-1",

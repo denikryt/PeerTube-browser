@@ -25,3 +25,17 @@ plans/
 client/frontend/run-client-sync-build.sh
 client/frontend/run-client-sync-build-client-dev.sh
 client/frontend/about.html
+
+# Build outputs
+engine/crawler/dist/
+client/frontend/dist/
+
+# Python caches
+*.py[cod]
+.pytest_cache/
+
+# Crawler test build output
+engine/crawler/dist-test/
+
+# Bundle cache
+peertube-browser

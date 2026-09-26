@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "client" / "backend"))
 
+from client.backend.db.bootstrap import bootstrap_client_users_db  # noqa: E402
 from lib import users_store  # noqa: E402
 
 
@@ -19,10 +20,10 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
-def test_ensure_user_schema_creates_users_likes_and_updated_index() -> None:
-    """Schema creation must preserve the Client profile storage contract."""
+def test_bootstrap_client_users_db_creates_users_likes_and_updated_index() -> None:
+    """Schema bootstrap must preserve the Client profile storage contract."""
     conn = _connect()
-    users_store.ensure_user_schema(conn)
+    bootstrap_client_users_db(conn)
 
     tables = {
         row["name"]
@@ -40,7 +41,7 @@ def test_ensure_user_schema_creates_users_likes_and_updated_index() -> None:
 def test_record_like_is_idempotent_for_user_video_instance_key() -> None:
     """Repeating the same like must update recency instead of duplicating rows."""
     conn = _connect()
-    users_store.ensure_user_schema(conn)
+    bootstrap_client_users_db(conn)
     video = {"video_id": "123", "video_uuid": "uuid-123", "instance_domain": "example.org"}
 
     users_store.record_like(conn, "local-user", "like", video, max_likes=100)
@@ -53,7 +54,7 @@ def test_record_like_is_idempotent_for_user_video_instance_key() -> None:
 def test_fetch_recent_likes_orders_by_updated_at_and_applies_limit(monkeypatch) -> None:
     """Recent likes must expose newest-first lightweight identities for Engine metadata lookup."""
     conn = _connect()
-    users_store.ensure_user_schema(conn)
+    bootstrap_client_users_db(conn)
     timestamps = iter([100, 1000, 2000, 3000, 4000, 5000])
     monkeypatch.setattr(users_store, "now_ms", lambda: next(timestamps))
 
@@ -75,7 +76,7 @@ def test_fetch_recent_likes_orders_by_updated_at_and_applies_limit(monkeypatch) 
 def test_remove_like_deletes_only_the_canonical_identity() -> None:
     """Unliking a video must remove the stored row by user/video/instance identity."""
     conn = _connect()
-    users_store.ensure_user_schema(conn)
+    bootstrap_client_users_db(conn)
     users_store.record_like(
         conn,
         "local-user",

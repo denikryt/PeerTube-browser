@@ -25,9 +25,9 @@ def _connect() -> sqlite3.Connection:
         CREATE TABLE videos (
           video_id TEXT, video_uuid TEXT, video_numeric_id INTEGER, instance_domain TEXT, channel_id TEXT,
           channel_name TEXT, channel_url TEXT, account_name TEXT, account_url TEXT, title TEXT, description TEXT,
-          tags_json TEXT, category TEXT, published_at INTEGER, video_url TEXT, duration INTEGER, thumbnail_url TEXT,
+          tags_json TEXT, category TEXT, category_id TEXT, language TEXT, language_label TEXT, published_at INTEGER, video_url TEXT, duration INTEGER, thumbnail_url TEXT,
           embed_path TEXT, views INTEGER, likes INTEGER, dislikes INTEGER, comments_count INTEGER, nsfw INTEGER,
-          preview_path TEXT, popularity REAL, last_checked_at INTEGER, error_count INTEGER DEFAULT 0,
+          preview_path TEXT, popularity REAL, last_checked_at INTEGER, error_count INTEGER DEFAULT 0, invalid_reason TEXT,
           PRIMARY KEY(video_id, instance_domain)
         );
         CREATE TABLE video_embeddings (video_id TEXT, instance_domain TEXT, embedding_dim INTEGER, model_name TEXT, PRIMARY KEY(video_id, instance_domain));
@@ -43,8 +43,8 @@ def _connect() -> sqlite3.Connection:
         conn.execute(
             """
             INSERT INTO videos VALUES (?, ?, ?, 'example.org', 'c', 'c', 'https://example.org/c/c', 'acct',
-            'https://example.org/a/acct', ?, 'desc', '[]', 'cat', ?, 'https://example.org/w/x', 60,
-            '/thumb.jpg', '/embed', ?, ?, 0, 0, 0, '/preview.jpg', ?, 1000, ?)
+            'https://example.org/a/acct', ?, 'desc', '[]', 'cat', '1', 'en', 'English', ?, 'https://example.org/w/x', 60,
+            '/thumb.jpg', '/embed', ?, ?, 0, 0, 0, '/preview.jpg', ?, 1000, ?, NULL)
             """,
             (video_id, f"uuid-{video_id}", len(video_id), f"Title {video_id}", published, views, likes, popularity, error_count),
         )

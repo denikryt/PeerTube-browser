@@ -15,10 +15,25 @@ similarity-based recommendations.
 3) Embeddings are built from video metadata (title, description, tags, channel, etc.).
 4) ANN index (FAISS) is created for fast similarity lookups.
 5) Server serves recommendations and metadata from the local DB/index.
-6) Client renders the feed and video pages.
+6) Client renders four-mode Discovery, filtered Search, and video pages through the Client backend.
 
 ## Data build
-See `DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset and ANN index.
+See `docs/DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset and ANN index.
+
+
+## Documentation
+- `docs/ARCHITECTURE.md`: component boundaries and runtime flow.
+- `docs/DEVELOPMENT.md`: local navigation and verification commands.
+- `docs/TESTING.md`: regression and smoke test guidance.
+- `docs/DATA_BUILD.md`: crawler and dataset build flow.
+- `docs/DEPLOYMENT.md`: service installation and runtime deployment.
+- `docs/ROADMAP.md`: product direction, not a task tracker.
+- `docs/SCHEMA_OWNERSHIP.md`: SQLite schema ownership and compatibility wrappers.
+- `docs/UPDATER_COMPATIBILITY.md`: updater split compatibility decisions.
+- `docs/FRAMEWORK_COMPATIBILITY.md`: FastAPI migration compatibility decisions.
+
+## Development checks
+Use `make test-fast` for the fast regression baseline before refactoring. `make test` is an alias for the same command. See `docs/DEVELOPMENT.md` and `docs/TESTING.md` for setup, dependency-heavy checks, and smoke tests.
 
 ## Components
 - `engine/`: read/analytics workspace.
@@ -45,7 +60,7 @@ This is not a heavy ML system; it is a transparent, controllable pipeline.
 |---|---|---|---|
 | Public read API (`/recommendations`, `/videos/{id}/similar`, `/videos/similar`, `/api/video`, `/api/health`) | Engine | Exposed by Engine HTTP API only. | Client backend importing Engine modules or reading Engine DB files directly. |
 | Browser-facing write/profile API (`/api/user-action`, `/api/user-profile/*`) | Client backend | Exposed by Client backend only. | Moving write/profile ownership into Engine handlers. |
-| Browser-facing read gateway (`/recommendations`, `/videos/similar`, `/api/video`, `/api/channels`) | Client backend | Frontend reads use Client API base and gateway routes only. | Direct frontend Engine API base usage. |
+| Browser-facing read gateway (`/api/v1/discovery/*`, `/api/v1/search/*`, `/api/v1/video-facets`, `/api/v1/videos/*`, plus legacy gateway routes) | Client backend | Frontend reads use Client API base only. | Direct frontend Engine API base/internal route usage. |
 | Internal Client->Engine read contract (`/internal/videos/resolve`, `/internal/videos/metadata`) | Engine (provider), Client backend (consumer) | Client backend consumes these internal endpoints over HTTP. | Direct DB coupling instead of HTTP contract. |
 | Temporary bridge ingest (`/internal/events/ingest`) | Engine (ingest), Client backend (publisher) | Client backend publishes normalized events to Engine ingest endpoint. | Frontend direct ingest calls or bypassing Client normalization path. |
 
@@ -161,3 +176,8 @@ If you want to help, contributions are welcome. You can open issues or submit PR
 If you want to support this project, here are quick options:
 - [Donatello](https://donatello.to/nachitima/about)
 - [Patreon](https://www.patreon.com/c/nachitima)
+
+
+## Discovery API v1
+
+Browser-facing discovery reads are owned by the Client backend under `/api/v1/...`. The frontend should call Client routes such as `/api/v1/discovery/recommendations`, `/api/v1/discovery/random`, and `/api/v1/videos/{id}`. Engine routes remain provider/computation routes behind the Client boundary.

@@ -1,6 +1,7 @@
 """Characterize Client /api/user-action like behavior through real HTTP."""
 from __future__ import annotations
 
+
 def _resolve_response(_record):
     """Return the canonical Engine identity used by Client like actions."""
     return 200, {
@@ -14,7 +15,7 @@ def _resolve_response(_record):
 
 
 def test_like_action_writes_client_db_and_publishes_normalized_engine_event(
-    client_db, start_json_engine, start_client_backend, http_json
+    client_db, start_json_engine, start_client_backend
 ) -> None:
     """A user like must persist locally and publish the current bridge payload shape."""
     fake_engine = start_json_engine(
@@ -25,17 +26,21 @@ def test_like_action_writes_client_db_and_publishes_normalized_engine_event(
     )
     client = start_client_backend(f"http://127.0.0.1:{fake_engine.server_port}")
 
-    status, body = http_json(
-        "POST",
-        f"http://127.0.0.1:{client.server_port}/api/user-action",
-        {"action": "like", "uuid": "uuid-123", "host": "example.org", "user_id": "local-user"},
+    response = client.post(
+        "/api/user-action",
+        json={"action": "like", "uuid": "uuid-123", "host": "example.org", "user_id": "local-user"},
     )
+    status, body = response.status_code, response.json()
 
     row = client_db.execute(
         "SELECT video_id, video_uuid, instance_domain FROM likes WHERE user_id = ?",
         ("local-user",),
     ).fetchone()
-    ingest_request = [request for request in fake_engine.requests if request["path"] == "/internal/events/ingest"][0]
+    ingest_request = [
+        request
+        for request in fake_engine.requests
+        if request["path"] == "/internal/events/ingest"
+    ][0]
     event = ingest_request["body"]
 
     assert status == 200
@@ -58,7 +63,7 @@ def test_like_action_writes_client_db_and_publishes_normalized_engine_event(
 
 
 def test_like_action_keeps_local_like_but_returns_502_when_bridge_ingest_fails(
-    client_db, start_json_engine, start_client_backend, http_json
+    client_db, start_json_engine, start_client_backend
 ) -> None:
     """Current partial failure semantics keep the local like and report bridge failure."""
     fake_engine = start_json_engine(
@@ -69,13 +74,15 @@ def test_like_action_keeps_local_like_but_returns_502_when_bridge_ingest_fails(
     )
     client = start_client_backend(f"http://127.0.0.1:{fake_engine.server_port}")
 
-    status, body = http_json(
-        "POST",
-        f"http://127.0.0.1:{client.server_port}/api/user-action",
-        {"action": "like", "uuid": "uuid-123", "host": "example.org", "user_id": "local-user"},
+    response = client.post(
+        "/api/user-action",
+        json={"action": "like", "uuid": "uuid-123", "host": "example.org", "user_id": "local-user"},
     )
+    status, body = response.status_code, response.json()
 
-    count = client_db.execute("SELECT COUNT(*) FROM likes WHERE user_id = ?", ("local-user",)).fetchone()[0]
+    count = client_db.execute(
+        "SELECT COUNT(*) FROM likes WHERE user_id = ?", ("local-user",)
+    ).fetchone()[0]
     assert status == 502
     assert body["ok"] is False
     assert body["bridge_ok"] is False

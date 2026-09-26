@@ -7,9 +7,11 @@ export type CrawlStatus = "pending" | "processing" | "done" | "error";
 export interface CrawlOptions {
   whitelistUrl: string;
   whitelistFile: string | null;
+  hostsFile: string | null;
   excludeHostsFile: string | null;
   dbPath: string;
   concurrency: number;
+  hostDelayMs: number;
   timeoutMs: number;
   resume: boolean;
   maxRetries: number;

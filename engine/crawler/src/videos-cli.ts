@@ -11,6 +11,11 @@ const program = new Command();
 program
   .option("--db <path>", "SQLite DB path", "data/crawl.db")
   .option(
+    "--hosts-file <path>",
+    "Optional local file with included hosts (one per line)",
+    ""
+  )
+  .option(
     "--exclude-hosts-file <path>",
     "Optional local file with excluded hosts (one per line)",
     ""
@@ -25,6 +30,7 @@ program
     "Number of concurrent instance workers",
     "4"
   )
+  .option("--host-concurrency <number>", "Maximum simultaneous requests to one host", "2")
   .option("--timeout <ms>", "HTTP timeout per request in ms", "5000")
   .option("--max-retries <number>", "HTTP retry attempts per request", "3")
   .option(
@@ -73,8 +79,28 @@ program
     false
   )
   .option(
+    "--refresh-thumbnails",
+    "Thumbnail refresh mode: revisit /api/v1/videos/:uuid and rewrite thumbnail_url from live PeerTube detail fields",
+    false
+  )
+  .option(
+    "--metadata",
+    "Metadata-v1 backfill mode for rows below the current metadata version",
+    false
+  )
+  .option(
+    "--update-metadata",
+    "Metadata-v1 maintenance mode that explicitly revisits completed rows",
+    false
+  )
+  .option(
+    "--only-healthy-hosts",
+    "Metadata-v1 mode: process only instances whose stored health_status is ok",
+    false
+  )
+  .option(
     "--host-delay <ms>",
-    "Delay between requests per host in tags/comments mode",
+    "Minimum delay between request starts to one host in every mode",
     "200"
   )
   .option("--resume", "Resume from existing progress tables", false)
@@ -87,9 +113,11 @@ const options = program.opts();
 try {
   await crawlVideos({
     dbPath: options.db,
+    hostsFile: options.hostsFile || null,
     excludeHostsFile: options.excludeHostsFile || null,
     existingDbPath: options.existingDb || null,
     concurrency: Number(options.concurrency),
+    hostConcurrency: Number(options.hostConcurrency),
     timeoutMs: Number(options.timeout),
     maxRetries: Number(options.maxRetries),
     newOnly: Boolean(options.newVideos),
@@ -101,6 +129,10 @@ try {
     tagsOnly: Boolean(options.tags),
     updateTags: Boolean(options.updateTags),
     commentsOnly: Boolean(options.comments),
+    refreshThumbnails: Boolean(options.refreshThumbnails),
+    metadataOnly: Boolean(options.metadata),
+    updateMetadata: Boolean(options.updateMetadata),
+    onlyHealthyHosts: Boolean(options.onlyHealthyHosts),
     hostDelayMs: Number(options.hostDelay),
     resume: Boolean(options.resume),
     errorsOnly: Boolean(options.errors)

@@ -6,6 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { setDefaultResultOrder } from "node:dns";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { classifyCrawlError } from "./error-classification.js";
 
 // Prefer IPv4 first to avoid IPv6 timeouts on some instances.
 setDefaultResultOrder("ipv4first");
@@ -15,6 +16,10 @@ export interface HttpOptions {
   timeoutMs: number;
   maxRetries: number;
   log?: (message: string) => void;
+  /** Optional response content type used by protocol-specific callers. */
+  accept?: string;
+  /** Fetch-compatible redirect policy; REST callers keep the default follow behavior. */
+  redirect?: "follow" | "error";
 }
 
 /**
@@ -59,51 +64,36 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
   while (true) {
     attempt += 1;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
+    let timedOut = false;
+    const startedAt = Date.now();
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, options.timeoutMs);
 
     try {
       let response: Response;
       try {
         response = await fetch(url, {
           signal: controller.signal,
+          redirect: options.redirect ?? "follow",
           headers: {
-            "accept": "application/json"
+            "accept": options.accept ?? "application/json"
           }
         });
       } catch (error) {
         if (!isNoNetworkError(error)) {
           throw error;
         }
-        response = await fetchViaCurl(url, options.timeoutMs);
-      }
-
-      if (response.status === 429) {
-        const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
-        const delay = retryAfter ?? backoff;
-        const message = `---\n[http] 429 attempt=${attempt}/${options.maxRetries} retry_in_ms=${delay}\n${url}`;
-        if (options.log) {
-          options.log(message);
-        } else {
-          console.warn(message);
-        }
-        await sleep(delay);
-        backoff = Math.min(backoff * 2, 30000);
-        continue;
+        response = await fetchViaCurl(url, options);
       }
 
       if (!response.ok) {
-        if (response.status >= 500 && attempt <= options.maxRetries) {
-          const message = `---\n[http] ${response.status} attempt=${attempt}/${options.maxRetries} retry_in_ms=${backoff}\n${url}`;
-          if (options.log) {
-            options.log(message);
-          } else {
-            console.warn(message);
-          }
-          await sleep(backoff);
-          backoff = Math.min(backoff * 2, 30000);
-          continue;
-        }
-        throw new Error(`HTTP ${response.status} for ${url}`);
+        const statusError = new Error(`HTTP ${response.status} for ${url}`) as Error & {
+          retryAfterMs?: number | null;
+        };
+        statusError.retryAfterMs = parseRetryAfter(response.headers.get("retry-after"));
+        throw statusError;
       }
 
       return (await response.json()) as T;
@@ -112,19 +102,34 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
         const message = error instanceof Error ? error.message : String(error);
         throw new NoNetworkError(message);
       }
-      if (attempt > options.maxRetries) {
+      const classification = classifyCrawlError(error);
+      if (!classification.retryable || attempt > options.maxRetries) {
         throw error;
       }
-      const reason = extractErrorReason(error);
-      const debug = extractErrorDebug(error);
+      const elapsedMs = Date.now() - startedAt;
+      const reason = extractErrorReason(error, {
+        timedOut,
+        timeoutMs: options.timeoutMs,
+        elapsedMs
+      });
+      const debug = extractErrorDebug(error, {
+        timedOut,
+        timeoutMs: options.timeoutMs,
+        elapsedMs
+      });
       const debugSuffix = debug ? `\n${debug}` : "";
-      const logMessage = `---\n[http] error attempt=${attempt}/${options.maxRetries} retry_in_ms=${backoff}\n${url}\nreason=${reason}${debugSuffix}`;
+      const retryAfterMs =
+        error && typeof error === "object" && "retryAfterMs" in error
+          ? (error as { retryAfterMs?: number | null }).retryAfterMs
+          : null;
+      const delay = retryAfterMs ?? backoff;
+      const logMessage = `---\n[http] retry kind=${classification.kind} attempt=${attempt}/${options.maxRetries} retry_in_ms=${delay}\n${url}\nreason=${reason}${debugSuffix}`;
       if (options.log) {
         options.log(logMessage);
       } else {
         console.warn(logMessage);
       }
-      await sleep(backoff);
+      await sleep(delay);
       backoff = Math.min(backoff * 2, 30000);
     } finally {
       clearTimeout(timeout);
@@ -135,23 +140,20 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
 /**
  * Handle fetch via curl.
  */
-async function fetchViaCurl(url: string, timeoutMs: number): Promise<Response> {
-  const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
+async function fetchViaCurl(url: string, options: HttpOptions): Promise<Response> {
   try {
-    const { stdout } = await execFileAsync("curl", [
-      "--silent",
-      "--show-error",
-      "--location",
-      "--max-time",
-      String(timeoutSec),
-      "--connect-timeout",
-      String(timeoutSec),
-      "--header",
-      "accept: application/json",
-      url
-    ]);
-    // Emulate a minimal Response for downstream handling.
-    return new Response(stdout, { status: 200 });
+    const { stdout } = await execFileAsync("curl", buildCurlArgs(url, options));
+    const marker = "\n__PEERTUBE_STATUS__=";
+    const markerIndex = stdout.lastIndexOf(marker);
+    if (markerIndex < 0) {
+      throw new Error("curl response missing HTTP status marker");
+    }
+    const body = stdout.slice(0, markerIndex);
+    const status = Number(stdout.slice(markerIndex + marker.length).trim());
+    if (!Number.isInteger(status) || status < 100 || status > 599) {
+      throw new Error("curl returned invalid HTTP status");
+    }
+    return new Response(body, { status });
   } catch (error) {
     const err = error as { stderr?: string; message?: string };
     const stderr = typeof err.stderr === "string" ? err.stderr.trim() : "";
@@ -161,9 +163,43 @@ async function fetchViaCurl(url: string, timeoutMs: number): Promise<Response> {
 }
 
 /**
+ * Build curl arguments with the same Accept and redirect semantics as native
+ * fetch. Exporting this pure boundary keeps the fallback contract testable.
+ */
+export function buildCurlArgs(url: string, options: HttpOptions): string[] {
+  const timeoutSec = Math.max(1, Math.ceil(options.timeoutMs / 1000));
+  const args = [
+    "--silent",
+    "--show-error",
+    "--max-time",
+    String(timeoutSec),
+    "--connect-timeout",
+    String(timeoutSec),
+    "--header",
+    `accept: ${options.accept ?? "application/json"}`,
+    "--write-out",
+    "\n__PEERTUBE_STATUS__=%{http_code}"
+  ];
+  if (options.redirect !== "error") {
+    args.push("--location");
+  }
+  args.push(url);
+  return args;
+}
+
+interface ErrorContext {
+  elapsedMs: number;
+  timedOut: boolean;
+  timeoutMs: number;
+}
+
+/**
  * Handle extract error reason.
  */
-function extractErrorReason(error: unknown): string {
+function extractErrorReason(error: unknown, context: ErrorContext): string {
+  if (context.timedOut) {
+    return `timeout abort after ${context.timeoutMs}ms`;
+  }
   if (error instanceof Error) {
     const reasons = collectErrorDetails(error);
     if (reasons.length > 0) return reasons.join(" ");
@@ -180,13 +216,22 @@ function extractErrorReason(error: unknown): string {
 /**
  * Handle extract error debug.
  */
-function extractErrorDebug(error: unknown): string {
+function extractErrorDebug(error: unknown, context: ErrorContext): string {
   if (!error || typeof error !== "object") return "";
   const err = error as {
+    name?: unknown;
     code?: unknown;
     cause?: { code?: unknown; message?: unknown } | unknown;
   };
   const parts: string[] = [];
+  parts.push(`elapsed_ms=${context.elapsedMs}`);
+  parts.push(`timeout_ms=${context.timeoutMs}`);
+  if (context.timedOut) {
+    parts.push("abort_source=timeout");
+  }
+  if (typeof err.name === "string" && err.name.trim()) {
+    parts.push(`name=${err.name}`);
+  }
   if (typeof err.code === "string" && err.code.trim()) {
     parts.push(`code=${err.code}`);
   }

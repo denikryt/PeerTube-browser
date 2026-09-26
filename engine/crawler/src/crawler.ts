@@ -3,9 +3,16 @@
  */
 
 import { setTimeout as sleep } from "node:timers/promises";
-import { CrawlerStore } from "./db.js";
+import { CrawlerStore } from "./db/instances.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
-import { filterHosts, loadHostsFromFile, normalizeHostToken } from "./host-filters.js";
+import { shouldTryAlternateProtocol } from "./error-classification.js";
+import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
+import {
+  loadHostsFromFile,
+  normalizeHostToken,
+  scopeHosts
+} from "./host-filters.js";
+import { fetchInstanceRegistryHosts } from "./instance-registry.js";
 import type { CrawlOptions, Page, ServerFollowItem } from "./types.js";
 
 const PAGE_SIZE = 50;
@@ -23,15 +30,23 @@ export async function crawl(options: CrawlOptions) {
   const whitelistUrl = ensureUrl(options.whitelistUrl);
   const fetchedWhitelistHosts = options.whitelistFile
     ? Array.from(loadHostsFromFile(options.whitelistFile))
-    : await fetchWhitelistHosts(whitelistUrl, options);
+    : await fetchInstanceRegistryHosts(whitelistUrl, {
+        timeoutMs: options.timeoutMs,
+        maxRetries: options.maxRetries
+      });
+  const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
-  const filteredWhitelistHosts = filterHosts(fetchedWhitelistHosts, excludedHosts);
+  const filteredWhitelistHosts = scopeHosts(
+    fetchedWhitelistHosts,
+    includedHosts,
+    excludedHosts
+  );
   const whitelistHosts =
     options.maxInstances > 0
       ? filteredWhitelistHosts.slice(0, options.maxInstances)
       : filteredWhitelistHosts;
   if (whitelistHosts.length === 0) {
-    throw new Error("Whitelist is empty after exclude-host filtering.");
+    throw new Error("Whitelist is empty after host include/exclude filtering.");
   }
   const whitelistSet = new Set(whitelistHosts);
   const preferredProtocol = new URL(whitelistUrl).protocol;
@@ -134,8 +149,9 @@ async function processHost(
 ) {
   // Nothing to do unless we are collecting edges or expanding discovery.
   if (!options.collectGraph && !options.expandBeyondWhitelist) return;
+  const requestLimiter = createRequestLimiter(1, options.hostDelayMs);
 
-  const following = await fetchAll(host, "following", options, preferredProtocol);
+  const following = await fetchAll(host, "following", options, preferredProtocol, requestLimiter);
   console.log(`[crawl] ${host} following=${following.length}`);
   for (const item of following) {
     const targetHost = extractFollowingHost(item, host);
@@ -150,7 +166,7 @@ async function processHost(
     }
   }
 
-  const followers = await fetchAll(host, "followers", options, preferredProtocol);
+  const followers = await fetchAll(host, "followers", options, preferredProtocol, requestLimiter);
   console.log(`[crawl] ${host} followers=${followers.length}`);
   for (const item of followers) {
     const followerHost = extractFollowerHost(item, host);
@@ -173,13 +189,14 @@ async function fetchAll(
   host: string,
   kind: "following" | "followers",
   options: CrawlOptions,
-  preferredProtocol: string
+  preferredProtocol: string,
+  requestLimiter: RequestLimiter
 ) {
   const results: ServerFollowItem[] = [];
   let start = 0;
 
   while (true) {
-    const page = await fetchPage(host, kind, start, options, preferredProtocol);
+    const page = await fetchPage(host, kind, start, options, preferredProtocol, requestLimiter);
     const data = Array.isArray(page.data) ? page.data : [];
     results.push(...data);
 
@@ -203,22 +220,24 @@ async function fetchPage(
   kind: string,
   start: number,
   options: CrawlOptions,
-  preferredProtocol: string
+  preferredProtocol: string,
+  requestLimiter: RequestLimiter
 ) {
   const primaryUrl = buildUrl(host, kind, start, PAGE_SIZE, preferredProtocol);
 
   try {
-    return await fetchJsonWithRetry<Page<ServerFollowItem>>(primaryUrl, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<Page<ServerFollowItem>>(primaryUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries
-    });
-  } catch {
+    }));
+  } catch (error) {
+    if (!shouldTryAlternateProtocol(error)) throw error;
     const alternateProtocol = preferredProtocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildUrl(host, kind, start, PAGE_SIZE, alternateProtocol);
-    return await fetchJsonWithRetry<Page<ServerFollowItem>>(alternateUrl, {
+    return await requestLimiter.run(() => fetchJsonWithRetry<Page<ServerFollowItem>>(alternateUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
-    });
+    }));
   }
 }
 
@@ -238,69 +257,6 @@ function ensureUrl(input: string) {
     return input;
   }
   return `https://${input}`;
-}
-
-/**
- * Handle fetch whitelist hosts.
- */
-async function fetchWhitelistHosts(url: string, options: CrawlOptions): Promise<string[]> {
-  const payload = await fetchJsonWithRetry<unknown>(url, {
-    timeoutMs: options.timeoutMs,
-    maxRetries: options.maxRetries
-  });
-
-  const entries = extractWhitelistEntries(payload);
-  const hosts = new Set<string>();
-
-  for (const entry of entries) {
-    const hostValue = extractWhitelistHost(entry);
-    if (!hostValue) continue;
-    const normalized = parseHostString(hostValue);
-    if (normalized) {
-      hosts.add(normalized);
-    }
-  }
-
-  if (hosts.size === 0) {
-    throw new Error("Whitelist contained no hosts.");
-  }
-
-  return Array.from(hosts);
-}
-
-/**
- * Handle extract whitelist entries.
- */
-function extractWhitelistEntries(payload: unknown): unknown[] {
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-  if (payload && typeof payload === "object") {
-    const data = (payload as { data?: unknown }).data;
-    if (Array.isArray(data)) {
-      return data;
-    }
-  }
-  throw new Error("Unexpected whitelist JSON shape.");
-}
-
-/**
- * Handle extract whitelist host.
- */
-function extractWhitelistHost(entry: unknown): string | null {
-  if (!entry) return null;
-  if (typeof entry === "string" || typeof entry === "number") {
-    const value = String(entry).trim();
-    return value.length > 0 ? value : null;
-  }
-  if (typeof entry === "object") {
-    const host = (entry as { host?: unknown }).host;
-    if (typeof host === "string" || typeof host === "number") {
-      const value = String(host).trim();
-      return value.length > 0 ? value : null;
-    }
-  }
-  return null;
 }
 
 /**

@@ -42,6 +42,9 @@ def _connect() -> sqlite3.Connection:
           description TEXT,
           tags_json TEXT,
           category TEXT,
+          category_id TEXT,
+          language TEXT,
+          language_label TEXT,
           published_at INTEGER,
           video_url TEXT,
           duration INTEGER,
@@ -149,3 +152,66 @@ def test_similarity_candidates_exclude_seed_source_author_apply_author_cap_and_p
 
     assert [(row["video_id"], row["score"]) for row in rows] == [("v3", 0.70), ("v5", 0.50)]
     assert all(row["channel_id"] != "source" for row in rows)
+
+
+def _similarity_cache() -> sqlite3.Connection:
+    """Create the minimal similarity cache schema used by runtime helpers."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE similarity_sources (
+          video_id TEXT NOT NULL,
+          instance_domain TEXT NOT NULL,
+          computed_at INTEGER NOT NULL,
+          PRIMARY KEY(video_id, instance_domain)
+        );
+        CREATE TABLE similarity_items (
+          source_video_id TEXT NOT NULL,
+          source_instance_domain TEXT NOT NULL,
+          similar_video_id TEXT NOT NULL,
+          similar_instance_domain TEXT NOT NULL,
+          score REAL,
+          rank INTEGER NOT NULL,
+          PRIMARY KEY(source_video_id, source_instance_domain, similar_video_id, similar_instance_domain)
+        );
+        """
+    )
+    return conn
+
+
+def test_similarity_candidates_read_cache_without_seed_embedding() -> None:
+    """Cache hits are valid for canonical seeds even when ANN embedding is omitted."""
+    conn = _connect()
+    for video_id, channel_id in [("v1", "source"), ("v2", "other")]:
+        _insert_video(conn, video_id, channel_id, f"Video {video_id}")
+    cache = _similarity_cache()
+    cache.execute(
+        "INSERT INTO similarity_sources VALUES (?, ?, ?)",
+        ("v1", "example.org", 123),
+    )
+    cache.execute(
+        "INSERT INTO similarity_items VALUES (?, ?, ?, ?, ?, ?)",
+        ("v1", "example.org", "v2", "example.org", 0.75, 1),
+    )
+    cache.commit()
+    server = _server(conn)
+    server.similarity_db = cache
+    server.compute_similar_items = lambda *_args: (_ for _ in ()).throw(
+        AssertionError("cache hit must not require ANN compute")
+    )
+    seed = {
+        "video_id": "v1",
+        "video_uuid": "uuid-v1",
+        "instance_domain": "example.org",
+        "channel_id": "source",
+    }
+
+    rows = get_similar_candidates(
+        server,
+        seed,
+        1,
+        SimilarityCandidatesPolicy(require_full_cache=True, allow_compute=True),
+    )
+
+    assert [(row["video_id"], row["score"]) for row in rows] == [("v2", 0.75)]

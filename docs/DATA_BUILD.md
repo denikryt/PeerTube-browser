@@ -10,7 +10,7 @@ All paths below are relative to the repository root.
 - `engine/server/db/whitelist.db` filtered dataset used by the API.
 - `engine/server/db/whitelist-video-embeddings.faiss` and `engine/server/db/whitelist-video-embeddings.faiss.json` ANN index + metadata.
 - `engine/server/db/similarity-cache.db` precomputed similar cache (optional).
-- `engine/server/db/random-cache.db` random rowid cache (optional).
+- `engine/server/db/random-cache.db` random index-id cache (optional).
 
 ## Prerequisites
 - Node.js + npm for the crawler (`engine/crawler/package.json`).
@@ -21,13 +21,18 @@ All paths below are relative to the repository root.
 You can run the same build/update flow automatically with the updater worker:
 
 - Worker entrypoint: `engine/server/db/jobs/updater-worker.py`
-- It runs: crawl to staging -> embeddings -> merge to prod -> popularity -> ANN rebuild -> similarity precompute.
+- Internal updater modules: `engine/server/db/jobs/updater/`
+- It runs: instances/channels -> missing video counts -> video metadata to staging -> embeddings -> merge to prod -> popularity -> index-id sync -> ANN rebuild -> random cache rebuild -> similarity precompute.
 - Systemd installation: `install-service.sh --with-updater-timer`
 - Timer runs daily (`OnUnitInactiveSec=1d`).
+- Optional `--host-pipeline` mode overlaps different hosts and reselects queued
+  work after every stage with global priority `channel lists -> NULL counts ->
+  videos`; in-flight work is allowed to finish.
 
 Detailed behavior, flags, lock/resume logic, and systemd notes are documented in:
 
-- `engine/server/db/jobs/UPDATER_WORKER.md`
+- `engine/server/db/jobs/docs/UPDATER_WORKER.md`
+- `docs/UPDATER_COMPATIBILITY.md`
 
 ## 1) Crawl data
 
@@ -37,6 +42,15 @@ cd engine/crawler
 npm install
 npm run build
 ```
+
+Crawler DB module tests are available after installing crawler dependencies:
+
+```bash
+cd engine/crawler
+npm run test:db
+```
+
+These tests verify the TypeScript crawler stores with temporary SQLite files. They do not run PeerTube network crawls.
 
 ### Instance discovery
 Default source is the JoinPeerTube whitelist JSON.
@@ -84,12 +98,20 @@ Useful flags:
 Data source and limits:
 - Uses `GET /api/v1/video-channels?start=<offset>&count=50`.
 - Only channels hosted on the instance itself are stored.
+- `--new-channels` leaves existing metadata unchanged but refreshes the listed
+  `videos_count`; an omitted count becomes `NULL` for the following count stage.
 
 ### Channel video counts
 ```bash
 cd engine/crawler
 npm run crawl:channels:videos-count
 ```
+
+The updater runs this after channel discovery. Counts already supplied by
+`GET /api/v1/video-channels` are kept; only rows with `videos_count IS NULL`
+need a per-channel request. Successful counts are committed immediately, so
+`--resume` skips them after an interruption. Recorded errors are left for an
+explicit `--errors` repair pass.
 
 Useful flags:
 - `--resume` skips channels with existing counts or errors.
@@ -109,6 +131,11 @@ Useful flags:
 
 Data source and limits:
 - Uses `GET /api/v1/video-channels/<channel>/videos?start=<offset>&count=50`.
+- Selects only channels with `videos_count > 0`; zero-count and unresolved
+  channels do not cause metadata requests.
+- Each successful page stores its next offset in `video_crawl_progress`, so
+  `--resume` continues an interrupted channel from that page. Returned IDs are
+  filtered against staging and production before insertion.
 - Default host concurrency is limited to avoid rate limiting.
 
 ### Tags and comments enrichment
@@ -146,6 +173,46 @@ If the whitelist DB schema is outdated, migrate it:
 python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whitelist.db
 ```
 
+Schema ownership is documented in `docs/SCHEMA_OWNERSHIP.md`.
+
+
+### Metadata-v1 ingestion and historical backfill
+
+Normal `crawl:videos` ingestion now persists detail metadata needed by the browser and by a future ActivityPub adapter: language/category/licence identifiers, source timestamps, sensitive summary, live flags, support/aspect ratio, account identity, and canonical thumbnail dimensions. Fresh rows also persist detail tags.
+
+Historical rows must be migrated before the metadata maintenance command is used:
+
+```bash
+python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whitelist.db
+cd engine/crawler
+npm run crawl:videos:metadata -- --db ../server/db/whitelist.db
+```
+
+The metadata command is a data-only operation. It validates the current metadata schema read-only and does not run crawler schema migrations against `whitelist.db`. `--update-metadata` explicitly revisits rows that already completed the current metadata version.
+
+Existing embedding-source fields are protected during ordinary repeat crawl and metadata backfill: `title`, `description`, `tags_json`, `category`, and `channel_name`. Intentionally changing any of those fields after embeddings exist requires a full embedding/artifact rebuild. The legacy tags maintenance commands remain embedding-affecting for existing rows. `comments_count` is dynamic metadata and is **not** an embedding input.
+
+### Embedding recipe migration barrier
+
+The semantic embedding recipe is `title + description + tags + category + channel name`; it no longer includes `comments_count`. Existing production embeddings created by the old recipe must be rebuilt as one isolated maintenance operation. Do not allow updater merges or Engine serving while the production embedding/ANN/similarity set is partially rebuilt.
+
+Operational barrier:
+
+```text
+1. disable/prevent updater-worker/timer and verify no updater run is active
+2. stop peertube-browser Engine
+3. deploy/activate the code with the new embedding recipe
+4. build-video-embeddings.py --force (using the deployment's normal CPU/GPU flags)
+5. sync-video-index-ids.py
+6. build-ann-index.py (using the deployment's normal output/CPU/GPU flags)
+7. precompute-similar-ann.py --reset (using the deployment's normal paths/flags)
+8. validate DB integrity/counts, stable IDs, FAISS metadata/ntotal, similarity cache
+9. start peertube-browser Engine
+10. re-enable updater execution
+```
+
+If any rebuild/validation step fails, keep Engine stopped and updater disabled until the reconstructible derived artifacts are rebuilt successfully. A normal updater merge independently force-rebuilds all staging embeddings with the currently deployed recipe immediately before delta calculation/merge, including `--resume-staging`; therefore an old resumed staging DB cannot reintroduce vectors from the previous recipe.
+
 ## 3) Build embeddings
 Embeddings use SentenceTransformers. The text payload is built from:
 - `title`
@@ -153,7 +220,6 @@ Embeddings use SentenceTransformers. The text payload is built from:
 - `tags_json`
 - `category`
 - `channel_name`
-- `comments_count`
 
 Default model is `all-MiniLM-L6-v2`.
 ```bash
@@ -167,8 +233,17 @@ Useful flags:
 - `--force` recompute all embeddings.
 - `--gpu` uses CUDA and fails if it is unavailable.
 
-## 4) Build FAISS ANN index
-The index uses `video_embeddings.rowid` as ids.
+## 4) Sync stable index ids
+
+Before building ANN/random/similarity artifacts, sync stable numeric ids for every currently indexable video. A video is indexable when it exists in both `videos` and `video_embeddings`.
+
+```bash
+python3 engine/server/db/jobs/sync-video-index-ids.py \
+  --db engine/server/db/whitelist.db
+```
+
+## 5) Build FAISS ANN index
+The index uses `video_index_ids.index_id` as ids. Old rowid-based FAISS artifacts are incompatible and must be rebuilt.
 
 ```bash
 python3 engine/server/db/jobs/build-ann-index.py \
@@ -183,7 +258,26 @@ Useful flags:
 - `--train-sample` controls training set size.
 - `--batch-size` controls memory usage when adding vectors.
 
-## 5) Precompute similarity cache (optional)
+## 6) Precompute random cache (optional)
+This prepares a random stable-index-id pool for the random feed.
+```bash
+python3 engine/server/db/jobs/precompute-random-index-ids.py \
+  --db engine/server/db/whitelist.db \
+  --out engine/server/db/random-cache.db \
+  --size 5000 \
+  --filtered \
+  --max-per-author 100 \
+  --max-per-instance 0 \
+  --refresh
+```
+
+
+
+The builder owns the artifact lifecycle: it writes a sibling temporary DB, validates the completed generation, then publishes with `os.replace()`. `--refresh` forces a new generation; without it a valid sufficiently sized artifact may be reused. `--reset` is intentionally unsupported.
+
+When `--out` is the configured production runtime path, publication is an offline operation: stop Engine before rebuilding and restart it afterward. Engine does not hot-reload the replaced file.
+
+## 7) Precompute similarity cache (optional)
 This speeds up similar video fetches for the video page.
 ```bash
 python3 engine/server/db/jobs/precompute-similar-ann.py \
@@ -195,25 +289,14 @@ python3 engine/server/db/jobs/precompute-similar-ann.py \
   --reset
 ```
 
-## 6) Precompute random cache (optional)
-This prepares a random rowid pool for the random feed.
-```bash
-python3 engine/server/db/jobs/precompute-random-rowids.py \
-  --db engine/server/db/whitelist.db \
-  --out engine/server/db/random-cache.db \
-  --size 5000 \
-  --filtered \
-  --max-per-author 100 \
-  --max-per-instance 0 \
-  --reset
-```
-
-## 7) Recompute popularity (one-time after dataset build)
-Materialize a `videos.popularity` score for fast popular queries.
+## 8) Recompute Trending (one-time after dataset build)
+Materialize `videos.popularity` for fast Trending queries. The score is
+`(views + 10 * likes) / (1 + age_hours)`, so a newer video that gains more
+views and likes ranks higher; the one-hour floor protects newly published rows.
 ```bash
 python3 engine/server/db/jobs/recompute-popularity.py \
   --db engine/server/db/whitelist.db \
-  --like-weight 2.0 \
+  --like-weight 10.0 \
   --reset
 ```
 
@@ -231,5 +314,5 @@ sqlite3 engine/crawler/data/crawl.db "select status, count(*) from video_crawl_p
 sqlite3 engine/server/db/whitelist.db "select count(*) from videos;"
 sqlite3 engine/server/db/whitelist.db "select count(*) from video_embeddings;"
 sqlite3 engine/server/db/similarity-cache.db "select count(*) from similarity_sources;"
-sqlite3 engine/server/db/random-cache.db "select count(*) from random_rowids;"
+sqlite3 engine/server/db/random-cache.db "select count(*) from random_index_ids;"
 ```

@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from handlers.internal_events import handle_internal_events_ingest
 
-from conftest import CapturingHandler
-
 
 def _event(event_id: str = "evt-1") -> dict:
     """Build a valid Like event payload for handler-level ingest tests."""
@@ -25,13 +23,10 @@ def _event(event_id: str = "evt-1") -> dict:
 
 def test_single_event_ingest_response_shape(engine_event_server) -> None:
     """A single valid event returns the current ok/count/results response contract."""
-    handler = CapturingHandler(_event())
+    result = handle_internal_events_ingest(engine_event_server, _event())
+    body = result.payload
 
-    handled = handle_internal_events_ingest(handler, engine_event_server)
-    body = handler.parsed_body()
-
-    assert handled is True
-    assert handler.status == 200
+    assert result.status == 200
     assert body["ok"] is True
     assert body["count"] == 1
     assert body["ingested"] == 1
@@ -43,12 +38,10 @@ def test_single_event_ingest_response_shape(engine_event_server) -> None:
 
 def test_batch_ingest_reports_duplicate_counts(engine_event_server) -> None:
     """Batch ingest must preserve idempotent duplicate accounting in the response."""
-    handler = CapturingHandler({"events": [_event(), _event()]})
+    result = handle_internal_events_ingest(engine_event_server, {"events": [_event(), _event()]})
+    body = result.payload
 
-    handle_internal_events_ingest(handler, engine_event_server)
-    body = handler.parsed_body()
-
-    assert handler.status == 200
+    assert result.status == 200
     assert body["count"] == 2
     assert body["ingested"] == 1
     assert body["duplicates"] == 1
@@ -56,10 +49,8 @@ def test_batch_ingest_reports_duplicate_counts(engine_event_server) -> None:
 
 def test_empty_events_payload_is_rejected(engine_event_server) -> None:
     """Empty batch payloads currently produce a controlled Missing events error."""
-    handler = CapturingHandler({"events": []})
+    result = handle_internal_events_ingest(engine_event_server, {"events": []})
+    body = result.payload
 
-    handle_internal_events_ingest(handler, engine_event_server)
-    body = handler.parsed_body()
-
-    assert handler.status == 400
+    assert result.status == 400
     assert body == {"error": "Missing events"}

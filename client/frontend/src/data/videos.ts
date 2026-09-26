@@ -4,7 +4,6 @@
 
 import type { VideoRow, VideosPayload } from "../types/videos";
 import { fetchJsonWithCache } from "./cache";
-import { getRandomLikes } from "./local-likes";
 import { resolveClientApiBase } from "./api-base";
 
 export interface SimilarQuery {
@@ -12,8 +11,8 @@ export interface SimilarQuery {
   host?: string | null;
   limit?: string | null;
   apiBase?: string | null;
-  random?: string | null;
   debug?: string | null;
+  cursor?: string | null;
 }
 
 const STATIC_VIDEO_URLS = ["/videos.json", "./videos.json", "videos.json"];
@@ -27,8 +26,8 @@ export function parseSimilarQuery(params: URLSearchParams): SimilarQuery {
     host: params.get("host"),
     limit: params.get("limit"),
     apiBase: params.get("api"),
-    random: params.get("random"),
-    debug: params.get("debug")
+    debug: params.get("debug"),
+    cursor: params.get("cursor")
   };
 }
 
@@ -44,11 +43,14 @@ export function resolveApiBase(query: SimilarQuery) {
  */
 export function buildSimilarUrl(query: SimilarQuery) {
   const apiBase = resolveApiBase(query);
-  const url = new URL("/recommendations", apiBase);
-  if (query.id) url.searchParams.set("id", query.id);
+  const videoId = String(query.id ?? "").trim();
+  // Similar is a video-detail boundary. Home discovery owns its own transport and must not
+  // silently re-enter through this helper when a video identity is absent.
+  if (!videoId) throw new Error("Similar video id is required");
+  const url = new URL(`/api/v1/videos/${encodeURIComponent(videoId)}/similar`, apiBase);
   if (query.host) url.searchParams.set("host", query.host);
   if (query.limit) url.searchParams.set("limit", query.limit);
-  if (query.random) url.searchParams.set("random", query.random);
+  if (query.cursor) url.searchParams.set("cursor", query.cursor);
   if (query.debug) url.searchParams.set("debug", query.debug);
   return url.toString();
 }
@@ -74,16 +76,19 @@ export async function fetchStaticVideosPayload(options: { cacheTtlMs?: number } 
 /**
  * Handle fetch similar videos payload.
  */
+function normalizeVideosPayload(payload: VideosPayload): VideosPayload {
+  // Similar uses the Client list envelope but Video Detail historically consumes `rows`; keep
+  // that local shape adaptation without coupling this module back to Home Discovery.
+  if (Array.isArray(payload.items)) return { ...payload, rows: payload.items };
+  return payload;
+}
+
+/**
+ * Fetch the video-detail Similar payload through the Client public API.
+ */
 export async function fetchSimilarVideosPayload(query: SimilarQuery) {
   const url = buildSimilarUrl(query);
-  const likes = getRandomLikes();
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ likes })
-  });
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
   if (!response.ok) {
     let message = "Failed to load recommendations";
     try {
@@ -94,5 +99,5 @@ export async function fetchSimilarVideosPayload(query: SimilarQuery) {
     }
     throw new Error(message);
   }
-  return (await response.json()) as VideosPayload;
+  return normalizeVideosPayload((await response.json()) as VideosPayload);
 }

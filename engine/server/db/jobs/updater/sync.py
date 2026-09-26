@@ -1,0 +1,128 @@
+"""JoinPeerTube sync, denylist, and purge helpers for updater runs."""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+import sys
+import tempfile
+from pathlib import Path
+from urllib.request import Request, urlopen
+
+from .paths import SERVER_DIR
+
+if str(SERVER_DIR) not in sys.path:
+    sys.path.insert(0, str(SERVER_DIR))
+
+try:
+    from engine.server.db.bootstrap import bootstrap_engine_moderation_db  # noqa: E402
+except ModuleNotFoundError:  # pragma: no cover - script import fallback.
+    from db.bootstrap import bootstrap_engine_moderation_db  # noqa: E402
+from data.moderation import (  # noqa: E402
+    list_active_denied_hosts,
+    purge_host_data,
+    purge_similarity_for_host,
+)
+
+
+def fetch_join_hosts(url: str) -> set[str]:
+    """Fetch JoinPeerTube hosts, accepting the existing list and data shapes."""
+
+    request = Request(url, headers={"User-Agent": "PeerTubeBrowserUpdater/1.0"})
+    with urlopen(request, timeout=30) as response:  # noqa: S310 - URL is user-configured CLI input.
+        payload = json.loads(response.read().decode("utf-8"))
+    if isinstance(payload, dict):
+        rows = payload.get("data", [])
+    else:
+        rows = payload
+    hosts: set[str] = set()
+    for row in rows:
+        if isinstance(row, str):
+            host = row
+        elif isinstance(row, dict):
+            host = row.get("host") or row.get("domain") or row.get("name") or ""
+        else:
+            host = ""
+        host = str(host).strip().lower()
+        if host:
+            hosts.add(host)
+    return hosts
+
+
+def list_prod_hosts(db_path: Path) -> set[str]:
+    """Return normalized instance hosts currently present in the prod DB."""
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("SELECT host FROM instances").fetchall()
+    return {str(row[0]).strip().lower() for row in rows if row[0]}
+
+
+def load_denied_hosts(db_path: Path) -> set[str]:
+    """Load active moderation denylist hosts from the prod DB."""
+
+    with sqlite3.connect(db_path) as conn:
+        # Moderation helpers access result columns by name, so the updater-owned
+        # connection must preserve the same sqlite3.Row contract as Engine reads.
+        conn.row_factory = sqlite3.Row
+        bootstrap_engine_moderation_db(conn)
+        return set(list_active_denied_hosts(conn))
+
+
+def write_hosts_file(hosts: set[str], prefix: str) -> Path | None:
+    """Write sorted hosts to a temp file, returning None for an empty set."""
+
+    if not hosts:
+        return None
+    handle = tempfile.NamedTemporaryFile(
+        "w", prefix=prefix, suffix=".txt", delete=False, encoding="utf-8"
+    )
+    with handle:
+        for host in sorted(hosts):
+            handle.write(host + "\n")
+    return Path(handle.name)
+
+
+def purge_hosts(
+    *, prod_db: Path, similarity_db: Path | None, hosts: set[str], dry_run: bool
+) -> dict[str, int]:
+    """Purge or plan purging host data using the current moderation helpers."""
+
+    aggregate: dict[str, int] = {}
+    if not hosts:
+        return aggregate
+    with sqlite3.connect(prod_db) as conn:
+        bootstrap_engine_moderation_db(conn)
+        for host in sorted(hosts):
+            result = purge_host_data(conn, host, dry_run=dry_run)
+            for key, value in result.items():
+                aggregate[key] = aggregate.get(key, 0) + int(value)
+    if similarity_db is not None:
+        with sqlite3.connect(similarity_db) as sim_conn:
+            # Moderation similarity helpers read aggregate rows by column name,
+            # so updater-owned SQLite connections must preserve sqlite3.Row.
+            sim_conn.row_factory = sqlite3.Row
+            for host in sorted(hosts):
+                result = purge_similarity_for_host(sim_conn, host, dry_run=dry_run)
+                for key, value in result.items():
+                    aggregate[f"similarity_{key}"] = aggregate.get(f"similarity_{key}", 0) + int(
+                        value
+                    )
+    return aggregate
+
+
+def purge_hosts_from_staging(staging_db: Path, hosts: set[str]) -> dict[str, int]:
+    """Delete denylisted host data from staging through the canonical schema-aware helper."""
+
+    if not hosts:
+        return {}
+
+    deleted: dict[str, int] = {}
+    with sqlite3.connect(staging_db) as conn:
+        # Staging is produced from the crawler schema, where host identity uses
+        # different columns across tables. Reuse the moderation purge contract
+        # instead of duplicating schema assumptions in the updater pipeline.
+        for host in sorted(hosts):
+            result = purge_host_data(conn, host, dry_run=False)
+            for table, count in result.items():
+                deleted[table] = deleted.get(table, 0) + int(count)
+    return deleted

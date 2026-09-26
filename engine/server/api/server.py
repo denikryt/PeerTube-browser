@@ -8,11 +8,10 @@ import logging
 import argparse
 import os
 import sqlite3
+import uvicorn
 import sys
 import signal
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import threading
 from uuid import uuid4
 
 script_dir = Path(__file__).resolve().parent
@@ -22,15 +21,8 @@ if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
 
 from server_config import (
-    BATCH_SIZE,
     DEFAULT_NPROBE,
     DEFAULT_NORMALIZE_QUERIES,
-    DEFAULT_RANDOM_CACHE_SIZE,
-    DEFAULT_RANDOM_CACHE_FILTERED_MODE,
-    DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR,
-    DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE,
-    DEFAULT_RANDOM_CACHE_REFRESH,
-    DEFAULT_FRESH_POOL_SIZE,
     DEFAULT_POPULARITY_LIKE_WEIGHT,
     DEFAULT_SIMILAR_PER_LIKE,
     DEFAULT_SIMILARITY_CACHE_REFRESH,
@@ -49,7 +41,6 @@ from server_config import (
     MAX_LIKES,
     MAX_LIKES_FOR_RECS,
     RECOMMENDATIONS_DEBUG_ENABLED,
-    RECOMMENDATION_PIPELINE,
     RELATED_VIDEOS_PERSONALIZATION,
     VIDEO_ERROR_THRESHOLD,
     DEFAULT_USE_CLIENT_LIKES,
@@ -60,6 +51,18 @@ from server_config import (
     ENGINE_INGEST_MODE,
     DEFAULT_RECOMMENDATIONS_LOG_PROFILE,
 )
+try:
+    from recommendations.config import (
+        BATCH_SIZE,
+        DEFAULT_FRESH_POOL_SIZE,
+        RECOMMENDATION_PIPELINE,
+    )
+except ModuleNotFoundError:  # pragma: no cover - package import fallback.
+    from engine.server.api.recommendations.config import (
+        BATCH_SIZE,
+        DEFAULT_FRESH_POOL_SIZE,
+        RECOMMENDATION_PIPELINE,
+    )
 from logging_profiles import configure_engine_logging
 from data.db import connect_db, connect_similarity_db
 from data.embeddings import (
@@ -74,12 +77,13 @@ from data.random_videos import (
     fetch_popular_videos,
 )
 from data.similarity_candidates import get_similar_candidates
-from data.similarity_cache import ensure_similarity_schema
-from data.interaction_events import ensure_interaction_event_schema
-from data.random_cache import connect_random_cache_db, populate_random_cache
-from data.channels import ensure_channels_indexes
-from data.videos import ensure_video_indexes
-from data.moderation import ensure_moderation_schema
+from data.random_cache import RandomCacheUnavailable, open_random_provider_readonly
+from data.ann_artifact import validate_faiss_artifact_metadata
+from db.bootstrap import (
+    bootstrap_engine_read_indexes,
+    bootstrap_engine_runtime_db,
+    bootstrap_engine_similarity_cache_db,
+)
 from recommendations import RecommendationStrategy
 from recommendations.keys import like_key
 from recommendations.builder import (
@@ -90,7 +94,8 @@ from recommendations.builder import (
 from recommendations.related_personalization import (
     RelatedPersonalizationDeps,
 )
-from handlers.similar import SimilarHandler
+from app import create_app
+from runtime import EngineRuntimeState
 from http_utils import RateLimiter
 from request_context import fetch_recent_likes_request
 from scripts.cli_format import CompactHelpFormatter
@@ -126,10 +131,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dev",
         action="store_true",
-        help=(
-            "Enable dev defaults: bind port 7071 and disable random cache refresh "
-            "(unless explicitly overridden)."
-        ),
+        help="Enable dev defaults, including port 7071.",
     )
     parser.add_argument(
         "--host",
@@ -145,20 +147,6 @@ def parse_args() -> argparse.Namespace:
             f"Defaults to {DEFAULT_SERVER_PORT} (or {DEV_SERVER_PORT} with --dev)."
         ),
     )
-    refresh_group = parser.add_mutually_exclusive_group()
-    refresh_group.add_argument(
-        "--random-cache-refresh",
-        dest="random_cache_refresh",
-        action="store_true",
-        help="Force random cache refresh on startup.",
-    )
-    refresh_group.add_argument(
-        "--no-random-cache-refresh",
-        dest="random_cache_refresh",
-        action="store_false",
-        help="Disable random cache refresh on startup.",
-    )
-    parser.set_defaults(random_cache_refresh=None)
     return parser.parse_args()
 
 
@@ -182,71 +170,6 @@ def set_nprobe(index: faiss.Index, nprobe: int) -> None:
         type(index).__name__,
         type(ivf_index).__name__ if ivf_index is not None else None,
     )
-
-
-class SimilarServer(ThreadingHTTPServer):
-    """Threaded HTTP server with shared DB and index handles."""
-    def __init__(
-        self,
-        server_address: tuple[str, int],
-        handler_class: type[BaseHTTPRequestHandler],
-        db: sqlite3.Connection,
-        similarity_db: sqlite3.Connection | None,
-        random_cache_db: sqlite3.Connection | None,
-        index: faiss.Index,
-        embeddings_dim: int,
-        embeddings_count: int,
-        default_limit: int,
-        normalize_queries: bool,
-        refresh_similarity_cache: bool,
-        similarity_require_full_cache: bool,
-        similarity_allow_ann_on_cache_miss: bool,
-        similarity_search_limit: int,
-        similarity_max_per_author: int,
-        similarity_exclude_source_author: bool,
-        recommendation_strategy: RecommendationStrategy,
-        related_personalization_deps: RelatedPersonalizationDeps | None,
-        related_personalization_enabled: bool,
-        video_error_threshold: int,
-        recommendations_debug_enabled: bool,
-        use_client_likes: bool,
-        rate_limiter: RateLimiter | None,
-        popularity_like_weight: float,
-        enable_instance_ignore: bool,
-        enable_channel_blocklist: bool,
-        engine_ingest_mode: str,
-    ) -> None:
-        """Initialize the instance."""
-        super().__init__(server_address, handler_class)
-        self.db = db
-        self.index = index
-        self.embeddings_dim = embeddings_dim
-        self.embeddings_count = embeddings_count
-        self.default_limit = default_limit
-        self.normalize_queries = normalize_queries
-        self.similarity_db = similarity_db
-        self.random_cache_db = random_cache_db
-        self.refresh_similarity_cache = refresh_similarity_cache
-        self.similarity_require_full_cache = similarity_require_full_cache
-        self.similarity_allow_ann_on_cache_miss = similarity_allow_ann_on_cache_miss
-        self.similarity_search_limit = similarity_search_limit
-        self.similarity_max_per_author = similarity_max_per_author
-        self.similarity_exclude_source_author = similarity_exclude_source_author
-        self.recommendation_strategy = recommendation_strategy
-        self.related_personalization_deps = related_personalization_deps
-        self.related_personalization_enabled = related_personalization_enabled
-        self.video_error_threshold = video_error_threshold
-        self.recommendations_debug_enabled = recommendations_debug_enabled
-        self.use_client_likes = use_client_likes
-        self.rate_limiter = rate_limiter
-        self.popularity_like_weight = popularity_like_weight
-        self.enable_instance_ignore = enable_instance_ignore
-        self.enable_channel_blocklist = enable_channel_blocklist
-        self.engine_ingest_mode = engine_ingest_mode
-        self.index_lock = threading.Lock()
-        self.db_lock = threading.Lock()
-        self.similarity_db_lock = threading.Lock()
-        self.random_cache_lock = threading.Lock()
 
 
 def main() -> None:
@@ -277,11 +200,6 @@ def main() -> None:
     host = args.host
     default_port = DEV_SERVER_PORT if args.dev else DEFAULT_SERVER_PORT
     port = args.port if args.port is not None else default_port
-    if args.random_cache_refresh is None:
-        random_cache_refresh = False if args.dev else DEFAULT_RANDOM_CACHE_REFRESH
-    else:
-        random_cache_refresh = bool(args.random_cache_refresh)
-
     active_log_profile = configure_engine_logging(DEFAULT_RECOMMENDATIONS_LOG_PROFILE)
 
     repo_root = script_dir.parents[2]
@@ -291,29 +209,24 @@ def main() -> None:
     random_cache_path = (repo_root / DEFAULT_RANDOM_CACHE_DB_PATH).resolve()
 
     db = connect_db(db_path)
-    ensure_moderation_schema(db)
-    ensure_interaction_event_schema(db)
-    ensure_channels_indexes(db)
-    ensure_video_indexes(db)
+    bootstrap_engine_runtime_db(db)
+    bootstrap_engine_read_indexes(db)
     similarity_db = connect_similarity_db(similarity_db_path)
-    ensure_similarity_schema(similarity_db)
-    random_cache_path.parent.mkdir(parents=True, exist_ok=True)
-    random_cache_db = connect_random_cache_db(random_cache_path)
-    populate_random_cache(
-        db,
-        random_cache_db,
-        DEFAULT_RANDOM_CACHE_SIZE,
-        random_cache_refresh,
-        DEFAULT_RANDOM_CACHE_FILTERED_MODE,
-        DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE,
-        DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR,
-    )
+    bootstrap_engine_similarity_cache_db(similarity_db)
+    try:
+        random_cache_db = open_random_provider_readonly(random_cache_path, db_path)
+    except RandomCacheUnavailable as exc:
+        # Random is one optional provider. A missing or incompatible derived
+        # artifact must not prevent unrelated Engine surfaces from starting.
+        logging.warning("[similar-server] random provider unavailable: %s", exc)
+        random_cache_db = None
     embeddings_dim = db.execute("SELECT embedding_dim FROM video_embeddings LIMIT 1").fetchone()
     if not embeddings_dim:
         raise RuntimeError("No embeddings found in database.")
     dim_value = int(embeddings_dim[0])
 
     logging.info("loading FAISS index=%s", index_path)
+    validate_faiss_artifact_metadata(index_path)
     index = faiss.read_index(str(index_path), faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY)
     set_nprobe(index, DEFAULT_NPROBE)
 
@@ -360,35 +273,34 @@ def main() -> None:
     rate_limiter = RateLimiter(
         DEFAULT_RATE_LIMIT_MAX_REQUESTS, DEFAULT_RATE_LIMIT_WINDOW_SECONDS
     )
-    server = SimilarServer(
-        (host, port),
-        SimilarHandler,
-        db,
-        similarity_db,
-        random_cache_db,
-        index,
-        dim_value,
-        embeddings_count,
-        BATCH_SIZE,
-        DEFAULT_NORMALIZE_QUERIES,
-        DEFAULT_SIMILARITY_CACHE_REFRESH,
-        DEFAULT_SIMILARITY_REQUIRE_FULL_CACHE,
-        DEFAULT_SIMILARITY_ALLOW_ANN_ON_CACHE_MISS,
-        SIMILARITY_SEARCH_LIMIT,
-        SIMILARITY_MAX_PER_AUTHOR,
-        SIMILARITY_EXCLUDE_SOURCE_AUTHOR,
-        recommendation_strategy,
-        related_personalization_deps,
-        bool(personalization_config.get("enabled")),
-        VIDEO_ERROR_THRESHOLD,
-        RECOMMENDATIONS_DEBUG_ENABLED,
-        DEFAULT_USE_CLIENT_LIKES,
-        rate_limiter,
-        DEFAULT_POPULARITY_LIKE_WEIGHT,
-        DEFAULT_ENABLE_INSTANCE_IGNORE,
-        DEFAULT_ENABLE_CHANNEL_BLOCKLIST,
-        ENGINE_INGEST_MODE,
+    runtime_state = EngineRuntimeState(
+        db=db,
+        similarity_db=similarity_db,
+        random_cache_db=random_cache_db,
+        index=index,
+        embeddings_dim=dim_value,
+        embeddings_count=embeddings_count,
+        default_limit=BATCH_SIZE,
+        normalize_queries=DEFAULT_NORMALIZE_QUERIES,
+        refresh_similarity_cache=DEFAULT_SIMILARITY_CACHE_REFRESH,
+        similarity_require_full_cache=DEFAULT_SIMILARITY_REQUIRE_FULL_CACHE,
+        similarity_allow_ann_on_cache_miss=DEFAULT_SIMILARITY_ALLOW_ANN_ON_CACHE_MISS,
+        similarity_search_limit=SIMILARITY_SEARCH_LIMIT,
+        similarity_max_per_author=SIMILARITY_MAX_PER_AUTHOR,
+        similarity_exclude_source_author=SIMILARITY_EXCLUDE_SOURCE_AUTHOR,
+        recommendation_strategy=recommendation_strategy,
+        related_personalization_deps=related_personalization_deps,
+        related_personalization_enabled=bool(personalization_config.get("enabled")),
+        video_error_threshold=VIDEO_ERROR_THRESHOLD,
+        recommendations_debug_enabled=RECOMMENDATIONS_DEBUG_ENABLED,
+        use_client_likes=DEFAULT_USE_CLIENT_LIKES,
+        rate_limiter=rate_limiter,
+        popularity_like_weight=DEFAULT_POPULARITY_LIKE_WEIGHT,
+        enable_instance_ignore=DEFAULT_ENABLE_INSTANCE_IGNORE,
+        enable_channel_blocklist=DEFAULT_ENABLE_CHANNEL_BLOCKLIST,
+        engine_ingest_mode=ENGINE_INGEST_MODE,
     )
+    app = create_app(runtime_state)
 
     logging.info("[similar-server] listening on http://%s:%d", host, port)
     logging.info(
@@ -399,16 +311,12 @@ def main() -> None:
         port,
     )
     logging.info("[similar-server] log_mode_hint=%s", active_log_profile)
-    logging.info(
-        "[similar-server] mode=%s random_cache_refresh=%s",
-        "dev" if args.dev else "default",
-        "true" if random_cache_refresh else "false",
-    )
+    logging.info("[similar-server] mode=%s", "dev" if args.dev else "default")
     logging.info("[similar-server] ingest_mode=%s", ENGINE_INGEST_MODE)
     logging.info("[similar-server] db=%s index=%s total=%d", db_path, index_path, embeddings_count)
     logging.info("[similar-server] strategy=%s", recommendation_strategy.name)
     try:
-        server.serve_forever()
+        uvicorn.run(app, host=host, port=port, log_level="info", access_log=False)
     except KeyboardInterrupt:
         if stop_reason == "unknown":
             stop_reason = "keyboard_interrupt"
@@ -421,7 +329,6 @@ def main() -> None:
     finally:
         signal.signal(signal.SIGINT, previous_sigint)
         signal.signal(signal.SIGTERM, previous_sigterm)
-        server.server_close()
         db.close()
         if similarity_db is not None:
             similarity_db.close()

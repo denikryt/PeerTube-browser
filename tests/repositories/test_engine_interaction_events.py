@@ -11,14 +11,15 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "engine" / "server"))
 
-from data.interaction_events import ensure_interaction_event_schema, ingest_interaction_event  # noqa: E402
+from data.interaction_events import ingest_interaction_event  # noqa: E402
+from engine.server.db.bootstrap import bootstrap_engine_runtime_db  # noqa: E402
 
 
 def _connect() -> sqlite3.Connection:
     """Create a row-aware in-memory database for Engine event tests."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    ensure_interaction_event_schema(conn)
+    bootstrap_engine_runtime_db(conn)
     return conn
 
 
