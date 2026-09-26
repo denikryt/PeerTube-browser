@@ -254,6 +254,8 @@ Users can search videos through a stable API and UI flow.
 
 ## Milestone 4. Discovery UI surfaces
 
+**Status:** completed by the unified Home/filtered Search milestone: four Home modes, shared video filters/facets, cursor-backed infinite continuation for paged providers, finite Recommended local reveal, URL-owned selection, and Home Back-state preservation. Broader source-scope/recommendation redesign remains Milestone 5+.
+
 ### Goal
 
 Make the core product experience usable: home feed, search, and video page.

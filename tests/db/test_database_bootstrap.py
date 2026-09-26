@@ -105,6 +105,7 @@ def test_engine_read_index_bootstrap_creates_current_indexes_for_existing_conten
         "idx_channels_instance",
         "idx_videos_uuid_instance",
         "idx_videos_id_instance",
+        "idx_videos_instance_normalized",
         "idx_video_embeddings_id_instance",
     }.issubset(_indexes(conn))
 
@@ -120,9 +121,9 @@ def test_similarity_cache_bootstrap_creates_current_schema() -> None:
 
 
 def test_random_cache_bootstrap_creates_current_schema() -> None:
-    """Random-cache bootstrap must create the current random index-id table."""
+    """Random-cache bootstrap must create generation metadata plus ordered ids."""
     conn = _connect()
 
     bootstrap_engine_random_cache_db(conn)
 
-    assert "random_index_ids" in _tables(conn)
+    assert {"random_cache_meta", "random_index_ids"}.issubset(_tables(conn))

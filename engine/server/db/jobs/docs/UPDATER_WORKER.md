@@ -57,7 +57,7 @@ The worker runs this sequence:
 8. Recompute popularity incrementally (`recompute-popularity.py --incremental`).
 9. Sync stable video index ids (`sync-video-index-ids.py`).
 10. Rebuild ANN index from prod (`build-ann-index.py`).
-11. Rebuild random index-id cache (`precompute-random-index-ids.py --reset`).
+11. Rebuild random index-id cache (`precompute-random-index-ids.py --refresh`).
 12. Refresh similarity cache for already-cached source videos (`precompute-similar-ann.py --refresh-existing`).
 13. Start API service back.
 14. Release lock and finish.
@@ -232,3 +232,7 @@ systemctl list-timers --all peertube-updater.timer
 ## Internal layout
 
 `updater-worker.py` is the compatibility CLI entrypoint. Its operational internals are split into `engine/server/db/jobs/updater/` modules for CLI parsing, command execution, locks, path resolution, sync helpers, staging helpers, and pipeline orchestration. This split preserves command-line flags, stage order, lock behavior, systemd stop/start behavior, and generated crawler CLI usage. Compatibility decisions are recorded in `docs/UPDATER_COMPATIBILITY.md`.
+
+## Random cache ownership
+
+The updater is the canonical production writer of `random-cache.db`. The random rebuild runs after Engine has been stopped, uses `precompute-random-index-ids.py --refresh`, builds/validates a temporary sibling database, and publishes it atomically. Engine runtime consumes the final artifact read-only and does not hot-reload replacements. The existing restart-in-finally behavior is required so a random-cache rebuild failure does not leave the API service stopped.

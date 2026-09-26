@@ -62,4 +62,8 @@ Stage 11 finalizes the HTTP framework migration: FastAPI app factories are the o
 
 ## Discovery API v1 Boundary
 
-The discovery read path is `Frontend -> Client backend /api/v1/... -> Engine provider routes`. The Client backend owns the browser-facing response envelope, cursor parsing, user-like lookup, and API error shape. Engine owns recommendation computation, video metadata lookup, and internal fresh/popular providers.
+The discovery read path is `Frontend -> Client backend /api/v1/... -> Engine provider routes`. The Client backend owns browser-facing route validation, cursor envelopes, user-like lookup, and API error shape. Engine owns canonical video-filter semantics, serving eligibility, Fresh/Popular/Random provider ordering, recommendation computation, facets, and video metadata.
+
+Home treats providers according to their actual source model: Fresh/Popular are keyset-paged, Random is paged over an updater-owned persisted order, and Recommended remains one finite legacy computation with strict final filtering and terminal pagination. The frontend exposes one Home interaction surface without making those internals artificially symmetric.
+
+`random-cache.db` is a derived artifact owned by jobs/updater for writes. Runtime opens it read-only, attaches the canonical DB read-only for current filtering/moderation, and never bootstraps or hot-reloads it. Publication to the authoritative production path is an offline stop -> build/validate/atomic-replace -> start operation.

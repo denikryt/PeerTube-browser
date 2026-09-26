@@ -13,7 +13,28 @@ RECOMMENDATIONS_ENGINE_TIMEOUT_SECONDS = 20
 
 
 class EngineApiError(RuntimeError):
-    """Engine API request failed."""
+    """Engine API request failed, preserving HTTP status/body when available."""
+
+    def __init__(self, message: str, *, status: int | None = None, body: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+        self.body = body or {}
+
+    @property
+    def code(self) -> str | None:
+        """Return an Engine machine-readable error code when one was supplied."""
+        value = self.body.get("code")
+        return str(value) if isinstance(value, str) and value else None
+
+
+def _http_error(operation: str, status: int, body: dict[str, Any]) -> EngineApiError:
+    """Build a structured Engine HTTP error without conflating it with transport failure."""
+    message = body.get("error") if isinstance(body, dict) else None
+    return EngineApiError(
+        f"Engine {operation} failed (HTTP {status}): {message or 'unknown error'}",
+        status=status,
+        body=body,
+    )
 
 
 
@@ -209,59 +230,41 @@ def fetch_engine_recommendations(
     user_id: str,
     limit: int,
     debug: bool = False,
+    filters: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Fetch Engine recommendations via its current POST contract."""
-    query: dict[str, Any] = {"limit": str(limit), "user_id": user_id}
+    """Fetch the finite Engine home recommendation batch with optional video filters."""
+    query: dict[str, Any] = {"limit": str(limit), "user_id": user_id, **(filters or {})}
     if debug:
         query["debug"] = "1"
-    url = f"{engine_base_url.rstrip('/')}/recommendations"
-    if query:
-        url = f"{url}?{urlencode(query)}"
+    url = f"{engine_base_url.rstrip('/')}/recommendations?{urlencode(query)}"
     status, body = _post_json(
         url,
         {"likes": likes, "user_id": user_id, "mode": "home"},
         timeout=RECOMMENDATIONS_ENGINE_TIMEOUT_SECONDS,
     )
     if status != 200:
-        raise EngineApiError(f"Engine recommendations failed (HTTP {status}): {body.get('error') or 'unknown error'}")
+        raise _http_error("recommendations", status, body)
     return body
 
 
-def fetch_engine_random(engine_base_url: str, limit: int, debug: bool = False) -> dict[str, Any]:
-    """Fetch Engine random feed via its current recommendations random mode."""
-    query: dict[str, Any] = {"limit": str(limit), "random": "1"}
-    if debug:
-        query["debug"] = "1"
-    url = f"{engine_base_url.rstrip('/')}/recommendations?{urlencode(query)}"
-    status, body = _post_json(
-        url,
-        {"likes": [], "mode": "home"},
-        timeout=RECOMMENDATIONS_ENGINE_TIMEOUT_SECONDS,
-    )
-    if status != 200:
-        raise EngineApiError(f"Engine random failed (HTTP {status}): {body.get('error') or 'unknown error'}")
-    return body
-
-
-def fetch_engine_fresh(engine_base_url: str, limit: int) -> dict[str, Any]:
-    """Fetch Engine internal fresh provider rows."""
+def fetch_engine_discovery(
+    engine_base_url: str,
+    source: str,
+    limit: int,
+    provider_cursor: str | None,
+    filters: dict[str, str],
+) -> dict[str, Any]:
+    """Fetch one Engine-owned paged Discovery provider page."""
+    if source not in {"fresh", "popular", "random"}:
+        raise ValueError("Unsupported discovery source")
+    query: dict[str, Any] = {"limit": limit, **filters}
+    if provider_cursor:
+        query["cursor"] = provider_cursor
     status, body = _get_json(
-        f"{engine_base_url.rstrip('/')}/internal/discovery/fresh",
-        {"limit": limit},
+        f"{engine_base_url.rstrip('/')}/internal/discovery/{source}", query
     )
     if status != 200:
-        raise EngineApiError(f"Engine fresh failed (HTTP {status}): {body.get('error') or 'unknown error'}")
-    return body
-
-
-def fetch_engine_popular(engine_base_url: str, limit: int) -> dict[str, Any]:
-    """Fetch Engine internal popular provider rows."""
-    status, body = _get_json(
-        f"{engine_base_url.rstrip('/')}/internal/discovery/popular",
-        {"limit": limit},
-    )
-    if status != 200:
-        raise EngineApiError(f"Engine popular failed (HTTP {status}): {body.get('error') or 'unknown error'}")
+        raise _http_error(f"discovery {source}", status, body)
     return body
 
 
@@ -270,14 +273,24 @@ def fetch_engine_video_search(
     query: str,
     limit: int,
     offset: int,
+    filters: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Fetch Engine internal video search provider rows over HTTP."""
+    request_query: dict[str, Any] = {"q": query, "limit": limit, "cursor": str(offset), **(filters or {})}
     status, body = _get_json(
         f"{engine_base_url.rstrip('/')}/internal/search/videos",
-        {"q": query, "limit": limit, "cursor": str(offset)},
+        request_query,
     )
     if status != 200:
-        raise EngineApiError(f"Engine video search failed (HTTP {status}): {body.get('error') or 'unknown error'}")
+        raise _http_error("video search", status, body)
+    return body
+
+
+def fetch_engine_video_facets(engine_base_url: str) -> dict[str, Any]:
+    """Fetch global service-visible video facets from Engine."""
+    status, body = _get_json(f"{engine_base_url.rstrip('/')}/internal/video-facets")
+    if status != 200:
+        raise _http_error("video facets", status, body)
     return body
 
 
@@ -293,5 +306,5 @@ def fetch_engine_channel_search(
         {"q": query, "limit": limit, "offset": offset},
     )
     if status != 200:
-        raise EngineApiError(f"Engine channel search failed (HTTP {status}): {body.get('error') or 'unknown error'}")
+        raise _http_error("channel search", status, body)
     return body

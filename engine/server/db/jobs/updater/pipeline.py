@@ -505,9 +505,9 @@ def run_pipeline(
                     cwd=paths.repo_root,
                     runner=command_runner,
                 )
-                # The Engine can populate random cache at startup, but the updater owns
-                # production artifact refresh. Rebuilding here prevents stale rowid-era
-                # random artifacts from surviving a data update.
+                # Updater/data-build is the sole production writer of the Random
+                # artifact. Engine is stopped here, so copy-on-publish replacement is
+                # an offline operation and runtime never hot-reloads a new generation.
                 random_cache_cmd = [
                     args.python_bin,
                     (paths.script_dir / "precompute-random-index-ids.py").as_posix(),
@@ -517,7 +517,7 @@ def run_pipeline(
                     paths.random_cache_db.as_posix(),
                     "--size",
                     str(DEFAULT_RANDOM_CACHE_SIZE),
-                    "--reset",
+                    "--refresh",
                 ]
                 if DEFAULT_RANDOM_CACHE_FILTERED_MODE:
                     random_cache_cmd.extend(

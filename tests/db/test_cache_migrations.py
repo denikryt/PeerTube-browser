@@ -64,13 +64,20 @@ def test_similarity_cache_migration_creates_current_tables_indexes_and_pk() -> N
     ]
 
 
-def test_random_cache_migration_creates_current_random_index_ids_table() -> None:
-    """Random cache migration must create the stable index-id table shape."""
+def test_random_cache_migration_creates_generation_metadata_and_order_tables() -> None:
+    """Random cache migration must create both generation identity and ordered ids."""
     conn = _connect()
 
     apply_random_cache_migrations(conn)
 
-    assert "random_index_ids" in _tables(conn)
+    assert {"random_cache_meta", "random_index_ids"}.issubset(_tables(conn))
+    meta_columns = {row[1]: row[2] for row in conn.execute("PRAGMA table_info(random_cache_meta)")}
+    assert meta_columns == {
+        "singleton_id": "INTEGER",
+        "schema_version": "INTEGER",
+        "build_id": "TEXT",
+        "built_at": "TEXT",
+    }
     assert _pk_columns(conn, "random_index_ids") == ["position"]
 
 

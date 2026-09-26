@@ -122,8 +122,9 @@ Behavior: take the random pool; if `below_explore_min` is enabled and there are 
 keep only candidates below the threshold (by similarity to likes). Then apply instance/channel caps.
 
 ### Random Cache Params (Global)
+
+The random cache is built by data-build/updater jobs and consumed read-only by Engine runtime. Engine startup does not rebuild it.
 - `DEFAULT_RANDOM_CACHE_SIZE` — final number of candidates in the cache.
-- `DEFAULT_RANDOM_CACHE_REFRESH` — rebuild cache on startup.
 - `DEFAULT_RANDOM_CACHE_FILTERED_MODE` — when true, cache is built with instance/channel filters.
 - `DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE` — cap per instance during cache build (0 disables).
 - `DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR` — cap per channel during cache build (0 disables).

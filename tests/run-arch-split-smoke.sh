@@ -513,7 +513,7 @@ fi
 if (( ERROR_COUNT == 0 )); then
   log "Starting Engine process"
   ENGINE_INGEST_MODE=bridge "${RUNTIME_PY}" "${ROOT_DIR}/engine/server/api/server.py" \
-    --host "${ENGINE_HOST}" --port "${ENGINE_PORT}" --no-random-cache-refresh >"${ENGINE_LOG}" 2>&1 &
+    --host "${ENGINE_HOST}" --port "${ENGINE_PORT}" >"${ENGINE_LOG}" 2>&1 &
   ENGINE_PID="$!"
 
   CHECK_COUNT=$((CHECK_COUNT + 1))

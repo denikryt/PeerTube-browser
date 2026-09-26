@@ -20,7 +20,7 @@ def test_video_search_returns_v1_envelope_and_forwards_to_engine(start_json_engi
     payload = response.json()
     assert payload["items"] == [{"video_id": "v1", "instance_domain": "ex", "title": "Linux", "thumbnail_url": None}]
     assert payload["pagination"] == {"limit": 5, "next_cursor": None, "has_more": False}
-    assert payload["meta"] == {"source": "search_videos", "query": "linux", "index": "sqlite_fts5_light"}
+    assert payload["meta"] == {"source": "search_videos", "query": "linux", "filters": {"language": None, "category": None, "tag": None, "instance": None}, "index": "sqlite_fts5_light"}
     assert engine.requests[0]["path"] == "/internal/search/videos"
     assert _query(engine.requests[0])["q"] == ["linux"]
 
@@ -114,3 +114,72 @@ def test_channel_search_does_not_add_video_thumbnail_fields(start_json_engine, s
     row = response.json()["items"][0]
     assert "thumbnail_url" not in row
     assert row["channel_id"] == "c1"
+
+
+def test_video_search_forwards_filters_and_cursor_is_filter_bound(start_json_engine, start_client_backend) -> None:
+    """Video search selection identity includes q plus raw public filters."""
+    def route(record):
+        query = _query(record)
+        offset = int(query.get("cursor", ["0"])[0])
+        row = {"video_id": f"v{offset}", "instance_domain": "ex", "title": "Linux"}
+        return 200, {"rows": [row], "has_more": offset == 0, "next_cursor": "provider" if offset == 0 else None}
+    engine = start_json_engine({("GET", "/internal/search/videos"): route})
+    client = start_client_backend(f"http://127.0.0.1:{engine.server_port}")
+    first = client.get("/api/v1/search/videos?q=linux&limit=1&language=uk")
+    assert first.status_code == 200
+    cursor = first.json()["pagination"]["next_cursor"]
+    assert cursor
+    assert _query(engine.requests[0])["language"] == ["uk"]
+    second = client.get(f"/api/v1/search/videos?q=linux&limit=1&language=uk&cursor={cursor}")
+    assert second.status_code == 200
+    assert _query(engine.requests[1])["cursor"] == ["1"]
+    assert client.get(f"/api/v1/search/videos?q=linux&limit=1&language=en&cursor={cursor}").status_code == 400
+
+
+def test_video_filters_are_rejected_on_channel_search(start_json_engine, start_client_backend) -> None:
+    """Video filter dimensions do not leak into channel-search semantics."""
+    engine = start_json_engine({("GET", "/api/channels"): lambda _record: (200, {"rows": []})})
+    client = start_client_backend(f"http://127.0.0.1:{engine.server_port}")
+    response = client.get("/api/v1/search/channels?q=linux&language=uk")
+    assert response.status_code == 400
+    assert engine.requests == []
+
+
+def test_engine_semantic_search_400_stays_public_400(start_json_engine, start_client_backend) -> None:
+    """Engine filter validation errors are not mislabeled as transport failures."""
+    engine = start_json_engine({("GET", "/internal/search/videos"): lambda _record: (400, {"error": "Invalid language"})})
+    client = start_client_backend(f"http://127.0.0.1:{engine.server_port}")
+    response = client.get("/api/v1/search/videos?q=linux&language=bad.value")
+    assert response.status_code == 400
+    assert response.json()["code"] == "V1_SEARCH_BAD_REQUEST"
+
+
+def test_public_search_cursor_rejects_boolean_offset(start_json_engine, start_client_backend) -> None:
+    """Positive/negative: integer offsets work, while JSON booleans cannot masquerade as integers."""
+    import base64
+    import json
+
+    engine = start_json_engine({
+        ("GET", "/internal/search/videos"): lambda _record: (
+            200,
+            {"rows": [], "has_more": False, "next_cursor": None},
+        ),
+    })
+    client = start_client_backend(f"http://127.0.0.1:{engine.server_port}")
+
+    def token(offset):
+        payload = {
+            "v": 2,
+            "kind": "search_videos",
+            "offset": offset,
+            "q": "linux",
+            "filters": [None, None, None, None],
+        }
+        raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+    assert client.get(f"/api/v1/search/videos?q=linux&cursor={token(0)}").status_code == 200
+    bad = client.get(f"/api/v1/search/videos?q=linux&cursor={token(True)}")
+    assert bad.status_code == 400
+    assert bad.json()["code"] == "V1_SEARCH_BAD_REQUEST"
+    assert len(engine.requests) == 1

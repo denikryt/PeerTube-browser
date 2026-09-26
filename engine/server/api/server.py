@@ -23,11 +23,6 @@ if str(server_dir) not in sys.path:
 from server_config import (
     DEFAULT_NPROBE,
     DEFAULT_NORMALIZE_QUERIES,
-    DEFAULT_RANDOM_CACHE_SIZE,
-    DEFAULT_RANDOM_CACHE_FILTERED_MODE,
-    DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR,
-    DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE,
-    DEFAULT_RANDOM_CACHE_REFRESH,
     DEFAULT_POPULARITY_LIKE_WEIGHT,
     DEFAULT_SIMILAR_PER_LIKE,
     DEFAULT_SIMILARITY_CACHE_REFRESH,
@@ -82,10 +77,9 @@ from data.random_videos import (
     fetch_popular_videos,
 )
 from data.similarity_candidates import get_similar_candidates
-from data.random_cache import connect_random_cache_db, populate_random_cache
+from data.random_cache import RandomCacheUnavailable, open_random_provider_readonly
 from data.ann_artifact import validate_faiss_artifact_metadata
 from db.bootstrap import (
-    bootstrap_engine_random_cache_db,
     bootstrap_engine_read_indexes,
     bootstrap_engine_runtime_db,
     bootstrap_engine_similarity_cache_db,
@@ -137,10 +131,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dev",
         action="store_true",
-        help=(
-            "Enable dev defaults: bind port 7071 and disable random cache refresh "
-            "(unless explicitly overridden)."
-        ),
+        help="Enable dev defaults, including port 7071.",
     )
     parser.add_argument(
         "--host",
@@ -156,20 +147,6 @@ def parse_args() -> argparse.Namespace:
             f"Defaults to {DEFAULT_SERVER_PORT} (or {DEV_SERVER_PORT} with --dev)."
         ),
     )
-    refresh_group = parser.add_mutually_exclusive_group()
-    refresh_group.add_argument(
-        "--random-cache-refresh",
-        dest="random_cache_refresh",
-        action="store_true",
-        help="Force random cache refresh on startup.",
-    )
-    refresh_group.add_argument(
-        "--no-random-cache-refresh",
-        dest="random_cache_refresh",
-        action="store_false",
-        help="Disable random cache refresh on startup.",
-    )
-    parser.set_defaults(random_cache_refresh=None)
     return parser.parse_args()
 
 
@@ -223,11 +200,6 @@ def main() -> None:
     host = args.host
     default_port = DEV_SERVER_PORT if args.dev else DEFAULT_SERVER_PORT
     port = args.port if args.port is not None else default_port
-    if args.random_cache_refresh is None:
-        random_cache_refresh = False if args.dev else DEFAULT_RANDOM_CACHE_REFRESH
-    else:
-        random_cache_refresh = bool(args.random_cache_refresh)
-
     active_log_profile = configure_engine_logging(DEFAULT_RECOMMENDATIONS_LOG_PROFILE)
 
     repo_root = script_dir.parents[2]
@@ -241,18 +213,13 @@ def main() -> None:
     bootstrap_engine_read_indexes(db)
     similarity_db = connect_similarity_db(similarity_db_path)
     bootstrap_engine_similarity_cache_db(similarity_db)
-    random_cache_path.parent.mkdir(parents=True, exist_ok=True)
-    random_cache_db = connect_random_cache_db(random_cache_path)
-    bootstrap_engine_random_cache_db(random_cache_db)
-    populate_random_cache(
-        db,
-        random_cache_db,
-        DEFAULT_RANDOM_CACHE_SIZE,
-        random_cache_refresh,
-        DEFAULT_RANDOM_CACHE_FILTERED_MODE,
-        DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE,
-        DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR,
-    )
+    try:
+        random_cache_db = open_random_provider_readonly(random_cache_path, db_path)
+    except RandomCacheUnavailable as exc:
+        # Random is one optional provider. A missing or incompatible derived
+        # artifact must not prevent unrelated Engine surfaces from starting.
+        logging.warning("[similar-server] random provider unavailable: %s", exc)
+        random_cache_db = None
     embeddings_dim = db.execute("SELECT embedding_dim FROM video_embeddings LIMIT 1").fetchone()
     if not embeddings_dim:
         raise RuntimeError("No embeddings found in database.")
@@ -344,11 +311,7 @@ def main() -> None:
         port,
     )
     logging.info("[similar-server] log_mode_hint=%s", active_log_profile)
-    logging.info(
-        "[similar-server] mode=%s random_cache_refresh=%s",
-        "dev" if args.dev else "default",
-        "true" if random_cache_refresh else "false",
-    )
+    logging.info("[similar-server] mode=%s", "dev" if args.dev else "default")
     logging.info("[similar-server] ingest_mode=%s", ENGINE_INGEST_MODE)
     logging.info("[similar-server] db=%s index=%s total=%d", db_path, index_path, embeddings_count)
     logging.info("[similar-server] strategy=%s", recommendation_strategy.name)

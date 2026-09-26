@@ -22,6 +22,14 @@ const channelHref = computed(() => channelUrl(props.row));
 const avatar = computed(() => channelAvatarUrl(props.row));
 const initials = computed(() => channelInitials(props.row));
 const detailUrl = computed(() => videoPageUrl(props.row));
+
+const instanceLabel = computed(() => props.row.instance_domain ?? props.row.instanceDomain ?? "");
+const languageLabel = computed(() => {
+  const raw = props.row.language_label ?? props.row.languageLabel ?? props.row.language ?? null;
+  const normalized = typeof raw === "string" ? raw.trim() : "";
+  return normalized && normalized !== "_unknown" ? normalized : "";
+});
+const categoryLabel = computed(() => typeof props.row.category === "string" ? props.row.category.trim() : "");
 const published = computed(() => {
   const value = publishedAtMs(props.row);
   return value ? formatTimeAgo(value) : "";
@@ -61,7 +69,14 @@ const metaLine = computed(() => {
         <a class="channel-link" :href="channelHref" target="_blank" rel="noreferrer">
           {{ channelLabel }}
         </a>
-        <div class="video-meta">{{ metaLine }}</div>
+        <div class="video-meta">
+          <span>{{ metaLine }}</span>
+          <span v-if="instanceLabel"> · {{ instanceLabel }}</span>
+        </div>
+        <div v-if="languageLabel || categoryLabel" class="video-card-taxonomy">
+          <span v-if="languageLabel" class="video-card-chip">{{ languageLabel }}</span>
+          <span v-if="categoryLabel" class="video-card-chip">{{ categoryLabel }}</span>
+        </div>
         <div class="video-card-stats" aria-label="Video reactions">
           <span class="stat likes"><span v-html="iconThumbUp()"></span><span data-stat="likes">{{ formatStatValue(likes) }}</span></span>
           <span class="stat dislikes"><span v-html="iconThumbDown()"></span><span data-stat="dislikes">{{ formatStatValue(dislikes) }}</span></span>

@@ -44,8 +44,6 @@ DEFAULT_RANDOM_CACHE_FILTERED_MODE = True
 # Caps applied only when DEFAULT_RANDOM_CACHE_FILTERED_MODE is enabled (0 disables).
 DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE = 0
 DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR = 100
-# Rebuild random cache on startup even if it already meets size.
-DEFAULT_RANDOM_CACHE_REFRESH = True
 # Weight multiplier for likes in the materialized popularity score.
 DEFAULT_POPULARITY_LIKE_WEIGHT = 2.0
 # Force rewrite similarity cache entries on recommendation requests by default.

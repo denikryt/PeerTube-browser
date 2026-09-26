@@ -98,3 +98,9 @@ Before JoinPeerTube fetches, stale-host planning/purge, staging initialization, 
 `merge-staging-db.py` is the generic correctness boundary for every caller: all merge rules are validated before DML, keys must exist on both sides, and `stage_columns - prod_columns` must be empty. Production-only columns are allowed. This prevents a newer staging schema from being silently truncated by an older destination.
 
 Staging embeddings are disposable. Every normal path that can reach production merge, including `--resume-staging`, runs `build-video-embeddings.py --force` immediately before delta calculation/merge. Existing staging vectors are never treated as proof of the current embedding recipe. `--retry-errors` remains a staging-repair-only run and exits before embeddings/merge; the subsequent normal resume performs the forced rebuild. A failed forced rebuild aborts before merge.
+
+## Random cache publication ownership
+
+Decision: updater/data-build is the only production writer of `random-cache.db`. The updater stops Engine before `precompute-random-index-ids.py --refresh`, publishes a validated sibling temporary artifact with atomic replace, and restarts Engine in the existing `finally` path even if the rebuild fails. `--reset` is not a compatibility alias and is intentionally removed.
+
+Standalone rebuilds may target another output path while Engine runs, but replacement of the configured production runtime path is an offline operation and requires Engine restart before the new generation is authoritative to runtime. No hot-reload watcher is part of this contract.

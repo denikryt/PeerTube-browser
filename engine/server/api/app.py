@@ -17,6 +17,7 @@ from routes.health import handle_health
 from routes.internal_discovery import handle_internal_discovery_route
 from routes.internal_events import handle_internal_events_ingest_route
 from routes.internal_search import handle_internal_search_videos_route
+from routes.internal_video_facets import handle_internal_video_facets_route
 from routes.internal_videos import (
     handle_internal_video_resolve_route,
     handle_internal_videos_metadata_route,
@@ -111,7 +112,7 @@ def create_app(state: EngineRuntimeState) -> FastAPI:
         except ValueError as exc:
             return cors_json(400, {"error": str(exc)})
         return _route_response(
-            handle_similar_post(state, path, dict(parse_qs(request.url.query)), body)
+            handle_similar_post(state, path, dict(parse_qs(request.url.query, keep_blank_values=(path == "/recommendations"))), body)
         )
 
     @app.post("/internal/videos/resolve")
@@ -140,7 +141,9 @@ def create_app(state: EngineRuntimeState) -> FastAPI:
         if response := _rate_limit_or_none(request, state, "/internal/discovery/fresh"):
             return response
         return _route_response(
-            handle_internal_discovery_route(state, "fresh", dict(parse_qs(request.url.query)))
+            handle_internal_discovery_route(
+                state, "fresh", dict(parse_qs(request.url.query, keep_blank_values=True))
+            )
         )
 
     @app.get("/internal/discovery/popular")
@@ -149,7 +152,20 @@ def create_app(state: EngineRuntimeState) -> FastAPI:
         if response := _rate_limit_or_none(request, state, "/internal/discovery/popular"):
             return response
         return _route_response(
-            handle_internal_discovery_route(state, "popular", dict(parse_qs(request.url.query)))
+            handle_internal_discovery_route(
+                state, "popular", dict(parse_qs(request.url.query, keep_blank_values=True))
+            )
+        )
+
+    @app.get("/internal/discovery/random")
+    async def internal_discovery_random(request: Request) -> Any:
+        """Return persisted-order random discovery rows for Client backend."""
+        if response := _rate_limit_or_none(request, state, "/internal/discovery/random"):
+            return response
+        return _route_response(
+            handle_internal_discovery_route(
+                state, "random", dict(parse_qs(request.url.query, keep_blank_values=True))
+            )
         )
 
     @app.get("/internal/search/videos")
@@ -157,7 +173,15 @@ def create_app(state: EngineRuntimeState) -> FastAPI:
         """Return internal video-search provider rows for Client backend."""
         if response := _rate_limit_or_none(request, state, "/internal/search/videos"):
             return response
-        return _route_response(handle_internal_search_videos_route(state, dict(parse_qs(request.url.query))))
+        return _route_response(handle_internal_search_videos_route(state, dict(parse_qs(request.url.query, keep_blank_values=True))))
+
+
+    @app.get("/internal/video-facets")
+    async def internal_video_facets(request: Request) -> Any:
+        """Return global service-visible video facets for the Client backend."""
+        if response := _rate_limit_or_none(request, state, "/internal/video-facets"):
+            return response
+        return _route_response(handle_internal_video_facets_route(state))
 
     @app.post("/internal/events/ingest")
     async def internal_events_ingest(request: Request) -> Any:

@@ -173,3 +173,9 @@ ENGINE_URL=http://127.0.0.1:7072 CLIENT_URL=http://127.0.0.1:7272 \
 ## FastAPI/uvicorn note
 
 The Client backend and Engine API keep their existing `server.py` executable paths. Internally those entrypoints now launch FastAPI apps with uvicorn. Service installation commands and path assumptions remain unchanged; framework compatibility decisions are recorded in `docs/FRAMEWORK_COMPATIBILITY.md`.
+
+## Random cache deployment lifecycle
+
+`random-cache.db` is a rebuildable updater-owned artifact. Engine opens it read-only and does not create or refresh it at startup. The supported production publication sequence is: stop Engine -> build and validate a sibling temporary cache -> atomically replace `random-cache.db` -> start Engine. The normal updater already follows this lifecycle.
+
+Do not replace the configured production random-cache path while expecting Engine to hot-reload it; no hot reload is supported. For a manual production rebuild, stop Engine, run `precompute-random-index-ids.py --refresh --out <configured path>`, then restart Engine.

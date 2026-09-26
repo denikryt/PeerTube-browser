@@ -25,6 +25,7 @@ from services.discovery_v1 import (
     handle_recommendations,
     handle_similar as handle_v1_similar,
     handle_video as handle_v1_video,
+    handle_video_facets,
 )
 from services.engine_gateway import (
     proxy_engine_request,
@@ -174,7 +175,7 @@ def create_app(state: ClientRuntimeState) -> FastAPI:
         path = request.url.path
         if response := _rate_limit_or_none(state, request, path):
             return response
-        result = handle_random(state.engine_ingest_base, dict(parse_qs(request.url.query)))
+        result = handle_random(state.engine_ingest_base, dict(parse_qs(request.url.query, keep_blank_values=True)))
         return cors_json(result.status, result.body)
 
     @app.get("/api/v1/discovery/fresh")
@@ -183,7 +184,7 @@ def create_app(state: ClientRuntimeState) -> FastAPI:
         path = request.url.path
         if response := _rate_limit_or_none(state, request, path):
             return response
-        result = handle_ordered_feed(state.engine_ingest_base, dict(parse_qs(request.url.query)), "fresh")
+        result = handle_ordered_feed(state.engine_ingest_base, dict(parse_qs(request.url.query, keep_blank_values=True)), "fresh")
         return cors_json(result.status, result.body)
 
     @app.get("/api/v1/discovery/popular")
@@ -192,7 +193,7 @@ def create_app(state: ClientRuntimeState) -> FastAPI:
         path = request.url.path
         if response := _rate_limit_or_none(state, request, path):
             return response
-        result = handle_ordered_feed(state.engine_ingest_base, dict(parse_qs(request.url.query)), "popular")
+        result = handle_ordered_feed(state.engine_ingest_base, dict(parse_qs(request.url.query, keep_blank_values=True)), "popular")
         return cors_json(result.status, result.body)
 
     @app.get("/api/v1/discovery/recommendations")
@@ -207,8 +208,18 @@ def create_app(state: ClientRuntimeState) -> FastAPI:
             state.users,
             state.engine_ingest_base,
             user_id,
-            dict(parse_qs(request.url.query)),
+            dict(parse_qs(request.url.query, keep_blank_values=True)),
         )
+        return cors_json(result.status, result.body)
+
+
+    @app.get("/api/v1/video-facets")
+    async def v1_video_facets(request: Request) -> Any:
+        """Return Client-owned global video facet options."""
+        path = request.url.path
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        result = handle_video_facets(state.engine_ingest_base)
         return cors_json(result.status, result.body)
 
     @app.get("/api/v1/search/videos")
@@ -217,7 +228,7 @@ def create_app(state: ClientRuntimeState) -> FastAPI:
         path = request.url.path
         if response := _rate_limit_or_none(state, request, path):
             return response
-        result = handle_video_search(state.engine_ingest_base, dict(parse_qs(request.url.query)))
+        result = handle_video_search(state.engine_ingest_base, dict(parse_qs(request.url.query, keep_blank_values=True)))
         return cors_json(result.status, result.body)
 
     @app.get("/api/v1/search/channels")

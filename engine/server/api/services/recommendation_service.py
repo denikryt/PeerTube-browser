@@ -21,6 +21,7 @@ from data.embeddings import normalize_vector, resolve_seed
 from data.metadata import fetch_metadata_by_index_ids
 from data.random_videos import fetch_random_rows, fetch_random_rows_from_cache
 from data.serving_moderation import apply_serving_moderation_filters
+from data.video_filters import VideoFilters, matches_video_filters
 from data.similarity_candidates import SimilarityCandidatesPolicy, get_similar_candidates
 from data.time import now_ms
 from http_utils import resolve_user_id
@@ -36,6 +37,10 @@ from request_context import (
     set_request_id,
 )
 from route_results import RouteResult
+try:
+    from engine.server.api.services.video_filter_service import parse_video_filters
+except ModuleNotFoundError:  # pragma: no cover - direct server.py execution path
+    from services.video_filter_service import parse_video_filters
 from server_config import (
     DEFAULT_CLIENT_LIKES_MAX,
     INCLUDE_DYNAMIC_STATS,
@@ -55,6 +60,10 @@ STABLE_VIDEO_FIELDS = (
     "channel_url",
     "published_at",
     "duration",
+    "language",
+    "language_label",
+    "category",
+    "category_id",
     "video_url",
     "embed_path",
 )
@@ -252,8 +261,12 @@ def build_rows_response(
     request_id: str,
     started_at: datetime,
     seed_payload: dict[str, Any],
+    filters: VideoFilters | None = None,
 ) -> RouteResult:
     """Build the current Engine recommendation rows response shape."""
+    if filters is not None:
+        # TEMP-DISCOVERY-RECOMMENDATIONS: final-filter the finite legacy recommendation batch here; remove when recommendations have a native filtered paged/snapshot provider that can refill beyond the legacy batch.
+        rows = [row for row in rows if matches_video_filters(row, filters)]
     filtered_rows, _ = apply_serving_moderation_filters(server, rows, request_id=request_id)
 
     stable_rows = stable_video_rows(filtered_rows)
@@ -305,6 +318,7 @@ def handle_home(
     request_id: str,
     started_at: datetime,
     mode: str,
+    filters: VideoFilters | None = None,
 ) -> RouteResult:
     """Handle home recommendations and current random fallback behavior."""
     rows = server.recommendation_strategy.generate_recommendations(
@@ -319,6 +333,7 @@ def handle_home(
             request_id,
             started_at,
             seed_payload={"user_id": user_id, "random": True, "mode": mode},
+            filters=filters,
         )
     return build_rows_response(
         server,
@@ -327,6 +342,7 @@ def handle_home(
         request_id,
         started_at,
         seed_payload={"user_id": user_id, "mode": mode},
+        filters=filters,
     )
 
 
@@ -473,7 +489,7 @@ def handle_vector_search(
     )
 
 
-def handle_similar(server: Any, params: dict[str, list[str]]) -> RouteResult:
+def handle_similar(server: Any, params: dict[str, list[str]], *, home_filters: VideoFilters | None = None) -> RouteResult:
     """Execute the current home, seed, vector, or random recommendation path."""
     limit = _parse_int(params.get("limit", [str(server.default_limit)])[0])
     if limit == 0:
@@ -541,6 +557,7 @@ def handle_similar(server: Any, params: dict[str, list[str]]) -> RouteResult:
                 request_id,
                 started_at,
                 mode,
+                filters=home_filters,
             )
 
         if seed.get("meta") and seed.get("embedding") is not None:
@@ -614,6 +631,13 @@ def handle_similar_request(
     set_request_client_likes(client_likes, use_client_likes)
 
     try:
-        return handle_similar(server, params)
+        filter_selected = path == "/recommendations" and any(key in params for key in ("language", "category", "tag", "instance"))
+        if not filter_selected:
+            return handle_similar(server, params)
+        try:
+            home_filters = parse_video_filters(params)
+        except ValueError as exc:
+            return RouteResult(400, {"error": str(exc)})
+        return handle_similar(server, params, home_filters=home_filters)
     finally:
         clear_request_context()

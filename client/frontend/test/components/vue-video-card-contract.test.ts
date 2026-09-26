@@ -53,6 +53,15 @@ describe("Vue feed/search video card contract", () => {
     expect(similarVideoCard).toContain('class="thumb-fallback"');
   });
 
+  it("renders optional instance/language/category metadata without placeholder labels", () => {
+    expect(videoCard).toContain("instanceLabel");
+    expect(videoCard).toContain("languageLabel");
+    expect(videoCard).toContain("categoryLabel");
+    expect(videoCard).toContain('class="video-card-taxonomy"');
+    expect(videoCard).not.toContain("Unknown language");
+    expect(videoCard).not.toContain("Unknown category");
+  });
+
   it("pins the CSS to a borderless feed-card surface with compact text", () => {
     expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*background:\s*transparent;/);
     expect(videosCss).toMatch(/\.video-card\s*\{[\s\S]*box-shadow:\s*none;/);

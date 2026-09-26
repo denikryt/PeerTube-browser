@@ -135,7 +135,8 @@ def test_normal_run_counts_unknown_channels_before_crawling_video_metadata(monke
     assert str(tmp_path / "prod.db") in random_cmd
     assert "--out" in random_cmd
     assert str(tmp_path / "random-cache.db") in random_cmd
-    assert "--reset" in random_cmd
+    assert "--refresh" in random_cmd
+    assert "--reset" not in random_cmd
     assert "--filtered" in random_cmd
     assert "--max-per-author" in random_cmd
     assert "100" in random_cmd

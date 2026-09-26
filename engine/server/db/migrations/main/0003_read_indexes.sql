@@ -21,3 +21,16 @@ CREATE INDEX IF NOT EXISTS idx_videos_id_instance
 -- target_table: video_embeddings
 CREATE INDEX IF NOT EXISTS idx_video_embeddings_id_instance
   ON video_embeddings (video_id, instance_domain);
+
+-- target_table: videos
+-- target_columns: language
+CREATE INDEX IF NOT EXISTS idx_videos_language_normalized
+  ON videos (NULLIF(lower(trim(language)), ''));
+-- target_table: videos
+-- target_columns: category
+CREATE INDEX IF NOT EXISTS idx_videos_category_normalized
+  ON videos (lower(trim(category)));
+-- target_table: videos
+-- target_columns: instance_domain
+CREATE INDEX IF NOT EXISTS idx_videos_instance_normalized
+  ON videos (lower(trim(instance_domain)));

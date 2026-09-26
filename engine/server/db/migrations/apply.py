@@ -17,6 +17,7 @@ SIMILARITY_CACHE_DIR = MIGRATIONS_ROOT / "similarity_cache"
 RANDOM_CACHE_DIR = MIGRATIONS_ROOT / "random_cache"
 
 _TARGET_TABLE_PATTERN = re.compile(r"--\s*target_table:\s*([A-Za-z0-9_]+)")
+_TARGET_COLUMNS_PATTERN = re.compile(r"--\s*target_columns:\s*([A-Za-z0-9_, ]+)")
 
 
 def apply_sql_migrations(conn: sqlite3.Connection, directory: Path) -> None:
@@ -50,9 +51,15 @@ def apply_main_read_indexes(conn: sqlite3.Connection) -> None:
     that contract while storing the index SQL in a central resource file.
     """
     sql = (MAIN_DIR / "0003_read_indexes.sql").read_text(encoding="utf-8")
-    for target, statement in _iter_targeted_statements(sql):
-        if _table_exists(conn, target):
-            conn.execute(statement)
+    for target, required_columns, statement in _iter_targeted_statements(sql):
+        if not _table_exists(conn, target):
+            continue
+        # Metadata-backed expression indexes are optional on legacy/minimal
+        # content schemas. Skip only indexes that declare missing columns;
+        # unrelated migration failures must still surface.
+        if required_columns and not _table_has_columns(conn, target, required_columns):
+            continue
+        conn.execute(statement)
     conn.commit()
 
 
@@ -80,33 +87,60 @@ def apply_random_cache_migrations(conn: sqlite3.Connection) -> None:
     apply_sql_migrations(conn, RANDOM_CACHE_DIR)
 
 
-def _iter_targeted_statements(sql: str) -> list[tuple[str, str]]:
-    """Return `(target_table, statement)` pairs from targeted SQL comments.
+def _iter_targeted_statements(sql: str) -> list[tuple[str, tuple[str, ...], str]]:
+    """Return index statements with explicit table/column prerequisites.
 
-    The parser is intentionally small because `0003_read_indexes.sql` is a
-    project-owned resource with one `-- target_table:` marker per statement.
+    Optional ``-- target_columns:`` markers keep metadata-v1 expression indexes
+    safe on older/minimal ``videos`` tables while preserving table-only guards
+    for the long-standing read indexes.
     """
-    statements: list[tuple[str, str]] = []
+    statements: list[tuple[str, tuple[str, ...], str]] = []
     current_target: str | None = None
+    current_columns: tuple[str, ...] = ()
     current_lines: list[str] = []
     for raw_line in sql.splitlines():
-        match = _TARGET_TABLE_PATTERN.match(raw_line.strip())
-        if match:
+        stripped = raw_line.strip()
+        table_match = _TARGET_TABLE_PATTERN.match(stripped)
+        if table_match:
             if current_target and current_lines:
-                statements.append((current_target, "\n".join(current_lines).strip().rstrip(";")))
-            current_target = match.group(1)
+                statements.append(
+                    (current_target, current_columns, "\n".join(current_lines).strip().rstrip(";"))
+                )
+            current_target = table_match.group(1)
+            current_columns = ()
             current_lines = []
             continue
-        if current_target is None or not raw_line.strip():
+        columns_match = _TARGET_COLUMNS_PATTERN.match(stripped)
+        if columns_match and current_target is not None and not current_lines:
+            current_columns = tuple(
+                column.strip()
+                for column in columns_match.group(1).split(",")
+                if column.strip()
+            )
+            continue
+        if current_target is None or not stripped:
             continue
         current_lines.append(raw_line)
-        if raw_line.strip().endswith(";"):
-            statements.append((current_target, "\n".join(current_lines).strip().rstrip(";")))
+        if stripped.endswith(";"):
+            statements.append(
+                (current_target, current_columns, "\n".join(current_lines).strip().rstrip(";"))
+            )
             current_target = None
+            current_columns = ()
             current_lines = []
     if current_target and current_lines:
-        statements.append((current_target, "\n".join(current_lines).strip().rstrip(";")))
+        statements.append(
+            (current_target, current_columns, "\n".join(current_lines).strip().rstrip(";"))
+        )
     return statements
+
+
+def _table_has_columns(
+    conn: sqlite3.Connection, table: str, columns: tuple[str, ...]
+) -> bool:
+    """Return whether every explicitly required column exists on ``table``."""
+    existing = {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')}
+    return all(column in existing for column in columns)
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:

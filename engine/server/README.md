@@ -34,4 +34,6 @@ This service does not own user write/profile endpoints.
 
 ## Internal Discovery Providers
 
-Engine provides computation/data routes used by the Client backend. Fresh and popular discovery providers are internal routes under `/internal/discovery/...`, not browser-facing `/api/v1` routes.
+Engine provides computation/data routes used by the Client backend. Fresh, popular, and persisted-order random providers live under `/internal/discovery/...`; global service-visible filter options live at `/internal/video-facets`. These routes are not browser-facing `/api/v1` routes. `language`, `category`, `tag`, and `instance` share one Engine-owned `VideoFilters` semantic contract across Discovery and video Search.
+
+Fresh/Popular use provider-owned keyset cursors. Random uses the updater-built `random-cache.db` order and a generation-bound cursor. Engine opens that artifact and the canonical DB read-only for Random serving; startup never creates, migrates, or repopulates the artifact. A missing/incompatible artifact makes only the Random provider unavailable.

@@ -268,9 +268,14 @@ python3 engine/server/db/jobs/precompute-random-index-ids.py \
   --filtered \
   --max-per-author 100 \
   --max-per-instance 0 \
-  --reset
+  --refresh
 ```
 
+
+
+The builder owns the artifact lifecycle: it writes a sibling temporary DB, validates the completed generation, then publishes with `os.replace()`. `--refresh` forces a new generation; without it a valid sufficiently sized artifact may be reused. `--reset` is intentionally unsupported.
+
+When `--out` is the configured production runtime path, publication is an offline operation: stop Engine before rebuilding and restart it afterward. Engine does not hot-reload the replaced file.
 
 ## 7) Precompute similarity cache (optional)
 This speeds up similar video fetches for the video page.
