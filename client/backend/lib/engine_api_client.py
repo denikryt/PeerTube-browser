@@ -9,7 +9,13 @@ from urllib.request import Request, urlopen
 
 
 DEFAULT_ENGINE_TIMEOUT_SECONDS = 6
-RECOMMENDATIONS_ENGINE_TIMEOUT_SECONDS = 20
+# Guest recommendations can fall back to a broad ranked database query.  This
+# is intentionally longer than an ordinary lookup so Home does not discard a
+# valid page while the Engine is busy serving a concurrent discovery request.
+RECOMMENDATIONS_ENGINE_TIMEOUT_SECONDS = 45
+# Ordered discovery queries read and sort a production-scale SQLite table.  They
+# are still bounded, but need more headroom than small metadata lookups.
+DISCOVERY_ENGINE_TIMEOUT_SECONDS = 30
 
 
 class EngineApiError(RuntimeError):
@@ -255,13 +261,15 @@ def fetch_engine_discovery(
     filters: dict[str, str],
 ) -> dict[str, Any]:
     """Fetch one Engine-owned paged Discovery provider page."""
-    if source not in {"fresh", "popular", "random"}:
+    if source not in {"fresh", "popular", "trending", "random"}:
         raise ValueError("Unsupported discovery source")
     query: dict[str, Any] = {"limit": limit, **filters}
     if provider_cursor:
         query["cursor"] = provider_cursor
     status, body = _get_json(
-        f"{engine_base_url.rstrip('/')}/internal/discovery/{source}", query
+        f"{engine_base_url.rstrip('/')}/internal/discovery/{source}",
+        query,
+        timeout=DISCOVERY_ENGINE_TIMEOUT_SECONDS,
     )
     if status != 200:
         raise _http_error(f"discovery {source}", status, body)
@@ -288,7 +296,10 @@ def fetch_engine_video_search(
 
 def fetch_engine_video_facets(engine_base_url: str) -> dict[str, Any]:
     """Fetch global service-visible video facets from Engine."""
-    status, body = _get_json(f"{engine_base_url.rstrip('/')}/internal/video-facets")
+    status, body = _get_json(
+        f"{engine_base_url.rstrip('/')}/internal/video-facets",
+        timeout=DISCOVERY_ENGINE_TIMEOUT_SECONDS,
+    )
     if status != 200:
         raise _http_error("video facets", status, body)
     return body

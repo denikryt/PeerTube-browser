@@ -44,8 +44,9 @@ DEFAULT_RANDOM_CACHE_FILTERED_MODE = True
 # Caps applied only when DEFAULT_RANDOM_CACHE_FILTERED_MODE is enabled (0 disables).
 DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE = 0
 DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR = 100
-# Weight multiplier for likes in the materialized popularity score.
-DEFAULT_POPULARITY_LIKE_WEIGHT = 2.0
+# Trending uses reactions per hour; a like represents stronger intent than a
+# view, so it contributes as ten views to the materialized rank.
+DEFAULT_POPULARITY_LIKE_WEIGHT = 10.0
 # Force rewrite similarity cache entries on recommendation requests by default.
 DEFAULT_SIMILARITY_CACHE_REFRESH = False
 # Number of similar videos cached per seed video.

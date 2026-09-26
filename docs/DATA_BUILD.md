@@ -289,12 +289,14 @@ python3 engine/server/db/jobs/precompute-similar-ann.py \
   --reset
 ```
 
-## 8) Recompute popularity (one-time after dataset build)
-Materialize a `videos.popularity` score for fast popular queries.
+## 8) Recompute Trending (one-time after dataset build)
+Materialize `videos.popularity` for fast Trending queries. The score is
+`(views + 10 * likes) / (1 + age_hours)`, so a newer video that gains more
+views and likes ranks higher; the one-hour floor protects newly published rows.
 ```bash
 python3 engine/server/db/jobs/recompute-popularity.py \
   --db engine/server/db/whitelist.db \
-  --like-weight 2.0 \
+  --like-weight 10.0 \
   --reset
 ```
 

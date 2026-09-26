@@ -148,12 +148,23 @@ def create_app(state: EngineRuntimeState) -> FastAPI:
 
     @app.get("/internal/discovery/popular")
     async def internal_discovery_popular(request: Request) -> Any:
-        """Return internal popular discovery provider rows for Client backend."""
+        """Serve the backwards-compatible popular discovery alias."""
         if response := _rate_limit_or_none(request, state, "/internal/discovery/popular"):
             return response
         return _route_response(
             handle_internal_discovery_route(
                 state, "popular", dict(parse_qs(request.url.query, keep_blank_values=True))
+            )
+        )
+
+    @app.get("/internal/discovery/trending")
+    async def internal_discovery_trending(request: Request) -> Any:
+        """Return age-normalized view/like Trending rows for the Client backend."""
+        if response := _rate_limit_or_none(request, state, "/internal/discovery/trending"):
+            return response
+        return _route_response(
+            handle_internal_discovery_route(
+                state, "trending", dict(parse_qs(request.url.query, keep_blank_values=True))
             )
         )
 

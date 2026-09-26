@@ -3,7 +3,7 @@
  *
  * Home and Search must share one YouTube-style card component: thumbnail first,
  * compact metadata row below, no material-card body, and lightweight reaction
- * counts in feed/search contexts. The detail page keeps a separate compact similar-card.
+ * count in feed/search contexts. The detail page keeps a separate compact similar-card.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -31,11 +31,11 @@ describe("Vue feed/search video card contract", () => {
     expect(videoCard).toContain('class="video-card-meta"');
     expect(videoCard).toContain('class="video-card-text"');
     expect(videoCard).toContain('class="video-card-menu"');
-    expect(videoCard).toContain('class="video-card-stats"');
+    expect(videoCard).toContain('class="video-card-like"');
     expect(videoCard).toContain("iconThumbUp");
-    expect(videoCard).toContain("iconThumbDown");
     expect(videoCard).toContain('data-stat="likes"');
-    expect(videoCard).toContain('data-stat="dislikes"');
+    expect(videoCard).not.toContain("iconThumbDown");
+    expect(videoCard).not.toContain('data-stat="dislikes"');
     expect(videoCard).not.toContain('class="video-body"');
     expect(videoCard).not.toContain('class="video-stats"');
   });
@@ -53,13 +53,10 @@ describe("Vue feed/search video card contract", () => {
     expect(similarVideoCard).toContain('class="thumb-fallback"');
   });
 
-  it("renders optional instance/language/category metadata without placeholder labels", () => {
+  it("keeps instance metadata inline without turning the card into a filter surface", () => {
     expect(videoCard).toContain("instanceLabel");
-    expect(videoCard).toContain("languageLabel");
-    expect(videoCard).toContain("categoryLabel");
-    expect(videoCard).toContain('class="video-card-taxonomy"');
-    expect(videoCard).not.toContain("Unknown language");
-    expect(videoCard).not.toContain("Unknown category");
+    expect(videoCard).toContain('class="video-card-like"');
+    expect(videoCard).not.toContain('class="video-card-taxonomy"');
   });
 
   it("pins the CSS to a borderless feed-card surface with compact text", () => {
@@ -70,8 +67,7 @@ describe("Vue feed/search video card contract", () => {
     expect(videosCss).toMatch(/\.video-card:hover,\n\.video-card:focus-within\s*\{[\s\S]*background:\s*rgba\(31, 27, 22, 0\.14\);/);
     expect(videosCss).toMatch(/\.video-card-meta\s*\{/);
     expect(videosCss).toMatch(/\.video-card-menu\s*\{/);
-    expect(videosCss).toMatch(/\.video-card-stats\s*\{/);
-    expect(videosCss).toMatch(/\.video-card-stats \.stat\s*\{/);
+    expect(videosCss).toMatch(/\.video-card-like\s*\{/);
     expect(videosCss).toMatch(/\.video-card \.video-title\s*\{[\s\S]*font-size:\s*1rem;/);
   });
 });

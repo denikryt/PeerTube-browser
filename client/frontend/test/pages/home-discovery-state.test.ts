@@ -112,9 +112,9 @@ describe("Home feed state", () => {
         return new Promise<ReturnType<typeof ok>>((resolve) => { resolveContinuation = resolve; });
       }
       return Promise.resolve(ok({
-        items: [row("popular")],
+        items: [row("trending")],
         pagination: { limit: 20, next_cursor: null, has_more: false },
-        meta: { source: "popular" }
+        meta: { source: "trending" }
       }));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -135,15 +135,15 @@ describe("Home feed state", () => {
 
     const oldSelection = feed.loadSelection("fresh", { ...empty, language: "uk" });
     await Promise.resolve();
-    await feed.loadSelection("popular", empty);
+    await feed.loadSelection("trending", empty);
     resolveOldSelection(ok({
       items: [row("late-fresh")],
       pagination: { limit: 20, next_cursor: null, has_more: false },
       meta: { source: "fresh" }
     }));
     await oldSelection;
-    expect(feed.state.mode).toBe("popular");
-    expect(feed.state.items.map((item) => item.video_id)).toEqual(["popular"]);
+    expect(feed.state.mode).toBe("trending");
+    expect(feed.state.items.map((item) => item.video_id)).toEqual(["trending"]);
   });
 
   it("allows an in-flight page to finish and reuses the completed selection after Home deactivation", async () => {
@@ -180,7 +180,7 @@ describe("Home feed state", () => {
   it("keeps first-page error distinct from empty and terminal state cannot issue continuation", async () => {
     const fetchMock = vi.fn(async (input: string | URL) => {
       const url = String(input);
-      if (url.includes("/popular")) return fail(503, { error: "provider unavailable" });
+      if (url.includes("/trending")) return fail(503, { error: "provider unavailable" });
       return ok({
         items: [row("only")],
         pagination: { limit: 20, next_cursor: null, has_more: false },
@@ -196,7 +196,7 @@ describe("Home feed state", () => {
     await feed.loadMore();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    await feed.loadSelection("popular", empty);
+    await feed.loadSelection("trending", empty);
     expect(feed.state.items).toEqual([]);
     expect(feed.state.error).toContain("provider unavailable");
     expect(feed.isEmpty.value).toBe(false);

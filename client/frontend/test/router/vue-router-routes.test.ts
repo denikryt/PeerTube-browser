@@ -9,7 +9,7 @@ describe("Vue Router canonical routes", () => {
   it("declares only the new SPA browser routes", () => {
     const paths = router.getRoutes().map((route) => route.path).sort();
 
-    expect(paths).toEqual(["/", "/about", "/channels", "/search", "/video/:host/:id"].sort());
+    expect(paths).toEqual(["/", "/about", "/categories", "/channels", "/search", "/tags", "/video/:host/:id"].sort());
     expect(paths.some((path) => path.includes(".html"))).toBe(false);
   });
   it("restores browser saved position and otherwise starts at the top", async () => {

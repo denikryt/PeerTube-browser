@@ -28,6 +28,7 @@ import type { VideoFilters } from "../types/video-filters";
 import type { VideoRow } from "../types/videos";
 import { videoRowKey } from "../utils/video-fields";
 
+const props = defineProps<{ facet?: "category" | "tag" }>();
 const route = useRoute();
 const router = useRouter();
 const feed = useFeed();
@@ -41,7 +42,8 @@ const sentinel = ref<HTMLElement | null>(null);
 let observer: IntersectionObserver | null = null;
 let active = false;
 
-const mode = computed(() => parseHomeMode(route.query.mode));
+const isFacetPage = computed(() => props.facet === "category" || props.facet === "tag");
+const mode = computed(() => isFacetPage.value ? "fresh" : parseHomeMode(route.query.mode));
 const filters = computed(() => parseVideoFilterQuery(route.query as Record<string, unknown>));
 const routeSelectionKey = computed(() => homeSelectionKey(mode.value, filters.value));
 const summary = computed(() => state.initialLoading
@@ -50,28 +52,32 @@ const summary = computed(() => state.initialLoading
     ? `Showing ${visibleItems.value.length} videos`
     : "");
 const modeLabel = computed(() => ({
-  recommendations: "Recommended",
+  recommendations: "Home",
   fresh: "Fresh",
-  popular: "Popular",
+  trending: "Trending",
   random: "Random"
 })[mode.value]);
+const pageTitle = computed(() => props.facet === "category"
+  ? "Categories"
+  : props.facet === "tag"
+    ? "Tags"
+    : modeLabel.value);
 
 /** Ensure the cached Home instance reflects the current route selection. */
 async function ensureRouteSelection() {
-  if (route.name !== "home") return;
+  if (!['home', 'categories', 'tags'].includes(String(route.name))) return;
   await loadSelection(mode.value, filters.value);
 }
 
 /** Replace route-owned selection controls without creating browser-history noise. */
 function replaceSelection(nextMode: HomeMode, nextFilters: VideoFilters) {
   void router.replace({
-    name: "home",
-    query: { ...serializeHomeMode(nextMode), ...serializeVideoFilters(nextFilters) }
+    name: isFacetPage.value ? String(route.name) : "home",
+    query: {
+      ...(isFacetPage.value ? {} : serializeHomeMode(nextMode)),
+      ...serializeVideoFilters(nextFilters)
+    }
   });
-}
-
-function setMode(nextMode: HomeMode) {
-  replaceSelection(nextMode, filters.value);
 }
 
 /** Apply one complete shared-filter selection while keeping Home URL-owned. */
@@ -142,31 +148,16 @@ onUnmounted(() => {
 
 <template>
   <main class="videos-main">
-    <section class="summary">
+    <section class="home-toolbar">
       <div>
-        <div>{{ summary }}</div>
-        <div class="summary-meta">{{ modeLabel }} discovery</div>
+        <h1>{{ pageTitle }}</h1>
+        <p v-if="summary">{{ summary }}</p>
       </div>
-      <div class="summary-actions">
-        <button class="ghost-button" type="button" @click="resetProfile">Reset likes</button>
-        <button class="ghost-button" type="button" @click="showLikes">My likes</button>
-      </div>
+      <details class="home-filters" :open="isFacetPage">
+        <summary>Filters</summary>
+        <VideoFilterControls :filters="filters" :focus="props.facet" @change="setFilters" />
+      </details>
     </section>
-
-    <nav class="discovery-modes" aria-label="Discovery mode">
-      <button
-        v-for="candidate in (['recommendations', 'fresh', 'popular', 'random'] as HomeMode[])"
-        :key="candidate"
-        class="mode-button"
-        :class="{ active: mode === candidate }"
-        type="button"
-        @click="setMode(candidate)"
-      >
-        {{ candidate === 'recommendations' ? 'Recommended' : candidate[0].toUpperCase() + candidate.slice(1) }}
-      </button>
-    </nav>
-
-    <VideoFilterControls :filters="filters" @change="setFilters" />
 
     <StatusBlock v-if="state.initialLoading" kind="loading" message="Loading..." />
     <div v-else-if="state.error" class="continuation-error">

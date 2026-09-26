@@ -4,7 +4,7 @@ import { onMounted, ref } from "vue";
 import { fetchVideoFacetsPayload } from "../data/video-facets";
 import type { VideoFacetsPayload, VideoFilters } from "../types/video-filters";
 
-const props = defineProps<{ filters: VideoFilters }>();
+const props = defineProps<{ filters: VideoFilters; focus?: "category" | "tag" }>();
 const emit = defineEmits<{ change: [filters: VideoFilters] }>();
 
 const facets = ref<VideoFacetsPayload | null>(null);
@@ -45,7 +45,7 @@ onMounted(() => void loadFacets());
 
 <template>
   <section class="video-filters" aria-label="Video filters">
-    <label>
+    <label v-if="!focus">
       <span>Language</span>
       <select :value="filters.language ?? ''" @change="setFilter('language', eventValue($event))">
         <option value="">All</option>
@@ -58,7 +58,7 @@ onMounted(() => void loadFacets());
         </option>
       </select>
     </label>
-    <label>
+    <label v-if="!focus || focus === 'category'">
       <span>Category</span>
       <select :value="filters.category ?? ''" @change="setFilter('category', eventValue($event))">
         <option value="">All</option>
@@ -71,14 +71,14 @@ onMounted(() => void loadFacets());
         </option>
       </select>
     </label>
-    <label>
+    <label v-if="!focus || focus === 'tag'">
       <span>Tag</span>
       <input :value="filters.tag ?? ''" list="video-filter-tag-options" @change="setFilter('tag', eventValue($event))" />
       <datalist id="video-filter-tag-options">
         <option v-for="item in facets?.tags ?? []" :key="item.value" :value="item.value">{{ item.count }}</option>
       </datalist>
     </label>
-    <label>
+    <label v-if="!focus">
       <span>Instance</span>
       <input :value="filters.instance ?? ''" list="video-filter-instance-options" @change="setFilter('instance', eventValue($event))" />
       <datalist id="video-filter-instance-options">

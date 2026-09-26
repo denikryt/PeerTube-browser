@@ -194,11 +194,13 @@ def _provider_response(
 
 
 def _handle_ordered(server: Any, source: str, params: dict[str, list[str]]) -> RouteResult:
-    """Execute Fresh/Popular keyset pagination over one static total ordering."""
+    """Execute Fresh or age-normalized Trending keyset pagination."""
     _validate_params(params)
     limit = _parse_limit(params)
     filters = parse_video_filters(params)
     cursor = _single_cursor(params)
+    # ``popular`` is retained for old callers; the public Trending route owns
+    # the same persisted score: views/likes discounted by video age.
     order = FRESH_ORDER if source == "fresh" else POPULAR_ORDER
     after = _decode_ordered_cursor(cursor, source=source, filters=filters, order=order)
     fetcher = fetch_fresh_page if source == "fresh" else fetch_popular_page
@@ -354,9 +356,9 @@ def _handle_random(server: Any, params: dict[str, list[str]]) -> RouteResult:
 
 
 def handle_internal_discovery(server: Any, source: str, params: dict[str, list[str]]) -> RouteResult:
-    """Return one internal Fresh/Popular/Random discovery provider page."""
+    """Return one internal Fresh/Trending/Random discovery provider page."""
     try:
-        if source in {"fresh", "popular"}:
+        if source in {"fresh", "popular", "trending"}:
             return _handle_ordered(server, source, params)
         if source == "random":
             return _handle_random(server, params)

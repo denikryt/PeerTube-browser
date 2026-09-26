@@ -8,14 +8,14 @@ import {
 
 describe("Discovery data boundary", () => {
   it("builds only public Client URLs with all selected filters and cursor", () => {
-    const url = buildDiscoveryUrl("popular", {
+    const url = buildDiscoveryUrl("trending", {
       apiBase: "https://client.example",
       limit: 20,
       cursor: "opaque",
       filters: { language: "uk", category: "Education", tag: "linux", instance: "example.org" }
     });
 
-    expect(url).toBe("https://client.example/api/v1/discovery/popular?limit=20&cursor=opaque&language=uk&category=Education&tag=linux&instance=example.org");
+    expect(url).toBe("https://client.example/api/v1/discovery/trending?limit=20&cursor=opaque&language=uk&category=Education&tag=linux&instance=example.org");
     expect(url).not.toContain("/internal/");
   });
 

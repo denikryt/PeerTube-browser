@@ -15,6 +15,149 @@
     linear-gradient(140deg, var(--paper), var(--paper-strong));
 }
 
+/* The landing shell keeps browse choices persistent while cards retain their
+ * existing component-level visual contract below. */
+.videos-app {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 100vh;
+  background: #f7f6f2;
+}
+
+.app-sidebar {
+  grid-row: 1 / -1;
+  padding: 2rem 1.15rem;
+  border-right: 1px solid rgba(31, 27, 22, 0.09);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.7rem 1.8rem;
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.sidebar-nav {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.sidebar-link {
+  display: block;
+  padding: 0.72rem 0.85rem;
+  border-radius: 12px;
+  color: rgba(31, 27, 22, 0.72);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.sidebar-link:hover,
+.sidebar-link.active {
+  color: var(--ink);
+  background: rgba(110, 186, 198, 0.17);
+}
+
+.sidebar-section {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 1.65rem;
+  padding: 0 0.85rem;
+}
+
+.sidebar-section h2 {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sidebar-filter-link {
+  overflow: hidden;
+  color: rgba(31, 27, 22, 0.72);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-filter-link:hover {
+  color: #2f7887;
+}
+
+.landing-header {
+  grid-column: 2;
+  padding: 1.55rem 3rem 0.8rem;
+}
+
+.landing-search {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: min(760px, 100%);
+  padding: 0.42rem 0.48rem 0.42rem 1rem;
+  border: 1px solid rgba(31, 27, 22, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 6px 22px rgba(31, 27, 22, 0.05);
+}
+
+.landing-search svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.8;
+}
+
+.landing-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+
+.landing-search button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.55rem 0.9rem;
+  background: #2f7887;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -943,24 +1086,14 @@ body {
   text-overflow: ellipsis;
 }
 
-.video-card-stats {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  margin-top: 0.25rem;
-  color: var(--muted);
-  font-size: 0.84rem;
-  line-height: 1;
-}
-
-.video-card-stats .stat {
+.video-card-like {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  min-width: 0;
+  margin-left: 0.35rem;
 }
 
-.video-card-stats svg {
+.video-card-like svg {
   width: 14px;
   height: 14px;
   stroke: currentColor;
@@ -1098,6 +1231,119 @@ body {
 
 @media (max-width: 560px) {
   .video-filters {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Landing layout rules live last so the original page CSS can keep its
+ * component styles, while the shared shell wins the page-level geometry. */
+.videos-app {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.videos-app > .videos-main {
+  grid-column: 2;
+  padding: 0.8rem 3rem 3rem;
+}
+
+.home-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.home-toolbar h1,
+.home-toolbar p {
+  margin: 0;
+}
+
+.home-toolbar h1 {
+  font-size: 1.15rem;
+}
+
+.home-toolbar p {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.home-filters {
+  position: relative;
+}
+
+.home-filters summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.home-filters[open] {
+  position: relative;
+  z-index: 2;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 28px var(--shadow);
+}
+
+.home-filters[open] .video-filters {
+  grid-template-columns: repeat(4, minmax(130px, 1fr)) auto;
+  margin-top: 0.8rem;
+}
+
+@media (max-width: 900px) {
+  .videos-app {
+    display: block;
+  }
+
+  .app-sidebar {
+    padding: 1rem 1.25rem;
+    border-right: 0;
+    border-bottom: 1px solid rgba(31, 27, 22, 0.09);
+  }
+
+  .brand {
+    padding: 0.35rem 0 0.8rem;
+  }
+
+  .sidebar-nav {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .sidebar-link {
+    white-space: nowrap;
+  }
+
+  .sidebar-section {
+    display: none;
+  }
+
+  .landing-header,
+  .videos-app > .videos-main {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  .home-filters[open] .video-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .landing-header {
+    padding: 1rem 1.25rem 0.25rem;
+  }
+
+  .landing-search button {
+    display: none;
+  }
+
+  .home-filters[open] .video-filters {
     grid-template-columns: 1fr;
   }
 }

@@ -1,10 +1,10 @@
 /** Pure URL-state helpers shared by Home and video Search filters. */
 import type { VideoFilters } from "../types/video-filters";
 
-export type HomeMode = "recommendations" | "fresh" | "popular" | "random";
+export type HomeMode = "recommendations" | "fresh" | "trending" | "random";
 
 const FILTER_KEYS = ["language", "category", "tag", "instance"] as const;
-const HOME_MODES = new Set<HomeMode>(["recommendations", "fresh", "popular", "random"]);
+const HOME_MODES = new Set<HomeMode>(["recommendations", "fresh", "trending", "random"]);
 
 /** Return an independent empty selection object for callers that will mutate controls. */
 export function emptyVideoFilters(): VideoFilters {

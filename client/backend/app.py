@@ -189,11 +189,20 @@ def create_app(state: ClientRuntimeState) -> FastAPI:
 
     @app.get("/api/v1/discovery/popular")
     async def v1_discovery_popular(request: Request) -> Any:
-        """Return Client-owned v1 popular discovery feed."""
+        """Serve the backwards-compatible popular discovery alias."""
         path = request.url.path
         if response := _rate_limit_or_none(state, request, path):
             return response
         result = handle_ordered_feed(state.engine_ingest_base, dict(parse_qs(request.url.query, keep_blank_values=True)), "popular")
+        return cors_json(result.status, result.body)
+
+    @app.get("/api/v1/discovery/trending")
+    async def v1_discovery_trending(request: Request) -> Any:
+        """Return Client-owned v1 Trending discovery feed."""
+        path = request.url.path
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        result = handle_ordered_feed(state.engine_ingest_base, dict(parse_qs(request.url.query, keep_blank_values=True)), "trending")
         return cors_json(result.status, result.body)
 
     @app.get("/api/v1/discovery/recommendations")
