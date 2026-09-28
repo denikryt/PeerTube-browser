@@ -14,8 +14,9 @@ from data.random_cache import fetch_random_index_ids
 from data.serving_moderation import ServingVisibility, build_serving_visibility_sql
 from data.video_filters import VideoFilters, build_video_filter_sql
 
-# All runtime row producers expose the same metadata needed by filters/cards.
-_VIDEO_SELECT = """
+# Fresh/Trending read canonical videos directly; legacy embedding-backed helpers
+# retain the embedding columns in their projection where they still need them.
+_VIDEO_BASE_SELECT = """
   v.video_id,
   v.video_uuid,
   v.video_numeric_id,
@@ -46,10 +47,10 @@ _VIDEO_SELECT = """
   v.nsfw,
   v.preview_path,
   v.popularity,
-  v.last_checked_at,
-  e.embedding_dim,
-  e.model_name
+  v.last_checked_at
 """
+
+_VIDEO_SELECT = _VIDEO_BASE_SELECT + ",\n  e.embedding_dim,\n  e.model_name"
 
 _ROW_FIELDS = (
     "video_id",
@@ -94,13 +95,7 @@ FRESH_ORDER = (
     ("video_id", "ASC"),
 )
 POPULAR_ORDER = (
-    ("rank_score", "DESC"),
-    ("effective_likes_is_null", "ASC"),
-    ("effective_likes_sort", "DESC"),
-    ("views_is_null", "ASC"),
-    ("views_sort", "DESC"),
-    ("published_is_null", "ASC"),
-    ("published_sort", "DESC"),
+    ("popularity", "DESC"),
     ("instance_domain", "ASC"),
     ("video_id", "ASC"),
 )
@@ -161,12 +156,10 @@ def fetch_fresh_page(
         f"""
         WITH eligible AS (
           SELECT
-            {_VIDEO_SELECT},
+            {_VIDEO_BASE_SELECT},
             CASE WHEN v.published_at IS NULL THEN 1 ELSE 0 END AS published_is_null,
             COALESCE(v.published_at, 0) AS published_sort
-          FROM video_embeddings e
-          JOIN videos v
-            ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
+          FROM videos v
           LEFT JOIN channels c
             ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
           WHERE {visibility_sql}
@@ -194,7 +187,7 @@ def fetch_popular_page(
     visibility: ServingVisibility,
     after: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Return one Popular provider window using one explicit normalized rank tuple."""
+    """Return one Trending window ordered only by persisted canonical popularity."""
     filter_sql, filter_params = build_video_filter_sql("v", filters)
     visibility_sql, visibility_params = build_serving_visibility_sql("v", visibility)
     seek_sql, seek_params = _build_seek_predicate(POPULAR_ORDER, after)
@@ -202,22 +195,8 @@ def fetch_popular_page(
         f"""
         WITH eligible AS (
           SELECT
-            {_VIDEO_SELECT},
-            COALESCE(v.popularity, 0) + COALESCE(sig.signal_score, 0) AS rank_score,
-            CASE
-              WHEN (v.likes + COALESCE(sig.likes_count, 0) - COALESCE(sig.undo_likes_count, 0)) IS NULL THEN 1
-              ELSE 0
-            END AS effective_likes_is_null,
-            COALESCE(v.likes + COALESCE(sig.likes_count, 0) - COALESCE(sig.undo_likes_count, 0), 0) AS effective_likes_sort,
-            CASE WHEN v.views IS NULL THEN 1 ELSE 0 END AS views_is_null,
-            COALESCE(v.views, 0) AS views_sort,
-            CASE WHEN v.published_at IS NULL THEN 1 ELSE 0 END AS published_is_null,
-            COALESCE(v.published_at, 0) AS published_sort
-          FROM video_embeddings e
-          JOIN videos v
-            ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
-          LEFT JOIN interaction_signals sig
-            ON sig.video_uuid = v.video_uuid AND sig.instance_domain = v.instance_domain
+            {_VIDEO_BASE_SELECT}
+          FROM videos v
           LEFT JOIN channels c
             ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
           WHERE {visibility_sql}
@@ -249,7 +228,7 @@ def fetch_random_provider_range(
     """Read one visible Random order range through the read-only attached canonical DB."""
     if limit <= 0:
         return []
-    filter_sql, filter_params = build_video_filter_sql("v", filters)
+    filter_sql, filter_params = build_video_filter_sql("v", filters, schema="canonical")
     visibility_sql, visibility_params = build_serving_visibility_sql(
         "v", visibility, schema="canonical"
     )
@@ -294,14 +273,10 @@ def fetch_random_rows(
         params = [error_threshold, limit]
     query = conn.execute(
         f"""
-        SELECT
-          {_VIDEO_SELECT},
-          (v.likes + COALESCE(sig.likes_count, 0) - COALESCE(sig.undo_likes_count, 0)) AS effective_likes
+        SELECT {_VIDEO_SELECT}
         FROM video_embeddings e
         JOIN videos v
           ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
-        LEFT JOIN interaction_signals sig
-          ON sig.video_uuid = v.video_uuid AND sig.instance_domain = v.instance_domain
         LEFT JOIN channels c
           ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
         {error_clause}
@@ -310,14 +285,7 @@ def fetch_random_rows(
         """,
         params,
     )
-    rows: list[dict[str, Any]] = []
-    for row in query:
-        item = _row_dict(row)
-        # Preserve the historical random fallback behavior where Client likes are
-        # reflected in the displayed likes value.
-        item["likes"] = row["effective_likes"]
-        rows.append(item)
-    return rows
+    return [_row_dict(row) for row in query]
 
 
 def fetch_recent_videos(
@@ -349,7 +317,7 @@ def fetch_recent_videos(
 def fetch_popular_videos(
     conn: sqlite3.Connection, limit: int, error_threshold: int | None = None
 ) -> list[dict[str, Any]]:
-    """Return most popular videos for legacy recommendation sources."""
+    """Return most popular legacy candidates while preserving the historical top-N cut."""
     error_clause = ""
     params: list[Any] = [limit, limit]
     if error_threshold is not None and error_threshold > 0:
@@ -357,18 +325,14 @@ def fetch_popular_videos(
         params = [error_threshold, limit, limit]
     rows = conn.execute(
         f"""
-        SELECT
-          {_VIDEO_SELECT},
-          COALESCE(sig.signal_score, 0) AS interaction_signal_score
+        SELECT {_VIDEO_SELECT}
         FROM (
           SELECT v.video_id, v.instance_domain
           FROM videos v
-          LEFT JOIN interaction_signals sig
-            ON sig.video_uuid = v.video_uuid AND sig.instance_domain = v.instance_domain
           {error_clause}
           ORDER BY
-            (v.popularity + COALESCE(sig.signal_score, 0)) DESC,
-            (v.likes + COALESCE(sig.likes_count, 0) - COALESCE(sig.undo_likes_count, 0)) DESC,
+            v.popularity DESC,
+            v.likes DESC,
             v.views DESC,
             v.published_at DESC,
             v.video_id DESC
@@ -378,13 +342,13 @@ def fetch_popular_videos(
           ON e.video_id = popular_ids.video_id AND e.instance_domain = popular_ids.instance_domain
         JOIN videos v
           ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
-        LEFT JOIN interaction_signals sig
-          ON sig.video_uuid = v.video_uuid AND sig.instance_domain = v.instance_domain
         LEFT JOIN channels c
           ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
+        -- Preserve the legacy fallback contract: embedding eligibility may
+        -- underfill the canonical top-N window instead of backfilling it.
         ORDER BY
-          (v.popularity + COALESCE(sig.signal_score, 0)) DESC,
-          (v.likes + COALESCE(sig.likes_count, 0) - COALESCE(sig.undo_likes_count, 0)) DESC,
+          v.popularity DESC,
+          v.likes DESC,
           v.views DESC,
           v.published_at DESC,
           v.video_id DESC
@@ -392,12 +356,7 @@ def fetch_popular_videos(
         """,
         params,
     ).fetchall()
-    result: list[dict[str, Any]] = []
-    for row in rows:
-        item = _row_dict(row)
-        item["interaction_signal_score"] = row["interaction_signal_score"]
-        result.append(item)
-    return result
+    return [_row_dict(row) for row in rows]
 
 
 def fetch_random_rows_from_cache(

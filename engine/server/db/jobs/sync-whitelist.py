@@ -26,10 +26,17 @@ if str(api_dir) not in sys.path:
 from scripts.cli_format import CompactHelpFormatter
 from server_config import DEFAULT_DB_PATH
 try:
-    from engine.server.db.bootstrap import bootstrap_engine_moderation_db
+    from engine.server.db.bootstrap import (
+        bootstrap_engine_moderation_db,
+        bootstrap_engine_read_indexes,
+    )
 except ModuleNotFoundError:  # pragma: no cover - script import fallback.
-    from db.bootstrap import bootstrap_engine_moderation_db
+    from db.bootstrap import bootstrap_engine_moderation_db, bootstrap_engine_read_indexes
 from data.moderation import list_active_denied_hosts
+from data.prepared_discovery import (
+    invalidate_prepared_discovery,
+    rebuild_prepared_discovery,
+)
 from whitelist_migrations import add_metadata_v1_columns
 
 DEFAULT_URL = (
@@ -304,8 +311,6 @@ def ensure_content_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_videos_published
           ON videos (published_at DESC, video_id DESC);
-        CREATE INDEX IF NOT EXISTS idx_videos_popularity
-          ON videos (popularity DESC);
         CREATE INDEX IF NOT EXISTS idx_channels_followers_videos_name
           ON channels (followers_count DESC, videos_count DESC, channel_name ASC);
         CREATE INDEX IF NOT EXISTS idx_channels_videos
@@ -470,6 +475,7 @@ def main() -> None:
     removed = 0
     added = 0
     conn = sqlite3.connect(args.whitelist_db.as_posix())
+    conn.row_factory = sqlite3.Row
     attached = False
     try:
         conn.execute("PRAGMA foreign_keys = ON;")
@@ -524,10 +530,24 @@ def main() -> None:
                 )
             else:
                 selected_hosts = selected_hosts_before_deny
+            # The full-sync replacement is one canonical publication boundary.
+            # Invalidate only after schema/bootstrap helpers have finished, so
+            # the marker deletion shares the replacement transaction itself.
+            invalidate_prepared_discovery(conn)
             total, removed, added = sync_hosts(conn, selected_hosts)
             channels_count, videos_count, embeddings_count = rebuild_content_tables(
                 conn, selected_hosts
             )
+
+        # The input database is needed only for the canonical replacement above.
+        # Detach it before all main-only post-build work so schema reconciliation,
+        # prepared-artifact publication, and planner maintenance cannot mutate source.
+        conn.execute("DETACH DATABASE source;")
+        attached = False
+
+        bootstrap_engine_read_indexes(conn)
+        prepared_stats = rebuild_prepared_discovery(conn)
+        conn.execute("PRAGMA optimize")
     finally:
         if attached:
             conn.execute("DETACH DATABASE source;")
@@ -557,6 +577,11 @@ def main() -> None:
         channels_count,
         videos_count,
         embeddings_count,
+    )
+    logging.info(
+        "Prepared Discovery rebuilt: source_videos=%d tag_memberships=%d.",
+        prepared_stats["source_video_count"],
+        prepared_stats["tag_membership_count"],
     )
 
 

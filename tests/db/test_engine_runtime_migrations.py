@@ -33,7 +33,9 @@ def _create_minimal_content_tables(conn: sqlite3.Connection) -> None:
         CREATE TABLE videos (
           video_id TEXT,
           video_uuid TEXT,
-          instance_domain TEXT
+          instance_domain TEXT,
+          published_at INTEGER,
+          popularity REAL
         );
         CREATE TABLE video_embeddings (
           video_id TEXT,
@@ -54,7 +56,9 @@ def _create_filterable_videos_table(conn: sqlite3.Connection) -> None:
           video_uuid TEXT,
           instance_domain TEXT,
           language TEXT,
-          category TEXT
+          category TEXT,
+          published_at INTEGER,
+          popularity REAL
         )
         """
     )
@@ -131,6 +135,8 @@ def test_engine_main_runtime_migrations_create_runtime_tables_and_indexes() -> N
         "idx_videos_uuid_instance",
         "idx_videos_id_instance",
         "idx_videos_instance_normalized",
+        "idx_videos_fresh_order",
+        "idx_videos_trending_order",
         "idx_video_embeddings_id_instance",
     }.issubset(_indexes(conn))
     assert _pk_columns(conn, "interaction_raw_events") == ["event_id"]
@@ -213,3 +219,66 @@ def test_normalized_filter_indexes_match_production_predicates_and_are_used() ->
     for filters, expected_index in cases:
         plan = _query_plan_details(conn, filters)
         assert any(expected_index in detail for detail in plan), (filters, plan)
+
+
+def test_read_index_bootstrap_replaces_legacy_popularity_index_with_exact_orders() -> None:
+    """Positive/negative: current bootstrap creates exact browse indexes and removes the legacy one."""
+    conn = _connect()
+    _create_minimal_content_tables(conn)
+    conn.execute("CREATE INDEX idx_videos_popularity ON videos(popularity DESC)")
+
+    apply_main_read_indexes(conn)
+
+    indexes = _indexes(conn)
+    assert {"idx_videos_fresh_order", "idx_videos_trending_order"}.issubset(indexes)
+    assert "idx_videos_popularity" not in indexes
+
+
+def test_read_index_bootstrap_never_drops_legacy_index_from_attached_source(tmp_path: Path) -> None:
+    """Negative: main read-index reconciliation must never mutate an attached source database."""
+    source_path = tmp_path / "source.db"
+    source = sqlite3.connect(source_path)
+    _create_minimal_content_tables(source)
+    source.execute("CREATE INDEX idx_videos_popularity ON videos(popularity DESC)")
+    source.commit()
+    source.close()
+
+    conn = _connect()
+    _create_minimal_content_tables(conn)
+    conn.execute("ATTACH DATABASE ? AS source", (str(source_path),))
+
+    apply_main_read_indexes(conn)
+
+    assert "idx_videos_popularity" not in _indexes(conn)
+    source_indexes = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM source.sqlite_master WHERE type = 'index'"
+        )
+    }
+    assert "idx_videos_popularity" in source_indexes
+
+
+def _load_job_module(filename: str, module_name: str):
+    """Load one hyphenated DB job script for focused schema-owner tests."""
+    import importlib.util
+
+    path = ROOT / "engine/server/db/jobs" / filename
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_popularity_job_does_not_recreate_legacy_read_index() -> None:
+    """Negative: popularity recompute owns the column/value lifecycle, not read indexes."""
+    conn = _connect()
+    conn.execute(
+        "CREATE TABLE videos(video_id TEXT, instance_domain TEXT, popularity REAL)"
+    )
+    module = _load_job_module("recompute-popularity.py", "recompute_popularity_index_owner_test")
+
+    module.ensure_popularity_schema(conn)
+
+    assert "idx_videos_popularity" not in _indexes(conn)

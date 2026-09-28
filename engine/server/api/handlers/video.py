@@ -307,8 +307,7 @@ def handle_video_request(server: Any, params: dict[str, list[str]]) -> RouteResu
                         """
                         UPDATE videos
                         SET title = ?, description = ?, channel_name = ?, views = ?, likes = ?, dislikes = ?,
-                            popularity = ?,
-                            tags_json = ?, category = ?, nsfw = ?, last_checked_at = ?
+                            popularity = ?, nsfw = ?, last_checked_at = ?
                         WHERE video_id = ? AND instance_domain = ?
                         """,
                         (
@@ -319,8 +318,6 @@ def handle_video_request(server: Any, params: dict[str, list[str]]) -> RouteResu
                             likes,
                             dislikes,
                             popularity,
-                            tags_json,
-                            category,
                             nsfw,
                             checked_at,
                             row.get("video_id"),

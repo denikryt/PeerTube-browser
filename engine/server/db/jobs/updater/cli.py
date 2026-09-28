@@ -124,7 +124,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Run service stop/start as 'sudo -n <systemctl>'.",
     )
     parser.add_argument(
-        "--skip-systemctl", action="store_true", help="Do not stop/start service automatically."
+        "--skip-systemctl",
+        action="store_true",
+        help=(
+            "Do not stop/start Engine automatically. For production mutations, the "
+            "caller must keep Engine stopped for the complete offline updater section, "
+            "from before canonical DB mutation until the updater command finishes."
+        ),
     )
     parser.add_argument("--logs", default=str(default_logs), help="Path to log file.")
     parser.add_argument(

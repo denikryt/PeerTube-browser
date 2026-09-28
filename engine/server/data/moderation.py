@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
+from .prepared_discovery import invalidate_prepared_discovery
+
 
 @dataclass(frozen=True)
 class ModerationFilterStats:
@@ -150,10 +152,15 @@ def purge_host_data(
         for table, column in table_column_pairs:
             if not _table_exists(conn, table):
                 continue
-            conn.execute(
+            cursor = conn.execute(
                 f"DELETE FROM {table} WHERE {column} = ?",
                 (normalized,),
             )
+            if table == "videos" and cursor.rowcount > 0:
+                # The DELETE itself is the authoritative mutation boundary.
+                # Precomputed counts are only reporting data and can be stale;
+                # readiness changes only when canonical video rows really did.
+                invalidate_prepared_discovery(conn)
     return counts
 
 

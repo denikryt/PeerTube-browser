@@ -32,27 +32,29 @@ Removal condition, if any: Only a dedicated operational CLI change plan may remo
 
 ### Stage order and command arguments remain stable unless artifact correctness requires migration
 
-Decision: Preserve crawler, embedding, merge, popularity, and service-control behavior, while intentionally updating post-merge artifact refresh for the stable index-id migration.
+Decision: Preserve crawler, embedding, merge, popularity, and service-control behavior while keeping derived artifacts consistent with the current canonical DB. Prepared Discovery is now a mandatory post-popularity stage; existing stable-index-id/Search/ANN/random/similarity stages remain after it.
 
-Reason: The updater produces production data artifacts. After ANN/random artifacts moved from `video_embeddings.rowid` to `video_index_ids.index_id`, keeping rowid-era command assumptions would rebuild incomplete or incompatible artifacts.
+Reason: Runtime tag filters and facets now consume updater-owned `video_tags` and `video_facets_snapshot`. Once canonical video mutation commits, Engine must not be restarted by the updater until that narrow prepared pair is available. Read-index reconciliation is not a per-run updater stage because Engine startup already applies the current read-index bootstrap before serving.
 
-Implementation action: Keep orchestration in `updater/pipeline.py` and assert recorded fake-runner command arrays in tests. The post-merge order now runs `sync-video-index-ids.py` before artifact rebuilds, rebuilds `random-cache.db` through `precompute-random-index-ids.py`, and calls `precompute-similar-ann.py` with exactly one `--index <path>` value. Old rowid-era random/ANN artifact assumptions are not compatibility behavior.
+Implementation action: Keep orchestration in `updater/pipeline.py` and assert recorded fake-runner command arrays in tests. After the Engine is stopped, destructive stale-host purge and merge can mutate canonical videos; popularity is recomputed; `rebuild-video-discovery-data.py` rebuilds tags/facets; then the existing stable-id, Search, ANN, random, and similarity stages continue. No `ensure-video-indexes.py` command is added to the normal updater pipeline.
 
 Tests: `tests/jobs/test_updater_pipeline_commands.py`.
 
 Removal condition, if any: Future command argument changes require a dedicated operational behavior plan with before/after data-build validation.
 
-### Systemd stop/start failure behavior remains stable
+### Systemd stop/start failure behavior and prepared Discovery gate
 
-Decision: Preserve the current stop-before-merge and start-in-finally behavior.
+Decision: Preserve stop-before-canonical-mutation and start-in-finally behavior for later artifact failures, but do not let the updater restart its stopped Engine while prepared Discovery is unavailable.
 
-Reason: If the service is stopped and a later post-stop stage fails, the current operational contract attempts to restart it.
+Reason: The singleton prepared facet snapshot is a durable readiness bit for `video_tags + video_facets_snapshot`. A failed rebuild can outlive one updater process, so a later run must not restart Engine merely because its own in-memory control flow did not perform the earlier mutation.
 
-Implementation action: Keep the nested `try/finally` in `updater/pipeline.py` and only run stop/start when `--skip-systemctl` is false.
+Implementation action: Keep the nested `try/finally` in `updater/pipeline.py`. When `--skip-systemctl` is false and this run stopped Engine, the final restart first checks the persisted prepared Discovery snapshot. Failure before canonical mutation still restarts when the prior snapshot is valid; a committed mutation followed by failed rebuild leaves the marker absent and Engine stopped. Later Search/ANN/random/similarity failure still restarts after a successful prepared rebuild.
 
-Tests: `tests/jobs/test_updater_service_restart.py`.
+`--skip-systemctl` remains an operator escape hatch. For production mutations it is supported only when an external caller keeps Engine stopped for the complete offline updater section, from before the first canonical mutation until the updater command finishes; running it against a live production Engine is unsupported.
 
-Removal condition, if any: Only a deployment-specific plan may change systemd/service restart behavior.
+Tests: `tests/jobs/test_updater_service_restart.py`, `tests/jobs/test_updater_cli_characterization.py`.
+
+Removal condition, if any: Broader startup/deployment coordination belongs to a separate publication-lifecycle plan.
 
 ### Lock behavior remains stable
 
@@ -68,11 +70,11 @@ Removal condition, if any: None for this refactor series.
 
 ### JoinPeerTube sync and purge safety remain stable
 
-Decision: Preserve dry-run behavior, `--yes` requirement for stale purge, host normalization, and purge aggregation.
+Decision: Preserve dry-run behavior, `--yes` requirement for stale purge, host normalization, and purge aggregation. The destructive production purge executes only after the existing Engine stop boundary.
 
-Reason: Sync mode can delete prod data for hosts no longer in the whitelist, so safety gates must not change during a split.
+Reason: Sync mode can delete prod videos for hosts no longer in the whitelist. With prepared tags/facets, deleting those rows while Engine is serving would immediately make prepared Discovery stale.
 
-Implementation action: Move fetch/list/write/purge helpers to `updater/sync.py`; keep `--yes` and dry-run decisions in the pipeline.
+Implementation action: Keep planning/approval before crawl, but defer `purge_hosts(..., dry_run=False)` until the post-stop section of `updater/pipeline.py`. The low-level purge invalidates prepared Discovery in the same transaction only when video rows are actually deleted.
 
 Tests: `tests/jobs/test_updater_sync.py` and sync branches in `tests/jobs/test_updater_pipeline_commands.py`.
 

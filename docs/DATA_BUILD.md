@@ -22,7 +22,7 @@ You can run the same build/update flow automatically with the updater worker:
 
 - Worker entrypoint: `engine/server/db/jobs/updater-worker.py`
 - Internal updater modules: `engine/server/db/jobs/updater/`
-- It runs: instances/channels -> missing video counts -> video metadata to staging -> embeddings -> merge to prod -> popularity -> index-id sync -> ANN rebuild -> random cache rebuild -> similarity precompute.
+- It runs: instances/channels -> missing video counts -> video metadata to staging -> embeddings -> merge to prod -> popularity -> prepared Discovery -> index-id sync -> Search rebuild -> ANN rebuild -> random cache rebuild -> similarity precompute.
 - Systemd installation: `install-service.sh --with-updater-timer`
 - Timer runs daily (`OnUnitInactiveSec=1d`).
 - Optional `--host-pipeline` mode overlaps different hosts and reselects queued
@@ -167,6 +167,8 @@ Notes:
 - `--mode include` keeps only whitelisted hosts (default).
 - `--mode exclude` keeps hosts not in the whitelist.
 - If the source DB schema has `video_embeddings`, they are copied into whitelist.db.
+- A successful full sync applies current Engine read indexes and rebuilds prepared
+  `video_tags` plus the singleton facet snapshot before returning.
 
 If the whitelist DB schema is outdated, migrate it:
 ```bash
@@ -189,6 +191,14 @@ npm run crawl:videos:metadata -- --db ../server/db/whitelist.db
 ```
 
 The metadata command is a data-only operation. It validates the current metadata schema read-only and does not run crawler schema migrations against `whitelist.db`. `--update-metadata` explicitly revisits rows that already completed the current metadata version.
+
+When this command targets the production `whitelist.db`, keep Engine serving stopped through the maintenance operation and rebuild prepared Discovery before serving resumes:
+
+```bash
+python3 engine/server/db/jobs/rebuild-video-discovery-data.py --db engine/server/db/whitelist.db
+```
+
+This is required because metadata maintenance can change prepared-facet source fields such as language/category and can mark rows invalid after permanent metadata errors.
 
 Existing embedding-source fields are protected during ordinary repeat crawl and metadata backfill: `title`, `description`, `tags_json`, `category`, and `channel_name`. Intentionally changing any of those fields after embeddings exist requires a full embedding/artifact rebuild. The legacy tags maintenance commands remain embedding-affecting for existing rows. `comments_count` is dynamic metadata and is **not** an embedding input.
 
@@ -299,6 +309,28 @@ python3 engine/server/db/jobs/recompute-popularity.py \
   --like-weight 10.0 \
   --reset
 ```
+
+
+## 9) Build prepared Discovery data
+
+Prepared Discovery keeps request-time tag filters and facets off the raw JSON/corpus
+hot paths. Rebuild it after any direct canonical mutation of fields that feed
+`video_tags` or facets and before normal serving resumes:
+
+```bash
+python3 engine/server/db/jobs/rebuild-video-discovery-data.py \
+  --db engine/server/db/whitelist.db
+```
+
+The rebuild creates its own prepared tables when absent, normalizes tags, and writes
+the facet snapshot atomically with the new tag relation. Facets summarize canonical
+metadata rows whose `invalid_reason` is empty; they intentionally do not mirror
+runtime error thresholds, instance denylist, or channel moderation counts.
+
+For the first rollout onto an older production DB, keep Engine stopped, deploy the
+new code without automatic restart, run `ensure-video-indexes.py`, run the prepared
+rebuild above, verify `video_facets_snapshot.snapshot_id=1`, then start Engine. If any
+step fails, do not start Engine.
 
 ## Logs and progress
 All crawler and job commands log to stdout. Redirect if needed:

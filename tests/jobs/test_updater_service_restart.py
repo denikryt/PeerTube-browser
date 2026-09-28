@@ -10,10 +10,10 @@ from engine.server.db.jobs.updater import pipeline
 from tests.jobs.test_updater_pipeline_commands import _args, _patch_lightweight
 
 
-def _run_with_failure(monkeypatch, tmp_path, args, fail_name: str):
+def _run_with_failure(monkeypatch, tmp_path, args, fail_name: str, *, prepared_ready=True):
     """Run pipeline with a fake command runner that fails on a named script."""
 
-    _patch_lightweight(monkeypatch)
+    _patch_lightweight(monkeypatch, prepared_ready=prepared_ready)
     seen: list[list[str]] = []
 
     def runner(cmd, cwd):
@@ -96,3 +96,38 @@ def test_random_cache_failure_restarts_service(monkeypatch, tmp_path) -> None:
     )
     assert ["systemctl", "stop", "svc"] in seen
     assert ["systemctl", "start", "svc"] in seen
+
+
+def test_prepared_rebuild_failure_leaves_stopped_engine_offline(monkeypatch, tmp_path) -> None:
+    """A committed canonical update cannot be served before prepared Discovery is ready."""
+    _patch_lightweight(monkeypatch, prepared_ready=False)
+    seen: list[list[str]] = []
+
+    def runner(cmd, cwd):
+        seen.append(list(cmd))
+        if any("rebuild-video-discovery-data.py" in part for part in cmd):
+            raise subprocess.CalledProcessError(1, list(cmd))
+
+    with pytest.raises(subprocess.CalledProcessError):
+        pipeline.run_pipeline(
+            _args(tmp_path), command_runner=runner, validate_files=False
+        )
+
+    assert ["systemctl", "stop", "svc"] in seen
+    assert ["systemctl", "start", "svc"] not in seen
+
+
+def test_absent_prepared_marker_from_prior_run_blocks_restart_on_next_merge_failure(
+    monkeypatch, tmp_path
+) -> None:
+    """Restart gating is durable across runs rather than process-local state."""
+    seen = _run_with_failure(
+        monkeypatch,
+        tmp_path,
+        _args(tmp_path),
+        "merge-staging-db.py",
+        prepared_ready=False,
+    )
+
+    assert ["systemctl", "stop", "svc"] in seen
+    assert ["systemctl", "start", "svc"] not in seen

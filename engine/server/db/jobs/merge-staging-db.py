@@ -17,6 +17,7 @@ if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
 
 from scripts.cli_format import CompactHelpFormatter
+from data.prepared_discovery import invalidate_prepared_discovery
 
 
 def parse_args() -> argparse.Namespace:
@@ -214,6 +215,10 @@ def main() -> None:
 
             conn.execute(sql)
             affected = int(conn.execute("SELECT changes()").fetchone()[0])
+            if table == "videos" and affected > 0:
+                # Keep invalidation in the merge transaction: failed merges
+                # restore both canonical videos and the previous readiness marker.
+                invalidate_prepared_discovery(conn)
             after = count_rows(conn, "main", table)
             logging.info(
                 "merged table=%s strategy=%s rows_before=%d rows_after=%d affected=%d",

@@ -27,22 +27,26 @@ def _connect() -> sqlite3.Connection:
           channel_id TEXT, instance_domain TEXT, channel_name TEXT, display_name TEXT,
           followers_count INTEGER, avatar_url TEXT, PRIMARY KEY(channel_id, instance_domain)
         );
+        CREATE TABLE instances (
+          host TEXT PRIMARY KEY, last_error TEXT, last_error_at INTEGER, last_error_source TEXT
+        );
         CREATE TABLE videos (
           video_id TEXT, video_uuid TEXT, instance_domain TEXT, channel_id TEXT, channel_name TEXT,
           channel_url TEXT, account_name TEXT, account_url TEXT, title TEXT, description TEXT, embed_path TEXT,
           published_at INTEGER, video_url TEXT, views INTEGER, likes INTEGER, dislikes INTEGER, tags_json TEXT,
-          category TEXT, nsfw INTEGER, last_checked_at INTEGER, error_count INTEGER DEFAULT 0,
+          category TEXT, nsfw INTEGER, last_checked_at INTEGER, error_count INTEGER DEFAULT 0, popularity REAL DEFAULT 0,
           PRIMARY KEY(video_id, instance_domain)
         );
         """
     )
     conn.execute("INSERT INTO channels VALUES ('c1', 'example.org', 'slug', 'DB Channel', 10, '/avatar-db.png')")
+    conn.execute("INSERT INTO instances(host) VALUES ('example.org')")
     conn.execute(
         """
         INSERT INTO videos VALUES (
           '123', 'uuid-123', 'example.org', 'c1', 'slug', 'https://example.org/video-channels/slug',
           'acct', 'https://example.org/accounts/acct', 'DB Title', 'DB description', '/embed/123',
-          1000, 'https://example.org/w/uuid-123', 10, 1, 0, '["db"]', 'DB Category', 0, 1000, 0
+          1000, 'https://example.org/w/uuid-123', 10, 1, 0, '["db"]', 'DB Category', 0, 1000, 0, 0
         )
         """
     )
@@ -51,7 +55,7 @@ def _connect() -> sqlite3.Connection:
         INSERT INTO videos VALUES (
           'bad', 'uuid-bad', 'example.org', 'c1', 'slug', 'https://example.org/video-channels/slug',
           'acct', 'https://example.org/accounts/acct', 'Bad', 'Bad', '/embed/bad',
-          1000, 'https://example.org/w/uuid-bad', 10, 1, 0, '["db"]', 'DB Category', 0, 1000, 5
+          1000, 'https://example.org/w/uuid-bad', 10, 1, 0, '["db"]', 'DB Category', 0, 1000, 5, 0
         )
         """
     )
@@ -117,3 +121,60 @@ def test_missing_video_id_and_missing_row_return_current_errors() -> None:
     missing_row = video_handler.handle_video_request(server, {"id": ["missing"], "host": ["example.org"]})
     assert missing_row.status == 404
     assert missing_row.payload == {"error": "Video not found"}
+
+
+def test_dynamic_refresh_persists_runtime_counters_but_not_prepared_discovery_sources(monkeypatch) -> None:
+    """Live refresh may persist counters, but tags/category remain crawler-owned inputs."""
+    conn = _connect()
+    server = SimpleNamespace(
+        db=conn,
+        db_lock=threading.RLock(),
+        video_error_threshold=2,
+        popularity_like_weight=2.0,
+    )
+    monkeypatch.setattr(
+        video_handler,
+        "fetch_instance_video_dynamic",
+        lambda _host, _video_id: {
+            "title": "Dynamic Title",
+            "views": 99,
+            "likes": 7,
+            "dislikes": 2,
+            "channel_display": "Dynamic Channel",
+            "tags_json": '["dynamic"]',
+            "category": "Dynamic Category",
+            "nsfw": 1,
+        },
+    )
+
+    result = video_handler.handle_video_request(
+        server, {"id": ["123"], "host": ["example.org"]}
+    )
+    row = conn.execute(
+        "SELECT views, likes, dislikes, tags_json, category, nsfw, last_checked_at FROM videos "
+        "WHERE video_id='123' AND instance_domain='example.org'"
+    ).fetchone()
+
+    assert result.status == 200
+    assert (row["views"], row["likes"], row["dislikes"], row["nsfw"]) == (99, 7, 2, 1)
+    assert row["last_checked_at"] > 1000
+    assert row["tags_json"] == '["db"]'
+    assert row["category"] == "DB Category"
+
+
+def test_dynamic_refresh_still_uses_live_metadata_in_response(monkeypatch) -> None:
+    """Not persisting prepared inputs must not make the live detail response stale."""
+    conn = _connect()
+    server = SimpleNamespace(db=conn, db_lock=threading.RLock(), video_error_threshold=2)
+    monkeypatch.setattr(
+        video_handler,
+        "fetch_instance_video_dynamic",
+        lambda _host, _video_id: {"title": "Live title", "views": 88, "likes": 4},
+    )
+
+    result = video_handler.handle_video_request(
+        server, {"id": ["123"], "host": ["example.org"]}
+    )
+
+    assert result.payload["title"] == "Live title"
+    assert result.payload["views"] == 88

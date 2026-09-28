@@ -46,6 +46,10 @@ def _canonical(path: Path, count: int = 3) -> None:
           video_id TEXT, instance_domain TEXT, embedding_dim INTEGER, model_name TEXT,
           PRIMARY KEY(video_id, instance_domain)
         );
+        CREATE TABLE video_tags (
+          tag TEXT NOT NULL, video_id TEXT NOT NULL, instance_domain TEXT NOT NULL,
+          PRIMARY KEY(tag, video_id, instance_domain)
+        ) WITHOUT ROWID;
         CREATE TABLE instance_denylist (host TEXT PRIMARY KEY, is_active INTEGER, reason TEXT, note TEXT, created_at INTEGER, updated_at INTEGER);
         CREATE TABLE channel_moderation (channel_id TEXT, instance_domain TEXT, status TEXT, reason TEXT, source_video_url TEXT, updated_at INTEGER, created_at INTEGER, PRIMARY KEY(channel_id, instance_domain));
         """
@@ -62,6 +66,7 @@ def _canonical(path: Path, count: int = 3) -> None:
             (vid, f"uuid-{idx}", idx, f"c{idx}", f"c{idx}", f"Title {idx}", idx * 100, idx, idx),
         )
         conn.execute("INSERT INTO video_embeddings VALUES (?, 'example.org', 3, 'test')", (vid,))
+        conn.execute("INSERT INTO video_tags VALUES ('linux', ?, 'example.org')", (vid,))
         conn.execute(
             "INSERT INTO video_index_ids(index_id, video_id, instance_domain, is_active, created_at, updated_at) VALUES (?, ?, 'example.org', 1, 1, 1)",
             (idx, vid),
@@ -325,7 +330,7 @@ def test_provider_rejects_incomplete_canonical_attachment_without_writing(tmp_pa
     artifact_before = artifact.read_bytes()
 
     writer = sqlite3.connect(canonical)
-    writer.execute("DROP TABLE channel_moderation")
+    writer.execute("DROP TABLE video_tags")
     writer.commit()
     writer.close()
     with pytest.raises(RandomCacheUnavailable, match="missing required Random tables"):

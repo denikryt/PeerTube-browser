@@ -51,6 +51,10 @@ def _install_canonical_schema(conn: sqlite3.Connection) -> None:
           video_id TEXT, instance_domain TEXT, embedding_dim INTEGER, model_name TEXT,
           PRIMARY KEY(video_id, instance_domain)
         );
+        CREATE TABLE video_tags (
+          tag TEXT NOT NULL, video_id TEXT NOT NULL, instance_domain TEXT NOT NULL,
+          PRIMARY KEY(tag, video_id, instance_domain)
+        ) WITHOUT ROWID;
         """
     )
 
@@ -70,8 +74,9 @@ def _insert_video(
     category_id: str | None = "13",
     tags_json: str | None = '["linux"]',
     invalid_reason: str | None = None,
+    with_embedding: bool = True,
 ) -> None:
-    """Insert one browser-visible canonical video and embedding."""
+    """Insert one browser-visible canonical video, optionally without an embedding."""
     channel = channel_id or f"c-{video_id}"
     conn.execute(
         "INSERT OR IGNORE INTO channels(channel_id, instance_domain, display_name, avatar_url) VALUES (?,?,?,NULL)",
@@ -103,10 +108,22 @@ def _insert_video(
             invalid_reason,
         ),
     )
-    conn.execute(
-        "INSERT INTO video_embeddings(video_id,instance_domain,embedding_dim,model_name) VALUES (?,?,3,'test')",
-        (video_id, instance),
-    )
+    if with_embedding:
+        conn.execute(
+            "INSERT INTO video_embeddings(video_id,instance_domain,embedding_dim,model_name) VALUES (?,?,3,'test')",
+            (video_id, instance),
+        )
+    # The fixture mirrors updater-prepared membership for the default JSON-array tags.
+    try:
+        parsed_tags = json.loads(tags_json or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        parsed_tags = []
+    if isinstance(parsed_tags, list):
+        memberships = {str(tag).strip().lower() for tag in parsed_tags if isinstance(tag, str) and str(tag).strip()}
+        conn.executemany(
+            "INSERT OR IGNORE INTO video_tags(tag,video_id,instance_domain) VALUES (?,?,?)",
+            [(tag, video_id, instance) for tag in sorted(memberships)],
+        )
 
 
 def _decode_cursor(token: str) -> dict[str, object]:
@@ -195,35 +212,32 @@ def test_fresh_cursor_rejects_filter_change_and_malformed_null_key(engine_state,
     )
 
 
-def test_popular_limit_50_and_nullable_rank_components_are_complete(engine_state, engine_client) -> None:
-    """Positive: Popular owns max=50 and keeps NULL rank groups in the total order."""
+def test_popular_uses_only_popularity_then_identity_and_pages_without_embeddings(engine_state, engine_client) -> None:
+    """Positive: Trending ignores legacy tie-breakers and embedding eligibility across pages."""
     _install_canonical_schema(engine_state.db)
     for idx in range(51):
         _insert_video(
             engine_state.db,
             f"known-{idx:02d}",
             popularity=10,
-            likes=100 - idx,
-            views=100,
-            published_at=100,
+            likes=idx,
+            views=1000 - idx,
+            published_at=idx,
+            with_embedding=idx != 25,
         )
-    _insert_video(engine_state.db, "null-views", popularity=10, likes=None, views=None, published_at=90)
-    _insert_video(engine_state.db, "null-published-a", popularity=10, likes=None, views=None, published_at=None)
-    _insert_video(engine_state.db, "null-published-b", popularity=10, likes=None, views=None, published_at=None)
+    _insert_video(engine_state.db, "top", popularity=11, likes=0, views=0, published_at=0, with_embedding=False)
     engine_state.db.commit()
 
     first = engine_client.get("/internal/discovery/popular?limit=50")
     assert first.status_code == 200
     assert len(first.json()["rows"]) == 50
-    assert first.json()["pagination"]["has_more"] is True
+    cursor_payload = _decode_cursor(first.json()["pagination"]["next_cursor"])
+    assert set(cursor_payload["after"]) == {"popularity", "instance_domain", "video_id"}
 
-    paged = _page_all(engine_client, "popular", limit=5)
-    expected = [f"known-{idx:02d}" for idx in range(51)] + [
-        "null-views",
-        "null-published-a",
-        "null-published-b",
-    ]
+    paged = _page_all(engine_client, "popular", limit=7)
+    expected = ["top", *[f"known-{idx:02d}" for idx in range(51)]]
     assert paged == expected
+    assert "known-25" in paged
     assert len(paged) == len(set(paged))
 
 
@@ -263,6 +277,67 @@ def test_popular_cursor_rejects_filter_change_and_cross_source_reuse(engine_stat
         f"/internal/discovery/fresh?limit=1&category=Education&cursor={cursor}"
     )
     assert wrong_source.status_code == 400
+
+def test_popular_signals_do_not_change_order_and_old_cursor_shape_is_rejected(engine_state, engine_client) -> None:
+    """Negative: signal-only changes and legacy cursor keys cannot alter the new Trending contract."""
+    _install_canonical_schema(engine_state.db)
+    _insert_video(engine_state.db, "a", popularity=5, likes=1, views=1, published_at=1)
+    _insert_video(engine_state.db, "b", popularity=4, likes=999, views=999, published_at=999)
+    engine_state.db.execute(
+        "INSERT INTO interaction_signals(video_uuid,instance_domain,likes_count,undo_likes_count,signal_score) VALUES ('uuid-b','example.org',1000,0,9999)"
+    )
+    engine_state.db.commit()
+
+    first = engine_client.get("/internal/discovery/popular?limit=1")
+    assert first.status_code == 200
+    assert [row["video_id"] for row in first.json()["rows"]] == ["a"]
+    cursor = first.json()["pagination"]["next_cursor"]
+    second = engine_client.get(f"/internal/discovery/popular?limit=1&cursor={cursor}")
+    assert second.status_code == 200
+    assert [row["video_id"] for row in second.json()["rows"]] == ["b"]
+
+    legacy = _decode_cursor(cursor)
+    legacy["after"] = {
+        "rank_score": 5.0,
+        "effective_likes_is_null": 0,
+        "effective_likes_sort": 1,
+        "views_is_null": 0,
+        "views_sort": 1,
+        "published_is_null": 0,
+        "published_sort": 1,
+        "instance_domain": "example.org",
+        "video_id": "a",
+    }
+    legacy_cursor = base64.urlsafe_b64encode(json.dumps(legacy).encode()).decode().rstrip("=")
+    assert engine_client.get(f"/internal/discovery/popular?limit=1&cursor={legacy_cursor}").status_code == 400
+
+
+def test_popular_cursor_rejects_non_finite_popularity(engine_state, engine_client) -> None:
+    """Negative: Trending continuation rejects non-finite numeric popularity at decode boundary."""
+    _install_canonical_schema(engine_state.db)
+    _insert_video(engine_state.db, "a", popularity=5)
+    _insert_video(engine_state.db, "b", popularity=4)
+    engine_state.db.commit()
+    cursor = engine_client.get("/internal/discovery/popular?limit=1").json()["pagination"]["next_cursor"]
+    payload = _decode_cursor(cursor)
+    payload["after"]["popularity"] = float("inf")
+    bad = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+    assert engine_client.get(f"/internal/discovery/popular?limit=1&cursor={bad}").status_code == 400
+
+
+def test_fresh_without_embedding_is_eligible_but_invalid_video_is_not(engine_state, engine_client) -> None:
+    """Positive/negative: Fresh eligibility is canonical visibility, not embedding presence."""
+    _install_canonical_schema(engine_state.db)
+    _insert_video(engine_state.db, "no-embedding", published_at=20, with_embedding=False)
+    _insert_video(engine_state.db, "invalid", published_at=30, invalid_reason="deleted", with_embedding=False)
+    engine_state.db.commit()
+
+    response = engine_client.get("/internal/discovery/fresh?limit=10")
+    assert response.status_code == 200
+    ids = [row["video_id"] for row in response.json()["rows"]]
+    assert "no-embedding" in ids
+    assert "invalid" not in ids
+
 
 def test_ordered_providers_filter_and_moderate_before_page_cut(engine_state, engine_client) -> None:
     """Positive/negative: invisible/nonmatching leaders never consume the requested page quota."""
@@ -367,6 +442,11 @@ def test_random_sparse_filter_uses_at_most_two_joined_ranges(tmp_path, monkeypat
     writer = sqlite3.connect(canonical)
     writer.execute("UPDATE videos SET tags_json='[]'")
     writer.execute("UPDATE videos SET tags_json='[\"rare\"]' WHERE video_id IN ('v2','v55')")
+    writer.execute("DELETE FROM video_tags")
+    writer.executemany(
+        "INSERT INTO video_tags(tag,video_id,instance_domain) VALUES ('rare',?,'example.org')",
+        [("v2",), ("v55",)],
+    )
     writer.commit()
     writer.close()
     _attach_random(engine_state, canonical, artifact)

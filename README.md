@@ -52,8 +52,9 @@ The recommendation system is a mix of filtering + scoring:
 Likes are used as a signal to find similar content. Engine reads likes from the
 current request context only (provided by Client/Frontend) and does not depend
 on local `engine/server/db/users.db` for recommendation ranking. Bridge-ingested
-events update aggregated `interaction_signals`, which are also used by ranking.
-This is not a heavy ML system; it is a transparent, controllable pipeline.
+events still update aggregated `interaction_signals`, but current Discovery and
+recommendation serving do not read those aggregates for ranking. This is not a
+heavy ML system; it is a transparent, controllable pipeline.
 
 ## Canonical Engine/Client boundary contract
 | Concern | Owner | Contract | Forbidden coupling |

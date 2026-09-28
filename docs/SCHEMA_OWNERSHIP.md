@@ -282,6 +282,11 @@ idx_channels_name
 idx_channels_instance
 idx_videos_uuid_instance
 idx_videos_id_instance
+idx_videos_language_normalized
+idx_videos_category_normalized
+idx_videos_instance_normalized
+idx_videos_fresh_order
+idx_videos_trending_order
 idx_video_embeddings_id_instance
 ```
 
@@ -312,6 +317,42 @@ Tests:
 tests/db/test_engine_runtime_migrations.py
 tests/repositories/test_engine_interaction_events.py
 engine/server/db/jobs/tests/test-interaction-events.py
+```
+
+### Prepared Discovery tables in the canonical DB
+
+Owner:
+
+```text
+engine/server/data/prepared_discovery.py
+crawler/data-build/updater jobs that call rebuild_prepared_discovery()
+```
+
+Tables:
+
+```text
+video_tags
+video_facets_snapshot
+```
+
+`video_tags` is a full-rebuild normalized membership relation with physical/logical
+primary key `(tag, video_id, instance_domain) WITHOUT ROWID`; `videos.tags_json`
+remains its source of truth. `video_facets_snapshot` is the singleton prepared facet
+artifact and narrow readiness marker for this prepared Discovery pair. Runtime reads
+never rebuild either table and do not fall back to JSON/corpus aggregation.
+
+The normal updater invalidates the singleton in the same transaction as canonical
+video mutation and rebuilds the pair while Engine is stopped. `sync-whitelist.py`
+rebuilds the pair before a successful full-build return. Arbitrary direct production
+writes remain operationally responsible for running `rebuild-video-discovery-data.py`
+before serving resumes.
+
+Tests:
+
+```text
+tests/engine_data/test_prepared_discovery.py
+tests/engine_data/test_discovery_query_plans.py
+tests/engine_api/test_internal_video_facets_route.py
 ```
 
 ## Engine similarity cache DB

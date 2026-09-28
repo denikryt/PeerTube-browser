@@ -66,7 +66,9 @@ def _args(tmp_path: Path, **overrides):
     return args
 
 
-def _patch_lightweight(monkeypatch, *, denied=frozenset(), join=frozenset(), prod=frozenset()):
+def _patch_lightweight(
+    monkeypatch, *, denied=frozenset(), join=frozenset(), prod=frozenset(), prepared_ready=True
+):
     """Patch heavy DB/network helpers while exercising real pipeline command construction."""
 
     monkeypatch.setattr(pipeline, "assert_production_schema_compatible", lambda prod_db, schema_path: None)
@@ -90,6 +92,10 @@ def _patch_lightweight(monkeypatch, *, denied=frozenset(), join=frozenset(), pro
     )
     monkeypatch.setattr(pipeline, "inject_replace_embedding_for_test", lambda **kwargs: None)
     monkeypatch.setattr(pipeline, "prune_staging_local_non_ok_instances", lambda **kwargs: {})
+    if hasattr(pipeline, "_prepared_discovery_is_available"):
+        monkeypatch.setattr(
+            pipeline, "_prepared_discovery_is_available", lambda prod_db: prepared_ready
+        )
 
 
 def test_normal_run_counts_unknown_channels_before_crawling_video_metadata(monkeypatch, tmp_path) -> None:
@@ -112,6 +118,7 @@ def test_normal_run_counts_unknown_channels_before_crawling_video_metadata(monke
         "systemctl",
         "merge-staging-db.py",
         "recompute-popularity.py",
+        "rebuild-video-discovery-data.py",
         "sync-video-index-ids.py",
         "rebuild-video-search-index.py",
         "build-ann-index.py",
@@ -124,10 +131,12 @@ def test_normal_run_counts_unknown_channels_before_crawling_video_metadata(monke
     assert seen[5] == ["systemctl", "stop", "svc"]
     assert seen[-1] == ["systemctl", "start", "svc"]
     search_cmd = next(cmd for cmd in seen if "rebuild-video-search-index.py" in cmd[1])
+    assert "ensure-video-indexes.py" not in names
+    prepared_index = names.index("rebuild-video-discovery-data.py")
     sync_index = names.index("sync-video-index-ids.py")
     search_index = names.index("rebuild-video-search-index.py")
     ann_index = names.index("build-ann-index.py")
-    assert sync_index < search_index < ann_index
+    assert prepared_index < sync_index < search_index < ann_index
     assert "--gpu" not in search_cmd
     assert "--cpu" not in search_cmd
     random_cmd = next(cmd for cmd in seen if "precompute-random-index-ids.py" in cmd[1])
@@ -407,3 +416,31 @@ def test_staging_embedding_rebuild_failure_prevents_merge(monkeypatch, tmp_path)
         len(cmd) > 1 and "merge-staging-db.py" in cmd[1]
         for cmd in seen
     )
+
+
+def test_sync_stale_host_delete_happens_only_after_engine_stop(monkeypatch, tmp_path) -> None:
+    """Dry-run planning may happen early, but destructive stale purge is offline."""
+    events: list[str] = []
+    _patch_lightweight(monkeypatch, join={"new.example"}, prod={"stale.example"})
+
+    def fake_purge_hosts(**kwargs):
+        events.append("purge-dry" if kwargs["dry_run"] else "purge-live")
+        return {}
+
+    monkeypatch.setattr(pipeline, "purge_hosts", fake_purge_hosts)
+
+    def runner(cmd, cwd):
+        if cmd[:3] == ["systemctl", "stop", "svc"]:
+            events.append("stop")
+        elif cmd[:3] == ["systemctl", "start", "svc"]:
+            events.append("start")
+
+    pipeline.run_pipeline(
+        _args(tmp_path, sync_join_whitelist=True, yes=True),
+        command_runner=runner,
+        validate_files=False,
+    )
+
+    assert events.index("purge-dry") < events.index("stop")
+    assert events.index("stop") < events.index("purge-live")
+    assert events.index("purge-live") < events.index("start")

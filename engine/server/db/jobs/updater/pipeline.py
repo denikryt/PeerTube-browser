@@ -9,6 +9,7 @@ same subprocess jobs and crawler CLIs.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import time
 from pathlib import Path
 
@@ -29,6 +30,12 @@ except ModuleNotFoundError:  # pragma: no cover - direct script execution path.
         DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE,
         DEFAULT_RANDOM_CACHE_SIZE,
     )
+
+
+try:
+    from engine.server.data.prepared_discovery import prepared_discovery_available
+except ModuleNotFoundError:  # pragma: no cover - direct script execution path.
+    from data.prepared_discovery import prepared_discovery_available
 
 from .commands import CommandRun, run_cmd, run_with_cpu_fallback, systemctl_cmd
 from .locks import single_run_lock
@@ -64,6 +71,22 @@ def _run_with_fallback(
     """Run a GPU-aware command through the injectable shell boundary."""
 
     run_with_cpu_fallback(cmd, stage=stage, cwd=cwd, runner=runner)
+
+
+def _prepared_discovery_is_available(prod_db: Path) -> bool:
+    """Return whether the canonical DB has a valid prepared Discovery snapshot.
+
+    This is deliberately checked at the updater's existing service-restart
+    boundary so a failed rebuild from any prior updater run remains durable.
+    """
+
+    try:
+        with sqlite3.connect(prod_db.as_posix()) as conn:
+            conn.row_factory = sqlite3.Row
+            return prepared_discovery_available(conn)
+    except sqlite3.Error as exc:
+        logging.error("prepared Discovery readiness check failed: %s", exc)
+        return False
 
 
 def run_pipeline(
@@ -130,19 +153,6 @@ def run_pipeline(
                         "Refusing sync stale-host purge without --yes. "
                         "Re-run with --yes or use --dry-run to inspect."
                     )
-                if sync_stale_hosts:
-                    stale_applied = purge_hosts(
-                        prod_db=paths.prod_db,
-                        similarity_db=paths.similarity_db,
-                        hosts=sync_stale_hosts,
-                        dry_run=False,
-                    )
-                    logging.info(
-                        "sync-join stale purge hosts=%d deleted=%s",
-                        len(sync_stale_hosts),
-                        stale_applied,
-                    )
-
             if args.resume_staging and paths.staging_db.exists():
                 logging.info("staging reused from previous run: %s", paths.staging_db)
             else:
@@ -422,6 +432,19 @@ def run_pipeline(
                     )
                     service_stopped = True
 
+                if sync_stale_hosts:
+                    stale_applied = purge_hosts(
+                        prod_db=paths.prod_db,
+                        similarity_db=paths.similarity_db,
+                        hosts=sync_stale_hosts,
+                        dry_run=False,
+                    )
+                    logging.info(
+                        "sync-join stale purge hosts=%d deleted=%s",
+                        len(sync_stale_hosts),
+                        stale_applied,
+                    )
+
                 _run_cmd(
                     [
                         args.python_bin,
@@ -454,6 +477,16 @@ def run_pipeline(
                         "--db",
                         paths.prod_db.as_posix(),
                         "--incremental",
+                    ],
+                    cwd=paths.repo_root,
+                    runner=command_runner,
+                )
+                _run_cmd(
+                    [
+                        args.python_bin,
+                        (paths.script_dir / "rebuild-video-discovery-data.py").as_posix(),
+                        "--db",
+                        paths.prod_db.as_posix(),
                     ],
                     cwd=paths.repo_root,
                     runner=command_runner,
@@ -568,17 +601,23 @@ def run_pipeline(
                 )
             finally:
                 if service_stopped and not args.skip_systemctl:
-                    _run_cmd(
-                        systemctl_cmd(
-                            systemctl_bin=args.systemctl_bin,
-                            service_name=args.service_name,
-                            action="start",
-                            use_sudo=args.systemctl_use_sudo,
-                        ),
-                        cwd=None,
-                        runner=command_runner,
-                    )
-                    service_stopped = False
+                    if _prepared_discovery_is_available(paths.prod_db):
+                        _run_cmd(
+                            systemctl_cmd(
+                                systemctl_bin=args.systemctl_bin,
+                                service_name=args.service_name,
+                                action="start",
+                                use_sudo=args.systemctl_use_sudo,
+                            ),
+                            cwd=None,
+                            runner=command_runner,
+                        )
+                        service_stopped = False
+                    else:
+                        logging.error(
+                            "Engine remains stopped: prepared Discovery is unavailable in %s",
+                            paths.prod_db,
+                        )
     finally:
         for temp_path in temp_files:
             try:

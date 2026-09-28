@@ -67,6 +67,22 @@ def test_popular_videos_use_current_popularity_order_and_error_filter() -> None:
     assert [row["video_id"] for row in rows] == ["popular", "new"]
 
 
+def test_popular_videos_preserve_candidate_cut_before_embedding_filter() -> None:
+    """Missing embeddings may underfill the legacy top-N candidate window."""
+    conn = _connect()
+    conn.execute("UPDATE videos SET popularity = 100 WHERE video_id = 'popular'")
+    conn.execute("UPDATE videos SET popularity = 50 WHERE video_id = 'new'")
+    conn.execute("UPDATE videos SET popularity = 40 WHERE video_id = 'old'")
+    conn.execute("DELETE FROM video_embeddings WHERE video_id = 'popular'")
+    conn.commit()
+
+    rows = fetch_popular_videos(conn, limit=2, error_threshold=2)
+
+    # Legacy semantics cut the canonical top-N first; embedding eligibility then
+    # filters that fixed window instead of pulling lower-ranked replacements.
+    assert [row["video_id"] for row in rows] == ["new"]
+
+
 def test_random_rows_return_usable_unique_rows_with_limit() -> None:
     """Random fallback should respect limit and filter high-error rows."""
     rows = fetch_random_rows(_connect(), limit=3, error_threshold=2)
@@ -82,3 +98,21 @@ def test_compute_popularity_combines_views_likes_and_age_decay() -> None:
     score = compute_popularity(views=100, likes=10, published_at=1_000_000, like_weight=2.0, now_ms_value=1_000_000 + 30 * 86_400_000)
 
     assert score == 60.0
+
+
+def test_interaction_signals_do_not_change_legacy_random_likes_or_popular_order() -> None:
+    """Positive/negative: serving candidates use canonical likes/popularity even with extreme signals."""
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO interaction_signals(video_uuid,instance_domain,likes_count,undo_likes_count,signal_score) VALUES ('uuid-new','example.org',500,0,5000)"
+    )
+    conn.commit()
+
+    popular = fetch_popular_videos(conn, limit=4, error_threshold=2)
+    assert [row["video_id"] for row in popular][:2] == ["popular", "new"]
+    assert all("interaction_signal_score" not in row for row in popular)
+
+    random_rows = fetch_random_rows(conn, limit=10, error_threshold=2)
+    by_id = {row["video_id"]: row for row in random_rows}
+    assert by_id["new"]["likes"] == 2
+    assert by_id["popular"]["likes"] == 20
