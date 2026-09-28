@@ -3,6 +3,18 @@ import { describe, expect, it } from "vitest";
 import { formatCompactStatValue, formatTimeAgo } from "../../src/utils/format";
 
 describe("formatTimeAgo", () => {
+  it("uses singular labels only for exactly one unit", () => {
+    const now = Date.UTC(2026, 0, 1);
+    const hour = 60 * 60 * 1000;
+    const day = 24 * hour;
+
+    expect(formatTimeAgo(now - hour, now)).toBe("1 hour ago");
+    expect(formatTimeAgo(now - day, now)).toBe("1 day ago");
+    expect(formatTimeAgo(now - 7 * day, now)).toBe("1 week ago");
+    expect(formatTimeAgo(now - 30 * day, now)).toBe("1 month ago");
+    expect(formatTimeAgo(now - 365 * day, now)).toBe("1 year ago");
+  });
+
   it("uses hours, days, weeks, months, and years at readable boundaries", () => {
     const now = Date.UTC(2026, 0, 1);
     const hour = 60 * 60 * 1000;

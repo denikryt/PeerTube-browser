@@ -35,6 +35,11 @@ export function formatDuration(value: number | null) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+/** Format one elapsed-time unit with English singular/plural wording. */
+function formatRelativeUnit(count: number, unit: string) {
+  return `${count} ${unit}${count === 1 ? "" : "s"} ago`;
+}
+
 /** Format relative time with the current coarse page-level thresholds. */
 export function formatTimeAgo(timestampMs: number, nowMs = Date.now()) {
   const diffMs = Math.max(0, nowMs - timestampMs);
@@ -46,12 +51,12 @@ export function formatTimeAgo(timestampMs: number, nowMs = Date.now()) {
   const year = 365 * day;
 
   if (diffMs < minute) return "just now";
-  if (diffMs < hour) return `${Math.floor(diffMs / minute)} minutes ago`;
-  if (diffMs < day) return `${Math.floor(diffMs / hour)} hours ago`;
-  if (diffMs < week) return `${Math.floor(diffMs / day)} days ago`;
-  if (diffMs < month) return `${Math.floor(diffMs / week)} weeks ago`;
-  if (diffMs < year) return `${Math.floor(diffMs / month)} months ago`;
-  return `${Math.floor(diffMs / year)} years ago`;
+  if (diffMs < hour) return formatRelativeUnit(Math.floor(diffMs / minute), "minute");
+  if (diffMs < day) return formatRelativeUnit(Math.floor(diffMs / hour), "hour");
+  if (diffMs < week) return formatRelativeUnit(Math.floor(diffMs / day), "day");
+  if (diffMs < month) return formatRelativeUnit(Math.floor(diffMs / week), "week");
+  if (diffMs < year) return formatRelativeUnit(Math.floor(diffMs / month), "month");
+  return formatRelativeUnit(Math.floor(diffMs / year), "year");
 }
 
 /** Normalize numeric API fields without changing the current permissive string handling. */
