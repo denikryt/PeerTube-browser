@@ -9,9 +9,9 @@
  */
 import { computed, ref } from "vue";
 import type { VideoRow } from "../types/videos";
-import { iconThumbUp } from "./icons";
-import { formatDuration, formatStatValue, formatTimeAgo, normalizeStatValue } from "../utils/format";
-import { channelAvatarUrl, channelInitials, channelName, channelUrl, hasServerStats, publishedAtMs, thumbnailUrl, videoPageUrl } from "../utils/video-fields";
+import { iconPlayOutline, iconThumbUp } from "./icons";
+import { formatCompactStatValue, formatDuration, formatTimeAgo, normalizeStatValue } from "../utils/format";
+import { channelAvatarUrl, channelInitials, channelName, channelUrl, hasServerStats, publishedAtMs, resolveInstanceDomain, thumbnailUrl, videoPageUrl } from "../utils/video-fields";
 
 const props = defineProps<{ row: VideoRow }>();
 const title = computed(() => props.row.title ?? "Untitled video");
@@ -19,12 +19,13 @@ const thumb = computed(() => thumbnailUrl(props.row));
 const thumbErrored = ref(false);
 const duration = computed(() => formatDuration(props.row.duration ?? null));
 const channelLabel = computed(() => channelName(props.row) || "Unknown channel");
+// Keep the host visible with its channel, rather than mixing provenance into stats.
+const instanceDomain = computed(() => resolveInstanceDomain(props.row));
 const channelHref = computed(() => channelUrl(props.row));
 const avatar = computed(() => channelAvatarUrl(props.row));
 const initials = computed(() => channelInitials(props.row));
 const detailUrl = computed(() => videoPageUrl(props.row));
 
-const instanceLabel = computed(() => props.row.instance_domain ?? props.row.instanceDomain ?? "");
 const published = computed(() => {
   const value = publishedAtMs(props.row);
   return value ? formatTimeAgo(value) : "";
@@ -33,12 +34,11 @@ const views = computed(() => {
   if (!hasServerStats(props.row)) return null;
   return normalizeStatValue(props.row.views ?? props.row.viewsCount);
 });
-const likes = computed(() => normalizeStatValue(props.row.likes ?? props.row.likes_count));
-const metaLine = computed(() => {
-  const parts = [`${formatStatValue(views.value)} views`];
-  if (published.value) parts.push(published.value);
-  return parts.join(" · ");
+const likes = computed(() => {
+  if (!hasServerStats(props.row)) return null;
+  return normalizeStatValue(props.row.likes ?? props.row.likes_count);
 });
+const compactViews = computed(() => formatCompactStatValue(views.value));
 </script>
 
 <template>
@@ -60,13 +60,16 @@ const metaLine = computed(() => {
         <RouterLink class="video-title-link" :to="detailUrl">
           <h3 class="video-title">{{ title }}</h3>
         </RouterLink>
-        <a class="channel-link" :href="channelHref" target="_blank" rel="noreferrer">
-          {{ channelLabel }}
-        </a>
+        <div class="channel-line">
+          <a class="channel-link" :href="channelHref" target="_blank" rel="noreferrer">
+            {{ channelLabel }}
+          </a>
+          <span v-if="instanceDomain" class="channel-instance"><span class="channel-instance-host">{{ instanceDomain }}</span></span>
+        </div>
         <div class="video-meta">
-          <span>{{ metaLine }}</span>
-          <span v-if="instanceLabel"> · {{ instanceLabel }}</span>
-          <span class="video-card-like" aria-label="Likes"><span v-html="iconThumbUp()"></span><span data-stat="likes">{{ formatStatValue(likes) }}</span></span>
+          <span class="video-meta-views"><span v-html="iconPlayOutline()"></span>{{ compactViews }}</span>
+          <span class="video-card-likes" aria-label="Likes"><span v-html="iconThumbUp()"></span>{{ formatCompactStatValue(likes) }}</span>
+          <span v-if="published" class="video-meta-time"> · {{ published }}</span>
         </div>
       </div>
       <button class="video-card-menu" type="button" aria-label="More options" title="More options">

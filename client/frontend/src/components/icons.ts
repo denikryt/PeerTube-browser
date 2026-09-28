@@ -12,6 +12,15 @@ export function iconEye() {
   `;
 }
 
+/** Outline play icon used to identify compact view counts without text labels. */
+export function iconPlayOutline() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M8 5.5 18 12 8 18.5z" />
+    </svg>
+  `;
+}
+
 /** Current thumbs-up icon markup used by feed/video actions. */
 export function iconThumbUp() {
   return `

@@ -41,13 +41,15 @@ export function formatTimeAgo(timestampMs: number, nowMs = Date.now()) {
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
+  const week = 7 * day;
   const month = 30 * day;
   const year = 365 * day;
 
   if (diffMs < minute) return "just now";
   if (diffMs < hour) return `${Math.floor(diffMs / minute)} minutes ago`;
   if (diffMs < day) return `${Math.floor(diffMs / hour)} hours ago`;
-  if (diffMs < month) return `${Math.floor(diffMs / day)} days ago`;
+  if (diffMs < week) return `${Math.floor(diffMs / day)} days ago`;
+  if (diffMs < month) return `${Math.floor(diffMs / week)} weeks ago`;
   if (diffMs < year) return `${Math.floor(diffMs / month)} months ago`;
   return `${Math.floor(diffMs / year)} years ago`;
 }
@@ -64,6 +66,19 @@ export function normalizeStatValue(value: unknown) {
 
 /** Format stat values with the current `--` missing-value fallback. */
 export function formatStatValue(value: number | null | undefined, formatter = new Intl.NumberFormat("en-US")) {
+  if (value == null || !Number.isFinite(value)) return "--";
+  return formatter.format(value);
+}
+
+/** Format large card statistics compactly without adding a locale-specific label. */
+export function formatCompactStatValue(
+  value: number | null | undefined,
+  formatter = new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    compactDisplay: "short",
+    maximumFractionDigits: 1
+  })
+) {
   if (value == null || !Number.isFinite(value)) return "--";
   return formatter.format(value);
 }
