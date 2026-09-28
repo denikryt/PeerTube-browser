@@ -18,8 +18,9 @@
 /* The landing shell keeps browse choices persistent while cards retain their
  * existing component-level visual contract below. */
 .videos-app {
+  --landing-sidebar-width: 248px;
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: var(--landing-sidebar-width) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 100vh;
   background: #f7f6f2;
@@ -1327,17 +1328,32 @@ body {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
+  /* The shell itself never scrolls on desktop: its main grid row owns scrolling. */
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .videos-app > .videos-main {
   grid-column: 2;
+  /* min-height is required for the grid row to shrink below its card content. */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0.8rem 3rem 3rem;
+}
+
+/* Align global search with the visual center of the card-content column. */
+.landing-header .landing-search {
+  margin-inline: auto;
+  width: min(760px, 100%);
 }
 
 .home-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* The former page title/count was intentionally removed; keep Filters right-aligned. */
+  justify-content: flex-end;
   gap: 1rem;
 }
 
@@ -1384,6 +1400,13 @@ body {
 @media (max-width: 900px) {
   .videos-app {
     display: block;
+    height: auto;
+    overflow: visible;
+  }
+
+  .videos-app > .videos-main {
+    min-height: auto;
+    overflow: visible;
   }
 
   .app-sidebar {

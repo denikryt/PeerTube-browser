@@ -46,22 +46,6 @@ const isFacetPage = computed(() => props.facet === "category" || props.facet ===
 const mode = computed(() => isFacetPage.value ? "fresh" : parseHomeMode(route.query.mode));
 const filters = computed(() => parseVideoFilterQuery(route.query as Record<string, unknown>));
 const routeSelectionKey = computed(() => homeSelectionKey(mode.value, filters.value));
-const summary = computed(() => state.initialLoading
-  ? "Loading..."
-  : visibleItems.value.length
-    ? `Showing ${visibleItems.value.length} videos`
-    : "");
-const modeLabel = computed(() => ({
-  recommendations: "Home",
-  fresh: "Fresh",
-  trending: "Trending",
-  random: "Random"
-})[mode.value]);
-const pageTitle = computed(() => props.facet === "category"
-  ? "Categories"
-  : props.facet === "tag"
-    ? "Tags"
-    : modeLabel.value);
 
 /** Ensure the cached Home instance reflects the current route selection. */
 async function ensureRouteSelection() {
@@ -149,10 +133,6 @@ onUnmounted(() => {
 <template>
   <main class="videos-main">
     <section class="home-toolbar">
-      <div>
-        <h1>{{ pageTitle }}</h1>
-        <p v-if="summary">{{ summary }}</p>
-      </div>
       <details class="home-filters" :open="isFacetPage">
         <summary>Filters</summary>
         <VideoFilterControls :filters="filters" :focus="props.facet" @change="setFilters" />

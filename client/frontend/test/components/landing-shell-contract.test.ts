@@ -29,4 +29,22 @@ describe("landing shell", () => {
     expect(styles).toContain(".home-filters");
     expect(styles).toContain(".app-sidebar");
   });
+
+  it("does not render a discovery page title or visible-card count above any shared feed", () => {
+    expect(homeSource).not.toContain("pageTitle");
+    expect(homeSource).not.toContain("Showing ${visibleItems.value.length} videos");
+    expect(homeSource).toContain('class="home-filters"');
+  });
+
+  it("scrolls discovery content independently while the desktop navigation and search shell stay fixed", () => {
+    expect(styles).toMatch(/\.videos-app\s*\{[\s\S]*height:\s*100dvh;[\s\S]*overflow:\s*hidden;/);
+    expect(styles).toMatch(/\.videos-app > \.videos-main\s*\{[\s\S]*min-height:\s*0;[\s\S]*overflow-y:\s*auto;/);
+    expect(styles).toMatch(/@media \(max-width: 900px\)\s*\{[\s\S]*\.videos-app\s*\{[\s\S]*height:\s*auto;[\s\S]*overflow:\s*visible;/);
+  });
+
+  it("centers the global search field within the card-content column", () => {
+    expect(styles).toMatch(/\.landing-header \.landing-search\s*\{[\s\S]*margin-inline:\s*auto;/);
+    expect(styles).toMatch(/\.landing-header \.landing-search\s*\{[\s\S]*width:\s*min\(760px, 100%\);/);
+    expect(styles).not.toContain("translateX(calc(var(--landing-sidebar-width) / -2))");
+  });
 });
