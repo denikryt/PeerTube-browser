@@ -53,12 +53,15 @@ describe("Vue feed/search video card contract", () => {
     expect(videoCard).not.toContain("previewPath");
   });
 
-  it("falls back to a text placeholder when the thumbnail image fails to load", () => {
-    expect(videoCard).toContain("@error=\"thumbErrored = true\"");
-    expect(videoCard).toContain('v-if="thumb && !thumbErrored"');
-    expect(similarVideoCard).toContain("@error=\"thumbErrored = true\"");
-    expect(similarVideoCard).toContain('v-if="thumb && !thumbErrored"');
-    expect(similarVideoCard).toContain('class="thumb-fallback"');
+  it("delegates thumbnail fallback to the shared sequential component", () => {
+    expect(videoCard).toContain('import VideoThumbnail from "./VideoThumbnail.vue"');
+    expect(videoCard).toContain('<VideoThumbnail :candidates="thumbs" :alt="title" />');
+    expect(similarVideoCard).toContain('import VideoThumbnail from "./VideoThumbnail.vue"');
+    expect(similarVideoCard).toContain('<VideoThumbnail :candidates="thumbs" :alt="title" />');
+    expect(videoCard).not.toContain("thumbErrored");
+    expect(similarVideoCard).not.toContain("thumbErrored");
+    expect(videoCard).not.toContain('class="thumb-fallback"');
+    expect(similarVideoCard).not.toContain('class="thumb-fallback"');
   });
 
   it("keeps the instance label beside its channel while metadata stays focused on views, likes, and age", () => {

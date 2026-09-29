@@ -200,6 +200,33 @@ python3 engine/server/db/jobs/rebuild-video-discovery-data.py --db engine/server
 
 This is required because metadata maintenance can change prepared-facet source fields such as language/category and can mark rows invalid after permanent metadata errors.
 
+
+### Thumbnail candidate migration and historical backfill
+
+The runtime can serve historical rows immediately after the additive schema migration: SQL `thumbnail_candidates_json IS NULL` deliberately falls back to the stored singular `thumbnail_url`. Do not keep Engine offline for the full historical network backfill.
+
+Mandatory rollout barrier:
+
+```text
+1. stop Engine/updater writers
+2. deploy the new code
+3. migrate-whitelist.py on production whitelist.db
+4. verify thumbnail_candidates_json exists and legacy SQL-NULL rows still expose thumbnail_url
+5. resume normal serving
+```
+
+Backfill candidate state separately in bounded maintenance windows. Use explicit non-overlapping host batches; `--resume` is the row-level SQL-NULL selector, while `--max-instances` is only an optional safety cap inside a batch:
+
+```bash
+cd engine/crawler
+npm run crawl:videos:thumbnails -- \
+  --db ../server/db/whitelist.db \
+  --resume \
+  --hosts-file /path/to/thumbnail-batch-01.txt
+```
+
+Successful modern detail writes `[]` or an ordered JSON array of `{url,width,height}` candidate objects. Detail request failure and successful legacy/non-array detail shapes leave SQL `NULL` for retry; definitive 404/410 failures mark the video invalid and other failures record the existing generic video error state. This thumbnail-only maintenance does not require Discovery/Search/embedding/ANN/random/similarity rebuilds because none of those artifacts depend on thumbnail state. Initial production use should keep Engine stopped during each bounded write window unless concurrent-writer behavior is separately validated.
+
 Existing embedding-source fields are protected during ordinary repeat crawl and metadata backfill: `title`, `description`, `tags_json`, `category`, and `channel_name`. Intentionally changing any of those fields after embeddings exist requires a full embedding/artifact rebuild. The legacy tags maintenance commands remain embedding-affecting for existing rows. `comments_count` is dynamic metadata and is **not** an embedding input.
 
 ### Embedding recipe migration barrier

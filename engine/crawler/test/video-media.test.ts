@@ -1,15 +1,15 @@
-/** Characterization and regression tests for PeerTube thumbnail selection. */
+/** Regression tests for PeerTube thumbnail candidate normalization. */
 
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  resolveLegacyThumbnailCompatibility,
   resolvePeerTubeMediaUrl,
-  resolvePreferredThumbnail,
-  resolvePreferredThumbnailUrl
+  resolveThumbnailCandidates
 } from "../src/video-media.js";
 
-test("resolvePeerTubeMediaUrl converts relative PeerTube paths to absolute URLs", () => {
+test("resolvePeerTubeMediaUrl converts relative paths but rejects unsupported explicit schemes", () => {
   assert.equal(
     resolvePeerTubeMediaUrl("/lazy-static/thumbnails/demo.jpg", "example.org", "https:"),
     "https://example.org/lazy-static/thumbnails/demo.jpg"
@@ -18,63 +18,87 @@ test("resolvePeerTubeMediaUrl converts relative PeerTube paths to absolute URLs"
     resolvePeerTubeMediaUrl("lazy-static/thumbnails/demo.jpg", "example.org", "https:"),
     "https://example.org/lazy-static/thumbnails/demo.jpg"
   );
+  for (const value of ["ftp://example.org/a.jpg", "data:image/png,abc", "blob:https://x/y", "custom:thing"]) {
+    assert.equal(resolvePeerTubeMediaUrl(value, "example.org", "https:"), null);
+  }
 });
 
-test("resolvePreferredThumbnail selects the largest modern detail thumbnail and dimensions", () => {
+test("resolveThumbnailCandidates distinguishes unavailable source from authoritative empty array", () => {
+  assert.equal(resolveThumbnailCandidates(undefined, "example.org", "https:"), null);
+  assert.equal(resolveThumbnailCandidates(null, "example.org", "https:"), null);
+  assert.equal(resolveThumbnailCandidates("garbage", "example.org", "https:"), null);
+  assert.deepEqual(resolveThumbnailCandidates([], "example.org", "https:"), []);
+});
+
+test("resolveThumbnailCandidates preserves every usable URL in larger-to-smaller order", () => {
   assert.deepEqual(
-    resolvePreferredThumbnail(
-      {
-        thumbnails: [
-          { fileUrl: "/thumb-small.jpg", width: 320, height: 180 },
-          { fileUrl: "/thumb-large.jpg", width: 1280, height: 720 },
-          { fileUrl: "/thumb-equal-later.jpg", width: 1280, height: 720 }
-        ],
-        thumbnailPath: "/legacy.jpg"
-      },
-      { thumbnailUrl: "https://example.org/stale.jpg" },
+    resolveThumbnailCandidates(
+      [
+        { fileUrl: "/thumb-small.jpg", width: 280, height: 157 },
+        { fileUrl: "/thumb-large.jpg", width: 850, height: 480 },
+        { fileUrl: "/thumb-tie.jpg", width: 850, height: 480 },
+        { fileUrl: "/thumb-unknown.jpg" }
+      ],
       "example.org",
       "https:"
     ),
-    {
-      url: "https://example.org/thumb-large.jpg",
-      width: 1280,
-      height: 720
-    }
+    [
+      { url: "https://example.org/thumb-large.jpg", width: 850, height: 480 },
+      { url: "https://example.org/thumb-tie.jpg", width: 850, height: 480 },
+      { url: "https://example.org/thumb-small.jpg", width: 280, height: 157 },
+      { url: "https://example.org/thumb-unknown.jpg", width: null, height: null }
+    ]
   );
 });
 
-test("resolvePreferredThumbnail prefers detail legacy thumbnail before list modern thumbnails", () => {
+test("resolveThumbnailCandidates sorts before URL dedup and ignores malformed members", () => {
   assert.deepEqual(
-    resolvePreferredThumbnail(
-      { thumbnailPath: "/detail.jpg" },
-      { thumbnails: [{ fileUrl: "/list-modern.jpg", width: 1920, height: 1080 }] },
+    resolveThumbnailCandidates(
+      [
+        { fileUrl: "https://example.org/same.jpg", width: 100, height: 100 },
+        { fileUrl: "/same.jpg", width: 900, height: 500 },
+        { fileUrl: "/other.jpg", width: -1, height: 200 },
+        { fileUrl: "data:image/png,abc", width: 1000, height: 1000 },
+        { fileUrl: "  " },
+        123,
+        null
+      ],
+      "example.org",
+      "https:"
+    ),
+    [
+      { url: "https://example.org/same.jpg", width: 900, height: 500 },
+      { url: "https://example.org/other.jpg", width: null, height: 200 }
+    ]
+  );
+});
+
+test("legacy compatibility uses detail legacy then list thumbnails then list legacy without preview", () => {
+  assert.deepEqual(
+    resolveLegacyThumbnailCompatibility(
+      { thumbnailPath: "/detail.jpg", previewPath: "/detail-preview.jpg" },
+      { thumbnails: [{ fileUrl: "/list-modern.jpg", width: 900, height: 500 }] },
       "example.org",
       "https:"
     ),
     { url: "https://example.org/detail.jpg", width: null, height: null }
   );
-});
-
-test("resolvePreferredThumbnail falls back through list media before preview fields", () => {
   assert.deepEqual(
-    resolvePreferredThumbnail(
+    resolveLegacyThumbnailCompatibility(
       { previewPath: "/detail-preview.jpg" },
-      { thumbnailUrl: "https://example.org/list.jpg" },
+      { thumbnails: [{ fileUrl: "/list-modern.jpg", width: 900, height: 500 }] },
       "example.org",
       "https:"
     ),
-    { url: "https://example.org/list.jpg", width: null, height: null }
+    { url: "https://example.org/list-modern.jpg", width: 900, height: 500 }
   );
-});
-
-test("resolvePreferredThumbnailUrl preserves the existing URL-only caller contract", () => {
-  assert.equal(
-    resolvePreferredThumbnailUrl(
-      { previewPath: "/lazy-static/thumbnails/preview.jpg" },
-      {},
+  assert.deepEqual(
+    resolveLegacyThumbnailCompatibility(
+      { previewPath: "/detail-preview.jpg" },
+      { previewPath: "/list-preview.jpg" },
       "example.org",
       "https:"
     ),
-    "https://example.org/lazy-static/thumbnails/preview.jpg"
+    { url: null, width: null, height: null }
   );
 });

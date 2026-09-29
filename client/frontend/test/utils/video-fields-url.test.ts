@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
   appendUniqueVideoRows,
   dedupeVideoRows,
+  thumbnailCandidates,
   thumbnailUrl,
+  thumbnailUrls,
   videoPageUrl,
   videoRowKey
 } from "../../src/utils/video-fields";
@@ -25,16 +27,63 @@ describe("video detail URL construction", () => {
 });
 
 describe("video card thumbnail URL resolution", () => {
-  it("uses canonical snake_case thumbnail_url when present", () => {
-    expect(thumbnailUrl({ thumbnail_url: "https://example.org/thumb.jpg" })).toBe("https://example.org/thumb.jpg");
+  it("keeps candidate dimensions and exposes object candidates to thumbnail renderers", () => {
+    const row: VideoRow = {
+      thumbnail_candidates: [
+        { url: "https://example.org/large.jpg", width: 1280, height: 720 },
+        { url: "https://example.org/medium.jpg", width: 850, height: 480 },
+        { url: "https://example.org/unknown.jpg", width: null, height: null },
+        { url: "https://example.org/medium.jpg", width: 850, height: 480 }
+      ]
+    };
+
+    expect(thumbnailCandidates(row)).toEqual([
+      { url: "https://example.org/large.jpg", width: 1280, height: 720 },
+      { url: "https://example.org/medium.jpg", width: 850, height: 480 },
+      { url: "https://example.org/unknown.jpg", width: null, height: null }
+    ]);
+    expect(thumbnailUrls(row)).toEqual([
+      "https://example.org/large.jpg",
+      "https://example.org/medium.jpg",
+      "https://example.org/unknown.jpg"
+    ]);
   });
 
-  it("keeps the existing camelCase thumbnailUrl alias fallback", () => {
+  it("uses the ordered thumbnail_urls list and mirrors its first candidate", () => {
+    const row = {
+      thumbnail_urls: [
+        "https://example.org/large.jpg",
+        "https://example.org/small.jpg",
+        "https://example.org/large.jpg"
+      ],
+      thumbnail_url: "https://example.org/legacy.jpg"
+    };
+    expect(thumbnailUrls(row)).toEqual([
+      "https://example.org/large.jpg",
+      "https://example.org/small.jpg"
+    ]);
+    expect(thumbnailUrl(row)).toBe("https://example.org/large.jpg");
+  });
+
+  it("keeps singular snake/camel aliases as legacy fallback when the list is absent", () => {
+    expect(thumbnailUrls({ thumbnail_url: "https://example.org/thumb.jpg" })).toEqual(["https://example.org/thumb.jpg"]);
     expect(thumbnailUrl({ thumbnailUrl: "https://example.org/thumb-alias.jpg" })).toBe("https://example.org/thumb-alias.jpg");
   });
 
+  it("treats an explicit empty list as authoritative and never falls back to singular or preview", () => {
+    const row = {
+      thumbnail_urls: [],
+      thumbnail_url: "https://example.org/legacy.jpg",
+      preview_path: "/lazy-static/previews/a.jpg"
+    };
+    expect(thumbnailUrls(row)).toEqual([]);
+    expect(thumbnailUrl(row)).toBeNull();
+  });
+
   it("does not fallback to source preview_path fields", () => {
-    expect(thumbnailUrl({ preview_path: "/lazy-static/previews/a.jpg", previewPath: "/lazy-static/previews/b.jpg" })).toBeNull();
+    const row = { preview_path: "/lazy-static/previews/a.jpg", previewPath: "/lazy-static/previews/b.jpg" };
+    expect(thumbnailUrls(row)).toEqual([]);
+    expect(thumbnailUrl(row)).toBeNull();
   });
 });
 

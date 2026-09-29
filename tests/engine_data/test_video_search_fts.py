@@ -50,6 +50,7 @@ def _db() -> sqlite3.Connection:
           video_url TEXT,
           duration INTEGER,
           thumbnail_url TEXT,
+          thumbnail_candidates_json TEXT,
           embed_path TEXT,
           views INTEGER,
           likes INTEGER,
@@ -72,12 +73,12 @@ def _db() -> sqlite3.Connection:
     )
     conn.executemany(
         """
-        INSERT INTO videos(video_id, video_uuid, instance_domain, channel_id, channel_name, title, description, tags_json, category, published_at, views, likes, comments_count, popularity)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO videos(video_id, video_uuid, instance_domain, channel_id, channel_name, title, description, tags_json, category, published_at, thumbnail_url, thumbnail_candidates_json, views, likes, comments_count, popularity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
-            ("v1", "u1", "a.example", "c1", "linuxchannel", "Linux desktop review", "secretword only here", '["opensource", "fediverse"]', "Technology", 3000, 100, 5, 2, 10),
-            ("v2", "u2", "b.example", "c2", "cooking", "Pasta demo", "linux absent", '["food"]', "Cooking", 2000, 20, 1, 0, 1),
+            ("v1", "u1", "a.example", "c1", "linuxchannel", "Linux desktop review", "secretword only here", '["opensource", "fediverse"]', "Technology", 3000, "/legacy.jpg", '[{"url":"https://cdn.example/linux-large.jpg","width":850,"height":480},{"url":"https://cdn.example/linux-small.jpg","width":280,"height":157}]', 100, 5, 2, 10),
+            ("v2", "u2", "b.example", "c2", "cooking", "Pasta demo", "linux absent", '["food"]', "Cooking", 2000, "/legacy2.jpg", None, 20, 1, 0, 1),
         ],
     )
     return conn
@@ -95,6 +96,11 @@ def test_rebuild_creates_tables_and_searches_indexed_fields() -> None:
             rows, _next = search_videos(conn, query=query, limit=10, offset=0)
             assert rows[0]["video_id"] == "v1"
             assert rows[0]["instance_domain"] == "a.example"
+            assert rows[0]["thumbnail_urls"] == [
+                "https://cdn.example/linux-large.jpg",
+                "https://cdn.example/linux-small.jpg",
+            ]
+            assert "thumbnail_candidates_json" not in rows[0]
     finally:
         conn.close()
 

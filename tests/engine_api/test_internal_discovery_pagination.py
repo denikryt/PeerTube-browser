@@ -57,6 +57,7 @@ def _install_canonical_schema(conn: sqlite3.Connection) -> None:
         ) WITHOUT ROWID;
         """
     )
+    conn.execute("ALTER TABLE videos ADD COLUMN thumbnail_candidates_json TEXT")
 
 
 def _insert_video(
@@ -86,7 +87,7 @@ def _insert_video(
         """
         INSERT INTO videos VALUES (
           ?, ?, NULL, ?, ?, ?, NULL, NULL, NULL, ?, NULL, ?, ?, ?, ?, ?, ?, NULL, 60,
-          NULL, NULL, ?, ?, 0, 0, 0, NULL, ?, 1, 0, ?
+          NULL, NULL, ?, ?, 0, 0, 0, NULL, ?, 1, 0, ?, NULL
         )
         """,
         (

@@ -34,7 +34,8 @@ def _connect() -> sqlite3.Connection:
           video_id TEXT, video_uuid TEXT, instance_domain TEXT, channel_id TEXT, channel_name TEXT,
           channel_url TEXT, account_name TEXT, account_url TEXT, title TEXT, description TEXT, embed_path TEXT,
           published_at INTEGER, video_url TEXT, views INTEGER, likes INTEGER, dislikes INTEGER, tags_json TEXT,
-          category TEXT, nsfw INTEGER, last_checked_at INTEGER, error_count INTEGER DEFAULT 0, popularity REAL DEFAULT 0,
+          category TEXT, nsfw INTEGER, thumbnail_url TEXT, thumbnail_candidates_json TEXT, preview_path TEXT,
+          last_checked_at INTEGER, error_count INTEGER DEFAULT 0, popularity REAL DEFAULT 0,
           PRIMARY KEY(video_id, instance_domain)
         );
         """
@@ -46,7 +47,10 @@ def _connect() -> sqlite3.Connection:
         INSERT INTO videos VALUES (
           '123', 'uuid-123', 'example.org', 'c1', 'slug', 'https://example.org/video-channels/slug',
           'acct', 'https://example.org/accounts/acct', 'DB Title', 'DB description', '/embed/123',
-          1000, 'https://example.org/w/uuid-123', 10, 1, 0, '["db"]', 'DB Category', 0, 1000, 0, 0
+          1000, 'https://example.org/w/uuid-123', 10, 1, 0, '["db"]', 'DB Category', 0,
+          'https://example.org/thumb-large.jpg',
+          '[{"url":"https://example.org/thumb-large.jpg","width":850,"height":480},{"url":"https://example.org/thumb-small.jpg","width":280,"height":157}]',
+          '/lazy-static/previews/db.jpg', 1000, 0, 0
         )
         """
     )
@@ -55,7 +59,8 @@ def _connect() -> sqlite3.Connection:
         INSERT INTO videos VALUES (
           'bad', 'uuid-bad', 'example.org', 'c1', 'slug', 'https://example.org/video-channels/slug',
           'acct', 'https://example.org/accounts/acct', 'Bad', 'Bad', '/embed/bad',
-          1000, 'https://example.org/w/uuid-bad', 10, 1, 0, '["db"]', 'DB Category', 0, 1000, 5, 0
+          1000, 'https://example.org/w/uuid-bad', 10, 1, 0, '["db"]', 'DB Category', 0,
+          'https://example.org/bad.jpg', NULL, '/lazy-static/previews/bad.jpg', 1000, 5, 0
         )
         """
     )
@@ -108,6 +113,12 @@ def test_dynamic_video_metadata_overrides_db_fields_and_uses_db_fallbacks(monkey
     assert "tags" not in body
     assert "category" not in body
     assert body["embedUrl"] == "https://example.org/embed/123"
+    assert body["thumbnail_url"] == "https://example.org/thumb-large.jpg"
+    assert body["thumbnail_urls"] == [
+        "https://example.org/thumb-large.jpg",
+        "https://example.org/thumb-small.jpg",
+    ]
+    assert body["preview_path"] == "/lazy-static/previews/db.jpg"
 
 
 def test_missing_video_id_and_missing_row_return_current_errors() -> None:
@@ -178,3 +189,30 @@ def test_dynamic_refresh_still_uses_live_metadata_in_response(monkeypatch) -> No
 
     assert result.payload["title"] == "Live title"
     assert result.payload["views"] == 88
+
+
+def test_live_detail_cannot_override_persisted_thumbnail_candidate_state(monkeypatch) -> None:
+    """Negative: request-time PeerTube metadata never replaces persisted thumbnail state."""
+    conn = _connect()
+    server = SimpleNamespace(db=conn, db_lock=threading.RLock(), video_error_threshold=2)
+    monkeypatch.setattr(
+        video_handler,
+        "fetch_instance_video_dynamic",
+        lambda _host, _video_id: {
+            "title": "Live title",
+            "thumbnail_url": "https://live.example/other.jpg",
+            "thumbnail_urls": ["https://live.example/other.jpg"],
+            "preview_path": "/live-preview.jpg",
+        },
+    )
+
+    result = video_handler.handle_video_request(
+        server, {"id": ["123"], "host": ["example.org"]}
+    )
+
+    assert result.payload["thumbnail_urls"] == [
+        "https://example.org/thumb-large.jpg",
+        "https://example.org/thumb-small.jpg",
+    ]
+    assert result.payload["thumbnail_url"] == "https://example.org/thumb-large.jpg"
+    assert result.payload["preview_path"] == "/lazy-static/previews/db.jpg"

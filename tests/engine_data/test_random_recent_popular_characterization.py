@@ -25,7 +25,7 @@ def _connect() -> sqlite3.Connection:
         CREATE TABLE videos (
           video_id TEXT, video_uuid TEXT, video_numeric_id INTEGER, instance_domain TEXT, channel_id TEXT,
           channel_name TEXT, channel_url TEXT, account_name TEXT, account_url TEXT, title TEXT, description TEXT,
-          tags_json TEXT, category TEXT, category_id TEXT, language TEXT, language_label TEXT, published_at INTEGER, video_url TEXT, duration INTEGER, thumbnail_url TEXT,
+          tags_json TEXT, category TEXT, category_id TEXT, language TEXT, language_label TEXT, published_at INTEGER, video_url TEXT, duration INTEGER, thumbnail_url TEXT, thumbnail_candidates_json TEXT,
           embed_path TEXT, views INTEGER, likes INTEGER, dislikes INTEGER, comments_count INTEGER, nsfw INTEGER,
           preview_path TEXT, popularity REAL, last_checked_at INTEGER, error_count INTEGER DEFAULT 0, invalid_reason TEXT,
           PRIMARY KEY(video_id, instance_domain)
@@ -44,7 +44,7 @@ def _connect() -> sqlite3.Connection:
             """
             INSERT INTO videos VALUES (?, ?, ?, 'example.org', 'c', 'c', 'https://example.org/c/c', 'acct',
             'https://example.org/a/acct', ?, 'desc', '[]', 'cat', '1', 'en', 'English', ?, 'https://example.org/w/x', 60,
-            '/thumb.jpg', '/embed', ?, ?, 0, 0, 0, '/preview.jpg', ?, 1000, ?, NULL)
+            '/thumb.jpg', '[{"url":"https://example.org/thumb.jpg","width":null,"height":null}]', '/embed', ?, ?, 0, 0, 0, '/preview.jpg', ?, 1000, ?, NULL)
             """,
             (video_id, f"uuid-{video_id}", len(video_id), f"Title {video_id}", published, views, likes, popularity, error_count),
         )
@@ -58,6 +58,7 @@ def test_recent_videos_are_newest_first_and_exclude_over_threshold_errors() -> N
     rows = fetch_recent_videos(_connect(), limit=2, error_threshold=2)
 
     assert [row["video_id"] for row in rows] == ["new", "popular"]
+    assert rows[0]["thumbnail_urls"] == ["https://example.org/thumb.jpg"]
 
 
 def test_popular_videos_use_current_popularity_order_and_error_filter() -> None:

@@ -2,7 +2,7 @@
  * Video-row field resolution helpers shared by feed and video-detail renderers.
  */
 
-import type { VideoRow } from "../types/videos";
+import type { ThumbnailCandidate, VideoRow } from "../types/videos";
 
 /** Resolve the current instance-domain compatibility aliases used by API rows. */
 export function resolveInstanceDomain(row: VideoRow | null) {
@@ -48,9 +48,61 @@ export function appendUniqueVideoRows(target: VideoRow[], rows: VideoRow[]) {
   }
 }
 
-/** Resolve the canonical Client API thumbnail aliases used by feed cards. */
+/** Keep only an optional positive pixel dimension from a Client API candidate. */
+function thumbnailDimension(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/** Resolve ordered Client API candidate objects without using preview fields. */
+export function thumbnailCandidates(row: VideoRow): ThumbnailCandidate[] {
+  const explicitCandidates = row.thumbnail_candidates ?? row.thumbnailCandidates;
+  if (Array.isArray(explicitCandidates)) {
+    const seen = new Set<string>();
+    const candidates: ThumbnailCandidate[] = [];
+    for (const value of explicitCandidates) {
+      if (!value || typeof value !== "object" || !("url" in value)) continue;
+      const url = value.url;
+      if (typeof url !== "string") continue;
+      const normalized = url.trim();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      candidates.push({
+        url: normalized,
+        width: thumbnailDimension(value.width),
+        height: thumbnailDimension(value.height)
+      });
+    }
+    return candidates;
+  }
+
+  const explicit = row.thumbnail_urls ?? row.thumbnailUrls;
+  if (Array.isArray(explicit)) {
+    const seen = new Set<string>();
+    const candidates: ThumbnailCandidate[] = [];
+    for (const value of explicit) {
+      if (typeof value !== "string") continue;
+      const normalized = value.trim();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      candidates.push({ url: normalized, width: null, height: null });
+    }
+    return candidates;
+  }
+
+  const singular = row.thumbnail_url ?? row.thumbnailUrl ?? null;
+  if (typeof singular !== "string") return [];
+  const normalized = singular.trim();
+  return normalized ? [{ url: normalized, width: null, height: null }] : [];
+}
+
+/** Resolve ordered Client API thumbnail URLs for callers that only need compatibility fields. */
+export function thumbnailUrls(row: VideoRow) {
+  return thumbnailCandidates(row).map((candidate) => candidate.url);
+}
+
+/** Resolve the first canonical Client API thumbnail candidate for compatibility callers. */
 export function thumbnailUrl(row: VideoRow) {
-  return row.thumbnail_url ?? row.thumbnailUrl ?? null;
+  return thumbnailUrls(row)[0] ?? null;
 }
 
 /** Resolve the current channel display label aliases. */

@@ -1,9 +1,9 @@
 /**
  * Media-selection helpers for PeerTube video payloads.
  *
- * The crawler receives media fields from list/detail payloads in multiple
- * PeerTube versions. These helpers centralize canonical absolute-URL and
- * thumbnail-dimension selection so persistence does not depend on wire shape.
+ * Modern REST thumbnail arrays are the authoritative candidate source. Legacy
+ * thumbnail fields remain a singular compatibility source, while preview media
+ * is intentionally kept separate from card-thumbnail fallback semantics.
  */
 
 interface PeerTubeAssetLike {
@@ -27,13 +27,19 @@ export interface PeerTubeVideoMediaLike {
   preview_path?: unknown;
 }
 
+export interface ThumbnailCandidate {
+  url: string;
+  width: number | null;
+  height: number | null;
+}
+
 export interface ResolvedThumbnail {
   url: string | null;
   width: number | null;
   height: number | null;
 }
 
-/** Resolve one PeerTube asset field into an absolute URL when possible. */
+/** Resolve one PeerTube asset field into an absolute HTTP(S) URL when possible. */
 export function resolvePeerTubeMediaUrl(
   value: unknown,
   host: string,
@@ -41,67 +47,87 @@ export function resolvePeerTubeMediaUrl(
 ): string | null {
   const candidate = extractAssetValue(value);
   if (!candidate) return null;
-  if (candidate.startsWith("http://") || candidate.startsWith("https://")) {
-    return candidate;
+
+  const explicitScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u.test(candidate);
+  if (explicitScheme) {
+    if (!/^https?:\/\//iu.test(candidate)) return null;
+    try {
+      const parsed = new URL(candidate);
+      return parsed.protocol === "http:" || parsed.protocol === "https:" ? candidate : null;
+    } catch {
+      return null;
+    }
   }
+
+  const baseProtocol = protocol === "http:" ? "http:" : "https:";
   if (candidate.startsWith("/")) {
-    return `${protocol}//${host}${candidate}`;
+    return `${baseProtocol}//${host}${candidate}`;
   }
-  return `${protocol}//${host}/${candidate}`;
+  return `${baseProtocol}//${host}/${candidate}`;
 }
 
 /**
- * Select one canonical thumbnail with dimensions.
+ * Normalize an actual PeerTube REST `thumbnails` array into ordered candidates.
  *
- * Modern detail thumbnails have first priority and use the largest known pixel
- * area; source order breaks ties. Legacy fields remain as compatibility
- * fallbacks and preview media is deliberately last because it is not always a
- * card thumbnail.
+ * `null` is deliberately distinct from `[]`: null means the modern source was
+ * absent/non-array, while an empty array is an authoritative empty candidate set.
  */
-export function resolvePreferredThumbnail(
+export function resolveThumbnailCandidates(
+  thumbnails: unknown,
+  host: string,
+  protocol: string
+): ThumbnailCandidate[] | null {
+  if (!Array.isArray(thumbnails)) return null;
+
+  const candidates: ThumbnailCandidate[] = [];
+  for (const value of thumbnails) {
+    if (!value || typeof value !== "object") continue;
+    const asset = value as PeerTubeAssetLike;
+    const url = resolvePeerTubeMediaUrl(asset, host, protocol);
+    if (!url) continue;
+    candidates.push({
+      url,
+      width: toThumbnailDimension(asset.width),
+      height: toThumbnailDimension(asset.height)
+    });
+  }
+
+  // ES2019+ sort is stable, so equal/unknown areas retain PeerTube REST order.
+  const area = (candidate: ThumbnailCandidate) =>
+    candidate.width !== null && candidate.height !== null
+      ? candidate.width * candidate.height
+      : -1;
+  candidates.sort((left, right) => area(right) - area(left));
+
+  const seen = new Set<string>();
+  const deduplicated: ThumbnailCandidate[] = [];
+  for (const candidate of candidates) {
+    if (seen.has(candidate.url)) continue;
+    seen.add(candidate.url);
+    deduplicated.push(candidate);
+  }
+  return deduplicated;
+}
+
+/**
+ * Resolve only the legacy singular compatibility thumbnail.
+ *
+ * Detail legacy fields win, followed by list modern candidates and list legacy
+ * fields. Preview fields are intentionally excluded from this compatibility path.
+ */
+export function resolveLegacyThumbnailCompatibility(
   detail: PeerTubeVideoMediaLike | null,
   listVideo: PeerTubeVideoMediaLike,
   host: string,
   protocol: string
 ): ResolvedThumbnail {
-  const detailModern = selectModernThumbnail(detail?.thumbnails, host, protocol);
-  if (detailModern.url) return detailModern;
-
   const detailLegacy = resolveFirstLegacyThumbnail(detail, host, protocol);
   if (detailLegacy.url) return detailLegacy;
 
-  const listModern = selectModernThumbnail(listVideo.thumbnails, host, protocol);
-  if (listModern.url) return listModern;
+  const listModern = resolveThumbnailCandidates(listVideo.thumbnails, host, protocol);
+  if (listModern && listModern.length > 0) return listModern[0];
 
-  const listLegacy = resolveFirstLegacyThumbnail(listVideo, host, protocol);
-  if (listLegacy.url) return listLegacy;
-
-  // Preview fields remain a final compatibility fallback only.
-  const previewCandidates = [
-    detail?.previewUrl,
-    detail?.preview_url,
-    detail?.previewPath,
-    detail?.preview_path,
-    listVideo.previewUrl,
-    listVideo.preview_url,
-    listVideo.previewPath,
-    listVideo.preview_path
-  ];
-  for (const candidate of previewCandidates) {
-    const url = resolvePeerTubeMediaUrl(candidate, host, protocol);
-    if (url) return { url, width: null, height: null };
-  }
-  return { url: null, width: null, height: null };
-}
-
-/** Preserve the URL-only contract used by thumbnail maintenance callers. */
-export function resolvePreferredThumbnailUrl(
-  detail: PeerTubeVideoMediaLike | null,
-  listVideo: PeerTubeVideoMediaLike,
-  host: string,
-  protocol: string
-): string | null {
-  return resolvePreferredThumbnail(detail, listVideo, host, protocol).url;
+  return resolveFirstLegacyThumbnail(listVideo, host, protocol);
 }
 
 /** Prefer fresher preview path fields while preserving relative-path storage. */
@@ -115,31 +141,6 @@ export function resolvePreferredPreviewPath(
       listVideo.previewPath ??
       listVideo.preview_path
   );
-}
-
-/** Pick the largest valid modern thumbnail, preserving source order on ties. */
-function selectModernThumbnail(
-  value: unknown,
-  host: string,
-  protocol: string
-): ResolvedThumbnail {
-  if (!Array.isArray(value)) return { url: null, width: null, height: null };
-  let best: ResolvedThumbnail | null = null;
-  let bestArea = -1;
-  for (const candidate of value) {
-    if (!candidate || typeof candidate !== "object") continue;
-    const asset = candidate as PeerTubeAssetLike;
-    const url = resolvePeerTubeMediaUrl(asset, host, protocol);
-    if (!url) continue;
-    const width = toNullableNumber(asset.width);
-    const height = toNullableNumber(asset.height);
-    const area = width !== null && height !== null ? width * height : 0;
-    if (!best || area > bestArea) {
-      best = { url, width, height };
-      bestArea = area;
-    }
-  }
-  return best ?? { url: null, width: null, height: null };
 }
 
 /** Resolve legacy thumbnail fields without considering preview fallbacks. */
@@ -163,7 +164,7 @@ function resolveFirstLegacyThumbnail(
 
 /** Extract the underlying asset path or URL from mixed PeerTube field shapes. */
 function extractAssetValue(value: unknown): string | null {
-  if (typeof value === "string" && value.length > 0) return value;
+  if (typeof value === "string") return toNullableString(value);
   if (value && typeof value === "object") {
     const asset = value as PeerTubeAssetLike;
     return (
@@ -176,9 +177,11 @@ function extractAssetValue(value: unknown): string | null {
   return null;
 }
 
-/** Normalize dimensions from current PeerTube numeric fields. */
-function toNullableNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+/** Keep only positive finite integer dimensions used by PeerTube thumbnail sizing. */
+function toThumbnailDimension(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0
+    ? value
+    : null;
 }
 
 /** Collapse blank strings to null so storage logic keeps nullable semantics. */

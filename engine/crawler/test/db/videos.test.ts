@@ -14,7 +14,7 @@ import type {
   VideoUpsertRow
 } from "../../src/db/types.js";
 import { VideoStore } from "../../src/db/videos.js";
-import { assertMetadataMaintenanceSchema } from "../../src/db/schema.js";
+import { assertMetadataMaintenanceSchema, assertThumbnailMaintenanceSchema } from "../../src/db/schema.js";
 import { allRows, createTempDb, getRow } from "./helpers.js";
 
 const video: VideoUpsertRow = {
@@ -35,6 +35,7 @@ const video: VideoUpsertRow = {
   videoUrl: "https://example.org/w/uuid-1",
   duration: 60,
   thumbnailUrl: "https://example.org/thumb.jpg",
+  thumbnailCandidatesJson: null,
   embedPath: "/videos/embed/uuid-1",
   views: 10,
   likes: 2,
@@ -236,14 +237,14 @@ test("VideoStore uses explicit insert/refresh semantics and preserves maintenanc
   }
 });
 
-test("VideoStore refreshes thumbnail URLs without touching other crawl state", () => {
+test("VideoStore persists authoritative candidate objects and resumes only SQL NULL rows", () => {
   const temp = createTempDb("crawler-videos-thumbnails");
   try {
     seedChannel(temp.dbPath);
     const store = new VideoStore({ dbPath: temp.dbPath });
     store.insertNewVideos([video]);
 
-    assert.deepEqual(store.listVideosForThumbnailRefresh(), [
+    assert.deepEqual(store.listVideosForThumbnailRefresh(true), [
       {
         videoId: "v1",
         videoUuid: "uuid-1",
@@ -251,20 +252,105 @@ test("VideoStore refreshes thumbnail URLs without touching other crawl state", (
       }
     ]);
 
-    store.updateVideoThumbnail("v1", "example.org", "https://example.org/new-thumb.jpg", 200);
+    store.updateVideoThumbnailCandidates(
+      "v1",
+      "example.org",
+      [
+        { url: "https://example.org/850.jpg", width: 850, height: 480 },
+        { url: "https://example.org/280.jpg", width: 280, height: 157 }
+      ],
+      200
+    );
     assert.deepEqual(
-      getRow<{ thumbnail_url: string; last_checked_at: number }>(
+      getRow<{
+        thumbnail_candidates_json: string; thumbnail_url: string;
+        thumbnail_width: number; thumbnail_height: number; last_checked_at: number;
+      }>(
         temp.dbPath,
-        "SELECT thumbnail_url, last_checked_at FROM videos WHERE video_id = ? AND instance_domain = ?",
+        `SELECT thumbnail_candidates_json, thumbnail_url, thumbnail_width,
+                thumbnail_height, last_checked_at
+         FROM videos WHERE video_id = ? AND instance_domain = ?`,
         "v1",
         "example.org"
       ),
       {
-        thumbnail_url: "https://example.org/new-thumb.jpg",
+        thumbnail_candidates_json: JSON.stringify([
+          { url: "https://example.org/850.jpg", width: 850, height: 480 },
+          { url: "https://example.org/280.jpg", width: 280, height: 157 }
+        ]),
+        thumbnail_url: "https://example.org/850.jpg",
+        thumbnail_width: 850,
+        thumbnail_height: 480,
         last_checked_at: 200
       }
     );
+    assert.deepEqual(store.listVideosForThumbnailRefresh(true), []);
 
+    store.updateVideoThumbnailCandidates("v1", "example.org", [], 300);
+    assert.deepEqual(
+      getRow<{ thumbnail_candidates_json: string; thumbnail_url: string | null; thumbnail_width: number | null }>(
+        temp.dbPath,
+        "SELECT thumbnail_candidates_json, thumbnail_url, thumbnail_width FROM videos WHERE video_id = ? AND instance_domain = ?",
+        "v1",
+        "example.org"
+      ),
+      { thumbnail_candidates_json: "[]", thumbnail_url: null, thumbnail_width: null }
+    );
+
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("VideoStore thumbnail refresh excludes definitively invalid videos", () => {
+  const temp = createTempDb("crawler-videos-thumbnail-invalid");
+  try {
+    seedChannel(temp.dbPath);
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    store.insertNewVideos([video]);
+    store.updateVideoInvalid("v1", "example.org", "not_found");
+
+    assert.deepEqual(store.listVideosForThumbnailRefresh(false), []);
+    assert.deepEqual(store.listVideosForThumbnailRefresh(true), []);
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("base refresh never overwrites authoritative thumbnail state", () => {
+  const temp = createTempDb("crawler-videos-thumbnail-base-refresh");
+  try {
+    seedChannel(temp.dbPath);
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    store.insertNewVideos([video]);
+    store.updateVideoThumbnailCandidates(
+      "v1",
+      "example.org",
+      [{ url: "https://example.org/good.jpg", width: 850, height: 480 }],
+      200
+    );
+    store.refreshExistingVideoMetadata([{
+      base: {
+        ...video,
+        thumbnailUrl: "https://example.org/list-stale.jpg",
+        thumbnailCandidatesJson: null,
+        thumbnailWidth: 1,
+        thumbnailHeight: 1,
+        lastCheckedAt: 500
+      }
+    }]);
+    assert.deepEqual(
+      getRow<{ thumbnail_candidates_json: string; thumbnail_url: string }>(
+        temp.dbPath,
+        "SELECT thumbnail_candidates_json, thumbnail_url FROM videos WHERE video_id='v1'"
+      ),
+      {
+        thumbnail_candidates_json: '[{"url":"https://example.org/good.jpg","width":850,"height":480}]',
+        thumbnail_url: "https://example.org/good.jpg"
+      }
+    );
     store.close();
   } finally {
     temp.cleanup();
@@ -299,6 +385,7 @@ function metadataRow(overrides: Partial<VideoUpsertRow> = {}): VideoUpsertRow {
     videoUrl: "https://example.org/w/uuid-1",
     duration: 60,
     thumbnailUrl: "https://example.org/old.jpg",
+    thumbnailCandidatesJson: null,
     thumbnailWidth: null,
     thumbnailHeight: null,
     embedPath: "/videos/embed/uuid-1",
@@ -374,12 +461,13 @@ test("crawler additive metadata migration preserves rows and is idempotent", () 
     const first = new Database(temp.dbPath, { readonly: true });
     const columns1 = first.prepare("PRAGMA table_info(videos)").all() as Array<{ name: string }>;
     const migrated = first.prepare(
-      "SELECT title, metadata_version FROM videos WHERE video_id='v1'"
-    ).get() as { title: string; metadata_version: number };
+      "SELECT title, metadata_version, thumbnail_candidates_json FROM videos WHERE video_id='v1'"
+    ).get() as { title: string; metadata_version: number; thumbnail_candidates_json: string | null };
     first.close();
 
     assert.equal(migrated.title, "kept");
     assert.equal(migrated.metadata_version, 0);
+    assert.equal(migrated.thumbnail_candidates_json, null);
     assert.ok(columns1.some((column) => column.name === "language"));
     assert.ok(columns1.some((column) => column.name === "metadata_version"));
 
@@ -392,6 +480,108 @@ test("crawler additive metadata migration preserves rows and is idempotent", () 
     temp.cleanup();
   }
 });
+
+
+
+test("legacy video table rebuild preserves existing thumbnail candidate state", () => {
+  const temp = createTempDb("crawler-thumbnail-rebuild-preserve");
+  try {
+    const db = new Database(temp.dbPath);
+    db.exec(`
+      CREATE TABLE videos (
+        video_id TEXT NOT NULL, video_uuid TEXT, video_numeric_id INTEGER,
+        instance_domain TEXT NOT NULL, channel_id TEXT, channel_name TEXT,
+        channel_url TEXT, account_name TEXT, account_url TEXT, title TEXT,
+        description TEXT, tags_json TEXT, category TEXT, published_at INTEGER,
+        video_url TEXT, duration INTEGER, thumbnail_url TEXT, thumbnail_candidates_json TEXT,
+        thumbnail_width INTEGER, thumbnail_height INTEGER,
+        embed_path TEXT, views INTEGER, likes INTEGER, dislikes INTEGER, comments_count INTEGER,
+        nsfw INTEGER, preview_path TEXT, last_checked_at INTEGER NOT NULL,
+        invalid_reason TEXT, invalid_at INTEGER,
+        PRIMARY KEY (video_id, instance_domain)
+      );
+      INSERT INTO videos(
+        video_id, video_uuid, instance_domain, thumbnail_url, thumbnail_candidates_json,
+        thumbnail_width, thumbnail_height, last_checked_at
+      ) VALUES (
+        'v1', 'uuid-1', 'example.org', 'https://example.org/a.jpg',
+        '[{"url":"https://example.org/a.jpg","width":850,"height":480},{"url":"https://example.org/b.jpg","width":280,"height":157}]', 850, 480, 1
+      );
+    `);
+    db.close();
+
+    // Missing generic error columns force the legacy table-rebuild path.
+    new VideoStore({ dbPath: temp.dbPath }).close();
+
+    assert.deepEqual(
+      getRow<{
+        thumbnail_candidates_json: string; thumbnail_url: string;
+        thumbnail_width: number; thumbnail_height: number;
+      }>(
+        temp.dbPath,
+        `SELECT thumbnail_candidates_json, thumbnail_url, thumbnail_width, thumbnail_height
+         FROM videos WHERE video_id='v1'`
+      ),
+      {
+        thumbnail_candidates_json: '[{"url":"https://example.org/a.jpg","width":850,"height":480},{"url":"https://example.org/b.jpg","width":280,"height":157}]',
+        thumbnail_url: "https://example.org/a.jpg",
+        thumbnail_width: 850,
+        thumbnail_height: 480
+      }
+    );
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("legacy video table rebuild adds missing thumbnail mirror dimensions as null", () => {
+  const temp = createTempDb("crawler-thumbnail-rebuild-missing-dimensions");
+  try {
+    const db = new Database(temp.dbPath);
+    db.exec(`
+      CREATE TABLE videos (
+        video_id TEXT NOT NULL, video_uuid TEXT, video_numeric_id INTEGER,
+        instance_domain TEXT NOT NULL, channel_id TEXT, channel_name TEXT,
+        channel_url TEXT, account_name TEXT, account_url TEXT, title TEXT,
+        description TEXT, tags_json TEXT, category TEXT, published_at INTEGER,
+        video_url TEXT, duration INTEGER, thumbnail_url TEXT, thumbnail_candidates_json TEXT,
+        embed_path TEXT, views INTEGER, likes INTEGER, dislikes INTEGER, comments_count INTEGER,
+        nsfw INTEGER, preview_path TEXT, last_checked_at INTEGER NOT NULL,
+        invalid_reason TEXT, invalid_at INTEGER,
+        PRIMARY KEY (video_id, instance_domain)
+      );
+      INSERT INTO videos(
+        video_id, video_uuid, instance_domain, thumbnail_url, thumbnail_candidates_json, last_checked_at
+      ) VALUES (
+        'v1', 'uuid-1', 'example.org', 'https://example.org/a.jpg',
+        '[{"url":"https://example.org/a.jpg","width":850,"height":480}]', 1
+      );
+    `);
+    db.close();
+
+    new VideoStore({ dbPath: temp.dbPath }).close();
+
+    assert.deepEqual(
+      getRow<{
+        thumbnail_candidates_json: string; thumbnail_url: string;
+        thumbnail_width: number | null; thumbnail_height: number | null;
+      }>(
+        temp.dbPath,
+        `SELECT thumbnail_candidates_json, thumbnail_url, thumbnail_width, thumbnail_height
+         FROM videos WHERE video_id='v1'`
+      ),
+      {
+        thumbnail_candidates_json: '[{"url":"https://example.org/a.jpg","width":850,"height":480}]',
+        thumbnail_url: "https://example.org/a.jpg",
+        thumbnail_width: null,
+        thumbnail_height: null
+      }
+    );
+  } finally {
+    temp.cleanup();
+  }
+});
+
 
 test("category id only follows an unchanged protected category label", () => {
   const temp = createTempDb("crawler-category-pair");
@@ -628,6 +818,47 @@ test("metadata validate-only opening never mutates a stale or current schema", (
     before.close();
     assertMetadataMaintenanceSchema(current.dbPath);
     new VideoStore({ dbPath: current.dbPath, initializeSchema: false }).close();
+    const after = new Database(current.dbPath, { readonly: true });
+    assert.equal(after.pragma("schema_version", { simple: true }), currentVersion);
+    after.close();
+  } finally {
+    stale.cleanup();
+    current.cleanup();
+  }
+});
+
+
+test("thumbnail maintenance validates schema read-only before network work", () => {
+  const stale = createTempDb("crawler-thumbnails-stale");
+  const current = createTempDb("crawler-thumbnails-current");
+  try {
+    const staleDb = new Database(stale.dbPath);
+    staleDb.exec(`
+      CREATE TABLE videos(
+        video_id TEXT NOT NULL, video_uuid TEXT, instance_domain TEXT NOT NULL,
+        thumbnail_url TEXT, thumbnail_width INTEGER, thumbnail_height INTEGER,
+        PRIMARY KEY(video_id, instance_domain)
+      );
+    `);
+    const staleVersion = staleDb.pragma("schema_version", { simple: true }) as number;
+    staleDb.close();
+
+    assert.throws(() => assertThumbnailMaintenanceSchema(stale.dbPath), /migrate-whitelist\.py/);
+    const staleAfter = new Database(stale.dbPath, { readonly: true });
+    assert.equal(staleAfter.pragma("schema_version", { simple: true }), staleVersion);
+    assert.equal(
+      (staleAfter.prepare("PRAGMA table_info(videos)").all() as Array<{ name: string }>).some(
+        (column) => column.name === "thumbnail_candidates_json"
+      ),
+      false
+    );
+    staleAfter.close();
+
+    new VideoStore({ dbPath: current.dbPath }).close();
+    const before = new Database(current.dbPath, { readonly: true });
+    const currentVersion = before.pragma("schema_version", { simple: true }) as number;
+    before.close();
+    assertThumbnailMaintenanceSchema(current.dbPath);
     const after = new Database(current.dbPath, { readonly: true });
     assert.equal(after.pragma("schema_version", { simple: true }), currentVersion);
     after.close();

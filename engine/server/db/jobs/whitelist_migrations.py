@@ -26,6 +26,10 @@ VIDEO_METADATA_V1_COLUMNS: tuple[tuple[str, str], ...] = (
     ("thumbnail_height", "INTEGER"),
 )
 
+VIDEO_THUMBNAIL_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("thumbnail_candidates_json", "TEXT"),
+)
+
 CHANNEL_METADATA_V1_COLUMNS: tuple[tuple[str, str], ...] = (
     ("owner_account_username", "TEXT"),
     ("owner_account_display_name", "TEXT"),
@@ -275,11 +279,19 @@ def migrate_videos_schema(conn: sqlite3.Connection) -> None:
     has_error_count = "error_count" in columns
     has_invalid_reason = "invalid_reason" in columns
     has_invalid_at = "invalid_at" in columns
+    has_thumbnail_candidates = "thumbnail_candidates_json" in columns
+    has_thumbnail_width = "thumbnail_width" in columns
+    has_thumbnail_height = "thumbnail_height" in columns
     last_error_expr = "last_error" if has_last_error else "NULL"
     last_error_at_expr = "last_error_at" if has_last_error_at else "NULL"
     error_count_expr = "error_count" if has_error_count else "0"
     invalid_reason_expr = "invalid_reason" if has_invalid_reason else "NULL"
     invalid_at_expr = "invalid_at" if has_invalid_at else "NULL"
+    thumbnail_candidates_expr = (
+        "thumbnail_candidates_json" if has_thumbnail_candidates else "NULL"
+    )
+    thumbnail_width_expr = "thumbnail_width" if has_thumbnail_width else "NULL"
+    thumbnail_height_expr = "thumbnail_height" if has_thumbnail_height else "NULL"
     conn.executescript(
         f"""
         DROP TABLE IF EXISTS video_embeddings;
@@ -301,6 +313,9 @@ def migrate_videos_schema(conn: sqlite3.Connection) -> None:
           video_url TEXT,
           duration INTEGER,
           thumbnail_url TEXT,
+          thumbnail_candidates_json TEXT,
+          thumbnail_width INTEGER,
+          thumbnail_height INTEGER,
           embed_path TEXT,
           views INTEGER,
           likes INTEGER,
@@ -335,6 +350,9 @@ def migrate_videos_schema(conn: sqlite3.Connection) -> None:
           video_url,
           duration,
           thumbnail_url,
+          thumbnail_candidates_json,
+          thumbnail_width,
+          thumbnail_height,
           embed_path,
           views,
           likes,
@@ -368,6 +386,9 @@ def migrate_videos_schema(conn: sqlite3.Connection) -> None:
           video_url,
           duration,
           thumbnail_url,
+          {thumbnail_candidates_expr},
+          {thumbnail_width_expr},
+          {thumbnail_height_expr},
           embed_path,
           views,
           likes,
@@ -413,9 +434,16 @@ def add_metadata_v1_columns(conn: sqlite3.Connection) -> None:
     _add_missing_columns(conn, "channels", CHANNEL_METADATA_V1_COLUMNS)
     _add_missing_columns(conn, "videos", VIDEO_METADATA_V1_COLUMNS)
 
+
+def add_thumbnail_candidate_columns(conn: sqlite3.Connection) -> None:
+    """Add crawler-owned thumbnail candidate storage without metadata-v1 coupling."""
+    _add_missing_columns(conn, "videos", VIDEO_THUMBNAIL_COLUMNS)
+
+
 def migrate_whitelist_schema(conn: sqlite3.Connection, table_name: str) -> None:
     """Handle migrate whitelist schema."""
     migrate_instances_schema(conn, table_name)
     migrate_channels_schema(conn)
     migrate_videos_schema(conn)
     add_metadata_v1_columns(conn)
+    add_thumbnail_candidate_columns(conn)

@@ -12,6 +12,7 @@ from lib.http_utils import resolve_user_id
 from lib.time_utils import now_ms
 from repositories.users import UsersRepository
 from schemas import ServiceResult
+from services.video_rows import normalize_video_rows_for_browser
 
 
 def parse_positive_int(value: str | None) -> int:
@@ -72,7 +73,14 @@ def get_profile_likes_metadata(
         rows = fetch_metadata_for_entries(engine_base_url, likes)
     except EngineApiError as exc:
         return ServiceResult(502, {"error": f"Engine metadata failed: {exc}"})
-    return ServiceResult(200, {"user_id": user_id, "likes": rows, "updatedAt": now_ms()})
+    return ServiceResult(
+        200,
+        {
+            "user_id": user_id,
+            "likes": normalize_video_rows_for_browser(rows),
+            "updatedAt": now_ms(),
+        },
+    )
 
 
 def get_client_likes_metadata(
@@ -89,4 +97,7 @@ def get_client_likes_metadata(
         rows = fetch_metadata_for_entries(engine_base_url, resolved)
     except EngineApiError as exc:
         return ServiceResult(502, {"error": f"Engine metadata failed: {exc}"})
-    return ServiceResult(200, {"likes": rows, "updatedAt": now_ms()})
+    return ServiceResult(
+        200,
+        {"likes": normalize_video_rows_for_browser(rows), "updatedAt": now_ms()},
+    )

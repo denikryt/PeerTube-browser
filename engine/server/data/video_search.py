@@ -13,6 +13,7 @@ from typing import Any
 
 from data.serving_moderation import ServingVisibility, build_serving_visibility_sql
 from data.video_filters import VideoFilters, build_video_filter_sql
+from data.video_thumbnails import apply_thumbnail_api_fields
 
 TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
 
@@ -181,7 +182,7 @@ def search_videos(
             c.display_name AS channel_display_name,
             c.avatar_url AS channel_avatar_url,
             v.account_name, v.account_url, v.title, v.published_at, v.video_url,
-            v.duration, v.thumbnail_url, v.embed_path, v.preview_path,
+            v.duration, v.thumbnail_url, v.thumbnail_candidates_json, v.embed_path, v.preview_path,
             v.views, v.likes, v.dislikes, v.comments_count,
             v.language, v.language_label, v.category, v.category_id,
             matched.rank, COALESCE(v.popularity, 0) AS popularity_sort
@@ -205,8 +206,11 @@ def search_videos(
         "video_id", "video_uuid", "video_numeric_id", "instance_domain",
         "channel_id", "channel_name", "channel_url", "channel_display_name",
         "channel_avatar_url", "account_name", "account_url", "title",
-        "published_at", "video_url", "duration", "thumbnail_url", "embed_path",
+        "published_at", "video_url", "duration", "thumbnail_url", "thumbnail_candidates_json", "embed_path",
         "preview_path", "views", "likes", "dislikes", "comments_count",
         "language", "language_label", "category", "category_id",
     )
-    return [{field: row[field] for field in fields} for row in items], next_offset
+    return [
+        apply_thumbnail_api_fields({field: row[field] for field in fields})
+        for row in items
+    ], next_offset

@@ -24,7 +24,7 @@ def _connect_internal_video_db() -> sqlite3.Connection:
           video_id TEXT, video_uuid TEXT, video_numeric_id INTEGER, instance_domain TEXT,
           channel_id TEXT, channel_name TEXT, channel_url TEXT, account_name TEXT, account_url TEXT,
           title TEXT, description TEXT, tags_json TEXT, category TEXT, category_id TEXT, language TEXT, language_label TEXT, published_at INTEGER,
-          video_url TEXT, duration INTEGER, thumbnail_url TEXT, embed_path TEXT, views INTEGER,
+          video_url TEXT, duration INTEGER, thumbnail_url TEXT, thumbnail_candidates_json TEXT, embed_path TEXT, views INTEGER,
           likes INTEGER, dislikes INTEGER, comments_count INTEGER, nsfw INTEGER, preview_path TEXT,
           last_checked_at INTEGER, error_count INTEGER DEFAULT 0,
           PRIMARY KEY(video_id, instance_domain)
@@ -52,7 +52,7 @@ def _connect_internal_video_db() -> sqlite3.Connection:
         INSERT INTO videos VALUES (
           '123', 'uuid-123', 123, 'example.org', 'c1', 'chan', 'https://example.org/c/chan',
           'acct', 'https://example.org/a/acct', 'Title', 'Desc', '[]', 'Cat', '1', 'en', 'English', 1000,
-          'https://example.org/w/uuid-123', 60, '/thumb.jpg', '/embed/123', 10, 1, 0, 2,
+          'https://example.org/w/uuid-123', 60, '/thumb.jpg', '[{"url":"https://cdn.example/large.jpg","width":850,"height":480},{"url":"https://cdn.example/small.jpg","width":280,"height":157}]', '/embed/123', 10, 1, 0, 2,
           0, '/preview.jpg', 1000, 0
         )
         """
@@ -146,3 +146,8 @@ def test_internal_videos_metadata_route_preserves_success_shape() -> None:
     assert body["count"] == 1
     assert body["rows"][0]["video_id"] == "123"
     assert body["rows"][0]["title"] == "Title"
+    assert body["rows"][0]["thumbnail_urls"] == [
+        "https://cdn.example/large.jpg",
+        "https://cdn.example/small.jpg",
+    ]
+    assert "thumbnail_candidates_json" not in body["rows"][0]

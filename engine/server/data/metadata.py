@@ -6,6 +6,7 @@ import sqlite3
 from typing import Any
 
 from recommendations.keys import like_key
+from data.video_thumbnails import apply_thumbnail_api_fields
 
 
 # These fetchers are three identity lookups over one canonical runtime row shape.
@@ -34,6 +35,7 @@ _METADATA_SELECT = """
   v.video_url,
   v.duration,
   v.thumbnail_url,
+  v.thumbnail_candidates_json,
   v.embed_path,
   v.views,
   v.likes,
@@ -54,7 +56,8 @@ def _metadata_row(row: sqlite3.Row, *, lookup_field: str | None = None) -> dict[
     only to key the returned mapping.  Every other selected column belongs to the
     shared canonical metadata row and is copied without coercion.
     """
-    return {key: row[key] for key in row.keys() if key != lookup_field}
+    projected = {key: row[key] for key in row.keys() if key != lookup_field}
+    return apply_thumbnail_api_fields(projected)
 
 
 def fetch_metadata(

@@ -985,19 +985,6 @@ body {
   display: block;
 }
 
-.video-card .thumb-fallback {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding: 0.75rem;
-  font-size: 0.92rem;
-  line-height: 1.25;
-  color: rgba(31, 27, 22, 0.82);
-  background: rgba(180, 87, 55, 0.12);
-  overflow: hidden;
-}
 
 .video-card .duration {
   right: 0.5rem;

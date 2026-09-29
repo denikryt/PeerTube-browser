@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 
 from data.time import now_ms
 from data.popularity import compute_popularity
+from data.video_thumbnails import apply_thumbnail_api_fields
 from route_results import RouteResult
 
 
@@ -43,6 +44,9 @@ def fetch_video_row(
           v.account_url,
           v.title,
           v.description,
+          v.thumbnail_url,
+          v.thumbnail_candidates_json,
+          v.preview_path,
           v.embed_path,
           v.published_at,
           v.video_url,
@@ -69,7 +73,7 @@ def fetch_video_row(
     ).fetchone()
     if row is None:
         return None
-    return dict(row)
+    return apply_thumbnail_api_fields(dict(row))
 
 
 def fetch_instance_json(host: str, path: str) -> dict[str, Any] | None:
@@ -284,6 +288,9 @@ def handle_video_request(server: Any, params: dict[str, list[str]]) -> RouteResu
         "accountAvatarUrl": dynamic.get("account_avatar_url") or "",
         "embedUrl": embed_url or "",
         "originalUrl": original_url or "",
+        "thumbnail_url": row.get("thumbnail_url"),
+        "thumbnail_urls": row.get("thumbnail_urls") or [],
+        "preview_path": row.get("preview_path"),
         "views": views,
         "likes": likes,
         "dislikes": dislikes,

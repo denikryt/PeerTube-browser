@@ -2,6 +2,13 @@
  * Module `client/frontend/src/types/videos.ts`: provide runtime functionality.
  */
 
+/** Browser-safe thumbnail source plus optional PeerTube pixel dimensions. */
+export interface ThumbnailCandidate {
+  url: string;
+  width: number | null;
+  height: number | null;
+}
+
 export interface VideoRow {
   video_id?: string;
   video_uuid?: string | null;
@@ -18,6 +25,10 @@ export interface VideoRow {
   duration?: number | null;
   /** Canonical browser-ready card image URL after Client API normalization. */
   thumbnail_url?: string | null;
+  /** Ordered browser-ready thumbnail candidates from the Client API. */
+  thumbnail_urls?: string[] | null;
+  /** Ordered browser-ready thumbnail objects used for responsive source choice. */
+  thumbnail_candidates?: ThumbnailCandidate[] | null;
   /** Source/legacy PeerTube preview field; not used directly by feed cards. */
   preview_path?: string | null;
   views?: number | null;
@@ -41,6 +52,8 @@ export interface VideoRow {
   accountName?: string | null;
   accountUrl?: string | null;
   thumbnailUrl?: string | null;
+  thumbnailUrls?: string[] | null;
+  thumbnailCandidates?: ThumbnailCandidate[] | null;
   previewPath?: string | null;
   viewsCount?: number | null;
   likes_count?: number | null;

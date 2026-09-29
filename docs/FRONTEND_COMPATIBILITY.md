@@ -112,3 +112,20 @@ Production frontend feed, Search, facets, and video metadata code call Client ba
 Fresh/Popular/Random infinite scroll is a thin `IntersectionObserver -> loadMore()` trigger over opaque public cursors. Ordinary continuation errors preserve rows/cursor and pause automatic loading until explicit Retry. A stale Random generation resets that selection to page 1 instead of retrying the stale cursor. Recommended is finite: Home fetches the current batch once and reveals it locally in 20-row windows until a native recommendation continuation exists.
 
 Only Home is wrapped in `<KeepAlive>`. Its observer disconnects while deactivated and reconnects on activation without refetching an unchanged selection; Router `savedPosition` restores Back-navigation scroll. Search is not cached by this compatibility contract. Facet failures are independent from result loading and never erase an existing URL filter.
+
+## Ordered thumbnail fallback remains Client-gateway data
+
+Decision:
+The browser receives full ordered `thumbnail_candidates` objects (`url`, `width`, `height`) from the Client backend, plus compatible `thumbnail_url` and `thumbnail_urls` mirrors. Client normalization resolves relative thumbnail paths against the row instance, deduplicates candidates in order, retains only positive integer dimensions, and never promotes `preview_path` into the card-thumbnail set.
+
+Reason:
+Crawler persistence contains legacy/backfill state that must not leak into Vue components, while broken remote image URLs are only observable at the browser `<img>` boundary.
+
+Implementation action:
+`VideoThumbnail.vue` renders exactly one `src` at a time. From candidates with known dimensions it selects the smallest image at least `500×300`; if none qualifies it begins with the crawler's first (largest-known) candidate. It starts remote thumbnail requests for one origin at least 500 ms apart, showing the local default while a later same-host slot waits. On an image `error`, it advances through every other candidate in crawler order under that same host spacing and finally uses `/default-video-thumbnail.svg`. Feed/profile cards and similar-video cards reuse this component; they do not probe or prefetch alternative images themselves.
+
+Tests:
+`client/frontend/test/components/video-thumbnail.test.ts`, Client video-row normalization tests, and the frontend Client-gateway boundary check.
+
+Removal condition, if any:
+Any switch to `srcset`, parallel preloading, or direct PeerTube image selection would require a later explicit frontend/media plan.

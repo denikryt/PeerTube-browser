@@ -7,16 +7,16 @@
  * preserve the familiar thumbnail/avatar/title/channel/meta hierarchy and
  * expose only the positive reaction count in the dense feed context.
  */
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import type { VideoRow } from "../types/videos";
 import { iconPlayOutline, iconThumbUp } from "./icons";
 import { formatCompactStatValue, formatDuration, formatTimeAgo, normalizeStatValue } from "../utils/format";
-import { channelAvatarUrl, channelInitials, channelName, channelUrl, hasServerStats, publishedAtMs, resolveInstanceDomain, thumbnailUrl, videoPageUrl } from "../utils/video-fields";
+import { channelAvatarUrl, channelInitials, channelName, channelUrl, hasServerStats, publishedAtMs, resolveInstanceDomain, thumbnailCandidates, videoPageUrl } from "../utils/video-fields";
+import VideoThumbnail from "./VideoThumbnail.vue";
 
 const props = defineProps<{ row: VideoRow }>();
 const title = computed(() => props.row.title ?? "Untitled video");
-const thumb = computed(() => thumbnailUrl(props.row));
-const thumbErrored = ref(false);
+const thumbs = computed(() => thumbnailCandidates(props.row));
 const duration = computed(() => formatDuration(props.row.duration ?? null));
 const channelLabel = computed(() => channelName(props.row) || "Unknown channel");
 // Keep the host visible with its channel, rather than mixing provenance into stats.
@@ -45,8 +45,7 @@ const compactViews = computed(() => formatCompactStatValue(views.value));
   <article class="video-card">
     <RouterLink class="video-card-thumbnail-link" :to="detailUrl" :aria-label="title">
       <div class="video-thumb">
-        <img v-if="thumb && !thumbErrored" :src="thumb" :alt="title" loading="lazy" @error="thumbErrored = true" />
-        <div v-else class="thumb-fallback">{{ title }}</div>
+        <VideoThumbnail :candidates="thumbs" :alt="title" />
         <span class="duration">{{ duration }}</span>
       </div>
     </RouterLink>

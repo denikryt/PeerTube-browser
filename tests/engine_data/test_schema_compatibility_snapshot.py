@@ -51,6 +51,7 @@ def test_videos_table_keeps_identity_metadata_ranking_and_filter_columns() -> No
         "video_url",
         "duration",
         "thumbnail_url",
+        "thumbnail_candidates_json",
         "embed_path",
         "views",
         "likes",
@@ -95,6 +96,7 @@ def test_metadata_v1_columns_are_part_of_crawler_schema_contract() -> None:
         "account_avatar_url",
         "thumbnail_width",
         "thumbnail_height",
+        "thumbnail_candidates_json",
     }.issubset(_columns(conn, "videos"))
     assert {
         "owner_account_username",
@@ -168,6 +170,100 @@ def test_whitelist_metadata_migration_is_additive_and_preserves_derived_data() -
     assert conn.execute(
         "SELECT index_id FROM video_index_ids WHERE video_id='v1'"
     ).fetchone() == (77,)
+    assert "thumbnail_candidates_json" in _columns(conn, "videos")
+
+
+def test_whitelist_legacy_layout_rebuild_preserves_existing_thumbnail_candidate_state() -> None:
+    """A structural videos rebuild must not discard already-backfilled thumbnail state."""
+    from engine.server.db.jobs.whitelist_migrations import migrate_whitelist_schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        """
+        CREATE TABLE instances(
+          host TEXT PRIMARY KEY, health_status TEXT, health_checked_at INTEGER,
+          health_error TEXT, last_error TEXT, last_error_at INTEGER, last_error_source TEXT
+        );
+        CREATE TABLE channels(
+          channel_id TEXT NOT NULL, channel_name TEXT, display_name TEXT,
+          instance_domain TEXT NOT NULL, videos_count INTEGER, followers_count INTEGER,
+          avatar_url TEXT, health_status TEXT, health_checked_at INTEGER, health_error TEXT,
+          channel_url TEXT, last_error TEXT, last_error_at INTEGER, last_error_source TEXT,
+          PRIMARY KEY(channel_id, instance_domain)
+        );
+        CREATE TABLE videos(
+          video_id TEXT NOT NULL, video_uuid TEXT, video_numeric_id INTEGER,
+          instance_domain TEXT NOT NULL, channel_id TEXT, channel_name TEXT, channel_url TEXT,
+          account_name TEXT, account_url TEXT, title TEXT, description TEXT, tags_json TEXT,
+          category TEXT, published_at INTEGER, video_url TEXT, duration INTEGER,
+          thumbnail_url TEXT, thumbnail_candidates_json TEXT,
+          thumbnail_width INTEGER, thumbnail_height INTEGER, embed_path TEXT,
+          views INTEGER, likes INTEGER, dislikes INTEGER, comments_count INTEGER, nsfw INTEGER,
+          preview_path TEXT, popularity REAL DEFAULT 0, last_checked_at INTEGER NOT NULL,
+          invalid_reason TEXT, invalid_at INTEGER,
+          PRIMARY KEY(video_id, instance_domain)
+        );
+        INSERT INTO videos(
+          video_id, instance_domain, thumbnail_url, thumbnail_candidates_json,
+          thumbnail_width, thumbnail_height, last_checked_at
+        ) VALUES(
+          'v1','example.org','https://example.org/a.jpg',
+          '[{"url":"https://example.org/a.jpg","width":850,"height":480},{"url":"https://example.org/b.jpg","width":280,"height":157}]',850,480,1
+        );
+        """
+    )
+
+    migrate_whitelist_schema(conn, "instances")
+
+    assert conn.execute(
+        "SELECT thumbnail_candidates_json, thumbnail_url, thumbnail_width, thumbnail_height "
+        "FROM videos WHERE video_id='v1'"
+    ).fetchone() == (
+        '[{"url":"https://example.org/a.jpg","width":850,"height":480},{"url":"https://example.org/b.jpg","width":280,"height":157}]',
+        "https://example.org/a.jpg",
+        850,
+        480,
+    )
+
+
+def test_whitelist_legacy_layout_rebuild_adds_missing_thumbnail_dimensions_as_null() -> None:
+    """Legacy sources without candidate mirror dimensions remain migratable."""
+    from engine.server.db.jobs.whitelist_migrations import migrate_videos_schema
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        """
+        CREATE TABLE videos(
+          video_id TEXT NOT NULL, video_uuid TEXT, video_numeric_id INTEGER,
+          instance_domain TEXT NOT NULL, channel_id TEXT, channel_name TEXT, channel_url TEXT,
+          account_name TEXT, account_url TEXT, title TEXT, description TEXT, tags_json TEXT,
+          category TEXT, published_at INTEGER, video_url TEXT, duration INTEGER,
+          thumbnail_url TEXT, thumbnail_candidates_json TEXT, embed_path TEXT,
+          views INTEGER, likes INTEGER, dislikes INTEGER, comments_count INTEGER, nsfw INTEGER,
+          preview_path TEXT, popularity REAL DEFAULT 0, last_checked_at INTEGER NOT NULL,
+          invalid_reason TEXT, invalid_at INTEGER,
+          PRIMARY KEY(video_id, instance_domain)
+        );
+        INSERT INTO videos(
+          video_id, instance_domain, thumbnail_url, thumbnail_candidates_json, last_checked_at
+        ) VALUES(
+          'v1','example.org','https://example.org/a.jpg',
+          '[{"url":"https://example.org/a.jpg","width":850,"height":480}]',1
+        );
+        """
+    )
+
+    migrate_videos_schema(conn)
+
+    assert conn.execute(
+        "SELECT thumbnail_candidates_json, thumbnail_url, thumbnail_width, thumbnail_height "
+        "FROM videos WHERE video_id='v1'"
+    ).fetchone() == (
+        '[{"url":"https://example.org/a.jpg","width":850,"height":480}]',
+        "https://example.org/a.jpg",
+        None,
+        None,
+    )
 
 
 def _load_sync_whitelist_module():
@@ -205,9 +301,15 @@ def test_full_sync_copies_crawler_metadata_into_production_superset(tmp_path) ->
                       'https://example.org/accounts/alice');
             INSERT INTO videos(
               video_id, video_uuid, instance_domain, channel_id, channel_name,
-              title, language, language_label, metadata_version, last_checked_at
-            ) VALUES ('v1', 'u1', 'example.org', 'c1', 'Music', 'Song',
-                      'en', 'English', 1, 1);
+              title, language, language_label, metadata_version,
+              thumbnail_candidates_json, thumbnail_width, thumbnail_height, last_checked_at
+            ) VALUES
+              ('v1', 'u1', 'example.org', 'c1', 'Music', 'Song',
+               'en', 'English', 1,
+               '[{"url":"https://example.org/large.jpg","width":850,"height":480},{"url":"https://example.org/small.jpg","width":280,"height":157}]',
+               850, 480, 1),
+              ('v-null', 'u-null', 'example.org', 'c1', 'Music', 'Pending',
+               'en', 'English', 1, NULL, NULL, NULL, 1);
             INSERT INTO video_embeddings
               VALUES ('v1', 'example.org', X'0102', 2, 'model', 'now');
             """
@@ -223,9 +325,10 @@ def test_full_sync_copies_crawler_metadata_into_production_superset(tmp_path) ->
         counts = mod.rebuild_content_tables(conn, {"example.org"})
         conn.commit()
 
-        assert counts == (1, 1, 1)
+        assert counts == (1, 2, 1)
         columns = _columns(conn, "videos")
         assert {"language", "metadata_version", "popularity"}.issubset(columns)
+        assert "thumbnail_candidates_json" in columns
         assert conn.execute(
             "SELECT language, language_label, metadata_version, popularity "
             "FROM videos WHERE video_id='v1'"
@@ -233,6 +336,23 @@ def test_full_sync_copies_crawler_metadata_into_production_superset(tmp_path) ->
         assert conn.execute(
             "SELECT owner_account_username, owner_account_url FROM channels WHERE channel_id='c1'"
         ).fetchone() == ("alice", "https://example.org/accounts/alice")
+        assert conn.execute(
+            "SELECT video_id, thumbnail_candidates_json, thumbnail_width, thumbnail_height "
+            "FROM videos ORDER BY video_id"
+        ).fetchall() == [
+            (
+                "v-null",
+                None,
+                None,
+                None,
+            ),
+            (
+                "v1",
+                '[{"url":"https://example.org/large.jpg","width":850,"height":480},{"url":"https://example.org/small.jpg","width":280,"height":157}]',
+                850,
+                480,
+            ),
+        ]
 
 
 def test_full_sync_content_schema_does_not_create_legacy_popularity_index() -> None:

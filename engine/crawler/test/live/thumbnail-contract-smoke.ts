@@ -12,7 +12,7 @@ import {
 const defaults = defaultLiveThumbnailSmokeOptions();
 const program = new Command();
 program
-  .description("Run live third-party PeerTube crawl and thumbnail requests")
+  .description("Run live third-party PeerTube crawl and REST thumbnail-candidate validation")
   .option("--registry-url <url>", "JoinPeerTube registry URL", defaults.registryUrl)
   .option("--required-hosts <n>", "Usable hosts required", String(defaults.requiredHosts))
   .option("--candidate-limit <n>", "Registry candidates to attempt", String(defaults.candidateLimit))
@@ -27,7 +27,7 @@ program
 program.parse(process.argv);
 const cli = program.opts();
 
-console.warn("[live-thumbnail-smoke] performs live third-party network requests and is not a deterministic test");
+console.warn("[live-thumbnail-smoke] performs live third-party REST requests and never probes thumbnail image assets");
 
 try {
   const reportPath = cli.report ? path.resolve(String(cli.report)) : null;

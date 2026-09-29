@@ -1,9 +1,9 @@
 /**
- * Orchestrate opt-in live thumbnail verification through the production crawler pipeline.
+ * Orchestrate opt-in live thumbnail candidate verification through production crawler stages.
  *
- * This module is intentionally separate from deterministic tests. It owns bounded live
- * orchestration, image probing, failure diagnostics, artifact cleanup, and structured
- * reporting while delegating all PeerTube persistence work to production crawler stages.
+ * The smoke validates persisted REST metadata only. It may fetch PeerTube video detail JSON
+ * to compare persisted candidates with the production normalizer, but it never probes image
+ * asset URLs. Broken remote images are intentionally a browser fallback concern.
  */
 
 import fs from "node:fs";
@@ -18,9 +18,7 @@ import {
   DEFAULT_JOINPEERTUBE_WHITELIST_URL,
   fetchInstanceRegistryHosts
 } from "./instance-registry.js";
-import { resolvePeerTubeMediaUrl, type PeerTubeVideoMediaLike } from "./video-media.js";
-
-const DEFAULT_BODY_CAP_BYTES = 64 * 1024;
+import { resolveThumbnailCandidates, type PeerTubeVideoMediaLike } from "./video-media.js";
 
 export interface LiveThumbnailSmokeOptions {
   registryUrl: string;
@@ -34,43 +32,26 @@ export interface LiveThumbnailSmokeOptions {
   fullInstance: boolean;
   keepArtifacts: boolean;
   reportPath: string | null;
-  bodyCapBytes?: number;
 }
-
-export interface ThumbnailProbeResult {
-  url: string;
-  valid: boolean;
-  status: number | null;
-  contentType: string | null;
-  finalUrl: string | null;
-  bytesRead: number;
-  error: string | null;
-}
-
-export type ThumbnailFailureClassification =
-  | "stored_thumbnail_stale_but_live_candidate_works"
-  | "all_live_candidates_invalid"
-  | "video_detail_unavailable"
-  | "media_fields_missing";
 
 export interface VideoThumbnailResult {
   host: string;
   videoUuid: string | null;
   videoId: string;
   thumbnailUrl: string | null;
-  previewPath: string | null;
-  probe: ThumbnailProbeResult;
-  classification: ThumbnailFailureClassification | null;
-  candidateProbes: ThumbnailProbeResult[];
-  detailError: string | null;
+  persistedState: string | null;
+  expectedUrls: string[] | null;
+  persistedUrls: string[] | null;
+  valid: boolean;
+  error: string | null;
 }
 
 export interface HostSmokeResult {
   host: string;
   accepted: boolean;
   videos: number;
-  validThumbnails: number;
-  invalidThumbnails: number;
+  validCandidateRows: number;
+  invalidCandidateRows: number;
   reason: string | null;
   artifactDir: string | null;
   videoResults: VideoThumbnailResult[];
@@ -88,8 +69,8 @@ export interface LiveThumbnailSmokeReport {
   selected_hosts: number;
   crawled_hosts: number;
   crawled_videos: number;
-  valid_thumbnails: number;
-  invalid_thumbnails: number;
+  valid_candidate_rows: number;
+  invalid_candidate_rows: number;
   artifact_root: string | null;
 }
 
@@ -98,7 +79,7 @@ interface PersistedVideoRow {
   video_uuid: string | null;
   instance_domain: string;
   thumbnail_url: string | null;
-  preview_path: string | null;
+  thumbnail_candidates_json: string | null;
 }
 
 export interface LiveThumbnailSmokeDependencies {
@@ -107,6 +88,7 @@ export interface LiveThumbnailSmokeDependencies {
   crawlChannelsStage: typeof crawlChannels;
   crawlCountsStage: typeof crawlChannelVideosCount;
   crawlVideosStage: typeof crawlVideos;
+  /** Used only for PeerTube detail JSON. Candidate asset URLs must never reach it. */
   fetchImpl: typeof fetch;
   makeTempDir: (prefix: string) => string;
   removeDir: (dir: string) => void;
@@ -123,7 +105,7 @@ const defaultDependencies: LiveThumbnailSmokeDependencies = {
   removeDir: (dir) => fs.rmSync(dir, { recursive: true, force: true })
 };
 
-/** Return the live runner defaults used by the CLI and documentation. */
+/** Return bounded defaults for the opt-in third-party live smoke. */
 export function defaultLiveThumbnailSmokeOptions(): LiveThumbnailSmokeOptions {
   return {
     registryUrl: DEFAULT_JOINPEERTUBE_WHITELIST_URL,
@@ -136,135 +118,11 @@ export function defaultLiveThumbnailSmokeOptions(): LiveThumbnailSmokeOptions {
     concurrency: 2,
     fullInstance: false,
     keepArtifacts: false,
-    reportPath: null,
-    bodyCapBytes: DEFAULT_BODY_CAP_BYTES
+    reportPath: null
   };
 }
 
-/** Probe an image URL with bounded GET semantics used by both stored and detail candidates. */
-export async function probeThumbnailUrl(
-  url: string,
-  options: { timeoutMs: number; bodyCapBytes?: number; fetchImpl?: typeof fetch }
-): Promise<ThumbnailProbeResult> {
-  const fetchImpl = options.fetchImpl ?? fetch;
-  const bodyCapBytes = options.bodyCapBytes ?? DEFAULT_BODY_CAP_BYTES;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
-
-  try {
-    const response = await fetchImpl(url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: { accept: "image/*,*/*;q=0.8" }
-    });
-    const contentType = response.headers.get("content-type");
-    const bytesRead = await readBoundedBody(response, bodyCapBytes);
-    const valid =
-      response.status >= 200 &&
-      response.status <= 299 &&
-      Boolean(contentType?.toLowerCase().startsWith("image/")) &&
-      bytesRead > 0;
-    return {
-      url,
-      valid,
-      status: response.status,
-      contentType,
-      finalUrl: response.url || url,
-      bytesRead,
-      error: valid ? null : describeInvalidResponse(response.status, contentType, bytesRead)
-    };
-  } catch (error) {
-    return {
-      url,
-      valid: false,
-      status: null,
-      contentType: null,
-      finalUrl: null,
-      bytesRead: 0,
-      error: error instanceof Error ? error.message : String(error)
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-/** Diagnose one failed stored URL against current PeerTube detail media fields. */
-export async function diagnoseFailedThumbnail(
-  row: PersistedVideoRow,
-  options: { timeoutMs: number; bodyCapBytes?: number; fetchImpl?: typeof fetch }
-): Promise<{
-  classification: ThumbnailFailureClassification;
-  candidateProbes: ThumbnailProbeResult[];
-  detailError: string | null;
-}> {
-  const fetchImpl = options.fetchImpl ?? fetch;
-  if (!row.video_uuid) {
-    return { classification: "video_detail_unavailable", candidateProbes: [], detailError: "missing video_uuid" };
-  }
-
-  const detailUrl = `https://${row.instance_domain}/api/v1/videos/${encodeURIComponent(row.video_uuid)}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
-  let detail: PeerTubeVideoMediaLike;
-  try {
-    const response = await fetchImpl(detailUrl, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: { accept: "application/json" }
-    });
-    if (!response.ok) {
-      return {
-        classification: "video_detail_unavailable",
-        candidateProbes: [],
-        detailError: `HTTP ${response.status} for ${detailUrl}`
-      };
-    }
-    detail = (await response.json()) as PeerTubeVideoMediaLike;
-  } catch (error) {
-    return {
-      classification: "video_detail_unavailable",
-      candidateProbes: [],
-      detailError: error instanceof Error ? error.message : String(error)
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  const rawCandidates = [
-    detail.thumbnailPath,
-    detail.thumbnailUrl,
-    detail.previewPath,
-    detail.previewUrl,
-    detail.thumbnail,
-    detail.thumbnail_path,
-    detail.preview_path
-  ];
-  const candidates: string[] = [];
-  const seen = new Set<string>();
-  for (const raw of rawCandidates) {
-    const resolved = resolvePeerTubeMediaUrl(raw, row.instance_domain, "https:");
-    if (!resolved || seen.has(resolved)) continue;
-    seen.add(resolved);
-    candidates.push(resolved);
-  }
-  if (candidates.length === 0) {
-    return { classification: "media_fields_missing", candidateProbes: [], detailError: null };
-  }
-
-  const candidateProbes: ThumbnailProbeResult[] = [];
-  for (const candidate of candidates) {
-    candidateProbes.push(await probeThumbnailUrl(candidate, options));
-  }
-  return {
-    classification: candidateProbes.some((probe) => probe.valid)
-      ? "stored_thumbnail_stale_but_live_candidate_works"
-      : "all_live_candidates_invalid",
-    candidateProbes,
-    detailError: null
-  };
-}
-
-/** Run the bounded live crawl and validate every video persisted by accepted hosts. */
+/** Run bounded production crawler stages and validate persisted candidate metadata. */
 export async function runLiveThumbnailSmoke(
   options: LiveThumbnailSmokeOptions,
   dependencies: Partial<LiveThumbnailSmokeDependencies> = {}
@@ -300,13 +158,13 @@ export async function runLiveThumbnailSmoke(
           result = rejectedHost(host, "crawler persisted no videos", options.keepArtifacts ? hostDir : null);
         } else {
           const videoResults = await validateRows(rows, options, deps.fetchImpl);
-          const invalid = videoResults.filter((item) => !item.probe.valid).length;
+          const invalid = videoResults.filter((item) => !item.valid).length;
           result = {
             host,
             accepted: true,
             videos: rows.length,
-            validThumbnails: rows.length - invalid,
-            invalidThumbnails: invalid,
+            validCandidateRows: rows.length - invalid,
+            invalidCandidateRows: invalid,
             reason: null,
             artifactDir: options.keepArtifacts ? hostDir : null,
             videoResults
@@ -324,7 +182,14 @@ export async function runLiveThumbnailSmoke(
       if (!options.keepArtifacts) deps.removeDir(hostDir);
     }
 
-    const report = buildReport(startedAt, options, attempted, accepted, rejected, options.keepArtifacts ? artifactRoot : null);
+    const report = buildReport(
+      startedAt,
+      options,
+      attempted,
+      accepted,
+      rejected,
+      options.keepArtifacts ? artifactRoot : null
+    );
     if (options.reportPath) {
       fs.mkdirSync(path.dirname(options.reportPath), { recursive: true });
       fs.writeFileSync(options.reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
@@ -335,7 +200,7 @@ export async function runLiveThumbnailSmoke(
   }
 }
 
-/** Render a concise human-readable report with host and failure details. */
+/** Render one candidate-oriented summary without implying remote image health. */
 export function summarizeLiveThumbnailSmoke(report: LiveThumbnailSmokeReport): string {
   const lines = [
     `started_at=${report.started_at}`,
@@ -343,14 +208,16 @@ export function summarizeLiveThumbnailSmoke(report: LiveThumbnailSmokeReport): s
     `selected_hosts=${report.selected_hosts}`,
     `crawled_hosts=${report.crawled_hosts}`,
     `crawled_videos=${report.crawled_videos}`,
-    `valid_thumbnails=${report.valid_thumbnails}`,
-    `invalid_thumbnails=${report.invalid_thumbnails}`
+    `valid_candidate_rows=${report.valid_candidate_rows}`,
+    `invalid_candidate_rows=${report.invalid_candidate_rows}`
   ];
   for (const host of report.accepted_hosts) {
-    lines.push(`accepted host=${host.host} videos=${host.videos} valid=${host.validThumbnails} invalid=${host.invalidThumbnails}`);
-    for (const video of host.videoResults.filter((item) => !item.probe.valid)) {
+    lines.push(
+      `accepted host=${host.host} videos=${host.videos} valid_candidates=${host.validCandidateRows} invalid_candidates=${host.invalidCandidateRows}`
+    );
+    for (const video of host.videoResults.filter((item) => !item.valid)) {
       lines.push(
-        `invalid host=${video.host} video_uuid=${video.videoUuid ?? "null"} video_id=${video.videoId} status=${video.probe.status ?? "null"} content_type=${video.probe.contentType ?? "null"} final_url=${video.probe.finalUrl ?? "null"} classification=${video.classification ?? "null"} error=${video.probe.error ?? "unknown"}`
+        `invalid host=${video.host} video_uuid=${video.videoUuid ?? "null"} video_id=${video.videoId} error=${video.error ?? "unknown"}`
       );
     }
   }
@@ -360,19 +227,21 @@ export function summarizeLiveThumbnailSmoke(report: LiveThumbnailSmokeReport): s
   return lines.join("\n");
 }
 
-/** Enforce all live-smoke acceptance criteria with one controlled error. */
+/** Enforce live-smoke candidate-persistence acceptance criteria. */
 export function assertLiveThumbnailSmoke(report: LiveThumbnailSmokeReport): void {
   const requiredHosts = Number(report.options.required_hosts ?? 0);
   if (report.selected_hosts < requiredHosts) {
     throw new Error(`insufficient usable hosts: selected=${report.selected_hosts} required=${requiredHosts}`);
   }
   if (report.crawled_videos <= 0) throw new Error("live thumbnail smoke crawled zero videos");
-  if (report.invalid_thumbnails > 0) {
-    throw new Error(`live thumbnail smoke found ${report.invalid_thumbnails} invalid thumbnails`);
+  if (report.invalid_candidate_rows > 0) {
+    throw new Error(
+      `live thumbnail smoke found ${report.invalid_candidate_rows} candidate persistence mismatches`
+    );
   }
 }
 
-/** Execute the exact production crawler stages against one isolated candidate DB. */
+/** Execute the existing production crawler stages against one isolated candidate DB. */
 async function runCandidateCrawler(
   host: string,
   dbPath: string,
@@ -444,50 +313,124 @@ async function runCandidateCrawler(
     updateTags: false,
     commentsOnly: false,
     refreshThumbnails: false,
+    metadataOnly: false,
+    updateMetadata: false,
+    onlyHealthyHosts: false,
     hostDelayMs: 0
   });
   void host;
 }
 
-/** Validate all persisted rows and attach live-detail diagnostics to each failure. */
+/** Compare persisted candidate state with a fresh REST detail normalization only. */
 async function validateRows(
   rows: PersistedVideoRow[],
   options: LiveThumbnailSmokeOptions,
   fetchImpl: typeof fetch
 ): Promise<VideoThumbnailResult[]> {
   return mapWithConcurrency(rows, Math.max(1, options.concurrency), async (row) => {
-    const url = normalizeAbsoluteHttpUrl(row.thumbnail_url);
-    const probe = url
-      ? await probeThumbnailUrl(url, { timeoutMs: options.timeoutMs, bodyCapBytes: options.bodyCapBytes, fetchImpl })
-      : missingUrlProbe(row.thumbnail_url);
-    let classification: ThumbnailFailureClassification | null = null;
-    let candidateProbes: ThumbnailProbeResult[] = [];
-    let detailError: string | null = null;
-    if (!probe.valid) {
-      const diagnostic = await diagnoseFailedThumbnail(row, {
-        timeoutMs: options.timeoutMs,
-        bodyCapBytes: options.bodyCapBytes,
-        fetchImpl
-      });
-      classification = diagnostic.classification;
-      candidateProbes = diagnostic.candidateProbes;
-      detailError = diagnostic.detailError;
+    if (!row.video_uuid) {
+      return invalidResult(row, null, null, "missing video_uuid");
     }
+    const detailUrl = `https://${row.instance_domain}/api/v1/videos/${encodeURIComponent(row.video_uuid)}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
+    let detail: PeerTubeVideoMediaLike;
+    try {
+      const response = await fetchImpl(detailUrl, {
+        redirect: "follow",
+        signal: controller.signal,
+        headers: { accept: "application/json" }
+      });
+      if (!response.ok) {
+        return invalidResult(row, null, null, `HTTP ${response.status} for ${detailUrl}`);
+      }
+      detail = (await response.json()) as PeerTubeVideoMediaLike;
+    } catch (error) {
+      return invalidResult(row, null, null, error instanceof Error ? error.message : String(error));
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const expectedCandidates = resolveThumbnailCandidates(detail.thumbnails, row.instance_domain, "https:");
+    if (expectedCandidates === null) {
+      const valid = row.thumbnail_candidates_json === null;
+      return {
+        ...baseResult(row),
+        expectedUrls: null,
+        persistedUrls: null,
+        valid,
+        error: valid ? null : "legacy detail must preserve SQL NULL candidate state"
+      };
+    }
+
+    const expectedUrls = expectedCandidates.map((candidate) => candidate.url);
+    const persisted = parseStoredCandidateArray(row.thumbnail_candidates_json);
+    if (!persisted.ok) {
+      return invalidResult(row, expectedUrls, null, persisted.error);
+    }
+    const mirror = expectedCandidates[0]?.url ?? null;
+    const valid = arraysEqual(persisted.urls, expectedUrls) && row.thumbnail_url === mirror;
     return {
-      host: row.instance_domain,
-      videoUuid: row.video_uuid,
-      videoId: row.video_id,
-      thumbnailUrl: row.thumbnail_url,
-      previewPath: row.preview_path,
-      probe,
-      classification,
-      candidateProbes,
-      detailError
+      ...baseResult(row),
+      expectedUrls,
+      persistedUrls: persisted.urls,
+      valid,
+      error: valid ? null : "persisted candidate order or primary mirror differs from REST normalization"
     };
   });
 }
 
-/** Apply bounded concurrency without changing source ordering in the returned report. */
+/** Decode the authoritative candidate-object storage shape into ordered URLs. */
+function parseStoredCandidateArray(value: string | null):
+  | { ok: true; urls: string[] }
+  | { ok: false; error: string } {
+  if (value === null) return { ok: false, error: "candidate state is SQL NULL after successful modern detail" };
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) {
+      return { ok: false, error: "candidate storage is not a JSON array" };
+    }
+    const urls: string[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== "object" || typeof (item as { url?: unknown }).url !== "string") {
+        return { ok: false, error: "candidate storage contains a non-candidate member" };
+      }
+      urls.push((item as { url: string }).url);
+    }
+    return { ok: true, urls };
+  } catch {
+    return { ok: false, error: "candidate storage is malformed JSON" };
+  }
+}
+
+/** Build common per-row reporting fields without exposing raw crawler internals. */
+function baseResult(row: PersistedVideoRow) {
+  return {
+    host: row.instance_domain,
+    videoUuid: row.video_uuid,
+    videoId: row.video_id,
+    thumbnailUrl: row.thumbnail_url,
+    persistedState: row.thumbnail_candidates_json
+  };
+}
+
+/** Build a controlled invalid-row result for detail/storage failures. */
+function invalidResult(
+  row: PersistedVideoRow,
+  expectedUrls: string[] | null,
+  persistedUrls: string[] | null,
+  error: string
+): VideoThumbnailResult {
+  return {
+    ...baseResult(row),
+    expectedUrls,
+    persistedUrls,
+    valid: false,
+    error
+  };
+}
+
+/** Apply bounded concurrency without changing source ordering in the report. */
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
@@ -495,24 +438,27 @@ async function mapWithConcurrency<T, R>(
 ): Promise<R[]> {
   const results = new Array<R>(items.length);
   let nextIndex = 0;
-  const workers = Array.from({ length: Math.min(concurrency, Math.max(1, items.length)) }, async () => {
-    while (true) {
-      const index = nextIndex;
-      nextIndex += 1;
-      if (index >= items.length) return;
-      results[index] = await mapper(items[index]);
+  const workers = Array.from(
+    { length: Math.min(concurrency, Math.max(1, items.length)) },
+    async () => {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= items.length) return;
+        results[index] = await mapper(items[index]);
+      }
     }
-  });
+  );
   await Promise.all(workers);
   return results;
 }
 
-/** Read only the persisted media fields required by the smoke contract. */
+/** Read only candidate-state fields needed by the smoke. */
 function readPersistedVideos(dbPath: string, host: string): PersistedVideoRow[] {
   const db = new Database(dbPath, { readonly: true });
   try {
     return db.prepare(
-      `SELECT video_id, video_uuid, instance_domain, thumbnail_url, preview_path
+      `SELECT video_id, video_uuid, instance_domain, thumbnail_url, thumbnail_candidates_json
        FROM videos
        WHERE instance_domain = ?
        ORDER BY video_id ASC`
@@ -522,74 +468,26 @@ function readPersistedVideos(dbPath: string, host: string): PersistedVideoRow[] 
   }
 }
 
-/** Read at most the configured byte cap and cancel the remaining response body. */
-async function readBoundedBody(response: Response, cap: number): Promise<number> {
-  if (!response.body) return 0;
-  const reader = response.body.getReader();
-  let total = 0;
-  try {
-    while (total < cap) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += Math.min(value.byteLength, cap - total);
-      if (total >= cap) {
-        await reader.cancel("thumbnail probe byte cap reached");
-        break;
-      }
-    }
-    return total;
-  } finally {
-    reader.releaseLock();
-  }
+/** Compare two ordered candidate lists exactly. */
+function arraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
-/** Reject blank, relative, and non-HTTP stored thumbnail values before network I/O. */
-function normalizeAbsoluteHttpUrl(value: string | null): string | null {
-  if (!value?.trim()) return null;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Represent a missing or malformed stored URL in the same structured probe model. */
-function missingUrlProbe(value: string | null): ThumbnailProbeResult {
-  return {
-    url: value ?? "",
-    valid: false,
-    status: null,
-    contentType: null,
-    finalUrl: null,
-    bytesRead: 0,
-    error: value?.trim() ? "thumbnail_url is not an absolute HTTP URL" : "thumbnail_url is empty"
-  };
-}
-
-/** Produce a stable reason for status, media type, or empty-body contract failures. */
-function describeInvalidResponse(status: number, contentType: string | null, bytesRead: number): string {
-  if (status < 200 || status > 299) return `HTTP ${status}`;
-  if (!contentType?.toLowerCase().startsWith("image/")) return `unexpected content-type ${contentType ?? "missing"}`;
-  if (bytesRead <= 0) return "empty response body";
-  return "invalid image response";
-}
-
-/** Build one rejected-host result without leaking partial candidate state. */
+/** Build one rejected-host result without partial candidate state. */
 function rejectedHost(host: string, reason: string, artifactDir: string | null): HostSmokeResult {
   return {
     host,
     accepted: false,
     videos: 0,
-    validThumbnails: 0,
-    invalidThumbnails: 0,
+    validCandidateRows: 0,
+    invalidCandidateRows: 0,
     reason,
     artifactDir,
     videoResults: []
   };
 }
 
-/** Aggregate stable summary counts and a flat failure list from per-host results. */
+/** Aggregate candidate-oriented counts and failure rows. */
 function buildReport(
   startedAt: string,
   options: LiveThumbnailSmokeOptions,
@@ -599,8 +497,8 @@ function buildReport(
   artifactRoot: string | null
 ): LiveThumbnailSmokeReport {
   const crawledVideos = accepted.reduce((sum, host) => sum + host.videos, 0);
-  const valid = accepted.reduce((sum, host) => sum + host.validThumbnails, 0);
-  const invalid = accepted.reduce((sum, host) => sum + host.invalidThumbnails, 0);
+  const valid = accepted.reduce((sum, host) => sum + host.validCandidateRows, 0);
+  const invalid = accepted.reduce((sum, host) => sum + host.invalidCandidateRows, 0);
   return {
     started_at: startedAt,
     finished_at: new Date().toISOString(),
@@ -620,17 +518,17 @@ function buildReport(
     attempted_hosts: attempted,
     accepted_hosts: accepted,
     rejected_hosts: rejected,
-    failures: accepted.flatMap((host) => host.videoResults.filter((item) => !item.probe.valid)),
+    failures: accepted.flatMap((host) => host.videoResults.filter((item) => !item.valid)),
     selected_hosts: accepted.length,
     crawled_hosts: accepted.length,
     crawled_videos: crawledVideos,
-    valid_thumbnails: valid,
-    invalid_thumbnails: invalid,
+    valid_candidate_rows: valid,
+    invalid_candidate_rows: invalid,
     artifact_root: artifactRoot
   };
 }
 
-/** Convert a registry host into a filesystem-safe isolated artifact directory name. */
+/** Convert a registry host into a filesystem-safe artifact directory name. */
 function sanitizeHost(host: string): string {
   return host.replace(/[^a-z0-9.-]+/gi, "_");
 }

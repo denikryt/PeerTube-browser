@@ -37,7 +37,7 @@ from data.prepared_discovery import (
     invalidate_prepared_discovery,
     rebuild_prepared_discovery,
 )
-from whitelist_migrations import add_metadata_v1_columns
+from whitelist_migrations import add_metadata_v1_columns, add_thumbnail_candidate_columns
 
 DEFAULT_URL = (
     "https://instances.joinpeertube.org/api/v1/instances/hosts?count=5000&healthy=true"
@@ -324,6 +324,7 @@ def ensure_content_schema(conn: sqlite3.Connection) -> None:
     # Keep fresh production bootstrap on the same additive metadata contract
     # as the in-place whitelist migration.
     add_metadata_v1_columns(conn)
+    add_thumbnail_candidate_columns(conn)
 
 
 def sync_hosts(conn: sqlite3.Connection, hosts: set[str]) -> tuple[int, int]:

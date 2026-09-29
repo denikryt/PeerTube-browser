@@ -362,6 +362,26 @@ def test_production_schema_preflight_requires_all_crawler_owned_columns(tmp_path
         assert_production_schema_compatible(prod, schema_path)
 
 
+def test_production_schema_preflight_rejects_missing_thumbnail_candidate_column(tmp_path) -> None:
+    """The new crawler-owned thumbnail column is a required production schema boundary."""
+    from engine.server.db.jobs.updater.staging import assert_production_schema_compatible
+
+    schema_path = Path(__file__).resolve().parents[2] / "engine/crawler/schema.sql"
+    prod = tmp_path / "prod-before-thumbnail-candidates.db"
+    schema_sql = schema_path.read_text(encoding="utf-8")
+    legacy_schema_sql = schema_sql.replace("  thumbnail_candidates_json TEXT,\n", "")
+    assert legacy_schema_sql != schema_sql
+    with sqlite3.connect(prod) as conn:
+        conn.executescript(legacy_schema_sql)
+        conn.commit()
+
+    with __import__("pytest").raises(
+        RuntimeError,
+        match=r"videos missing columns: thumbnail_candidates_json.*migrate-whitelist|migrate-whitelist.*thumbnail_candidates_json",
+    ):
+        assert_production_schema_compatible(prod, schema_path)
+
+
 def test_production_schema_preflight_allows_engine_owned_extra_columns(tmp_path) -> None:
     """Crawler-owned schema is a subset contract; production-only columns are valid."""
     from engine.server.db.jobs.updater.staging import assert_production_schema_compatible

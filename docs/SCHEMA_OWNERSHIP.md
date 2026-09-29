@@ -157,6 +157,18 @@ Compatibility decisions:
 docs/CRAWLER_COMPATIBILITY.md
 ```
 
+
+Thumbnail candidate ownership:
+
+```text
+videos.thumbnail_candidates_json is crawler-owned TEXT state.
+SQL NULL = legacy/unknown/unavailable candidate state; absent/null/non-array REST `thumbnails` does not publish authoritative candidate JSON.
+JSON arrays = authoritative ordered candidate objects with `url`, `width`, and `height`.
+thumbnail_url/thumbnail_width/thumbnail_height mirror candidate 0 only for authoritative arrays; legacy states may keep the singular compatibility thumbnail.
+```
+
+The TypeScript crawler schema and `migrate-whitelist.py` own additive migration of this field. Fresh `sync-whitelist.py` outputs call the same shared thumbnail-column helper before schema compatibility/copy so current crawler columns are present without duplicating a second column list.
+
 ## Engine main dataset DB
 
 Owner:

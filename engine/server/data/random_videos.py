@@ -13,6 +13,7 @@ from data.metadata import fetch_metadata_by_index_ids
 from data.random_cache import fetch_random_index_ids
 from data.serving_moderation import ServingVisibility, build_serving_visibility_sql
 from data.video_filters import VideoFilters, build_video_filter_sql
+from data.video_thumbnails import apply_thumbnail_api_fields
 
 # Fresh/Trending read canonical videos directly; legacy embedding-backed helpers
 # retain the embedding columns in their projection where they still need them.
@@ -39,6 +40,7 @@ _VIDEO_BASE_SELECT = """
   v.video_url,
   v.duration,
   v.thumbnail_url,
+  v.thumbnail_candidates_json,
   v.embed_path,
   v.views,
   v.likes,
@@ -75,6 +77,7 @@ _ROW_FIELDS = (
     "video_url",
     "duration",
     "thumbnail_url",
+    "thumbnail_candidates_json",
     "embed_path",
     "views",
     "likes",
@@ -102,8 +105,9 @@ POPULAR_ORDER = (
 
 
 def _row_dict(row: sqlite3.Row) -> dict[str, Any]:
-    """Project one SQLite row to the canonical runtime metadata dictionary."""
-    return {field: row[field] for field in _ROW_FIELDS if field in row.keys()}
+    """Project one SQLite row and publish the shared Engine thumbnail contract."""
+    projected = {field: row[field] for field in _ROW_FIELDS if field in row.keys()}
+    return apply_thumbnail_api_fields(projected)
 
 
 def _build_seek_predicate(

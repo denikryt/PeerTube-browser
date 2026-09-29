@@ -69,6 +69,7 @@ def _conn() -> _RecordingConnection:
         ) WITHOUT ROWID;
         """
     )
+    conn.execute("ALTER TABLE videos ADD COLUMN thumbnail_candidates_json TEXT")
     apply_main_read_indexes(conn)
     conn.executemany(
         """
