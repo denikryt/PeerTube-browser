@@ -63,6 +63,7 @@ const sources = computed(() => orderedSources(props.candidates ? [...props.candi
 // state variable owns the entire remote-candidate -> local-default sequence.
 const index = ref(0);
 const currentSrc = ref(DEFAULT_THUMBNAIL_URL);
+const isThumbnailLoading = ref(false);
 let sourceTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 let sourceGeneration = 0;
 
@@ -76,9 +77,11 @@ function requestCurrentSource() {
   }
   const source = sources.value[index.value];
   if (!source) {
+    isThumbnailLoading.value = false;
     currentSrc.value = DEFAULT_THUMBNAIL_URL;
     return;
   }
+  isThumbnailLoading.value = true;
   const delay = reserveThumbnailRequestStart(source);
   if (delay === 0) {
     currentSrc.value = source;
@@ -92,10 +95,18 @@ function requestCurrentSource() {
   }, delay);
 }
 
+/** Reveal the remote image only after the browser has fully loaded it. */
+function onLoad() {
+  if (currentSrc.value !== DEFAULT_THUMBNAIL_URL) isThumbnailLoading.value = false;
+}
+
 /** Advance only after the currently rendered remote source fails. */
 function onError() {
   // A missing local default is terminal; never turn its error into a retry loop.
-  if (currentSrc.value === DEFAULT_THUMBNAIL_URL) return;
+  if (currentSrc.value === DEFAULT_THUMBNAIL_URL) {
+    isThumbnailLoading.value = false;
+    return;
+  }
   if (index.value < sources.value.length) {
     index.value += 1;
     requestCurrentSource();
@@ -116,10 +127,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <span v-if="isThumbnailLoading" class="thumbnail-skeleton" aria-hidden="true"></span>
   <img
     :src="currentSrc"
     :alt="alt"
+    :class="{ 'thumbnail-image--loading': isThumbnailLoading }"
     loading="lazy"
+    @load="onLoad"
     @error="onError"
   />
 </template>

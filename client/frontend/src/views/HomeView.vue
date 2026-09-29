@@ -11,6 +11,7 @@ import {
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import VideoCard from "../components/VideoCard.vue";
+import VideoCardSkeleton from "../components/VideoCardSkeleton.vue";
 import VideoFilterControls from "../components/VideoFilterControls.vue";
 import StatusBlock from "../components/StatusBlock.vue";
 import { useFeed } from "../composables/useFeed";
@@ -139,7 +140,9 @@ onUnmounted(() => {
       </details>
     </section>
 
-    <StatusBlock v-if="state.initialLoading" kind="loading" message="Loading..." />
+    <section v-if="state.initialLoading" class="cards-grid cards-grid-skeleton" aria-busy="true" aria-label="Loading videos">
+      <VideoCardSkeleton v-for="index in 8" :key="index" />
+    </section>
     <div v-else-if="state.error" class="continuation-error">
       <StatusBlock kind="error" :message="state.error" />
       <button class="ghost-button" type="button" @click="retrySelection">Retry</button>
@@ -157,7 +160,9 @@ onUnmounted(() => {
       <span>{{ state.nextPageError }}</span>
       <button class="ghost-button" type="button" @click="retryNextPage">Retry</button>
     </div>
-    <div v-if="state.loadingMore" class="loading">Loading more…</div>
+    <section v-if="state.loadingMore" class="cards-grid cards-grid-skeleton" aria-busy="true" aria-label="Loading more videos">
+      <VideoCardSkeleton v-for="index in 4" :key="index" />
+    </section>
     <div v-if="canLoadMore && !state.nextPageError" ref="sentinel" class="feed-sentinel" aria-hidden="true"></div>
 
     <div v-if="profileOpen" class="modal">

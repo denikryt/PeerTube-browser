@@ -14,11 +14,22 @@ const similarVideoCard = readFileSync(
   join(process.cwd(), "src", "components", "SimilarVideoCard.vue"),
   "utf8"
 );
+const videoCardSkeleton = readFileSync(join(process.cwd(), "src", "components", "VideoCardSkeleton.vue"), "utf8");
 const homeView = readFileSync(join(process.cwd(), "src", "views", "HomeView.vue"), "utf8");
 const searchView = readFileSync(join(process.cwd(), "src", "views", "SearchView.vue"), "utf8");
 const videosCss = readFileSync(join(process.cwd(), "src", "videos.css"), "utf8");
 
 describe("Vue feed/search video card contract", () => {
+  it("uses card-shaped skeletons while feed or search video metadata is loading", () => {
+    expect(videoCardSkeleton).toContain('class="video-card-skeleton"');
+    expect(videoCardSkeleton).toContain('class="video-card-skeleton-thumb"');
+    expect(videoCardSkeleton).toContain('class="video-card-skeleton-avatar"');
+    expect(homeView).toContain('import VideoCardSkeleton from "../components/VideoCardSkeleton.vue"');
+    expect(homeView).toContain('<VideoCardSkeleton v-for="index in 8" :key="index" />');
+    expect(searchView).toContain('import VideoCardSkeleton from "../components/VideoCardSkeleton.vue"');
+    expect(searchView).toContain('<VideoCardSkeleton v-for="index in 8" :key="index" />');
+  });
+
   it("uses one shared component from both Home and Search", () => {
     expect(homeView).toContain('import VideoCard from "../components/VideoCard.vue"');
     expect(searchView).toContain('import VideoCard from "../components/VideoCard.vue"');

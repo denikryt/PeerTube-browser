@@ -62,6 +62,17 @@ afterEach(() => {
 });
 
 describe("VideoThumbnail", () => {
+  it("keeps the thumbnail skeleton visible until the selected remote image loads", async () => {
+    const { root } = mountCandidates([
+      { url: "https://img.example/medium.jpg", width: 850, height: 480 },
+    ]);
+
+    expect(root.querySelector(".thumbnail-skeleton")).not.toBeNull();
+    image(root).dispatchEvent(new Event("load"));
+    await nextTick();
+    expect(root.querySelector(".thumbnail-skeleton")).toBeNull();
+  });
+
   it("spaces initial image requests to the same host by 500 milliseconds", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-29T12:00:00Z"));

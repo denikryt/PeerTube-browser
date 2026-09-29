@@ -124,6 +124,8 @@ Crawler persistence contains legacy/backfill state that must not leak into Vue c
 Implementation action:
 `VideoThumbnail.vue` renders exactly one `src` at a time. From candidates with known dimensions it selects the smallest image at least `500×300`; if none qualifies it begins with the crawler's first (largest-known) candidate. It starts remote thumbnail requests for one origin at least 500 ms apart, showing the local default while a later same-host slot waits. On an image `error`, it advances through every other candidate in crawler order under that same host spacing and finally uses `/default-video-thumbnail.svg`. Feed/profile cards and similar-video cards reuse this component; they do not probe or prefetch alternative images themselves.
 
+Initial Home/Search metadata loads render eight `VideoCardSkeleton` placeholders with the same thumbnail/avatar/text geometry as a card; page continuation appends four more. A remote thumbnail keeps its matching thumbnail skeleton visible until the browser emits `load`, including while a same-host request waits for its 500 ms slot. This reserves layout and avoids presenting a completed-looking card before its image is ready.
+
 Tests:
 `client/frontend/test/components/video-thumbnail.test.ts`, Client video-row normalization tests, and the frontend Client-gateway boundary check.
 

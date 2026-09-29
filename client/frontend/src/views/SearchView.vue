@@ -5,6 +5,7 @@ import { useRoute, useRouter } from "vue-router";
 import ChannelResultRow from "../components/ChannelResultRow.vue";
 import StatusBlock from "../components/StatusBlock.vue";
 import VideoCard from "../components/VideoCard.vue";
+import VideoCardSkeleton from "../components/VideoCardSkeleton.vue";
 import VideoFilterControls from "../components/VideoFilterControls.vue";
 import { useSearch } from "../composables/useSearch";
 import { parseVideoFilterQuery, searchSelectionKey, serializeVideoFilters } from "../state/video-filters";
@@ -90,7 +91,9 @@ watch(
       <div class="search-results-heading">Search results for “{{ state.q }}”</div>
       <section class="search-section">
         <h2>Videos</h2>
-        <StatusBlock v-if="state.loadingVideos" message="Searching videos..." />
+        <div v-if="state.loadingVideos" class="cards-grid cards-grid-skeleton" aria-busy="true" aria-label="Searching videos">
+          <VideoCardSkeleton v-for="index in 8" :key="index" />
+        </div>
         <StatusBlock v-else-if="state.videoError" kind="error" :message="state.videoError" />
         <StatusBlock v-else-if="state.videos.length === 0" kind="empty" message="No videos found" />
         <div v-else class="cards-grid">
@@ -100,7 +103,9 @@ watch(
           <span>{{ state.nextPageError }}</span>
           <button class="ghost-button" type="button" @click="retryNextPage">Retry</button>
         </div>
-        <div v-if="state.loadingMore" class="loading">Loading more videos…</div>
+        <div v-if="state.loadingMore" class="cards-grid cards-grid-skeleton" aria-busy="true" aria-label="Loading more videos">
+          <VideoCardSkeleton v-for="index in 4" :key="index" />
+        </div>
         <div v-if="canLoadMore && !state.nextPageError" ref="sentinel" class="feed-sentinel" aria-hidden="true"></div>
       </section>
       <section class="search-section">
