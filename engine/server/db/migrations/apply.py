@@ -1,6 +1,6 @@
 """Apply Engine current-shape SQLite migration resources.
 
-Stage 6 centralizes SQL resources while preserving the existing runtime
+The schema-ownership cleanup centralizes SQL resources while preserving the existing runtime
 `ensure_*` wrappers. The helpers here intentionally do not create a migration
 history table because current callers expect idempotent schema creation rather
 than ordered historical migration state.

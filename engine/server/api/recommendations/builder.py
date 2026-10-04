@@ -86,7 +86,7 @@ def build_recommendation_strategy(
     Output:
     - MixingRecommendationStrategy configured with exploit/explore/fresh generators.
     """
-    # Stage 5 validates the checked-in/raw dictionary before strategy wiring,
+    # recommendation pipeline cleanup validates the checked-in/raw dictionary before strategy wiring,
     # but still passes that raw dictionary into the mixer to preserve existing
     # fallback and lookup semantics during execution.
     validate_recommendation_config(config)

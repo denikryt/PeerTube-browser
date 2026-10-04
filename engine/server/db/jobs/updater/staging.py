@@ -9,8 +9,13 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
-from urllib.parse import urlparse
+from contextlib import closing
 from pathlib import Path
+from urllib.parse import urlparse
+
+
+AVAILABILITY_SEMANTICS_KEY = "video_availability_semantics"
+AVAILABILITY_SEMANTICS_VALUE = "canonical_absence_v1"
 
 
 def remove_db_with_sidecars(db_path: Path) -> None:
@@ -23,19 +28,58 @@ def remove_db_with_sidecars(db_path: Path) -> None:
 
 
 def init_staging_db(staging_db: Path, schema_path: Path) -> None:
-    """Recreate staging DB from crawler schema and ensure crawl_state exists."""
+    """Recreate DB/sidecars and stamp fresh staging with current availability semantics before returning.
+
+    Successful initialization commits the marker; both success and failure close
+    the connection. No legacy staging is upgraded in place.
+    """
 
     remove_db_with_sidecars(staging_db)
     staging_db.parent.mkdir(parents=True, exist_ok=True)
     schema_sql = schema_path.read_text(encoding="utf-8")
-    with sqlite3.connect(staging_db) as conn:
+    with closing(sqlite3.connect(staging_db)) as conn, conn:
         conn.executescript(schema_sql)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS crawl_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
+        conn.execute(
+            "INSERT OR REPLACE INTO crawl_state(key, value) VALUES (?, ?)",
+            (AVAILABILITY_SEMANTICS_KEY, AVAILABILITY_SEMANTICS_VALUE),
+        )
         conn.commit()
 
 
+def assert_video_availability_staging_semantics_conn(conn: sqlite3.Connection, schema: str) -> None:
+    """Authorize only exact current availability-semantics evidence from the DB generation being consumed.
+
+    Merge passes its already attached stage within its transaction; pathname
+    validation is a fail-fast wrapper only. Legacy staging is never converted.
+    """
+    if schema not in {"main", "stage"}:
+        raise ValueError("Unsupported staging semantics schema")
+    error = "Unsupported legacy staging: recreate staging without --resume-staging/--retry-errors."
+    try:
+        row = conn.execute(
+            f"SELECT value FROM {schema}.crawl_state WHERE key = ?",
+            (AVAILABILITY_SEMANTICS_KEY,),
+        ).fetchone()
+    except sqlite3.OperationalError as exc:
+        # Only absence of the store is legacy evidence; unrelated I/O/lock
+        # failures retain their real SQLite diagnostic rather than being guessed.
+        if "no such table" not in str(exc):
+            raise
+        raise RuntimeError(error) from exc
+    if row is None or row[0] != AVAILABILITY_SEMANTICS_VALUE:
+        raise RuntimeError(error)
+
+
+def assert_video_availability_staging_semantics(staging_db: Path) -> None:
+    """Fail fast on legacy resume via a read-only path, without authorizing merge."""
+    conn = sqlite3.connect(staging_db.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        assert_video_availability_staging_semantics_conn(conn, "main")
+    finally:
+        conn.close()
 
 
 def _schema_contract(db_path: Path, *, schema_sql: str | None = None) -> dict[str, tuple[set[str], tuple[str, ...]]]:

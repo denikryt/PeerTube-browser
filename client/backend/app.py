@@ -1,8 +1,8 @@
 """FastAPI app factory for the Client backend.
 
 The route adapters preserve the existing Client backend HTTP contract while
-reusing the Stage 3 services and repositories. Public request and response
-shapes are still dict/bytes based; Stage 10 intentionally avoids Pydantic public
+reusing the extracted Client backend services and repositories. Public request and response
+shapes are still dict/bytes based; the FastAPI adapter intentionally avoids Pydantic public
 schemas so validation errors do not change.
 """
 from __future__ import annotations

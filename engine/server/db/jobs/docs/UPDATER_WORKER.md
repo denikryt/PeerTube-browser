@@ -241,3 +241,19 @@ systemctl list-timers --all peertube-updater.timer
 ## Random cache ownership
 
 The updater is the canonical production writer of `random-cache.db`. The random rebuild runs after Engine has been stopped and prepared Discovery has already succeeded, uses `precompute-random-index-ids.py --refresh`, builds/validates a temporary sibling database, and publishes it atomically. Engine runtime consumes the final artifact read-only and does not hot-reload replacements. A random-cache rebuild failure therefore retains the existing restart-in-finally behavior; only unavailable prepared Discovery blocks the updater's restart.
+
+## Availability-semantics first run and resume
+
+After production availability migration and Prepared v2/Search rebuild, discard
+pre-cutover staging plus SQLite `-wal` / `-shm` sidecars. The first run must omit
+`--resume-staging` and `--retry-errors`; the updater itself creates replacement
+staging and stamps `crawl_state['video_availability_semantics']='canonical_absence_v1'`.
+Missing/wrong marker on resume fails before network/crawler/service-stop work,
+and direct merge checks the exact attached generation before production DML.
+There is no in-place conversion. Later current-era crash/resume remains supported.
+
+Recommended rollout restarts Engine after offline semantic cutover, before the
+first normal updater, which retains its own stop/start around merge. If the
+outer rollout intentionally holds Engine offline through this run, pass
+`--skip-systemctl`; the outer workflow remains sole owner of restart. See
+`docs/DATA_BUILD.md` for writer quiescence, artifact verification and rollback.

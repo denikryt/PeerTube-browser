@@ -87,6 +87,7 @@ def fetch_metadata(
             LEFT JOIN channels c
               ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
             WHERE e.rowid IN ({placeholders})
+              AND v.invalid_reason IS NULL
               {error_clause}
             """,
             params,
@@ -131,6 +132,7 @@ def fetch_metadata_by_index_ids(
               ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
             WHERE vii.index_id IN ({placeholders})
               AND vii.is_active = 1
+              AND v.invalid_reason IS NULL
               {error_clause}
             """,
             params,
@@ -155,6 +157,7 @@ def fetch_metadata_by_ids(
         return {}
     result: dict[str, dict[str, Any]] = {}
     for batch in _chunk(entries, 450):
+        # Group the complete identity set before intersecting either gate.
         conditions = " OR ".join(
             ["(v.video_id = ? AND v.instance_domain = ?)"] * len(batch)
         )
@@ -175,7 +178,8 @@ def fetch_metadata_by_ids(
               ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
             LEFT JOIN channels c
               ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
-            WHERE {conditions}
+            WHERE ({conditions})
+              AND v.invalid_reason IS NULL
               {error_clause}
             """,
             params,

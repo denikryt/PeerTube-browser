@@ -221,7 +221,7 @@ test("VideoStore uses explicit insert/refresh semantics and preserves maintenanc
       7
     );
 
-    store.updateVideoInvalid("v1", "example.org", "not-public");
+    store.updateVideoInvalid("v1", "example.org", "not_found");
     assert.deepEqual(
       getRow<{ invalid_reason: string; last_error: string; error_count: number }>(
         temp.dbPath,
@@ -229,8 +229,18 @@ test("VideoStore uses explicit insert/refresh semantics and preserves maintenanc
         "v1",
         "example.org"
       ),
-      { invalid_reason: "not-public", last_error: "not-public", error_count: 1 }
+      { invalid_reason: "not_found", last_error: "not_found", error_count: 1 }
     );
+    // Diagnostics may advance but cannot replace a canonical absence observation.
+    const invalidAt = getRow<{ invalid_at: number }>(temp.dbPath, "SELECT invalid_at FROM videos WHERE video_id='v1'").invalid_at;
+    store.updateVideoError("v1", "example.org", "TLS failure");
+    assert.deepEqual(getRow(temp.dbPath, "SELECT invalid_reason,invalid_at,error_count,last_error FROM videos WHERE video_id='v1'"), {
+      invalid_reason: "not_found", invalid_at: invalidAt, error_count: 2, last_error: "TLS failure"
+    });
+    store.updateVideoInvalid("v1", "example.org", "gone");
+    assert.deepEqual(getRow(temp.dbPath, "SELECT invalid_reason,error_count,last_error FROM videos WHERE video_id='v1'"), {
+      invalid_reason: "gone", error_count: 3, last_error: "gone"
+    });
     store.close();
   } finally {
     temp.cleanup();
@@ -867,3 +877,14 @@ test("thumbnail maintenance validates schema read-only before network work", () 
     current.cleanup();
   }
 });
+
+
+/** Compile-only capability checks: arbitrary current reasons must stay rejected. */
+function canonicalInvalidityTypeContract(store: VideoStore, arbitrary: string) {
+  store.updateVideoInvalid("v", "host", "not_found");
+  store.updateVideoInvalid("v", "host", "gone");
+  // @ts-expect-error Technical failure is diagnostics, never canonical absence.
+  store.updateVideoInvalid("v", "host", "timeout");
+  // @ts-expect-error Arbitrary strings cannot cross the canonical writer API.
+  store.updateVideoInvalid("v", "host", arbitrary);
+}

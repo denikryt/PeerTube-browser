@@ -26,6 +26,9 @@ import type {
   VideoUpsertRow
 } from "./types.js";
 
+/** Current canonical absence reasons; technical uncertainty belongs to diagnostics. */
+export type CanonicalVideoInvalidReason = "not_found" | "gone";
+
 export class VideoStore {
   private db: Database.Database;
   private insertStmt: Database.Statement;
@@ -682,9 +685,9 @@ export class VideoStore {
   }
 
   /**
-   * Handle update video invalid.
+   * Persist paired canonical absence and retain current diagnostic side effects.
    */
-  updateVideoInvalid(videoId: string, instanceDomain: string, reason: string) {
+  updateVideoInvalid(videoId: string, instanceDomain: string, reason: CanonicalVideoInvalidReason) {
     this.db
       .prepare(
         `UPDATE videos

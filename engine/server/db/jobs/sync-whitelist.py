@@ -6,6 +6,7 @@ Fetches the whitelist and uses it to keep only data from approved instances.
 import argparse
 import json
 import logging
+import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -37,7 +38,12 @@ from data.prepared_discovery import (
     invalidate_prepared_discovery,
     rebuild_prepared_discovery,
 )
-from whitelist_migrations import add_metadata_v1_columns, add_thumbnail_candidate_columns
+from data.video_search import rebuild_video_search_index
+from whitelist_migrations import (
+    add_metadata_v1_columns,
+    add_thumbnail_candidate_columns,
+    normalize_video_availability_semantics,
+)
 
 DEFAULT_URL = (
     "https://instances.joinpeertube.org/api/v1/instances/hosts?count=5000&healthy=true"
@@ -464,6 +470,11 @@ def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
+    # Input and output capabilities cannot belong to the same physical file.
+    if not args.source_db.exists():
+        raise FileNotFoundError(args.source_db)
+    if args.whitelist_db.exists() and os.path.samefile(args.source_db, args.whitelist_db):
+        raise ValueError('source DB and output DB must be different physical files')
     remote_hosts = fetch_hosts(args.url)
 
     source_hosts: set[str] = set()
@@ -475,28 +486,35 @@ def main() -> None:
     total = 0
     removed = 0
     added = 0
-    conn = sqlite3.connect(args.whitelist_db.as_posix())
+    conn = sqlite3.connect(args.whitelist_db.as_posix(), uri=True)
     conn.row_factory = sqlite3.Row
-    attached = False
     try:
+        # Mode alone does not acquire ownership. Prove and retain the main lock
+        # before attaching input or running bootstrap, in WAL and rollback modes.
+        conn.execute('PRAGMA main.locking_mode=EXCLUSIVE')
+        conn.execute('BEGIN EXCLUSIVE')
+        conn.commit()
         conn.execute("PRAGMA foreign_keys = ON;")
         conn.execute(
             "ATTACH DATABASE ? AS source;",
-            (args.source_db.as_posix(),),
+            (args.source_db.resolve().as_uri() + '?mode=ro',),
         )
-        attached = True
         with conn:
             bootstrap_engine_moderation_db(conn)
             ensure_whitelist_schema(conn)
             ensure_content_schema(conn)
             ensure_schema_compatibility(conn)
-            denylisted_hosts = list_active_denied_hosts(conn)
+        # Main is already exclusively owned. DEFERRED takes only a read snapshot
+        # of the read-only source, permitting its WAL crawler writer to commit.
+        conn.execute('BEGIN DEFERRED')
+        with conn:
             source_hosts = {
                 row[0]
                 for row in conn.execute(
                     f"SELECT DISTINCT instance_domain FROM {SOURCE_SCHEMA}.videos"
                 )
             }
+            denylisted_hosts = list_active_denied_hosts(conn)
             if args.mode == "exclude":
                 selected_hosts_before_deny = source_hosts - remote_hosts
             else:
@@ -539,20 +557,25 @@ def main() -> None:
             channels_count, videos_count, embeddings_count = rebuild_content_tables(
                 conn, selected_hosts
             )
+            availability_stats = normalize_video_availability_semantics(conn)
 
         # The input database is needed only for the canonical replacement above.
         # Detach it before all main-only post-build work so schema reconciliation,
         # prepared-artifact publication, and planner maintenance cannot mutate source.
         conn.execute("DETACH DATABASE source;")
-        attached = False
 
         bootstrap_engine_read_indexes(conn)
         prepared_stats = rebuild_prepared_discovery(conn)
+        search_stats = rebuild_video_search_index(conn)
         conn.execute("PRAGMA optimize")
     finally:
-        if attached:
-            conn.execute("DETACH DATABASE source;")
-        conn.close()
+        # Closing always releases retained EXCLUSIVE ownership, including failure
+        # during bootstrap/derived builds. A failed DETACH must not prevent close.
+        try:
+            if conn.in_transaction:
+                conn.rollback()
+        finally:
+            conn.close()
 
     logging.info(
         "Whitelist mode=%s remote_hosts=%d source_hosts=%d selected_hosts=%d",
@@ -584,6 +607,8 @@ def main() -> None:
         prepared_stats["source_video_count"],
         prepared_stats["tag_membership_count"],
     )
+    logging.info('Availability normalization: %s', json.dumps(availability_stats, ensure_ascii=True))
+    logging.info('Search rebuilt: rows=%d.', search_stats['rows'])
 
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ def build_serving_visibility_sql(
     if schema not in {"main", "canonical"}:
         raise ValueError("Unsupported serving visibility schema")
 
-    clauses = [f"COALESCE({alias}.invalid_reason, '') = ''"]
+    clauses = [f"{alias}.invalid_reason IS NULL"]
     params: list[object] = []
     if flags.error_threshold is not None and flags.error_threshold > 0:
         clauses.append(f"({alias}.error_count IS NULL OR {alias}.error_count < ?)")

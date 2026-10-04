@@ -2,7 +2,7 @@
 """Compatibility CLI wrapper for the updater worker.
 
 The executable path is intentionally stable for systemd, installer, and manual
-operator workflows.  Stage 9 moves operational internals into
+operator workflows.  updater module split moves operational internals into
 ``engine.server.db.jobs.updater`` modules while this wrapper keeps import-path and
 CLI compatibility for existing scripts.
 """

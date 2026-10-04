@@ -270,10 +270,10 @@ def fetch_random_rows(
     conn: sqlite3.Connection, limit: int, error_threshold: int | None = None
 ) -> list[dict[str, Any]]:
     """Return random video rows for the legacy recommendation fallback."""
-    error_clause = ""
+    error_clause = "WHERE v.invalid_reason IS NULL"
     params: list[Any] = [limit]
     if error_threshold is not None and error_threshold > 0:
-        error_clause = "WHERE (v.error_count IS NULL OR v.error_count < ?)"
+        error_clause += " AND (v.error_count IS NULL OR v.error_count < ?)"
         params = [error_threshold, limit]
     query = conn.execute(
         f"""
@@ -296,10 +296,10 @@ def fetch_recent_videos(
     conn: sqlite3.Connection, limit: int, error_threshold: int | None = None
 ) -> list[dict[str, Any]]:
     """Return most recently published videos for legacy recommendation sources."""
-    error_clause = ""
+    error_clause = "WHERE v.invalid_reason IS NULL"
     params: list[Any] = [limit]
     if error_threshold is not None and error_threshold > 0:
-        error_clause = "WHERE (v.error_count IS NULL OR v.error_count < ?)"
+        error_clause += " AND (v.error_count IS NULL OR v.error_count < ?)"
         params = [error_threshold, limit]
     rows = conn.execute(
         f"""
@@ -322,10 +322,10 @@ def fetch_popular_videos(
     conn: sqlite3.Connection, limit: int, error_threshold: int | None = None
 ) -> list[dict[str, Any]]:
     """Return most popular legacy candidates while preserving the historical top-N cut."""
-    error_clause = ""
+    error_clause = "WHERE v.invalid_reason IS NULL"
     params: list[Any] = [limit, limit]
     if error_threshold is not None and error_threshold > 0:
-        error_clause = "WHERE (v.error_count IS NULL OR v.error_count < ?)"
+        error_clause += " AND (v.error_count IS NULL OR v.error_count < ?)"
         params = [error_threshold, limit, limit]
     rows = conn.execute(
         f"""

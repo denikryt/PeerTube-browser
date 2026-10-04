@@ -169,6 +169,7 @@ def _resolve_client_likes(server: Any, likes: list[dict[str, str]]) -> list[dict
         seen.add(key)
         unique.append(entry)
 
+    # Availability applies to every identity before it enters request-local likes.
     conditions = " OR ".join(["(video_uuid = ? AND instance_domain = ?)"] * len(unique))
     params: list[Any] = []
     for entry in unique:
@@ -179,7 +180,7 @@ def _resolve_client_likes(server: Any, likes: list[dict[str, str]]) -> list[dict
             f"""
             SELECT video_id, video_uuid, instance_domain
             FROM videos
-            WHERE {conditions}
+            WHERE invalid_reason IS NULL AND ({conditions})
             """,
             params,
         ).fetchall()

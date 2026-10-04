@@ -1,7 +1,7 @@
 """Runtime state for the FastAPI Engine API adapter.
 
 The state mirrors the attributes that the stdlib the transitional stdlib server exposed to
-route modules. Keeping the attribute names stable lets Stage 10 change the HTTP
+route modules. Keeping the attribute names stable lets FastAPI migration change the HTTP
 framework without changing Engine route, service, recommendation, or data code.
 """
 from __future__ import annotations

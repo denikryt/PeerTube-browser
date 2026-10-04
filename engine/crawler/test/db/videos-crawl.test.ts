@@ -16,6 +16,7 @@ import { VideoStore } from "../../src/db/videos.js";
 import { crawlVideos, type VideoCrawlOptions } from "../../src/videos-worker.js";
 import type { VideoUpsertRow } from "../../src/db/types.js";
 import { createTempDb, execSql, getRow } from "./helpers.js";
+import { NoNetworkError } from "../../src/http.js";
 
 /**
  * Start a minimal PeerTube-like HTTP server for one crawl scenario.
@@ -1010,6 +1011,50 @@ function seedThumbnailVideo(
   store.close();
 }
 
+for (const mode of ["tagsOnly", "commentsOnly", "metadataOnly", "refreshThumbnails"] as const) {
+  for (const observation of ["ok", "404", "410", "403", "429", "500", "tls", "cert", "timeout", "json", "no-network"] as const) {
+    test(`${mode} detail ${observation} persists only canonical absence`, async () => {
+      const temp = createTempDb(`canonical_absence_v1-${mode}-${observation}`);
+      const originalFetch = globalThis.fetch;
+      try {
+        seedThumbnailVideo(temp.dbPath, "example.org");
+        // Only the PeerTube transport edge is replaced; real workers and stores
+        // decide whether this observation affects canonical availability.
+        globalThis.fetch = async () => {
+          if (["tls", "cert", "timeout"].includes(observation)) {
+            throw new Error(observation === "tls" ? "TLS handshake failed" : observation === "cert" ? "certificate has expired" : "timeout");
+          }
+          const status = /^\d+$/.test(observation) ? Number(observation) : 200;
+          const response = new Response(JSON.stringify({ id: 1, uuid: "uuid-1", name: "Video", tags: ["linux"], comments: 2, thumbnails: [] }), { status });
+          if (observation === "json" || observation === "no-network") {
+            response.json = async () => { throw observation === "json" ? new SyntaxError("invalid JSON") : new NoNetworkError("offline"); };
+          }
+          return response;
+        };
+        const action = crawlVideos(metadataOptions(temp.dbPath, { [mode]: true, maxRetries: 0 }));
+        // Tags/comments preserve process-level abort. Newer projection workers
+        // keep their existing handling rather than acquiring a new abort policy.
+        if (observation === "no-network" && (mode === "tagsOnly" || mode === "commentsOnly")) {
+          await assert.rejects(action, NoNetworkError);
+        } else {
+          await action;
+        }
+        const row = getRow<{ invalid_reason: string | null; invalid_at: number | null; error_count: number }>(
+          temp.dbPath, "SELECT invalid_reason,invalid_at,error_count FROM videos WHERE video_id='v1'"
+        );
+        const reason = observation === "404" ? "not_found" : observation === "410" ? "gone" : null;
+        assert.equal(row.invalid_reason, reason);
+        assert.equal(row.invalid_at !== null, reason !== null);
+        if (observation === "no-network" && (mode === "tagsOnly" || mode === "commentsOnly")) assert.equal(row.error_count, 0);
+        if (["404", "410", "403", "429", "500", "tls", "cert", "timeout", "json"].includes(observation)) assert.ok(row.error_count > 0);
+      } finally {
+        globalThis.fetch = originalFetch;
+        temp.cleanup();
+      }
+    });
+  }
+}
+
 /** Start one detail-only HTTP fixture and expose every requested path. */
 async function thumbnailDetailFixture(
   responder: (url: URL) => { status?: number; body?: object }
@@ -1071,7 +1116,7 @@ test("thumbnail maintenance persists ordered candidates without probing image UR
     );
     assert.deepEqual(remote.requests, ["/api/v1/videos/uuid-1"]);
     assert.ok(lines.includes(
-      `[thumbnails] video=1/1 updated=1 errors=0 candidates=2 done ${remote.host}/uuid-1 primary=http://${remote.host}/thumb-large.jpg`
+      `[thumbnails] video=1/1 updated=1 errors=0 candidates=2 ${remote.host}/uuid-1`
     ));
   } finally {
     await remote.close();

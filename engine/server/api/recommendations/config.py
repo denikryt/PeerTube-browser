@@ -1,7 +1,7 @@
 """Own recommendation pipeline defaults and validation.
 
 This module is the recommendation-domain source of truth for the checked-in
-Python configuration. Stage 5 intentionally keeps runtime execution on the raw
+Python configuration. recommendation pipeline cleanup intentionally keeps runtime execution on the raw
 dictionary while adding validation so existing generator and mixer semantics do
 not change.
 """

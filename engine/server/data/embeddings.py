@@ -133,7 +133,7 @@ def _fetch_seed_by_uuid(
           ON vii.video_id = e.video_id AND vii.instance_domain = e.instance_domain AND vii.is_active = 1
         JOIN videos v
           ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
-        WHERE v.video_uuid = ?
+        WHERE v.video_uuid = ? AND v.invalid_reason IS NULL
     """
     params: list[Any] = [uuid]
     if host is not None:
@@ -163,7 +163,7 @@ def _fetch_seed_by_id(
           ON vii.video_id = e.video_id AND vii.instance_domain = e.instance_domain AND vii.is_active = 1
         JOIN videos v
           ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
-        WHERE v.video_id = ?
+        WHERE v.video_id = ? AND v.invalid_reason IS NULL
     """
     params: list[Any] = [video_id]
     if host is not None:
@@ -205,7 +205,10 @@ def fetch_seed_embeddings_for_likes(
     *,
     include_embedding: bool = True,
 ) -> dict[str, dict[str, Any]]:
-    """Fetch seed embeddings for a list of likes in a single batch."""
+    """Resolve canonically eligible like seeds without a diagnostics threshold.
+
+    Admission rejects Client invalidity earlier; this also protects other callers.
+    """
     if not likes:
         return {}
     uuid_pairs: list[tuple[str, str]] = []
@@ -259,6 +262,7 @@ def fetch_seed_embeddings_for_likes(
              AND v.instance_domain = w.instance_domain
             {embedding_join}
             {index_join}
+            WHERE v.invalid_reason IS NULL
             """,
             params,
         ).fetchall()
@@ -283,6 +287,7 @@ def fetch_seed_embeddings_for_likes(
              AND v.instance_domain = w.instance_domain
             {embedding_join}
             {index_join}
+            WHERE v.invalid_reason IS NULL
             """,
             params,
         ).fetchall()

@@ -1,6 +1,6 @@
 """Thin Engine video-route service wrapper.
 
-Stage 12 keeps DB lookup and dynamic PeerTube metadata overlay in
+FastAPI response-helper cleanup keeps DB lookup and dynamic PeerTube metadata overlay in
 ``handlers.video`` while making the route boundary framework-neutral.
 """
 from __future__ import annotations

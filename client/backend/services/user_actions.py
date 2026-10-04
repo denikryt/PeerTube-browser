@@ -75,8 +75,8 @@ def handle_user_action(
         users.remove_like(user_id, canonical_video_id, canonical_host)
         event_type = "UndoLike"
 
-    # The local profile write intentionally happens before bridge publishing; Stage 0
-    # characterizes that a bridge failure does not roll back the local like.
+    # The local profile write intentionally happens before bridge publishing; behavior-freeze tests
+    # characterize that a bridge failure does not roll back the local like.
     event_payload = {
         "event_id": event_id_factory(),
         "event_type": event_type,

@@ -115,7 +115,7 @@ def rebuild_video_search_index(conn: sqlite3.Connection) -> dict[str, int]:
               COALESCE(v.category, '') AS category
             FROM videos v
             {channel_join}
-            WHERE COALESCE(v.invalid_reason, '') = ''
+            WHERE v.invalid_reason IS NULL
             ORDER BY v.instance_domain ASC, v.video_id ASC
             """
         ).fetchall()

@@ -66,6 +66,7 @@ def fetch_video_row(
           ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
         WHERE (v.video_id = :id OR v.video_uuid = :id)
           AND (:host IS NULL OR v.instance_domain = :host)
+          AND v.invalid_reason IS NULL
           {error_clause}
         LIMIT 1
         """.format(error_clause=error_clause),

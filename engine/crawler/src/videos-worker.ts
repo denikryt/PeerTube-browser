@@ -457,17 +457,12 @@ async function processTagInstance(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const status = extractHttpStatus(message);
-      const code = extractErrorCode(error);
-      if (status === 404) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "not_found");
+      // Only direct-detail absence is canonical; retain the process outage abort.
+      if (status === 404 || status === 410) {
+        store.updateVideoInvalid(item.videoId, normalizedHost, status === 404 ? "not_found" : "gone");
       } else if (isNoNetworkError(error)) {
         throw error;
-      } else if (isCertExpired(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "cert_expired");
-      } else if (isTlsError(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "tls_error");
-      } else if (isTimeoutError(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "timeout");
+
       } else {
         store.updateVideoError(item.videoId, normalizedHost, message);
         console.warn(`[tags] error ${normalizedHost}/${item.videoUuid}: ${message}`);
@@ -499,17 +494,12 @@ async function processCommentsInstance(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const status = extractHttpStatus(message);
-      const code = extractErrorCode(error);
-      if (status === 404) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "not_found");
+      // Only direct-detail absence is canonical; retain the process outage abort.
+      if (status === 404 || status === 410) {
+        store.updateVideoInvalid(item.videoId, normalizedHost, status === 404 ? "not_found" : "gone");
       } else if (isNoNetworkError(error)) {
         throw error;
-      } else if (isCertExpired(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "cert_expired");
-      } else if (isTlsError(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "tls_error");
-      } else if (isTimeoutError(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "timeout");
+
       } else {
         store.updateVideoError(item.videoId, normalizedHost, message);
         console.warn(`[comments] error ${normalizedHost}/${item.videoUuid}: ${message}`);
@@ -1459,12 +1449,12 @@ async function thumbnailWorkerLoop(
             );
           } else {
             console.log(
-              `${formatMetricLog(
+              formatMetricLog(
                 "thumbnails",
                 [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors], ["candidates", candidates.length]],
-                "done",
+                "",
                 subject
-              )} primary=${candidates[0].url}`
+              )
             );
           }
         }
@@ -1583,48 +1573,4 @@ function extractHttpStatus(message: string): number | null {
   const match = message.match(/HTTP (\d{3})/);
   if (!match) return null;
   return Number(match[1]);
-}
-
-/**
- * Handle extract error code.
- */
-function extractErrorCode(error: unknown): string | null {
-  if (!error || typeof error !== "object") return null;
-  const err = error as { code?: string; cause?: { code?: string } };
-  return err.cause?.code ?? err.code ?? null;
-}
-
-/**
- * Check whether is cert expired.
- */
-function isCertExpired(code: string | null, message: string): boolean {
-  if (typeof code === "string" && code.toUpperCase() === "CERT_HAS_EXPIRED") return true;
-  return message.toLowerCase().includes("certificate has expired");
-}
-
-/**
- * Check whether is tls error.
- */
-function isTlsError(code: string | null, message: string): boolean {
-  if (typeof code === "string") {
-    const upper = code.toUpperCase();
-    if (upper.includes("CERT") || upper.includes("SSL") || upper.includes("TLS")) {
-      return true;
-    }
-  }
-  const lowered = message.toLowerCase();
-  return lowered.includes("certificate") || lowered.includes("ssl") || lowered.includes("tls");
-}
-
-/**
- * Check whether is timeout error.
- */
-function isTimeoutError(code: string | null, message: string): boolean {
-  if (typeof code === "string") {
-    const upper = code.toUpperCase();
-    if (upper.includes("TIMEOUT")) {
-      return true;
-    }
-  }
-  return message.toLowerCase().includes("timeout");
 }

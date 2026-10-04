@@ -18,6 +18,11 @@ if str(server_dir) not in sys.path:
 
 from scripts.cli_format import CompactHelpFormatter
 from data.prepared_discovery import invalidate_prepared_discovery
+try:
+    from engine.server.db.jobs.updater.staging import assert_video_availability_staging_semantics_conn
+except ModuleNotFoundError:  # Direct script execution has only server/jobs roots.
+    sys.path.insert(0, str(script_dir))
+    from updater.staging import assert_video_availability_staging_semantics_conn
 
 
 def parse_args() -> argparse.Namespace:
@@ -177,6 +182,7 @@ def main() -> None:
         # columns after earlier tables have already been merged.
         prepared_rules = validate_merge_schema(conn, rules)
         conn.execute("BEGIN IMMEDIATE")
+        assert_video_availability_staging_semantics_conn(conn, "stage")
         for prepared in prepared_rules:
             rule = prepared["rule"]
             table = prepared["table"]

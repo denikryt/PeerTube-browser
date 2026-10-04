@@ -41,6 +41,7 @@ from .commands import CommandRun, run_cmd, run_with_cpu_fallback, systemctl_cmd
 from .locks import single_run_lock
 from .paths import from_args, validate_required_files
 from .staging import (
+    assert_video_availability_staging_semantics,
     assert_production_schema_compatible,
     count_staging_deltas,
     init_staging_db,
@@ -116,6 +117,8 @@ def run_pipeline(
             # The updater must fail before any network request or production mutation
             # when crawler-owned columns have not been migrated into whitelist.db.
             assert_production_schema_compatible(paths.prod_db, paths.schema_path)
+            if args.resume_staging and paths.staging_db.exists():
+                assert_video_availability_staging_semantics(paths.staging_db)
             denied_hosts = load_denied_hosts(paths.prod_db)
             logging.info("moderation deny_hosts_active=%d", len(denied_hosts))
 
