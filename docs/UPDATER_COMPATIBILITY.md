@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document records compatibility decisions preserved by the Stage 9 updater split. It covers operational behavior that must remain stable while `engine/server/db/jobs/updater-worker.py` delegates internals to `engine/server/db/jobs/updater/` modules.
+This document records compatibility decisions preserved by the updater module split. It covers operational behavior that must remain stable while `engine/server/db/jobs/updater-worker.py` delegates internals to `engine/server/db/jobs/updater/` modules.
 
 ## Decisions
 
@@ -106,3 +106,27 @@ Staging embeddings are disposable. Every normal path that can reach production m
 Decision: updater/data-build is the only production writer of `random-cache.db`. The updater stops Engine before `precompute-random-index-ids.py --refresh`, publishes a validated sibling temporary artifact with atomic replace, and restarts Engine in the existing `finally` path even if the rebuild fails. `--reset` is not a compatibility alias and is intentionally removed.
 
 Standalone rebuilds may target another output path while Engine runs, but replacement of the configured production runtime path is an offline operation and requires Engine restart before the new generation is authoritative to runtime. No hot-reload watcher is part of this contract.
+
+### video-availability semantics cutover staging semantic cutover
+
+Fresh `init_staging_db()` recreates DB/sidecars and stamps existing `crawl_state`
+with `video_availability_semantics=canonical_absence_v1`. Legacy staging is unsupported and
+never converted/backfilled. Resume (including retry-errors) requires that exact
+marker immediately after production schema preflight, before denylist, network,
+crawler, merge or service-stop work. Correctly marked same-era crash/resume
+keeps its current behavior.
+
+Direct `merge-staging-db.py` revalidates the same marker through the already
+attached `stage` connection inside `BEGIN IMMEDIATE`, before first production
+DML. It never reopens the pathname to authorize rows: replacing that path cannot
+make marked B authorize attached legacy A, or revoke attached marked A. Missing
+or mismatched evidence fails with a recreate-staging instruction and rollback.
+
+During rollout, delete legacy staging and sidecars without pre-creating its
+replacement. Restart Engine after offline in-place migration/Prepared v2/Search
+cutover, then invoke the first ordinary updater without resume/retry-errors; it
+creates staging and owns ordinary systemctl behavior. An intentionally offline
+outer rollout uses `--skip-systemctl` instead, retaining sole restart ownership.
+See `DATA_BUILD.md` for full-sync isolation and broader publication readiness.
+This temporary stamp/check can be removed only after every supported deployment
+crosses the cutover and legacy staging can no longer be resumed.

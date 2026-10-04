@@ -375,3 +375,77 @@ sqlite3 engine/server/db/whitelist.db "select count(*) from video_embeddings;"
 sqlite3 engine/server/db/similarity-cache.db "select count(*) from similarity_sources;"
 sqlite3 engine/server/db/random-cache.db "select count(*) from random_index_ids;"
 ```
+
+## Video availability cutover and full-sync publication
+
+For an existing production DB, quiesce every process/command able to mutate
+canonical videos or Prepared/Search source/readiness state and stop Engine (which
+still has lazy canonical writes). Updater/direct merge, crawler maintenance,
+destructive denylist purge, migration/import and Engine are examples; mutation
+ownership defines the boundary. Deploy the new availability-semantics code with writers stopped, then:
+
+```bash
+python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whitelist.db
+python3 engine/server/db/jobs/rebuild-video-discovery-data.py --db engine/server/db/whitelist.db
+python3 engine/server/db/jobs/rebuild-video-search-index.py --db engine/server/db/whitelist.db
+```
+
+Migration retains its default timestamped DB/sidecar backups. Verify backups and
+normalization logs: only `timeout`, `tls_error`, `cert_expired` are cleared;
+`not_found`, `gone`, unknown/empty reasons and diagnostic history are preserved.
+Unknown values are JSON-encoded unambiguously for investigation. Cleanup and
+conditional Prepared readiness invalidation commit together in an explicit data
+transaction after schema migration; schema `executescript()` is not included in
+that atomicity claim. A second run changes zero rows.
+
+Before restart, verify Prepared snapshot version **2**, plausible source counts,
+Search counts, and valid/invalid/high-error route smoke results. Delete legacy
+staging and its `-wal` / `-shm` sidecars; do not separately initialize replacement
+staging. Start the Engine with the new availability semantics after this in-place cutover, then run the first
+ordinary updater without `--resume-staging` or `--retry-errors`. That updater
+creates/stamps staging and owns its normal Engine stop/start around merge. If the
+outer rollout intentionally stays offline through this first updater, use
+`--skip-systemctl` and let the outer workflow alone own restart. Do not run old
+writer binaries against the migrated lifecycle.
+
+Permanent `sync-whitelist.py` contract:
+
+```text
+existing source + different physical output file
+→ output connection with uri=True
+→ PRAGMA main.locking_mode=EXCLUSIVE
+→ BEGIN EXCLUSIVE; COMMIT (pre-ATTACH acquisition barrier)
+→ ATTACH source.resolve().as_uri() + "?mode=ro"
+→ schema/bootstrap checks
+→ BEGIN DEFERRED; first source read establishes input snapshot
+→ canonical replacement + output-only availability normalization; COMMIT
+→ DETACH source
+→ read-index reconciliation + Prepared v2 rebuild + Search rebuild
+→ optimize → close → command success
+```
+
+`os.path.samefile()` rejects identical paths and symlink/hardlink aliases before
+publication. Source remains NORMAL/read-only; attempted source writes fail at
+SQLite. Do not use `immutable=1` or `nolock=1` for the concurrently updated raw
+input. DEFERRED allows a WAL crawler writer to commit after main DML while sync
+keeps its established snapshot; other journal modes retain normal read locks.
+Active output reader/writer contention fails at the acquisition barrier before
+ATTACH/bootstrap/DML in WAL and rollback-journal modes. No NORMAL fallback exists.
+The same output connection retains EXCLUSIVE locks across canonical, Prepared,
+and Search transactions until close. Publication exceptions explicitly roll back;
+post-commit artifact failure fails the command and releases the lock while
+canonical rows remain source of truth.
+
+Prepared/Search success is only this command's artifact postcondition. Wholesale
+sync also resets production-only popularity; stable IDs, ANN, random and
+similarity publication still belong to the existing encompassing workflow.
+After sync closes, retain ownership-based external writer quiescence and keep
+Engine stopped until that workflow's complete readiness/restart conditions hold.
+Updater `single_run_lock` is not a repository-wide writer lock. The in-place availability-semantics migration
+does not replace those unrelated artifacts; stale candidate IDs are
+safe only because final canonical metadata resolution drops invalid rows.
+
+Before any writes under the new availability semantics, rollback may restore the pre-migration backup and
+matching application version. After new writes, restore a consistent DB/application
+generation and discard incompatible staging. Rebuild Prepared/Search from the
+restored canonical generation; derived artifacts are not rollback authority.

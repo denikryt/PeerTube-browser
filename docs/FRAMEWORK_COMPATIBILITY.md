@@ -15,7 +15,7 @@ Implementation action: Convert the files into FastAPI/uvicorn compatibility laun
 
 Tests: `tests/framework/test_entrypoint_compatibility.py` and existing boundary/smoke checks.
 
-Removal condition, if any: None in Stage 10.
+Removal condition, if any: None for the FastAPI migration.
 
 ## CORS and OPTIONS behavior is preserved
 
@@ -71,11 +71,11 @@ Decision: FastAPI path handling injects `{id}` into the same `id` parameter used
 
 Reason: Existing recommendation code expects the path id to appear in route parameters.
 
-Implementation action: The FastAPI route for `/videos/{video_id}/similar` delegates through the Stage 4 route adapter with the current path and parsed query params.
+Implementation action: The FastAPI route for `/videos/{video_id}/similar` delegates through the route adapter introduced by the Engine API split with the current path and parsed query params.
 
 Tests: `tests/framework/test_engine_fastapi_contract.py` and `tests/engine_api/test_similar_route_characterization.py`.
 
-Removal condition, if any: None in Stage 10.
+Removal condition, if any: None for the FastAPI migration.
 
 ## /internal/events/ingest mode gate is preserved
 
@@ -83,7 +83,7 @@ Decision: `ENGINE_INGEST_MODE != bridge` still returns the current `501` respons
 
 Reason: The mode gate is a project-specific internal compatibility contract between Client publishing and Engine ingest.
 
-Implementation action: FastAPI delegates to the Stage 4 internal-events route adapter, which owns the gate.
+Implementation action: FastAPI delegates to the internal-events route adapter introduced by the Engine API split, which owns the gate.
 
 Tests: `tests/framework/test_engine_fastapi_contract.py` and `tests/engine_api/test_engine_ingest_mode_characterization.py`.
 
@@ -91,7 +91,7 @@ Removal condition, if any: Dedicated ingest-mode plan.
 
 ## FAISS startup prerequisite is unchanged
 
-Decision: Stage 10 does not lazy-load, fake, or isolate FAISS in the Engine entrypoint.
+Decision: The FastAPI migration does not lazy-load, fake, or isolate FAISS in the Engine entrypoint.
 
 Reason: FAISS/index startup ownership is separate from HTTP framework migration and changing it could alter deployment failure modes.
 
@@ -103,7 +103,7 @@ Removal condition, if any: Dedicated Engine startup/dependency plan.
 
 ## Pydantic/OpenAPI schema redesign is deferred
 
-Decision: Stage 10 does not introduce public Pydantic request/response schemas or OpenAPI redesign.
+Decision: The FastAPI migration does not introduce public Pydantic request/response schemas or OpenAPI redesign.
 
 Reason: FastAPI/Pydantic default validation would change malformed-request status codes and response bodies.
 
@@ -129,7 +129,7 @@ Removal condition, if any: Complete for active runtime code. Only FastAPI app fa
 
 Decision: The transitional Engine stdlib route handler and server classes are removed from active production runtime code while `engine/server/api/server.py` remains the executable path.
 
-Reason: Engine route ownership now lives in FastAPI app registration and Stage 4 route modules; retaining the old adapter would leave duplicate dispatch paths.
+Reason: Engine route ownership now lives in FastAPI app registration and the extracted Engine route modules; retaining the old adapter would leave duplicate dispatch paths.
 
 Implementation action: Keep Engine startup, DB/cache/index wiring, FAISS prerequisite behavior, `create_app(state)`, and `uvicorn.run(...)` in `engine/server/api/server.py`. The transitional `handlers/similar.py` helper re-export shim has been removed.
 
@@ -147,7 +147,7 @@ Implementation action: Client HTTP scenario tests use FastAPI `TestClient`; Engi
 
 Tests: `tests/client_backend/*`, `tests/engine_api/*`, and `tests/framework/*`.
 
-Removal condition, if any: None. This is the active Stage 12 testing model.
+Removal condition, if any: None. This is the active FastAPI-only testing model.
 
 ## Handler-shaped HTTP compatibility removed
 
@@ -159,7 +159,7 @@ Implementation action: Engine routes now return FastAPI responses through `app.p
 
 Tests: `tests/framework/test_no_legacy_handler_helpers.py`, `tests/framework/*`, `tests/engine_api/*`, and `tests/client_backend/*`.
 
-Removal condition, if any: Complete in Stage 12.
+Removal condition, if any: Completed by the FastAPI response-helper cleanup.
 
 ## Services remain framework-neutral after handler cleanup
 

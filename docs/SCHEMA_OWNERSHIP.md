@@ -4,7 +4,7 @@
 
 This document defines which component owns each SQLite schema used by PeerTube Browser, which migration/bootstrap entrypoint creates the current shape, and which schema contracts must remain stable during refactoring.
 
-Stage 6 documented ownership and added current-shape SQL resources. The database bootstrap cleanup stage added explicit runtime bootstrap entrypoints above those migration resources. The follow-up legacy-wrapper cleanup removed transitional `ensure_*` schema wrappers after production callers moved to bootstrap functions.
+The schema-ownership cleanup documented ownership and added current-shape SQL resources. The database bootstrap cleanup stage added explicit runtime bootstrap entrypoints above those migration resources. The follow-up legacy-wrapper cleanup removed transitional `ensure_*` schema wrappers after production callers moved to bootstrap functions.
 
 ## Client users DB
 
@@ -20,7 +20,7 @@ Current runtime bootstrap source:
 client/backend/db/bootstrap.py::bootstrap_client_users_db
 ```
 
-Stage 6 migration source:
+Migration source introduced by the schema-ownership cleanup:
 
 ```text
 client/backend/db/migrations/0001_users_and_likes.sql
@@ -114,7 +114,7 @@ Compatibility facade:
 engine/crawler/src/db/* modules own crawler DB access; legacy db.ts facade was removed in the crawler compatibility cleanup.
 ```
 
-Stage 7 database modules:
+Database modules introduced by the crawler split:
 
 ```text
 engine/crawler/src/db/connection.ts
@@ -126,13 +126,13 @@ engine/crawler/src/db/videos.ts
 engine/crawler/src/db/utils.ts
 ```
 
-Allowed Stage 6 changes:
+Allowed schema-ownership changes:
 
 ```text
 Document ownership and keep compatibility tests around the schema consumed by Engine read paths.
 ```
 
-Allowed Stage 7 changes:
+Allowed crawler-database changes:
 
 ```text
 Split the TypeScript crawler DB layer into narrow modules while keeping schema.sql, command behavior, and direct db/* imports stable.
@@ -218,7 +218,7 @@ engine/server/data/channels.py::ensure_channels_indexes
 engine/server/data/videos.py::ensure_video_indexes
 ```
 
-Allowed Stage 6 changes:
+Allowed schema-ownership changes:
 
 ```text
 Centralize current runtime read-index SQL resources and keep conditional table-existence behavior.
@@ -260,7 +260,7 @@ engine/server/db/bootstrap.py::bootstrap_engine_moderation_db
 engine/server/db/bootstrap.py::bootstrap_engine_read_indexes
 ```
 
-Stage 6 migration source:
+Migration source introduced by the schema-ownership cleanup:
 
 ```text
 engine/server/db/migrations/main/0001_interaction_events.sql
@@ -388,7 +388,7 @@ Current runtime bootstrap source:
 engine/server/db/bootstrap.py::bootstrap_engine_similarity_cache_db
 ```
 
-Stage 6 migration source:
+Migration source introduced by the schema-ownership cleanup:
 
 ```text
 engine/server/db/migrations/similarity_cache/0001_similarity_cache.sql
@@ -417,7 +417,7 @@ Removed transitional wrappers:
 engine/server/data/similarity_cache.py::ensure_similarity_schema
 ```
 
-Allowed Stage 6 changes:
+Allowed schema-ownership changes:
 
 ```text
 Centralize current table/index SQL for runtime callers. Keep precompute job behavior unchanged.
@@ -457,7 +457,7 @@ Runtime open/validation source:
 engine/server/data/random_cache.py::open_random_provider_readonly
 ```
 
-Stage 6 migration source:
+Migration source introduced by the schema-ownership cleanup:
 
 ```text
 engine/server/db/migrations/random_cache/0001_random_cache.sql
@@ -584,7 +584,7 @@ Operational compatibility:
 Existing job entrypoints and helper functions remain unchanged by schema ownership cleanup.
 ```
 
-Allowed Stage 6 changes:
+Allowed schema-ownership changes:
 
 ```text
 Document ownership and test schema boundaries that runtime code consumes.
@@ -645,23 +645,23 @@ Implementation action: remove wrapper functions and keep cache migration resourc
 
 Tests: `tests/db/test_cache_migrations.py`, `tests/db/test_database_bootstrap.py`, and Engine data tests.
 
-## Future ownership by stage
+## Future ownership
 
 ```text
-Stage 7
+Crawler database split
   Split engine/crawler/src/db/* modules and add TypeScript crawler repository tests.
 
-Stage 8
+Frontend module split
   Refactor frontend UI/API/state code without changing schema ownership.
 
-Stage 9
+Updater module split
   Split updater/job orchestration and document operational migration flow.
 
 Future migration-policy stage
   Introduce a full historical migration framework with schema_migrations only if deployment policy requires it.
 ```
 
-The deferred items above are not Stage 6 gaps. Stage 6 established ownership and current-shape migration resources; later bootstrap cleanup moved production callers to explicit bootstrap entrypoints, and the legacy ensure-wrapper cleanup removed the transitional schema wrappers.
+The deferred items above are not gaps in the schema-ownership cleanup. That cleanup established ownership and current-shape migration resources; later bootstrap cleanup moved production callers to explicit bootstrap entrypoints, and the legacy ensure-wrapper cleanup removed the transitional schema wrappers.
 
 
 ## Metadata-v1 crawler / whitelist ownership
@@ -673,3 +673,25 @@ Crawler-owned video metadata-v1 includes `metadata_version`, language/category/l
 Schema compatibility is directional: crawler-owned columns must be present in whitelist production, while Engine-owned destination columns such as `videos.popularity` are allowed. The merge boundary rejects staging-only columns before DML.
 
 Embedding-source fields are intentionally protected on existing rows: `title`, `description`, `tags_json`, `category`, and `channel_name`. `comments_count` is refreshable product metadata and is not part of the semantic embedding recipe. `category/category_id` and the video channel tuple have conditional persistence rules so identifiers cannot contradict protected labels.
+
+## Canonical video availability
+
+Crawler direct-video-detail observations and canonical migration/import own
+`videos.invalid_reason` / `invalid_at` under the current availability semantics. Current absence writes accept
+only `not_found` (404) and `gone` (410), setting both fields together. SQL NULL
+means no canonical observation established absence. Every other non-NULL legacy
+value, including `''`, stays conservative and is excluded by canonical serving,
+identity/seed resolution, Prepared Discovery, and Search source builders.
+
+`error_count`, `last_error`, and `last_error_at` remain diagnostics. Their current
+serving thresholds remain only where already present; prepared facets, Search
+source, seeds, Client-like admission and internal resolve gain no threshold.
+A later diagnostics-serving cleanup owns threshold removal. The existing invalid writer retains diagnostic
+side effects until existing-row availability ownership moves to a dedicated publisher.
+
+Canonical migration/import clears exactly `timeout`, `tls_error`, `cert_expired`
+and their `invalid_at`; unknown reasons and diagnostic history are preserved.
+Prepared Discovery schema version 2 records the exact-NULL source semantics;
+version 1 is rejected even when cleanup changes zero rows. No production schema
+columns/tables are added. The temporary staging marker lives in existing
+`crawl_state`; it is lifecycle evidence, not canonical video availability.

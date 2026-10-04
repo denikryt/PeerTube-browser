@@ -34,7 +34,7 @@ Install the Python development tools needed for the fast regression and lint che
 python3 -m pip install -r engine/server/requirements-dev.txt
 ```
 
-Frontend and crawler dependencies remain component-local. This repository does not use npm workspaces in Stage 2:
+Frontend and crawler dependencies remain component-local. This repository does not use npm workspaces during the repository tooling setup:
 
 ```bash
 cd client/frontend && npm install
@@ -62,7 +62,7 @@ The underlying raw commands are still documented in `docs/TESTING.md` for debugg
 python3 -m pytest
 ```
 
-Lint the Stage 2 maintained Python surface with:
+Lint the Python surface maintained by the repository tooling setup with:
 
 ```bash
 make lint
@@ -114,15 +114,15 @@ Keep behavior-preserving cleanup separate from behavior changes. If a refactor d
 
 Recommendation defaults live in `engine/server/api/recommendations/config.py`. Engine startup code and tests import recommendation-domain settings directly from that module; `server_config.py` is for non-recommendation runtime defaults.
 
-Stage 5 adds Python-level config validation and internal dataclasses for route/service boundaries. It does not introduce external YAML/JSON config files, Pydantic/OpenAPI schemas, or recommendation behavior changes.
+The recommendation pipeline cleanup adds Python-level config validation and internal dataclasses for route/service boundaries. It does not introduce external YAML/JSON config files, Pydantic/OpenAPI schemas, or recommendation behavior changes.
 
 ## Schema Ownership
 
-Stage 6 adds current-shape migration resources for Client users DB and Engine runtime/cache tables. Existing `ensure_*` helpers remain compatibility wrappers, so startup and data-build commands do not change. See `docs/SCHEMA_OWNERSHIP.md` for owners, wrappers, and deferred schema work.
+The schema-ownership cleanup adds current-shape migration resources for Client users DB and Engine runtime/cache tables. Existing `ensure_*` helpers remain compatibility wrappers, so startup and data-build commands do not change. See `docs/SCHEMA_OWNERSHIP.md` for owners, wrappers, and deferred schema work.
 
 ## Frontend split and tests
 
-Stage 8 keeps the frontend on Vite and vanilla TypeScript. Shared helpers are organized under:
+The frontend module split keeps the frontend on Vite and vanilla TypeScript. Shared helpers are organized under:
 
 ```text
 client/frontend/src/api          Client-backend-facing frontend facade
@@ -150,7 +150,7 @@ python3 client/backend/server.py --help
 python3 engine/server/api/server.py --help
 ```
 
-The Engine entrypoint still has the existing FAISS runtime prerequisite in environments where FAISS is not installed. Stage 10 does not change that startup dependency. Framework compatibility decisions are documented in `docs/FRAMEWORK_COMPATIBILITY.md`.
+The Engine entrypoint still has the existing FAISS runtime prerequisite in environments where FAISS is not installed. The FastAPI migration does not change that startup dependency. Framework compatibility decisions are documented in `docs/FRAMEWORK_COMPATIBILITY.md`.
 
 ## HTTP adapter model
 

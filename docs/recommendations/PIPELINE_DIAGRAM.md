@@ -2,7 +2,7 @@
 
 Below is a Mermaid diagram of the delivery pipeline, based on `engine/server/api/recommendations/RECOMMENDATIONS_OVERVIEW.md`.
 
-Config source: `engine/server/api/recommendations/config.py`. Stage 5 adds Python-level validation only; external YAML/JSON recommendation config loading is deferred. Route response shape and generator behavior are unchanged.
+Config source: `engine/server/api/recommendations/config.py`. recommendation pipeline cleanup adds Python-level validation only; external YAML/JSON recommendation config loading is deferred. Route response shape and generator behavior are unchanged.
 
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 50, "rankSpacing": 50}, "themeVariables": {"fontSize": "48px"}}}%%

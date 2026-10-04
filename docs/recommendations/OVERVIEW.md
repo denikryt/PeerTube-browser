@@ -13,7 +13,7 @@ caps) before returning a batch to the client.
 
 Profiles live in `RECOMMENDATION_PIPELINE` (see `engine/server/api/recommendations/config.py`).
 Engine startup imports the config directly from `engine/server/api/recommendations/config.py`.
-Stage 5 adds Python-level validation only; external YAML/JSON config loading is deferred.
+recommendation pipeline cleanup adds Python-level validation only; external YAML/JSON config loading is deferred.
 If the user has no likes, the profile auto-switches to `guest` (guest_home/guest_upnext),
 where only `random/popular/fresh` are active.
 

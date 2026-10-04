@@ -24,7 +24,7 @@ Already removed. If a new caller needs recommendation defaults, use `engine/serv
 ## Validation uses raw config for runtime execution
 
 Decision:
-Stage 5 validates the checked-in Python config but continues to pass the raw dictionary into `MixingRecommendationStrategy` and generator code.
+The recommendation pipeline cleanup validates the checked-in Python config but continues to pass the raw dictionary into `MixingRecommendationStrategy` and generator code.
 
 Reason:
 The mixer and generators currently rely on dictionary fallback behavior. Executing from typed validation objects could change missing-field defaults, profile inheritance, generator order, or truthiness behavior.
@@ -44,7 +44,7 @@ Decision:
 `RecommendationResult` is an internal adapter object whose `to_response()` method emits the existing primitive Engine response fields: `generatedAt`, `total`, `count`, `seed`, and `rows`.
 
 Reason:
-The public recommendation response is consumed by frontend and Client gateway behavior. Stage 5 may clarify service boundaries but must not introduce public schemas or response-shape changes.
+The public recommendation response is consumed by frontend and Client gateway behavior. The recommendation pipeline cleanup may clarify service boundaries but must not introduce public schemas or response-shape changes.
 
 Implementation action:
 Use `RecommendationResult` only at the response assembly boundary and pass the existing embedding total explicitly where route behavior currently reports `server.embeddings_count`.
@@ -58,13 +58,13 @@ No removal is planned. Any public response redesign requires a separate behavior
 ## Debug metadata public shape remains unchanged
 
 Decision:
-Debug metadata remains externally compatible. Stage 5 does not change `attach_debug_info()` output keys.
+Debug metadata remains externally compatible. The recommendation pipeline cleanup does not change `attach_debug_info()` output keys.
 
 Reason:
 Debug output is a diagnostics contract used to inspect recommendation behavior. Changing it during internal cleanup would hide recommendation regressions.
 
 Implementation action:
-Keep debug source rows dictionary-based in Stage 5 and continue adapting them through `recommendations/debug.py`.
+Keep debug source rows dictionary-based during the recommendation pipeline cleanup and continue adapting them through `recommendations/debug.py`.
 
 Tests:
 `tests/recommendations/test_types_characterization.py` asserts representative public debug keys still map from current source dictionaries.
@@ -75,7 +75,7 @@ Internal debug storage can change only when a later plan preserves or explicitly
 ## External YAML/JSON recommendation config is deferred
 
 Decision:
-Stage 5 does not add `engine/server/config/recommendations.default.yaml`, JSON schema files, or runtime file loading.
+The recommendation pipeline cleanup does not add `engine/server/config/recommendations.default.yaml`, JSON schema files, or runtime file loading.
 
 Reason:
 External files would add packaging, lookup-path, deployment, and startup failure modes. The current goal is a Python-level validation boundary, not a config delivery system.

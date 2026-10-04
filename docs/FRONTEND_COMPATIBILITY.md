@@ -8,7 +8,7 @@ Decision:
 `videos.html`, `video-page.html`, and `channels.html` continue to load their existing page entrypoint modules.
 
 Reason:
-Stage 8 is an internal frontend split, not a router or framework migration.
+The frontend module split is an internal frontend split, not a router or framework migration.
 
 Implementation action:
 Keep the HTML files and page entrypoint paths unchanged while moving reusable rendering/state helpers into `src/components`, `src/state`, `src/utils`, and `src/api`.
@@ -79,7 +79,7 @@ Reason:
 This is not an Engine bypass; it is PeerTube-specific public fallback behavior used by the existing video page.
 
 Implementation action:
-Keep fallback helpers inside the video-page module during Stage 8 unless they can be moved without changing URL behavior.
+Keep fallback helpers inside the video-page module during the frontend module split unless they can be moved without changing URL behavior.
 
 Tests:
 Frontend gateway checks continue to reject Engine direct/internal API strings while allowing public PeerTube instance fallback code.

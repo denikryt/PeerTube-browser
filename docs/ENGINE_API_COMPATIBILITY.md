@@ -4,9 +4,9 @@
 
 This document records Engine API backward-compatibility decisions that are preserved or introduced during route and service refactors. It is not a public API reference; it explains compatibility constraints that future refactors must not accidentally remove.
 
-## Stage 4 route split
+## Engine API route split
 
-Stage 4 split Engine route adapters and orchestration services out of `engine/server/api/handlers/similar.py` while preserving the then-active HTTP runtime, route paths, response shapes, and startup behavior. Stage 11 later removed the transitional stdlib adapter; the route compatibility decisions below remain binding for the FastAPI adapter.
+The Engine API route split moved Engine route adapters and orchestration services out of `engine/server/api/handlers/similar.py` while preserving the then-active HTTP runtime, route paths, response shapes, and startup behavior. The later stdlib HTTP cleanup removed the transitional stdlib adapter; the route compatibility decisions below remain binding for the FastAPI adapter.
 
 ### `/videos/{id}/similar` path-id injection
 
@@ -36,9 +36,9 @@ Removal condition, if any: Only a dedicated ingest-mode plan may remove or repla
 
 Decision: recommendation request validation keeps current body-size, likes-count, malformed-likes, debug-disabled, and invalid-JSON behavior.
 
-Reason: Client backend and Stage 0 tests depend on these request-contract failures remaining stable during route splitting.
+Reason: Client backend and behavior-freeze tests depend on these request-contract failures remaining stable during route splitting.
 
-Implementation action: `engine/server/api/services/recommendation_service.py` owns the helper behavior directly; Stage 4 does not introduce schema-model validation.
+Implementation action: `engine/server/api/services/recommendation_service.py` owns the helper behavior directly; the Engine API route split does not introduce schema-model validation.
 
 Tests: `tests/engine_api/test_recommendations_request_contract.py`, `tests/engine_api/test_similar_route_characterization.py`, and `tests/engine_api/test_engine_route_dispatch_characterization.py`.
 
@@ -70,9 +70,9 @@ Removal condition, if any: A later channel API plan may change query semantics o
 
 ### Transitional Engine handler removed
 
-Decision: The Stage 4 transitional stdlib Engine handler was removed in Stage 11; active route ownership now lives in FastAPI app registration and `routes/*`.
+Decision: The transitional stdlib Engine handler from the route split was removed during the stdlib HTTP cleanup; active route ownership now lives in FastAPI app registration and `routes/*`.
 
-Reason: After Stage 10 introduced FastAPI adapters, keeping a second handler dispatch path would create duplicate ownership and drift risk.
+Reason: After the FastAPI migration introduced FastAPI adapters, keeping a second handler dispatch path would create duplicate ownership and drift risk.
 
 Implementation action: The transitional `engine/server/api/handlers/similar.py` helper re-export shim has been removed. CORS, rate-limit, unknown-route, and path-id behavior remain covered by FastAPI route tests and direct `services/recommendation_service.py` imports.
 
@@ -84,13 +84,13 @@ Removal condition, if any: Already removed. New helper imports must use `engine/
 
 Decision: Engine API route helpers no longer use handler-shaped response capture or fake route-handler objects.
 
-Reason: Stage 12 completes the FastAPI HTTP-layer cleanup. Route behavior remains unchanged, but HTTP response construction now belongs to FastAPI route adapters instead of compatibility helper objects.
+Reason: The FastAPI response-helper cleanup completes the FastAPI HTTP-layer cleanup. Route behavior remains unchanged, but HTTP response construction now belongs to FastAPI route adapters instead of compatibility helper objects.
 
 Implementation action: Engine route and handler helper modules return framework-neutral `RouteResult` values. `engine/server/api/app.py` converts those results to the current JSON/CORS response contract.
 
 Tests: `tests/framework/test_no_legacy_handler_helpers.py`, `tests/engine_api/*`, `tests/framework/*`, and `engine/server/api/tests/test_recommendations_likes_limit.py`.
 
-Removal condition, if any: Complete in Stage 12.
+Removal condition, if any: Completed by the FastAPI response-helper cleanup.
 
 
 ## Internal Discovery Providers

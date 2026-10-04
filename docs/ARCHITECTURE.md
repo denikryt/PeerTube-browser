@@ -36,7 +36,7 @@ The crawler and data-build jobs own PeerTube data collection, dataset updates, d
 
 ## SQLite Schema Ownership
 
-SQLite schemas are owned by the component that creates or publishes the database artifact. Client backend owns the local users/likes DB, the crawler owns the raw crawl DB schema, Engine jobs own data-build output shapes, and Engine runtime owns runtime/cache helper tables. Detailed owners, compatibility wrappers, and Stage 6 migration resources are documented in `docs/SCHEMA_OWNERSHIP.md`.
+SQLite schemas are owned by the component that creates or publishes the database artifact. Client backend owns the local users/likes DB, the crawler owns the raw crawl DB schema, Engine jobs own data-build output shapes, and Engine runtime owns runtime/cache helper tables. Detailed owners, compatibility wrappers, and schema-ownership migration resources are documented in `docs/SCHEMA_OWNERSHIP.md`.
 
 ## Forbidden Coupling
 
@@ -51,13 +51,13 @@ Structural refactoring should preserve these boundaries until a later plan expli
 
 ## Frontend Internal Layout
 
-Stage 8 keeps the same Vite/vanilla TypeScript runtime while splitting reusable frontend code into narrower modules. Page entrypoints remain the lifecycle controllers, while shared Client API facades, rendering helpers, state helpers, and formatting utilities live under `client/frontend/src/api/`, `client/frontend/src/components/`, `client/frontend/src/state/`, and `client/frontend/src/utils/`.
+The frontend module split keeps the same Vite/vanilla TypeScript runtime while splitting reusable frontend code into narrower modules. Page entrypoints remain the lifecycle controllers, while shared Client API facades, rendering helpers, state helpers, and formatting utilities live under `client/frontend/src/api/`, `client/frontend/src/components/`, `client/frontend/src/state/`, and `client/frontend/src/utils/`.
 
 This split does not change the component boundary: frontend project API calls still go through the Client backend, and public PeerTube instance fallback on the video page remains PeerTube-specific metadata fallback behavior.
 
 ## HTTP Adapter Ownership
 
-Stage 11 finalizes the HTTP framework migration: FastAPI app factories are the only active Client and Engine HTTP adapters. The `server.py` files remain stable executable launchers for compatibility, but they no longer own stdlib HTTP server or request-handler classes. Route behavior belongs to the FastAPI apps and the route/service modules listed above. HTTP response construction stays at the FastAPI adapter boundary, while services return plain data or framework-neutral route results.
+The stdlib HTTP removal finalizes the HTTP framework migration: FastAPI app factories are the only active Client and Engine HTTP adapters. The `server.py` files remain stable executable launchers for compatibility, but they no longer own stdlib HTTP server or request-handler classes. Route behavior belongs to the FastAPI apps and the route/service modules listed above. HTTP response construction stays at the FastAPI adapter boundary, while services return plain data or framework-neutral route results.
 
 
 ## Discovery API v1 Boundary

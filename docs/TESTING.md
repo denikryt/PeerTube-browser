@@ -9,7 +9,7 @@ Use `make test-fast` for the normal fast regression baseline before and during r
 
 `make test` is an alias for `make test-fast`. It is the default local regression command, not a full CI substitute.
 
-Root targets provided by Stage 2:
+Root targets provided by the repository tooling setup:
 
 ```bash
 make test
@@ -40,7 +40,7 @@ bash tests/check-client-engine-boundary.sh
 bash tests/check-frontend-client-gateway.sh
 ```
 
-Current Stage 0 baseline in this environment:
+Current behavior-freeze baseline in this environment:
 
 - `python3 -m compileall client/backend engine/server`: PASS.
 - `python3 engine/server/db/jobs/tests/test-interaction-events.py`: PASS.
@@ -49,7 +49,7 @@ Current Stage 0 baseline in this environment:
 
 ## Python behavior tests
 
-Stage 0 adds pytest characterization tests around current behavior. Stage 3 extends the Client backend coverage for publish, profile reset, profile read, and proxy failure paths before moving that behavior into services. Stage 4 adds Engine API route-dispatch tests before moving Engine route behavior into `engine/server/api/routes/` and `engine/server/api/services/`. Stage 9 adds updater job tests for CLI defaults, command construction, locking, staging helpers, sync helpers, service restart behavior, and pipeline command order before splitting updater internals. These tests are intended to freeze observable behavior before code is split or moved. Stage 2 configures pytest discovery in `pyproject.toml`, so the complete characterization suite can be run from the repository root with:
+The behavior-freeze work adds pytest characterization tests around current behavior. The Client backend service split extends the Client backend coverage for publish, profile reset, profile read, and proxy failure paths before moving that behavior into services. The Engine API route split adds Engine API route-dispatch tests before moving Engine route behavior into `engine/server/api/routes/` and `engine/server/api/services/`. The updater module split adds updater job tests for CLI defaults, command construction, locking, staging helpers, sync helpers, service restart behavior, and pipeline command order before splitting updater internals. These tests are intended to freeze observable behavior before code is split or moved. The repository tooling setup configures pytest discovery in `pyproject.toml`, so the complete characterization suite can be run from the repository root with:
 
 ```bash
 make test-python
@@ -73,7 +73,7 @@ The tests should assert externally visible effects: HTTP status codes, JSON fiel
 
 ## Job/updater tests
 
-Stage 9 splits updater internals while keeping `engine/server/db/jobs/updater-worker.py` as the executable compatibility entrypoint. The fast Python suite includes the updater tests because they use fake command runners, temporary SQLite databases, and temporary lock files instead of real crawler CLIs, systemctl, FAISS, or network calls.
+The updater module split separates updater internals while keeping `engine/server/db/jobs/updater-worker.py` as the executable compatibility entrypoint. The fast Python suite includes the updater tests because they use fake command runners, temporary SQLite databases, and temporary lock files instead of real crawler CLIs, systemctl, FAISS, or network calls.
 
 Run only the updater tests with:
 
@@ -98,7 +98,7 @@ bash tests/check-frontend-client-gateway.sh
 
 ## Crawler database tests
 
-Stage 7 adds TypeScript crawler DB characterization tests. They use temporary SQLite files and Node's built-in test runner after compiling crawler source and tests to `engine/crawler/dist-test/`. These checks require `engine/crawler/node_modules` and are not part of `make test` or `make test-fast`:
+The crawler database split adds TypeScript crawler DB characterization tests. They use temporary SQLite files and Node's built-in test runner after compiling crawler source and tests to `engine/crawler/dist-test/`. These checks require `engine/crawler/node_modules` and are not part of `make test` or `make test-fast`:
 
 ```bash
 make test-crawler-db
@@ -112,7 +112,7 @@ Use these tests when changing modules under `engine/crawler/src/db/`. Missing No
 
 ## Frontend DOM/unit tests
 
-Stage 8 adds Vitest/jsdom tests for extracted frontend rendering and state helpers. These checks require `client/frontend/node_modules` and are not part of `make test` or `make test-fast`:
+The frontend module split adds Vitest/jsdom tests for extracted frontend rendering and state helpers. These checks require `client/frontend/node_modules` and are not part of `make test` or `make test-fast`:
 
 ```bash
 make test-frontend
@@ -136,7 +136,7 @@ cd client/frontend && npm run build
 cd engine/crawler && npm run build
 ```
 
-Current Stage 0 baseline in this environment:
+Current behavior-freeze baseline in this environment:
 
 - `cd client/frontend && npm run build`: blocked because `vite` is not installed.
 - `cd engine/crawler && npm run build`: blocked because `engine/crawler/node_modules/typescript/bin/tsc` is missing.
@@ -165,7 +165,7 @@ Use this when the environment has Engine runtime dependencies and usable DB/inde
 
 Current dependency-heavy baseline in this environment:
 
-- `python3 -m unittest engine.server.api.tests.test_recommendations_likes_limit`: PASS after Stage 4 moved the test to narrow recommendation service imports.
+- `python3 -m unittest engine.server.api.tests.test_recommendations_likes_limit`: PASS after the Engine API route split moved the test to narrow recommendation service imports.
 - `python3 engine/server/api/server.py --help`: blocked by missing `faiss` because startup still imports the FAISS-backed ANN path.
 
 
@@ -175,25 +175,25 @@ Current dependency-heavy baseline in this environment:
 
 ## How to interpret failures
 
-A fast baseline or Stage 0 characterization test failure should be treated as a potential behavior regression unless the failure is clearly caused by a documented missing prerequisite.
+A fast baseline or behavior-freeze characterization test failure should be treated as a potential behavior regression unless the failure is clearly caused by a documented missing prerequisite.
 
 A Node build or full-contour smoke failure should first be classified as either a dependency/precondition issue or a real product failure. Do not hide missing prerequisites, but do not treat them as code regressions without confirming the prerequisite state.
 
 
 ## Linting
 
-Stage 2 adds `ruff` as a development check for a narrow maintained surface. Stage 3 extends that maintained surface to the Client backend HTTP adapter, services, repositories, and small internal schemas introduced by the Client backend split. Broader lint coverage is still deferred so refactoring stages do not turn into unrelated legacy cleanup:
+The repository tooling setup adds `ruff` as a development check for a narrow maintained surface. The Client backend service split extends that maintained surface to the Client backend HTTP adapter, services, repositories, and small internal schemas introduced by the Client backend split. Broader lint coverage is still deferred so refactoring stages do not turn into unrelated legacy cleanup:
 
 ```bash
 python3 -m pip install -r engine/server/requirements-dev.txt
 make lint
 ```
 
-This stage uses `ruff check` only. It does not introduce `ruff format`; broad formatting normalization is deferred so tooling changes do not create unrelated code churn. Stage 4 extends the maintained lint surface to the Engine API handler adapter, route modules, service modules, and new Engine route tests introduced by the route split.
+This stage uses `ruff check` only. It does not introduce `ruff format`; broad formatting normalization is deferred so tooling changes do not create unrelated code churn. The Engine API route split extends the maintained lint surface to the Engine API handler adapter, route modules, service modules, and new Engine route tests introduced by the route split.
 
 ## Recommendation config and internal type checks
 
-Stage 5 adds focused recommendation tests for config validation and internal boundary dataclasses:
+The recommendation pipeline cleanup adds focused recommendation tests for config validation and internal boundary dataclasses:
 
 ```bash
 python3 -m pytest tests/recommendations/test_config_validation.py tests/recommendations/test_types_characterization.py -q
@@ -203,11 +203,11 @@ These tests prove that the checked-in recommendation defaults validate, malforme
 
 ## Schema ownership tests
 
-Stage 6 adds `tests/db` to the fast Python test suite. These tests use temporary SQLite databases to verify current-shape migration resources, legacy `ensure_*` wrapper equivalence, primary-key contracts, idempotency, and the schema ownership documentation. They do not use production DB files, FAISS, Node dependencies, crawler runtime, or network.
+The schema-ownership cleanup adds `tests/db` to the fast Python test suite. These tests use temporary SQLite databases to verify current-shape migration resources, legacy `ensure_*` wrapper equivalence, primary-key contracts, idempotency, and the schema ownership documentation. They do not use production DB files, FAISS, Node dependencies, crawler runtime, or network.
 
 ## Framework adapter checks
 
-Stage 10 adds FastAPI adapter tests without replacing the existing characterization suite:
+The FastAPI migration adds FastAPI adapter tests without replacing the existing characterization suite:
 
 ```bash
 make test-framework
@@ -215,9 +215,9 @@ make test-framework
 
 These tests verify Client and Engine FastAPI route contracts, stable `server.py` entrypoint paths, CORS/OPTIONS behavior, rate-limit responses, and framework compatibility documentation.
 
-## Stage 11 FastAPI-only adapter tests
+## FastAPI-only adapter tests
 
-Stage 11 removed the transitional stdlib HTTP route adapters. Stage 12 removes the remaining handler-shaped response-helper compatibility, so Client and Engine HTTP behavior tests exercise FastAPI app factories through `TestClient` or framework-neutral `RouteResult` assertions.
+The stdlib HTTP cleanup removed the transitional stdlib HTTP route adapters. The FastAPI response-helper cleanup removes the remaining handler-shaped response-helper compatibility, so Client and Engine HTTP behavior tests exercise FastAPI app factories through `TestClient` or framework-neutral `RouteResult` assertions.
 
 ```bash
 python3 -m pytest tests/client_backend tests/engine_api tests/framework -q
