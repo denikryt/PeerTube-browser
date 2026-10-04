@@ -50,6 +50,26 @@ def _conn() -> sqlite3.Connection:
     return conn
 
 
+def test_prepared_semantic_version_and_exact_null_source():
+    """V1 readiness is rejected; rebuilding v2 excludes empty/unknown reasons, not high errors."""
+    conn = _conn()
+    for i, reason in enumerate([None, "not_found", "gone", "unknown", "", None]):
+        _insert(conn, str(i), invalid_reason=reason, error_count=10 if i == 5 else 0)
+    conn.commit()
+    stats = rebuild_prepared_discovery(conn)
+    assert stats["source_video_count"] == 2
+    assert PREPARED_DISCOVERY_SCHEMA_VERSION == 2
+    assert prepared_discovery_available(conn)
+    conn.execute("UPDATE video_facets_snapshot SET schema_version=1")
+    conn.commit()
+    assert not prepared_discovery_available(conn)
+    with pytest.raises(VideoFacetsUnavailable):
+        fetch_prepared_video_facets(conn)
+    rebuild_prepared_discovery(conn)
+    assert prepared_discovery_available(conn)
+    conn.close()
+
+
 def _insert(
     conn: sqlite3.Connection,
     video_id: str,

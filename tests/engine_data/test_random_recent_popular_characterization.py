@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+import pytest
 import sys
 from pathlib import Path
 
@@ -59,6 +60,21 @@ def test_recent_videos_are_newest_first_and_exclude_over_threshold_errors() -> N
 
     assert [row["video_id"] for row in rows] == ["new", "popular"]
     assert rows[0]["thumbnail_urls"] == ["https://example.org/thumb.jpg"]
+
+
+@pytest.mark.parametrize("reason", [None, "not_found", "gone", "legacy_unknown", ""])
+def test_legacy_feeds_filter_availability_before_top_n(reason):
+    """An invalid top-ranked row cannot consume the canonical popular limit window."""
+    conn = _connect()
+    conn.execute("UPDATE videos SET invalid_reason=? WHERE video_id='popular'", (reason,))
+    conn.execute("UPDATE videos SET invalid_reason=? WHERE video_id='new'", (reason,))
+    expected = {"old", "new", "popular"} if reason is None else {"old"}
+    for fetch in [fetch_random_rows, fetch_recent_videos, fetch_popular_videos]:
+        assert {r["video_id"] for r in fetch(conn, 10, 2)} == expected
+    assert [r["video_id"] for r in fetch_popular_videos(conn, 1, 2)] == (
+        ["popular"] if reason is None else ["old"]
+    )
+    conn.close()
 
 
 def test_popular_videos_use_current_popularity_order_and_error_filter() -> None:

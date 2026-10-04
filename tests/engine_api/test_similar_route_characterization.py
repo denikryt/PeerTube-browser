@@ -104,6 +104,8 @@ def test_request_context_is_cleared_after_recommendation_error(monkeypatch) -> N
     conn.execute("INSERT INTO videos VALUES ('123', 'uuid-123', 'example.org')")
     conn.commit()
 
+    conn.execute("ALTER TABLE videos ADD COLUMN invalid_reason TEXT")
+
     def fail_after_context(_server, _params):
         """Raise after Client likes have been put into request context."""
         assert request_context.fetch_recent_likes_request("local-user", 10) == [

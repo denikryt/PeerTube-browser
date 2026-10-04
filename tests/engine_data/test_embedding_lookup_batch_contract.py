@@ -6,11 +6,12 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "engine" / "server"))
 
-from data.embeddings import fetch_embeddings_by_ids, fetch_seed_embeddings_for_likes  # noqa: E402
+from data.embeddings import fetch_embeddings_by_ids, fetch_seed_embeddings_for_likes, fetch_seed_embedding  # noqa: E402
 
 
 def _connect() -> sqlite3.Connection:
@@ -75,6 +76,8 @@ def _connect_seed_lookup() -> sqlite3.Connection:
           instance_domain TEXT NOT NULL,
           channel_id TEXT,
           title TEXT,
+          invalid_reason TEXT,
+          error_count INTEGER DEFAULT 0,
           PRIMARY KEY(video_id, instance_domain)
         );
         CREATE INDEX idx_videos_uuid_instance
@@ -97,6 +100,24 @@ def _connect_seed_lookup() -> sqlite3.Connection:
         """
     )
     return conn
+
+
+@pytest.mark.parametrize("reason", [None, "not_found", "gone", "legacy_unknown", ""])
+@pytest.mark.parametrize("errors", [0, 10])
+def test_single_and_batch_seeds_filter_only_canonical_invalidity(reason, errors):
+    """UUID/id and embedding/metadata seed paths exclude invalidity without diagnostics spread."""
+    conn = _connect_seed_lookup()
+    _insert_seed_video(conn, "v1", "u1", "example.org", [1.0, 0.0])
+    conn.execute("UPDATE videos SET invalid_reason=?,error_count=?", (reason, errors))
+    for video_id, uuid in [("v1", None), (None, "u1")]:
+        assert bool(fetch_seed_embedding(conn, video_id, "example.org", uuid)) == (reason is None)
+    for identity in [{"video_id": "v1"}, {"video_uuid": "u1"}]:
+        for include in [True, False]:
+            seeds = fetch_seed_embeddings_for_likes(
+                conn, [{**identity, "instance_domain": "example.org"}], include_embedding=include
+            )
+            assert bool(seeds) == (reason is None)
+    conn.close()
 
 
 def _insert_seed_video(
@@ -213,6 +234,7 @@ def test_cache_seed_lookup_uses_video_identity_only() -> None:
           instance_domain TEXT NOT NULL,
           channel_id TEXT,
           title TEXT,
+          invalid_reason TEXT,
           PRIMARY KEY(video_id, instance_domain)
         );
         CREATE INDEX idx_videos_uuid_instance

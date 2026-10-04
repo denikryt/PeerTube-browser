@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import sqlite3
+import pytest
 
+from data.serving_moderation import ServingVisibility
 from engine.server.data.video_search import rebuild_video_search_index, search_videos
 
 
@@ -105,6 +107,22 @@ def test_rebuild_creates_tables_and_searches_indexed_fields() -> None:
         conn.close()
 
 
+@pytest.mark.parametrize("reason", [None, "not_found", "gone", "unknown", ""])
+def test_search_source_uses_exact_availability_without_error_threshold(reason):
+    """Search source includes high-error live rows but runtime retains its optional threshold."""
+    conn = _db()
+    conn.execute("UPDATE videos SET invalid_reason=?,error_count=10 WHERE video_id='v1'", (reason,))
+    rebuild_video_search_index(conn)
+    assert bool(conn.execute("SELECT 1 FROM video_search_docs WHERE video_id='v1'").fetchone()) == (
+        reason is None
+    )
+    rows, _ = search_videos(
+        conn, query="Linux", limit=10, offset=0, visibility=ServingVisibility(error_threshold=3)
+    )
+    assert rows == []
+    conn.close()
+
+
 def test_description_only_terms_are_not_indexed_and_rebuild_is_idempotent() -> None:
     """Search v1 excludes descriptions and repeated rebuilds preserve one doc per video."""
     conn = _db()
@@ -163,3 +181,21 @@ def test_search_filter_no_match_is_empty_not_error() -> None:
         assert search_videos(conn, query="linux", limit=5, offset=0, filters=VideoFilters(language="uk")) == ([], None)
     finally:
         conn.close()
+
+
+def test_stale_search_tokens_cannot_bypass_runtime_availability():
+    """Before rebuild, canonical invalidity still removes a document from live Search."""
+    conn = _db()
+    rebuild_video_search_index(conn)
+    rows, _ = search_videos(conn, query="Linux", limit=10, offset=0)
+    assert [r["video_id"] for r in rows] == ["v1"]
+    conn.execute("UPDATE videos SET invalid_reason='' WHERE video_id='v1'")
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM video_search_fts WHERE video_search_fts MATCH 'Linux'"
+        ).fetchone()[0]
+        == 1
+    )
+    rows, _ = search_videos(conn, query="Linux", limit=10, offset=0)
+    assert rows == []
+    conn.close()

@@ -65,6 +65,8 @@ def _connect() -> sqlite3.Connection:
         """
     )
     conn.commit()
+    # Minimal canonical fixtures include the availability contract.
+    conn.execute("ALTER TABLE videos ADD COLUMN invalid_reason TEXT")
     return conn
 
 

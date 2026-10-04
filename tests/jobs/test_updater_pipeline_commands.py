@@ -321,7 +321,11 @@ def test_retry_errors_runs_only_error_capable_crawler_stages(monkeypatch, tmp_pa
 
     _patch_lightweight(monkeypatch)
     seen: list[list[str]] = []
-    (tmp_path / "staging.db").touch()
+    # Resume fixtures represent a current availability-semantics generation.
+    import sqlite3
+    with sqlite3.connect(tmp_path / "staging.db") as conn:
+        conn.execute("CREATE TABLE crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+        conn.execute("INSERT INTO crawl_state VALUES('video_availability_semantics','canonical_absence_v1')")
     pipeline.run_pipeline(
         _args(tmp_path, retry_errors=True, resume_staging=True),
         command_runner=lambda cmd, cwd: seen.append(list(cmd)),
@@ -380,7 +384,11 @@ def test_resume_staging_force_rebuilds_embeddings_before_merge(monkeypatch, tmp_
     """A resumed staging DB never contributes pre-existing recipe embeddings to prod."""
 
     _patch_lightweight(monkeypatch)
-    (tmp_path / "staging.db").touch()
+    # Resume fixtures represent a current availability-semantics generation.
+    import sqlite3
+    with sqlite3.connect(tmp_path / "staging.db") as conn:
+        conn.execute("CREATE TABLE crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+        conn.execute("INSERT INTO crawl_state VALUES('video_availability_semantics','canonical_absence_v1')")
     seen: list[list[str]] = []
     pipeline.run_pipeline(
         _args(tmp_path, resume_staging=True),
@@ -444,3 +452,76 @@ def test_sync_stale_host_delete_happens_only_after_engine_stop(monkeypatch, tmp_
     assert events.index("purge-dry") < events.index("stop")
     assert events.index("stop") < events.index("purge-live")
     assert events.index("purge-live") < events.index("start")
+
+
+@pytest.mark.parametrize("retry", [False, True])
+@pytest.mark.parametrize("marker", [None, "legacy_transient_invalidity", "canonical_absence_v1"])
+def test_resume_marker_preflight_precedes_network_and_commands(
+    monkeypatch, tmp_path, retry, marker
+):
+    """Legacy resume/retry stops before side effects; current marked resume proceeds."""
+    import sqlite3
+
+    args = _args(tmp_path, retry_errors=retry, sync_join_whitelist=True)
+    _patch_lightweight(monkeypatch)
+    with sqlite3.connect(args.staging_db) as conn:
+        conn.execute("CREATE TABLE crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+        if marker:
+            conn.execute(
+                "INSERT INTO crawl_state VALUES(?,?)", ("video_availability_semantics", marker)
+            )
+    reached = []
+
+    def network(url):
+        """Record reaching the outer network boundary after marker admission."""
+        reached.append("network")
+        raise RuntimeError("network boundary reached")
+
+    monkeypatch.setattr(pipeline, "fetch_join_hosts", network)
+    seen = []
+    if marker == "canonical_absence_v1":
+        with pytest.raises(RuntimeError, match="network boundary reached"):
+            pipeline.run_pipeline(
+                args, command_runner=lambda cmd, cwd=None: seen.append(cmd), validate_files=False
+            )
+        assert reached == ["network"]
+    else:
+        with pytest.raises(RuntimeError, match="recreate"):
+            pipeline.run_pipeline(
+                args, command_runner=lambda cmd, cwd=None: seen.append(cmd), validate_files=False
+            )
+        assert reached == []
+    assert seen == []
+
+
+@pytest.mark.parametrize("skip_systemctl", [False, True])
+def test_first_run_owns_fresh_staging_and_explicit_service_lifecycle(
+    monkeypatch, tmp_path, skip_systemctl
+):
+    """First no-resume run stamps staging itself; outer-offline mode issues no systemctl."""
+    from engine.server.db.jobs.updater.staging import (
+        init_staging_db,
+        assert_video_availability_staging_semantics,
+    )
+
+    args = _args(tmp_path, resume_staging=False, skip_systemctl=skip_systemctl)
+    _patch_lightweight(monkeypatch)
+    (Path(args.crawler_dir) / "schema.sql").write_text("CREATE TABLE instances(host TEXT);")
+    monkeypatch.setattr(pipeline, "init_staging_db", init_staging_db)
+    seen = []
+
+    def command(cmd, cwd):
+        """Check actual staging evidence before the first external command."""
+        assert_video_availability_staging_semantics(Path(args.staging_db))
+        seen.append(list(cmd))
+
+    pipeline.run_pipeline(args, command_runner=command, validate_files=False)
+    lifecycle = [cmd[1] for cmd in seen if cmd[0] == "systemctl"]
+    assert lifecycle == ([] if skip_systemctl else ["stop", "start"])
+    if not skip_systemctl:
+        stop = next(i for i, cmd in enumerate(seen) if cmd[0] == "systemctl" and cmd[1] == "stop")
+        merge = next(
+            i for i, cmd in enumerate(seen) if any("merge-staging-db.py" in part for part in cmd)
+        )
+        start = next(i for i, cmd in enumerate(seen) if cmd[0] == "systemctl" and cmd[1] == "start")
+        assert stop < merge < start

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+import pytest
 from pathlib import Path
 
 
@@ -404,6 +405,240 @@ def _create_full_sync_source(path: Path, *, tag: str = "linux") -> None:
         conn.commit()
 
 
+def _sync_args(monkeypatch, mod, source, target):
+    """Keep network at its outer boundary while running the real full-sync command."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(mod, "fetch_hosts", lambda url: {"example.org"})
+    monkeypatch.setattr(
+        mod,
+        "parse_args",
+        lambda: SimpleNamespace(
+            url="unused", source_db=source, whitelist_db=target, mode="include"
+        ),
+    )
+
+
+@pytest.mark.parametrize("alias", ["same", "symlink", "hardlink"])
+def test_full_sync_rejects_input_output_physical_identity(monkeypatch, tmp_path, alias):
+    """Resource collision is rejected before network, bootstrap, or lock acquisition."""
+    import os
+
+    mod = _load_sync_whitelist_module()
+    source = tmp_path / "source.db"
+    _create_full_sync_source(source)
+    target = source if alias == "same" else tmp_path / "alias.db"
+    if alias != "same":
+        try:
+            target.symlink_to(source) if alias == "symlink" else os.link(source, target)
+        except OSError as exc:
+            pytest.skip(str(exc))
+    _sync_args(monkeypatch, mod, source, target)
+    before = source.read_bytes()
+    monkeypatch.setattr(
+        mod, "fetch_hosts", lambda url: pytest.fail("network before identity check")
+    )
+    with pytest.raises(ValueError, match="different physical files"):
+        mod.main()
+    assert source.read_bytes() == before
+
+
+def test_full_sync_rejects_missing_source_without_creating_input(monkeypatch, tmp_path):
+    """A missing raw input is not silently created as an empty SQLite DB."""
+    mod = _load_sync_whitelist_module()
+    source, target = tmp_path / "missing.db", tmp_path / "output.db"
+    _sync_args(monkeypatch, mod, source, target)
+    with pytest.raises(FileNotFoundError):
+        mod.main()
+    assert not source.exists() and not target.exists()
+
+
+@pytest.mark.parametrize("reason", [None,"timeout","tls_error","cert_expired","not_found","gone","unknown",""])
+def test_full_sync_normalizes_output_and_replaces_search_generation(monkeypatch, tmp_path, reason):
+    """A historical transient input recovers in output and replaces old FTS tokens only there."""
+    mod = _load_sync_whitelist_module()
+    source, target = tmp_path / "raw with ? space.db", tmp_path / "target.db"
+    _create_full_sync_source(source)
+    _sync_args(monkeypatch, mod, source, target)
+    mod.main()
+    with sqlite3.connect(source) as conn:
+        conn.execute(
+            "UPDATE videos SET title='newtitle',invalid_reason=?,invalid_at=123,error_count=2,last_error='history'",
+            (reason,),
+        )
+    before = source.read_bytes()
+    mod.main()
+    live = reason is None or reason in {"timeout", "tls_error", "cert_expired"}
+    normalized = None if live else reason
+    timestamp = None if reason in {"timeout", "tls_error", "cert_expired"} else 123
+    assert source.read_bytes() == before
+    with sqlite3.connect(target) as conn:
+        assert conn.execute(
+            "SELECT invalid_reason,invalid_at,error_count,last_error FROM videos"
+        ).fetchone() == (normalized, timestamp, 2, "history")
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM video_search_fts WHERE video_search_fts MATCH 'Song'"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM video_search_fts WHERE video_search_fts MATCH 'newtitle'"
+            ).fetchone()[0]
+            == int(live)
+        )
+        assert conn.execute(
+            "SELECT schema_version,source_video_count FROM video_facets_snapshot"
+        ).fetchone() == (2, int(live))
+
+
+@pytest.mark.parametrize("journal", ["DELETE", "WAL"])
+def test_full_sync_active_reader_contention_fails_before_attach(monkeypatch, tmp_path, journal):
+    """The pre-attach barrier rejects an active snapshot even in rollback journal mode."""
+    mod = _load_sync_whitelist_module()
+    source, target = tmp_path / "source.db", tmp_path / "target.db"
+    _create_full_sync_source(source)
+    _sync_args(monkeypatch, mod, source, target)
+    mod.main()
+    reader = sqlite3.connect(target)
+    reader.execute(f"PRAGMA journal_mode={journal}")
+    reader.execute("BEGIN")
+    reader.execute("SELECT * FROM videos").fetchall()
+    real_connect = sqlite3.connect
+    statements = []
+
+    def connect(*args, **kwargs):
+        """Shorten contention wait and record actual command SQL without replacing SQLite."""
+        kwargs["timeout"] = 0.01
+        conn = real_connect(*args, **kwargs)
+        conn.set_trace_callback(statements.append)
+        return conn
+
+    monkeypatch.setattr(mod.sqlite3, "connect", connect)
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            mod.main()
+        assert any(s == "BEGIN EXCLUSIVE" for s in statements)
+        assert not any(
+            s.startswith(("ATTACH", "CREATE", "DELETE", "UPDATE", "INSERT")) for s in statements
+        )
+        assert reader.execute("SELECT title FROM videos").fetchone()[0] == "Song"
+    finally:
+        reader.close()
+
+
+@pytest.mark.parametrize("journal", ["DELETE", "WAL"])
+@pytest.mark.parametrize("failure", [None, "publication", "prepared", "search"])
+def test_full_sync_capabilities_retention_and_failure_release(
+    monkeypatch, tmp_path, journal, failure
+):
+    """Real main ownership spans all commits, source cannot write, and failure always releases."""
+    mod = _load_sync_whitelist_module()
+    source, target = tmp_path / "source.db", tmp_path / "target.db"
+    _create_full_sync_source(source)
+    _sync_args(monkeypatch, mod, source, target)
+    mod.main()
+    with sqlite3.connect(target) as conn:
+        conn.execute(f"PRAGMA journal_mode={journal}")
+    before = source.read_bytes()
+    real_content, real_prepared, real_search = (
+        mod.rebuild_content_tables,
+        mod.rebuild_prepared_discovery,
+        mod.rebuild_video_search_index,
+    )
+    real_connect = sqlite3.connect
+    trace = []
+
+    def blocked():
+        """Both reader and writer from an unrelated connection are blocked until close."""
+        with real_connect(target, timeout=0.01) as competing:
+            for sql in ["SELECT * FROM videos", "UPDATE videos SET title='intruder'"]:
+                with pytest.raises(sqlite3.OperationalError, match="locked"):
+                    competing.execute(sql).fetchall()
+
+    def content(conn, hosts):
+        """Verify attached input capability at the canonical publication boundary."""
+        conn.set_trace_callback(trace.append)
+        assert conn.execute("PRAGMA main.locking_mode").fetchone()[0] == "exclusive"
+        assert conn.execute("PRAGMA source.locking_mode").fetchone()[0] == "normal"
+        assert conn.execute("SELECT title FROM source.videos").fetchone()[0] == "Song"
+        for sql in [
+            "UPDATE source.videos SET title='wrong'",
+            "INSERT INTO source.instances(host) VALUES('wrong')",
+            "CREATE TABLE source.wrong(x)",
+        ]:
+            with pytest.raises(sqlite3.OperationalError, match="readonly"):
+                conn.execute(sql)
+        blocked()
+        result = real_content(conn, hosts)
+        if failure == "publication":
+            conn.execute("UPDATE main.videos SET title='uncommitted'")
+            raise RuntimeError("publication failure")
+        return result
+
+    def prepared(conn):
+        """Canonical commit and prepared commit do not release retained main ownership."""
+        assert not conn.in_transaction and "source" not in _attached_schema_names(conn)
+        blocked()
+        result = real_prepared(conn)
+        blocked()
+        if failure == "prepared":
+            raise RuntimeError("prepared failure")
+        return result
+
+    def search(conn):
+        """Between Prepared and Search, no unrelated canonical writer can interleave."""
+        blocked()
+        if failure == "search":
+            raise RuntimeError("search failure")
+        result = real_search(conn)
+        blocked()
+        return result
+
+    monkeypatch.setattr(mod, "rebuild_content_tables", content)
+    monkeypatch.setattr(mod, "rebuild_prepared_discovery", prepared)
+    monkeypatch.setattr(mod, "rebuild_video_search_index", search)
+    if failure:
+        with pytest.raises(RuntimeError, match=f"{failure} failure"):
+            mod.main()
+    else:
+        mod.main()
+    assert source.read_bytes() == before
+    if failure == "publication":
+        assert "ROLLBACK" in trace
+    with real_connect(target, timeout=0.01) as conn:
+        assert conn.execute("SELECT title FROM videos").fetchone()[0] == "Song"
+        conn.execute("UPDATE videos SET title='accessible after close'")
+
+
+def test_full_sync_deferred_source_snapshot_survives_main_dml(monkeypatch, tmp_path):
+    """After main mutation starts, a WAL input writer commits without changing sync's snapshot."""
+    mod = _load_sync_whitelist_module()
+    source, target = tmp_path / "source.db", tmp_path / "target.db"
+    _create_full_sync_source(source)
+    with sqlite3.connect(source) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+    _sync_args(monkeypatch, mod, source, target)
+    real_content = mod.rebuild_content_tables
+
+    def content(conn, hosts):
+        """Use the real copy's main DML before committing concurrent input changes."""
+        result = real_content(conn, hosts)
+        assert conn.in_transaction
+        with sqlite3.connect(source, timeout=0.01) as writer:
+            writer.execute("UPDATE videos SET title='latergeneration'")
+        assert conn.execute("SELECT title FROM source.videos").fetchone()[0] == "Song"
+        return result
+
+    monkeypatch.setattr(mod, "rebuild_content_tables", content)
+    mod.main()
+    with sqlite3.connect(target) as conn:
+        assert conn.execute("SELECT title FROM videos").fetchone()[0] == "Song"
+    with sqlite3.connect(source) as conn:
+        assert conn.execute("SELECT title FROM videos").fetchone()[0] == "latergeneration"
+
+
 def test_full_sync_main_publishes_read_indexes_and_prepared_discovery(monkeypatch, tmp_path) -> None:
     """Successful full sync returns only after current indexes and prepared Discovery exist."""
     from types import SimpleNamespace
@@ -432,7 +667,7 @@ def test_full_sync_main_publishes_read_indexes_and_prepared_discovery(monkeypatc
         ).fetchall() == [("linux", "v1", "example.org")]
         assert conn.execute(
             "SELECT schema_version FROM video_facets_snapshot WHERE snapshot_id=1"
-        ).fetchone() == (1,)
+        ).fetchone() == (2,)
         indexes = {
             row[0]
             for row in conn.execute(
@@ -593,3 +828,20 @@ def test_full_sync_rebuild_failure_is_nonzero_and_leaves_snapshot_invalidated(
         assert conn.execute(
             "SELECT COUNT(*) FROM video_facets_snapshot"
         ).fetchone()[0] == 0
+
+
+def test_sync_close_does_not_replace_outer_publication_writer_isolation(monkeypatch, tmp_path):
+    """A real non-updater purge after close can invalidate generation readiness again."""
+    from data.moderation import purge_host_data
+
+    mod = _load_sync_whitelist_module()
+    source, target = tmp_path / "source.db", tmp_path / "target.db"
+    _create_full_sync_source(source)
+    _sync_args(monkeypatch, mod, source, target)
+    mod.main()
+    with sqlite3.connect(target) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM video_facets_snapshot").fetchone()[0] == 1
+        counts = purge_host_data(conn, "example.org")
+        assert counts["videos"] == 1
+        assert conn.execute("SELECT COUNT(*) FROM videos").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM video_facets_snapshot").fetchone()[0] == 0

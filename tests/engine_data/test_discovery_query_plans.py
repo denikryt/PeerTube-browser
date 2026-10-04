@@ -178,3 +178,59 @@ def test_tag_filter_uses_video_tags_primary_key_without_runtime_json_expansion()
     ), plan
     assert "json_each" not in sql.lower()
     assert not any("SCAN vt" in detail for detail in plan), plan
+
+
+def test_video_availability_direct_and_seed_lookups_keep_indexed_identity_plans():
+    """On a representative corpus, extra availability predicates do not force video scans."""
+    import numpy as np
+    from data.embeddings import fetch_seed_embedding
+    from handlers.video import fetch_video_row
+    from engine.server.db.migrations.apply import apply_video_index_ids_migration
+
+    class IdentityConnection(sqlite3.Connection):
+        """Capture the actual direct/seed SQL while retaining real SQLite behavior."""
+
+        queries = None
+
+        def execute(self, sql, parameters=(), /):
+            """Record identity statements for coarse planner checks after real resolution."""
+            if "SELECT" in sql and "v.invalid_reason IS NULL" in sql:
+                self.queries.append((sql, parameters))
+            return super().execute(sql, parameters)
+
+    conn = sqlite3.connect(":memory:", factory=IdentityConnection)
+    conn.row_factory = sqlite3.Row
+    conn.queries = []
+    conn.executescript((ROOT / "engine/crawler/schema.sql").read_text())
+    conn.execute("""CREATE TABLE video_embeddings(video_id TEXT,instance_domain TEXT,
+        embedding BLOB,embedding_dim INTEGER,PRIMARY KEY(video_id,instance_domain))""")
+    apply_video_index_ids_migration(conn)
+    conn.executemany(
+        """INSERT INTO videos(video_id,video_uuid,instance_domain,last_checked_at)
+        VALUES(?,?,'example.org',1)""",
+        [(str(i), f"u-{i}") for i in range(3000)],
+    )
+    conn.execute(
+        "INSERT INTO video_embeddings VALUES('42','example.org',?,2)",
+        (np.array([1, 0], dtype=np.float32).tobytes(),),
+    )
+    conn.execute(
+        "INSERT INTO video_index_ids(video_id,instance_domain,is_active,created_at,updated_at) VALUES('42','example.org',1,1,1)"
+    )
+    conn.execute("CREATE INDEX idx_videos_uuid_instance ON videos(video_uuid,instance_domain)")
+    conn.execute("ANALYZE")
+    assert fetch_video_row(conn, "u-42", "example.org")["video_id"] == "42"
+    assert fetch_seed_embedding(conn, None, "example.org", "u-42")["video_id"] == "42"
+    assert fetch_seed_embedding(conn, "42", "example.org", None)["video_id"] == "42"
+    queries = list(conn.queries)
+    assert len(queries) == 3
+    for sql, params in queries:
+        plan = [
+            row[3] for row in sqlite3.Connection.execute(conn, "EXPLAIN QUERY PLAN " + sql, params)
+        ]
+        assert any("SEARCH v" in detail for detail in plan), plan
+        assert not any(detail.startswith("SCAN v ") for detail in plan), plan
+    conn.execute("UPDATE videos SET invalid_reason='' WHERE video_id='42'")
+    assert fetch_video_row(conn, "u-42", "example.org") is None
+    assert fetch_seed_embedding(conn, None, "example.org", "u-42") is None
+    conn.close()

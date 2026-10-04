@@ -22,7 +22,7 @@ PRODUCTION_ROOTS = [
 ]
 IGNORED_PARTS = {"__pycache__", "tests"}
 ALLOWED_LOCAL_ENSURE_FILES = {
-    # These job/test-local helpers are not the removed Stage 6 runtime wrappers.
+    # These job/test-local helpers are not the removed schema-ownership cleanup runtime wrappers.
     ROOT / "engine" / "server" / "db" / "jobs" / "precompute-similar-ann.py",
     ROOT / "engine" / "server" / "db" / "jobs" / "recompute-popularity.py",
     ROOT / "engine" / "server" / "db" / "jobs" / "sync-whitelist.py",
@@ -65,7 +65,7 @@ def _imported_names(tree: ast.AST) -> set[str]:
 
 
 def test_removed_schema_wrappers_are_not_defined_imported_or_called() -> None:
-    """Removed Stage 6 schema wrappers must not remain in production code."""
+    """Removed schema wrappers from the schema-ownership cleanup must not remain in production code."""
     offenders: list[str] = []
     for path in _production_files():
         text = path.read_text(encoding="utf-8")

@@ -1,4 +1,4 @@
-"""Documentation checks for Stage 10 framework compatibility decisions."""
+"""Documentation checks for FastAPI migration framework compatibility decisions."""
 from __future__ import annotations
 
 from pathlib import Path
