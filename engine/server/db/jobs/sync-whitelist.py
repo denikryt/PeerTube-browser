@@ -54,6 +54,10 @@ TABLE_NAME = "instances"
 SOURCE_SCHEMA = "source"
 MODES = ("include", "exclude")
 SCHEMA_SQL_PATH = (script_dir.parents[3] / "engine" / "crawler" / "schema.sql").resolve()
+VIDEO_AVAILABILITY_SEMANTICS_KEY = "video_availability_semantics"
+VIDEO_AVAILABILITY_SEMANTICS_VALUE = "canonical_absence_atomic_ingest_v2"
+VIDEO_CORPUS_ROLE_KEY = "video_corpus_role"
+UPDATER_STAGING_ROLE = "updater_staging_delta"
 
 EXCLUDED_CHANNEL_COLUMNS: set[str] = set()
 EXCLUDED_VIDEO_COLUMNS: set[str] = set()
@@ -198,6 +202,43 @@ def ensure_schema_compatibility(conn: sqlite3.Connection) -> None:
             f"{exc} Update the crawl DB to match `engine/crawler/schema.sql` before syncing."
         ) from exc
 
+
+def assert_source_video_publication_compatible(conn: sqlite3.Connection) -> None:
+    """Validate current writer provenance and exclude updater-delta corpora.
+
+    This reads only the already attached read-only ``source`` schema. Role
+    absence is the supported standalone shape but is deliberately not treated
+    as proof that the standalone build is complete.
+    """
+
+    error = (
+        "Unsupported crawler video corpus for full sync: rebuild the standalone "
+        "crawl database with the current video writer before publication."
+    )
+    try:
+        semantics = conn.execute(
+            f"SELECT value FROM {SOURCE_SCHEMA}.crawl_state WHERE key = ?",
+            (VIDEO_AVAILABILITY_SEMANTICS_KEY,),
+        ).fetchone()
+        role = conn.execute(
+            f"SELECT value FROM {SOURCE_SCHEMA}.crawl_state WHERE key = ?",
+            (VIDEO_CORPUS_ROLE_KEY,),
+        ).fetchone()
+    except sqlite3.OperationalError as exc:
+        if "no such table" not in str(exc):
+            raise
+        raise RuntimeError(error) from exc
+
+    # TODO(nodeforge-video-availability-generation-cutover): Remove pre-v2 writer-generation rejection only after no supported crawler video corpus can predate atomic initial-tombstone ingest.
+    if semantics is None or semantics[0] != VIDEO_AVAILABILITY_SEMANTICS_VALUE:
+        raise RuntimeError(error)
+
+    # Explicit roles are fail-closed. The only role introduced in this scope is
+    # updater staging, which is a delta corpus and cannot authorize replacement.
+    if role is not None:
+        if role[0] == UPDATER_STAGING_ROLE:
+            raise RuntimeError("Updater staging delta cannot be used for destructive full sync.")
+        raise RuntimeError(f"Unsupported explicit video corpus role for full sync: {role[0]}")
 
 def fetch_hosts(url: str) -> set[str]:
     """Handle fetch hosts."""
@@ -508,6 +549,9 @@ def main() -> None:
         # of the read-only source, permitting its WAL crawler writer to commit.
         conn.execute('BEGIN DEFERRED')
         with conn:
+            # Authorize the same attached source generation whose rows are read
+            # below. Never reopen the source pathname for lifecycle validation.
+            assert_source_video_publication_compatible(conn)
             source_hosts = {
                 row[0]
                 for row in conn.execute(

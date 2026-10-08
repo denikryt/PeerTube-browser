@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  projectDetailThumbnailCandidates,
   resolveLegacyThumbnailCompatibility,
   resolvePeerTubeMediaUrl,
   resolveThumbnailCandidates
@@ -100,5 +101,96 @@ test("legacy compatibility uses detail legacy then list thumbnails then list leg
       "https:"
     ),
     { url: null, width: null, height: null }
+  );
+});
+
+test("full detail projection requires a structurally recognized thumbnail representation", () => {
+  assert.equal(
+    projectDetailThumbnailCandidates({}, "example.org", "https:"),
+    null
+  );
+  assert.equal(
+    projectDetailThumbnailCandidates({ thumbnails: {} }, "example.org", "https:"),
+    null
+  );
+  for (const value of [null, "", "   ", 123, false, {}, []]) {
+    assert.equal(
+      projectDetailThumbnailCandidates({ thumbnailPath: value }, "example.org", "https:"),
+      null
+    );
+  }
+});
+
+test("full detail projection treats an actual modern array as authoritative and never falls through", () => {
+  assert.deepEqual(
+    projectDetailThumbnailCandidates(
+      { thumbnails: [], thumbnailPath: "/legacy.jpg" },
+      "example.org",
+      "https:"
+    ),
+    []
+  );
+  assert.deepEqual(
+    projectDetailThumbnailCandidates(
+      {
+        thumbnails: [
+          { fileUrl: "/small.jpg", width: 100, height: 100 },
+          { fileUrl: "/large.jpg", width: 800, height: 450 },
+          { fileUrl: "https://example.org/large.jpg", width: 300, height: 200 }
+        ],
+        thumbnailPath: "/legacy.jpg"
+      },
+      "example.org",
+      "https:"
+    ),
+    [
+      { url: "https://example.org/large.jpg", width: 800, height: 450 },
+      { url: "https://example.org/small.jpg", width: 100, height: 100 }
+    ]
+  );
+});
+
+test("full detail projection falls through malformed modern shape to usable legacy fields", () => {
+  assert.deepEqual(
+    projectDetailThumbnailCandidates(
+      { thumbnails: { unexpected: true }, thumbnailPath: "/legacy.jpg" },
+      "example.org",
+      "https:"
+    ),
+    [{ url: "https://example.org/legacy.jpg", width: null, height: null }]
+  );
+  assert.deepEqual(
+    projectDetailThumbnailCandidates(
+      { thumbnailPath: { fileUrl: "/legacy-object.jpg" } },
+      "example.org",
+      "https:"
+    ),
+    [{ url: "https://example.org/legacy-object.jpg", width: null, height: null }]
+  );
+});
+
+test("recognized explicit non-http legacy references are authoritative policy rejections", () => {
+  for (const value of ["file:///tmp/a.jpg", "data:image/png,abc", "ftp://example.org/a.jpg"]) {
+    assert.deepEqual(
+      projectDetailThumbnailCandidates({ thumbnailPath: value }, "example.org", "https:"),
+      []
+    );
+  }
+  for (const value of ["http:", "https:", "http://", "https://"]) {
+    assert.equal(
+      projectDetailThumbnailCandidates({ thumbnailPath: value }, "example.org", "https:"),
+      null
+    );
+  }
+});
+
+test("preview-only detail never establishes card-thumbnail authority", () => {
+  assert.equal(
+    projectDetailThumbnailCandidates(
+      { previewPath: "/preview.jpg", previewUrl: "https://example.org/preview.jpg" },
+      "example.org",
+      "https:"
+    ),
+    null
   );
 });

@@ -386,6 +386,9 @@ def _create_full_sync_source(path: Path, *, tag: str = "linux") -> None:
             INSERT INTO instances(host) VALUES ('example.org');
             INSERT INTO channels(channel_id, channel_name, display_name, instance_domain)
               VALUES ('c1', 'music', 'Music', 'example.org');
+            CREATE TABLE crawl_state(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO crawl_state(key, value)
+              VALUES ('video_availability_semantics', 'canonical_absence_atomic_ingest_v2');
             """
         )
         conn.execute(
@@ -403,6 +406,80 @@ def _create_full_sync_source(path: Path, *, tag: str = "linux") -> None:
             "INSERT INTO video_embeddings VALUES ('v1','example.org',X'0102',2,'model','now')"
         )
         conn.commit()
+
+
+@pytest.mark.parametrize(
+    "semantics,role,accepted",
+    [
+        ("canonical_absence_atomic_ingest_v2", None, True),
+        (None, None, False),
+        ("canonical_absence_v1", None, False),
+        ("canonical_absence_atomic_ingest_v2 ", None, False),
+        ("canonical_absence_atomic_ingest_v2", "updater_staging_delta", False),
+        ("canonical_absence_atomic_ingest_v2", "future_role", False),
+    ],
+)
+def test_full_sync_source_validator_requires_current_writer_and_excludes_explicit_roles(
+    tmp_path, semantics, role, accepted
+) -> None:
+    """Attached source validation is read-only and roleless v2 is the only admitted shape."""
+    mod = _load_sync_whitelist_module()
+    source = tmp_path / "source-capability.db"
+    with sqlite3.connect(source) as conn:
+        conn.execute("CREATE TABLE crawl_state(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        if semantics is not None:
+            conn.execute(
+                "INSERT INTO crawl_state VALUES('video_availability_semantics', ?)",
+                (semantics,),
+            )
+        if role is not None:
+            conn.execute("INSERT INTO crawl_state VALUES('video_corpus_role', ?)", (role,))
+    before = source.read_bytes()
+
+    with sqlite3.connect(":memory:", uri=True) as conn:
+        conn.execute("ATTACH DATABASE ? AS source", (source.resolve().as_uri() + "?mode=ro",))
+        conn.execute("BEGIN DEFERRED")
+        if accepted:
+            mod.assert_source_video_publication_compatible(conn)
+        else:
+            with pytest.raises(RuntimeError):
+                mod.assert_source_video_publication_compatible(conn)
+        conn.rollback()
+    assert source.read_bytes() == before
+
+
+def test_full_sync_rejects_updater_delta_before_canonical_replacement(monkeypatch, tmp_path) -> None:
+    """A schema-compatible updater delta cannot authorize destructive replacement."""
+    mod = _load_sync_whitelist_module()
+    source = tmp_path / "updater-stage.db"
+    target = tmp_path / "target-existing.db"
+    _create_full_sync_source(source)
+    with sqlite3.connect(source) as conn:
+        conn.execute(
+            "INSERT INTO crawl_state(key, value) VALUES('video_corpus_role', 'updater_staging_delta')"
+        )
+    with sqlite3.connect(target) as conn:
+        mod.ensure_whitelist_schema(conn)
+        mod.ensure_content_schema(conn)
+        conn.execute("INSERT INTO instances(host) VALUES('old.example')")
+        conn.execute(
+            "INSERT INTO channels(channel_id, channel_name, instance_domain) VALUES('old-c','old','old.example')"
+        )
+        conn.execute(
+            "INSERT INTO videos(video_id, video_uuid, instance_domain, last_checked_at) VALUES('old-v','old-u','old.example',1)"
+        )
+        conn.commit()
+    _sync_args(monkeypatch, mod, source, target)
+    monkeypatch.setattr(
+        mod,
+        "invalidate_prepared_discovery",
+        lambda conn: pytest.fail("canonical invalidation ran before source capability rejection"),
+    )
+
+    with pytest.raises(RuntimeError, match="Updater staging delta"):
+        mod.main()
+    with sqlite3.connect(target) as conn:
+        assert conn.execute("SELECT video_id FROM videos ORDER BY video_id").fetchall() == [("old-v",)]
 
 
 def _sync_args(monkeypatch, mod, source, target):

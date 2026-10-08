@@ -107,26 +107,19 @@ Decision: updater/data-build is the only production writer of `random-cache.db`.
 
 Standalone rebuilds may target another output path while Engine runs, but replacement of the configured production runtime path is an offline operation and requires Engine restart before the new generation is authoritative to runtime. No hot-reload watcher is part of this contract.
 
-### video-availability semantics cutover staging semantic cutover
+### Video-writer semantics and updater staging cutover
 
-Fresh `init_staging_db()` recreates DB/sidecars and stamps existing `crawl_state`
-with `video_availability_semantics=canonical_absence_v1`. Legacy staging is unsupported and
-never converted/backfilled. Resume (including retry-errors) requires that exact
-marker immediately after production schema preflight, before denylist, network,
-crawler, merge or service-stop work. Correctly marked same-era crash/resume
-keeps its current behavior.
+Fresh `init_staging_db()` recreates DB/sidecars and stamps existing `crawl_state` with two orthogonal facts:
 
-Direct `merge-staging-db.py` revalidates the same marker through the already
-attached `stage` connection inside `BEGIN IMMEDIATE`, before first production
-DML. It never reopens the pathname to authorize rows: replacing that path cannot
-make marked B authorize attached legacy A, or revoke attached marked A. Missing
-or mismatched evidence fails with a recreate-staging instruction and rollback.
+```text
+video_availability_semantics = canonical_absence_atomic_ingest_v2
+video_corpus_role            = updater_staging_delta
+```
 
-During rollout, delete legacy staging and sidecars without pre-creating its
-replacement. Restart Engine after offline in-place migration/Prepared v2/Search
-cutover, then invoke the first ordinary updater without resume/retry-errors; it
-creates staging and owns ordinary systemctl behavior. An intentionally offline
-outer rollout uses `--skip-systemctl` instead, retaining sole restart ownership.
-See `DATA_BUILD.md` for full-sync isolation and broader publication readiness.
-This temporary stamp/check can be removed only after every supported deployment
-crosses the cutover and legacy staging can no longer be resumed.
+The writer marker proves the current atomic initial-tombstone ingest semantics; the role says this corpus is an updater delta and therefore is not a standalone destructive-full-sync source. Neither value is canonical per-video state, and the role does not claim completeness.
+
+Legacy staging is unsupported and never converted/backfilled. Ordinary resume, `--retry-errors`, and direct merge require the exact v2 + `updater_staging_delta` pair. Missing/v1/malformed writer evidence, roleless v2 (the supported standalone shape), or an unknown/wrong explicit role fails before denylist/network/crawler/service-stop work; direct `merge-staging-db.py` revalidates through the already attached `stage` connection inside the merge transaction before first production DML. Path replacement therefore cannot make one DB generation authorize another.
+
+Rollout ordering matters because updater executes generated `engine/crawler/dist/*.js`: disable updater/timer and other publication writers, deploy source, run `npm run build` in `engine/crawler`, discard pre-cutover staging plus `-wal`/`-shm` sidecars, and only then allow creation of the first v2 staging generation. The first post-cutover updater must not use old `--resume-staging` or `--retry-errors`; the updater creates the replacement staging itself. If an outer offline rollout retains restart ownership, use `--skip-systemctl` as documented in `DATA_BUILD.md`.
+
+The pre-v2 generation rejection is a temporary cutover guard. The `updater_staging_delta` corpus-kind check is permanent workflow/publication exclusion and must not be removed when the temporary generation cutover can eventually be deleted.

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from engine.server.db.jobs.updater import pipeline
+from engine.server.db.jobs.updater import staging
 
 
 def _args(tmp_path: Path, **overrides):
@@ -95,6 +96,22 @@ def _patch_lightweight(
     if hasattr(pipeline, "_prepared_discovery_is_available"):
         monkeypatch.setattr(
             pipeline, "_prepared_discovery_is_available", lambda prod_db: prepared_ready
+        )
+
+
+def _stamp_current_stage(path: Path) -> None:
+    """Create exact current updater staging lifecycle evidence for resume tests."""
+    import sqlite3
+
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+        conn.execute(
+            "INSERT OR REPLACE INTO crawl_state VALUES(?,?)",
+            (staging.AVAILABILITY_SEMANTICS_KEY, staging.AVAILABILITY_SEMANTICS_VALUE),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO crawl_state VALUES(?,?)",
+            (staging.VIDEO_CORPUS_ROLE_KEY, staging.UPDATER_STAGING_ROLE),
         )
 
 
@@ -322,10 +339,7 @@ def test_retry_errors_runs_only_error_capable_crawler_stages(monkeypatch, tmp_pa
     _patch_lightweight(monkeypatch)
     seen: list[list[str]] = []
     # Resume fixtures represent a current availability-semantics generation.
-    import sqlite3
-    with sqlite3.connect(tmp_path / "staging.db") as conn:
-        conn.execute("CREATE TABLE crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
-        conn.execute("INSERT INTO crawl_state VALUES('video_availability_semantics','canonical_absence_v1')")
+    _stamp_current_stage(tmp_path / "staging.db")
     pipeline.run_pipeline(
         _args(tmp_path, retry_errors=True, resume_staging=True),
         command_runner=lambda cmd, cwd: seen.append(list(cmd)),
@@ -385,10 +399,7 @@ def test_resume_staging_force_rebuilds_embeddings_before_merge(monkeypatch, tmp_
 
     _patch_lightweight(monkeypatch)
     # Resume fixtures represent a current availability-semantics generation.
-    import sqlite3
-    with sqlite3.connect(tmp_path / "staging.db") as conn:
-        conn.execute("CREATE TABLE crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
-        conn.execute("INSERT INTO crawl_state VALUES('video_availability_semantics','canonical_absence_v1')")
+    _stamp_current_stage(tmp_path / "staging.db")
     seen: list[list[str]] = []
     pipeline.run_pipeline(
         _args(tmp_path, resume_staging=True),
@@ -455,20 +466,34 @@ def test_sync_stale_host_delete_happens_only_after_engine_stop(monkeypatch, tmp_
 
 
 @pytest.mark.parametrize("retry", [False, True])
-@pytest.mark.parametrize("marker", [None, "legacy_transient_invalidity", "canonical_absence_v1"])
+@pytest.mark.parametrize(
+    "semantics,role,accepted",
+    [
+        (None, None, False),
+        ("legacy_transient_invalidity", "updater_staging_delta", False),
+        ("canonical_absence_v1", "updater_staging_delta", False),
+        ("canonical_absence_atomic_ingest_v2", None, False),
+        ("canonical_absence_atomic_ingest_v2", "future_role", False),
+        ("canonical_absence_atomic_ingest_v2", "updater_staging_delta", True),
+    ],
+)
 def test_resume_marker_preflight_precedes_network_and_commands(
-    monkeypatch, tmp_path, retry, marker
+    monkeypatch, tmp_path, retry, semantics, role, accepted
 ):
-    """Legacy resume/retry stops before side effects; current marked resume proceeds."""
+    """Resume/retry requires exact writer semantics and updater corpus kind before side effects."""
     import sqlite3
 
     args = _args(tmp_path, retry_errors=retry, sync_join_whitelist=True)
     _patch_lightweight(monkeypatch)
     with sqlite3.connect(args.staging_db) as conn:
         conn.execute("CREATE TABLE crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
-        if marker:
+        if semantics is not None:
             conn.execute(
-                "INSERT INTO crawl_state VALUES(?,?)", ("video_availability_semantics", marker)
+                "INSERT INTO crawl_state VALUES(?,?)", (staging.AVAILABILITY_SEMANTICS_KEY, semantics)
+            )
+        if role is not None:
+            conn.execute(
+                "INSERT INTO crawl_state VALUES(?,?)", (staging.VIDEO_CORPUS_ROLE_KEY, role)
             )
     reached = []
 
@@ -479,7 +504,7 @@ def test_resume_marker_preflight_precedes_network_and_commands(
 
     monkeypatch.setattr(pipeline, "fetch_join_hosts", network)
     seen = []
-    if marker == "canonical_absence_v1":
+    if accepted:
         with pytest.raises(RuntimeError, match="network boundary reached"):
             pipeline.run_pipeline(
                 args, command_runner=lambda cmd, cwd=None: seen.append(cmd), validate_files=False

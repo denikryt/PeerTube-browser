@@ -13,7 +13,9 @@ import { CURRENT_VIDEO_METADATA_VERSION } from "../video-metadata.js";
 import type { ThumbnailCandidate } from "../video-media.js";
 import { deleteInstancesInChunks } from "./utils.js";
 import type {
+  CanonicalVideoInvalidReason,
   ExistingVideoRefresh,
+  NewVideoInsertRow,
   VideoActivityPubMetadataPatch,
   VideoChannelRow,
   VideoCrawlStatus,
@@ -26,8 +28,10 @@ import type {
   VideoUpsertRow
 } from "./types.js";
 
-/** Current canonical absence reasons; technical uncertainty belongs to diagnostics. */
-export type CanonicalVideoInvalidReason = "not_found" | "gone";
+export const VIDEO_AVAILABILITY_SEMANTICS_KEY = "video_availability_semantics";
+export const VIDEO_AVAILABILITY_SEMANTICS_VALUE = "canonical_absence_atomic_ingest_v2";
+export const VIDEO_CORPUS_ROLE_KEY = "video_corpus_role";
+export const UPDATER_STAGING_ROLE = "updater_staging_delta";
 
 export class VideoStore {
   private db: Database.Database;
@@ -56,7 +60,8 @@ export class VideoStore {
         embed_path, views, likes, dislikes, comments_count, nsfw, sensitive_summary,
         is_live, permanent_live, live_save_replay, aspect_ratio, support,
         account_username, account_avatar_url, metadata_version, preview_path,
-        last_checked_at, last_error, last_error_at, error_count
+        last_checked_at, last_error, last_error_at, error_count,
+        invalid_reason, invalid_at
       ) VALUES (
         @videoId, @videoUuid, @videoNumericId, @instanceDomain,
         @channelId, @channelName, @channelUrl, @accountName, @accountUrl,
@@ -66,7 +71,8 @@ export class VideoStore {
         @embedPath, @views, @likes, @dislikes, @commentsCount, @nsfw, @sensitiveSummary,
         @isLive, @permanentLive, @liveSaveReplay, @aspectRatio, @support,
         @accountUsername, @accountAvatarUrl, @metadataVersion, @previewPath,
-        @lastCheckedAt, NULL, NULL, 0
+        @lastCheckedAt, @lastError, @lastErrorAt, @errorCount,
+        @invalidReason, @invalidAt
       )
     `);
     this.baseRefreshStmt = this.db.prepare(`
@@ -428,15 +434,82 @@ export class VideoStore {
       );
   }
 
-  /** Insert newly discovered videos without rewriting an existing row on conflict. */
-  insertNewVideos(rows: VideoUpsertRow[]) {
+  /**
+   * Insert newly discovered identities with their first canonical availability.
+   * Writer-generation authorization and first-row persistence share one
+   * transaction so a committed current-writer row can never lack its evidence.
+   */
+  insertNewVideos(rows: NewVideoInsertRow[]) {
     if (rows.length === 0) return;
-    const transaction = this.db.transaction((items: VideoUpsertRow[]) => {
-      for (const row of items) {
-        this.insertStmt.run(this.bindRow(row));
+    const transaction = this.db.transaction((items: NewVideoInsertRow[]) => {
+      const acquiredWriterEvidence = this.authorizeNewVideoWriter();
+      let insertedRows = 0;
+      for (const item of items) {
+        insertedRows += Number(this.insertStmt.run(this.bindNewVideoInsert(item)).changes);
+      }
+      if (acquiredWriterEvidence && insertedRows === 0) {
+        throw new Error("first video insert batch did not create any rows");
       }
     });
     transaction(rows);
+  }
+
+  /**
+   * Validate the corpus before new identities are minted and acquire current
+   * standalone writer evidence only for an empty roleless corpus.
+   */
+  private authorizeNewVideoWriter(): boolean {
+    const state = this.readPersistedCrawlState();
+    const role = state.get(VIDEO_CORPUS_ROLE_KEY) ?? null;
+    const semantics = state.get(VIDEO_AVAILABILITY_SEMANTICS_KEY) ?? null;
+
+    // Corpus kind is permanent workflow identity. The shared writer may
+    // preserve updater staging but must never invent or reinterpret another role.
+    if (role !== null && role !== UPDATER_STAGING_ROLE) {
+      throw new Error(`unsupported video corpus role: ${role}`);
+    }
+    if (role === UPDATER_STAGING_ROLE) {
+      if (semantics !== VIDEO_AVAILABILITY_SEMANTICS_VALUE) {
+        throw new Error("updater staging video corpus has incompatible writer semantics");
+      }
+      return false;
+    }
+
+    if (semantics === VIDEO_AVAILABILITY_SEMANTICS_VALUE) return false;
+
+    const videoCount = (
+      this.db.prepare("SELECT COUNT(*) AS count FROM videos").get() as { count: number }
+    ).count;
+    if (semantics === null && videoCount === 0) {
+      // The first standalone batch is the only boundary that can truthfully
+      // acquire writer provenance. DDL + marker + rows all roll back together.
+      this.db.exec(
+        "CREATE TABLE IF NOT EXISTS crawl_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+      );
+      this.db
+        .prepare("INSERT INTO crawl_state(key, value) VALUES (?, ?)")
+        .run(VIDEO_AVAILABILITY_SEMANTICS_KEY, VIDEO_AVAILABILITY_SEMANTICS_VALUE);
+      return true;
+    }
+
+    if (videoCount > 0) {
+      // TODO(nodeforge-video-availability-generation-cutover): Remove pre-v2 writer-generation rejection only after no supported crawler video corpus can predate atomic initial-tombstone ingest.
+      throw new Error("video corpus predates current atomic initial-tombstone writer semantics");
+    }
+    throw new Error("video corpus has incompatible writer semantics");
+  }
+
+  /** Read persisted lifecycle evidence without creating or repairing it. */
+  private readPersistedCrawlState(): Map<string, string> {
+    const table = this.db
+      .prepare("SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name='crawl_state'")
+      .get() as { present: number } | undefined;
+    if (!table) return new Map();
+    const rows = this.db.prepare("SELECT key, value FROM crawl_state").all() as {
+      key: string;
+      value: string;
+    }[];
+    return new Map(rows.map((row) => [row.key, row.value]));
   }
 
   /**
@@ -539,6 +612,35 @@ export class VideoStore {
       accountUsername: row.accountUsername ?? null,
       accountAvatarUrl: row.accountAvatarUrl ?? null,
       metadataVersion: row.metadataVersion ?? 0
+    };
+  }
+
+  /** Bind one insert-only invalidity state without inventing timestamps. */
+  private bindNewVideoInsert(item: NewVideoInsertRow) {
+    const { initialInvalidity } = item;
+    if (initialInvalidity.reason === null) {
+      if (initialInvalidity.observedAt !== null) {
+        throw new Error("live initial video state cannot carry an invalidity timestamp");
+      }
+      return {
+        ...this.bindRow(item.row),
+        invalidReason: null,
+        invalidAt: null,
+        lastError: null,
+        lastErrorAt: null,
+        errorCount: 0
+      };
+    }
+    if (!Number.isFinite(initialInvalidity.observedAt)) {
+      throw new Error("initial video invalidity requires a finite observation timestamp");
+    }
+    return {
+      ...this.bindRow(item.row),
+      invalidReason: initialInvalidity.reason,
+      invalidAt: initialInvalidity.observedAt,
+      lastError: initialInvalidity.reason,
+      lastErrorAt: initialInvalidity.observedAt,
+      errorCount: 1
     };
   }
 

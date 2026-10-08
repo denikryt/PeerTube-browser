@@ -228,3 +228,25 @@ Do not add new tests that execute removed stdlib route adapters or fake handler-
 ## Database bootstrap tests
 
 Fast tests include explicit database bootstrap coverage in `tests/db/test_database_bootstrap.py` and a static guard in `tests/db/test_no_direct_runtime_ensure_calls.py`. Tests that verify old `ensure_*` wrappers remain transitional compatibility coverage until the wrapper-deletion stage.
+
+## Canonical video detail and thumbnail-repair regressions
+
+The crawler detail/persistence boundary has focused TypeScript coverage for structural HTTP status classification, one logical direct-detail result, runtime requested/returned UUID identity, atomic initial 404/410 tombstone insertion, and shape-aware thumbnail authority. With crawler dependencies installed:
+
+```bash
+cd engine/crawler
+npm run build
+npm run test:db
+```
+
+The DB/crawl suite includes both positive and negative cases for modern `[]`/candidate arrays, usable legacy singleton completion, malformed/unrecognized detail remaining resumable, metadata's narrower modern-array-only side effect, no-UUID discovery without a direct-detail request, and insert-conflict/no-existing-row invalidation.
+
+Updater/full-sync generation and publication-exclusion regressions are owned by the Python suites:
+
+```bash
+pytest -q tests/jobs/test_updater_staging.py tests/jobs/test_updater_pipeline_commands.py
+pytest -q tests/engine_data/test_schema_compatibility_snapshot.py
+pytest -q tests/engine_data/test_metadata_runtime.py -k thumbnail
+```
+
+These prove exact v2 + `updater_staging_delta` for updater staging, exact-v2 roleless compatibility for operator-managed standalone full sync, rejection of old/wrong generations before publication DML, and the downstream SQL `NULL` versus authoritative `[]` thumbnail read contract. Roleless v2 is writer provenance only; these tests do not certify that a bounded or interrupted standalone build is complete.

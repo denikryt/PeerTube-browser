@@ -71,7 +71,7 @@ test("runner validates ordered REST candidates without requesting image assets",
   assert.ok(removed.includes(root));
 });
 
-test("runner treats successful legacy detail as SQL-NULL candidate state", async () => {
+test("runner validates successful legacy detail as an authoritative singleton candidate", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "thumbnail-smoke-legacy-"));
   const report = await runLiveThumbnailSmoke({
     ...defaultLiveThumbnailSmokeOptions(), requiredHosts: 1, candidateLimit: 1
@@ -83,9 +83,38 @@ test("runner treats successful legacy detail as SQL-NULL candidate state", async
     crawlChannelsStage: async () => undefined,
     crawlCountsStage: async () => undefined,
     crawlVideosStage: async (options) => {
-      writeCandidateDb(options.dbPath, "legacy.example", null, "https://legacy.example/legacy.jpg");
+      writeCandidateDb(
+        options.dbPath,
+        "legacy.example",
+        '[{"url":"https://legacy.example/legacy.jpg","width":null,"height":null}]',
+        "https://legacy.example/legacy.jpg"
+      );
     },
     fetchImpl: (async () => new Response(JSON.stringify({ thumbnailPath: "/legacy.jpg" }), {
+      status: 200, headers: { "content-type": "application/json" }
+    })) as typeof fetch
+  });
+  assert.equal(report.invalid_candidate_rows, 0);
+});
+
+test("runner keeps malformed-only thumbnail detail non-authoritative", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "thumbnail-smoke-malformed-"));
+  const report = await runLiveThumbnailSmoke({
+    ...defaultLiveThumbnailSmokeOptions(), requiredHosts: 1, candidateLimit: 1
+  }, {
+    fetchRegistryHosts: async () => ["malformed.example"],
+    makeTempDir: () => root,
+    removeDir: (dir) => fs.rmSync(dir, { recursive: true, force: true }),
+    crawlInstances: async () => undefined,
+    crawlChannelsStage: async () => undefined,
+    crawlCountsStage: async () => undefined,
+    crawlVideosStage: async (options) => {
+      writeCandidateDb(options.dbPath, "malformed.example", null, "https://malformed.example/list.jpg");
+    },
+    fetchImpl: (async () => new Response(JSON.stringify({
+      thumbnails: { unexpected: true },
+      thumbnailPath: 123
+    }), {
       status: 200, headers: { "content-type": "application/json" }
     })) as typeof fetch
   });

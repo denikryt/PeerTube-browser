@@ -91,12 +91,26 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
       if (!response.ok) {
         const statusError = new Error(`HTTP ${response.status} for ${url}`) as Error & {
           retryAfterMs?: number | null;
+          status?: number;
         };
+        // Preserve the numeric Response status as structured data so callers
+        // never have to infer protocol semantics from human-readable text.
+        statusError.status = response.status;
         statusError.retryAfterMs = parseRetryAfter(response.headers.get("retry-after"));
         throw statusError;
       }
 
-      return (await response.json()) as T;
+      try {
+        return (await response.json()) as T;
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          // Keep decoder diagnostics local and fixed. Some runtimes include
+          // remote response text in SyntaxError.message, while legacy video
+          // maintenance still has a temporary message-based HTTP fallback.
+          throw new SyntaxError("invalid JSON response", { cause: error });
+        }
+        throw error;
+      }
     } catch (error) {
       if (isNoNetworkError(error)) {
         const message = error instanceof Error ? error.message : String(error);

@@ -7,6 +7,7 @@ import { VideoStore } from "./db/videos.js";
 import { assertMetadataMaintenanceSchema, assertThumbnailMaintenanceSchema } from "./db/schema.js";
 import type {
   ExistingVideoRefresh,
+  NewVideoInsertRow,
   VideoActivityPubMetadataPatch,
   VideoChannelRow,
   VideoDetailMetadataPatch,
@@ -21,11 +22,14 @@ import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js"
 import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
 import { createProgressOrdinal, formatMetricLog } from "./log-format.js";
 import {
+  projectDetailThumbnailCandidates,
   resolveLegacyThumbnailCompatibility,
   resolvePreferredPreviewPath,
-  resolveThumbnailCandidates
+  resolveThumbnailCandidates,
+  type ThumbnailCandidate
 } from "./video-media.js";
 import { normalizeVideoMetadata } from "./video-metadata.js";
+import { fetchVideoDetailOrThrow, fetchVideoDetailResult } from "./video-detail.js";
 import {
   fetchActivityPubLiveMetadata,
   type ActivityPubLiveMetadata
@@ -169,10 +173,15 @@ interface PeerTubeVideoDetail extends PeerTubeVideo {
   support?: string;
 }
 
-interface VideoDetailFetchResult {
-  detail: PeerTubeVideoDetail;
-  protocol: string;
-}
+type VideoProjectionSource =
+  | {
+      kind: "available";
+      detail: PeerTubeVideoDetail;
+      protocol: string;
+      thumbnailCandidates: ThumbnailCandidate[] | null;
+    }
+  | { kind: "degraded"; protocol: string }
+  | { kind: "absent"; protocol: string };
 
 interface ChannelMeta {
   channelSlug: string | null;
@@ -459,6 +468,7 @@ async function processTagInstance(
       const status = extractHttpStatus(message);
       // Only direct-detail absence is canonical; retain the process outage abort.
       if (status === 404 || status === 410) {
+        // TODO(nodeforge-existing-video-availability-owner): Remove maintenance writes to invalid_reason/invalid_at before the dedicated existing-video availability publisher is enabled.
         store.updateVideoInvalid(item.videoId, normalizedHost, status === 404 ? "not_found" : "gone");
       } else if (isNoNetworkError(error)) {
         throw error;
@@ -496,6 +506,7 @@ async function processCommentsInstance(
       const status = extractHttpStatus(message);
       // Only direct-detail absence is canonical; retain the process outage abort.
       if (status === 404 || status === 410) {
+        // TODO(nodeforge-existing-video-availability-owner): Remove maintenance writes to invalid_reason/invalid_at before the dedicated existing-video availability publisher is enabled.
         store.updateVideoInvalid(item.videoId, normalizedHost, status === 404 ? "not_found" : "gone");
       } else if (isNoNetworkError(error)) {
         throw error;
@@ -732,8 +743,12 @@ async function buildVideoRows(
   externalExistingIds: Set<string>,
   options: VideoCrawlOptions,
   requestLimiter: RequestLimiter
-): Promise<{ newRows: VideoUpsertRow[]; existingRows: ExistingVideoRefresh[] }> {
-  const built = new Array<{ value: BuiltVideoPersistence; existing: boolean } | null>(videos.length).fill(null);
+): Promise<{ newRows: NewVideoInsertRow[]; existingRows: ExistingVideoRefresh[] }> {
+  const built = new Array<{
+    value: BuiltVideoPersistence;
+    existing: boolean;
+    initialInvalidity: NewVideoInsertRow["initialInvalidity"];
+  } | null>(videos.length).fill(null);
 
   await mapWithConcurrency(
     videos.map((video, index) => ({ video, index })),
@@ -746,35 +761,73 @@ async function buildVideoRows(
         return;
       }
 
-      const detailResult = await fetchVideoDetailBestEffort(
-        host,
-        video,
-        options,
-        protocol,
-        requestLimiter
-      );
+      let projection: VideoProjectionSource = { kind: "degraded", protocol };
+      let observationAt = checkedAt;
+      let initialInvalidity: NewVideoInsertRow["initialInvalidity"] = {
+        reason: null,
+        observedAt: null
+      };
+
+      const requestedUuid = toNullableString(video.uuid);
+      if (requestedUuid) {
+        const result = await fetchVideoDetailResult<PeerTubeVideoDetail>(
+          host,
+          requestedUuid,
+          options,
+          protocol,
+          requestLimiter
+        );
+        observationAt = result.checkedAt;
+        switch (result.kind) {
+          case "available":
+            projection = {
+              kind: "available",
+              detail: result.detail,
+              protocol: result.protocol,
+              thumbnailCandidates: projectDetailThumbnailCandidates(
+                result.detail,
+                host,
+                result.protocol
+              )
+            };
+            break;
+          case "not_found":
+          case "gone":
+            projection = { kind: "absent", protocol };
+            if (!existsLocally) {
+              initialInvalidity = {
+                reason: result.kind === "not_found" ? "not_found" : "gone",
+                observedAt: result.checkedAt
+              };
+            }
+            break;
+          case "unknown":
+            console.warn(`[videos] detail fallback ${host}/${requestedUuid}: ${result.error.message}`);
+            break;
+        }
+      }
+
       const value = await toVideoRow(
         video,
         host,
-        protocol,
         channel,
-        checkedAt,
-        detailResult,
+        observationAt,
+        projection,
         options,
         requestLimiter
       );
-      if (value) built[index] = { value, existing: existsLocally };
+      if (value) built[index] = { value, existing: existsLocally, initialInvalidity };
     }
   );
 
-  const newRows: VideoUpsertRow[] = [];
+  const newRows: NewVideoInsertRow[] = [];
   const existingRows: ExistingVideoRefresh[] = [];
   for (const item of built) {
     if (!item) continue;
     if (item.existing) {
       existingRows.push(item.value.refresh);
     } else {
-      newRows.push(item.value.row);
+      newRows.push({ row: item.value.row, initialInvalidity: item.initialInvalidity });
     }
   }
   return { newRows, existingRows };
@@ -848,7 +901,6 @@ function buildChannelVideosUrl(
 async function toVideoRow(
   video: PeerTubeVideo,
   host: string,
-  protocol: string,
   channel: {
     channelId: string | null;
     channelSlug: string;
@@ -856,15 +908,15 @@ async function toVideoRow(
     channelUrl: string | null;
   },
   checkedAt: number,
-  detailResult: VideoDetailFetchResult | null,
+  projection: VideoProjectionSource,
   options: VideoCrawlOptions,
   requestLimiter: RequestLimiter
 ): Promise<BuiltVideoPersistence | null> {
   const videoId = toStringId(video.uuid ?? video.id);
   if (!videoId) return null;
 
-  const detail = detailResult?.detail ?? null;
-  const mediaProtocol = detailResult?.protocol ?? protocol;
+  const detail = projection.kind === "available" ? projection.detail : null;
+  const mediaProtocol = projection.protocol;
   const detailRecord = detail as Record<string, unknown> | null;
   const listRecord = video as Record<string, unknown>;
 
@@ -878,6 +930,7 @@ async function toVideoRow(
   const candidateVideoUrl = toNullableString(detail?.url ?? video.url);
   let activityPub: ActivityPubLiveMetadata | null = null;
   if (
+    projection.kind !== "absent" &&
     normalized.isLive === 1 &&
     (normalized.permanentLive === null || normalized.liveSaveReplay === null) &&
     candidateVideoUrl
@@ -916,8 +969,8 @@ async function toVideoRow(
     channel.displayName;
   const incomingChannelUrl =
     toNullableString(sourceChannel?.url) ?? channel.channelUrl ?? null;
-  const thumbnailCandidates = detailResult
-    ? resolveThumbnailCandidates(detail?.thumbnails, host, mediaProtocol)
+  const thumbnailCandidates = projection.kind === "available"
+    ? projection.thumbnailCandidates
     : null;
   const thumbnailCompatibility = thumbnailCandidates === null
     ? resolveLegacyThumbnailCompatibility(detail, video, host, mediaProtocol)
@@ -984,9 +1037,7 @@ async function toVideoRow(
       base: row,
       ...(detailPatch ? { detail: detailPatch } : {}),
       ...(activityPubPatch ? { activityPub: activityPubPatch } : {}),
-      ...(detailResult && thumbnailCandidates !== null
-        ? { thumbnail: thumbnailCandidates }
-        : {})
+      ...(thumbnailCandidates !== null ? { thumbnail: thumbnailCandidates } : {})
     }
   };
 }
@@ -1131,65 +1182,6 @@ function toStringId(value: unknown): string | null {
 }
 
 /**
- * Handle fetch video detail.
- */
-async function fetchVideoDetail(
-  host: string,
-  videoUuid: string,
-  options: VideoCrawlOptions,
-  protocol: string,
-  requestLimiter: RequestLimiter
-): Promise<VideoDetailFetchResult> {
-  const primaryUrl = buildVideoDetailUrl(host, videoUuid, protocol);
-  try {
-    return {
-      detail: await requestLimiter.run(() => fetchJsonWithRetry<PeerTubeVideoDetail>(primaryUrl, {
-        timeoutMs: options.timeoutMs,
-        maxRetries: options.maxRetries
-      })),
-      protocol
-    };
-  } catch (error) {
-    if (!shouldTryAlternateProtocol(error)) throw error;
-    const fallbackProtocol = protocol === "https:" ? "http:" : "https:";
-    const alternateUrl = buildVideoDetailUrl(host, videoUuid, fallbackProtocol);
-    return {
-      detail: await requestLimiter.run(() => fetchJsonWithRetry<PeerTubeVideoDetail>(alternateUrl, {
-        timeoutMs: options.timeoutMs,
-        maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
-      })),
-      protocol: fallbackProtocol
-    };
-  }
-}
-
-/**
- * Attempt per-video detail enrichment without turning a detail-endpoint
- * failure into a dropped list row. Existing-row persistence preserves
- * last-known-good enrichment fields when this request fails.
- */
-async function fetchVideoDetailBestEffort(
-  host: string,
-  video: PeerTubeVideo,
-  options: VideoCrawlOptions,
-  protocol: string,
-  requestLimiter: RequestLimiter
-): Promise<VideoDetailFetchResult | null> {
-  if (!video.uuid) return null;
-  try {
-    return await fetchVideoDetail(host, video.uuid, options, protocol, requestLimiter);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    // Detail enrichment is best-effort during the main crawl. Falling back to
-    // the list payload keeps ingestion moving while the absence of a detail
-    // patch prevents destructive refresh of last-known-good enrichment.
-    console.warn(`[videos] detail fallback ${host}/${video.uuid}: ${message}`);
-    return null;
-  }
-}
-
-/**
  * Backfill metadata-v1 fields in an already-migrated crawler/whitelist DB.
  *
  * Schema validation is deliberately read-only and happens before any network
@@ -1238,7 +1230,7 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
           const videoOrdinal = nextVideoOrdinal();
           const subject = `${item.instanceDomain}/${item.videoId}`;
           try {
-            const detailResult = await fetchVideoDetail(
+            const detailResult = await fetchVideoDetailOrThrow<PeerTubeVideoDetail>(
               host,
               item.videoUuid,
               options,
@@ -1247,10 +1239,17 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
             );
             const detail = detailResult.detail;
             const channelRef = detail.channel;
+            // Metadata maintenance intentionally preserves its pre-existing
+            // modern-array-only thumbnail ownership. Legacy/empty repair is
+            // owned by normal crawl and dedicated thumbnail maintenance.
+            const thumbnailCandidates = resolveThumbnailCandidates(
+              detail.thumbnails,
+              host,
+              detailResult.protocol
+            );
             const built = await toVideoRow(
               detail,
               host,
-              detailResult.protocol,
               {
                 channelId: toStringId(channelRef?.id),
                 channelSlug: toNullableString(channelRef?.name) ?? "",
@@ -1260,7 +1259,12 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
                 channelUrl: toNullableString(channelRef?.url)
               },
               Date.now(),
-              detailResult,
+              {
+                kind: "available",
+                detail,
+                protocol: detailResult.protocol,
+                thumbnailCandidates
+              },
               options,
               limiter
             );
@@ -1305,6 +1309,7 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
             // gone is definitive for this stored UUID. Transient transport,
             // rate-limit, and server failures deliberately remain resumable.
             if (status === 404 || status === 410) {
+              // TODO(nodeforge-existing-video-availability-owner): Remove maintenance writes to invalid_reason/invalid_at before the dedicated existing-video availability publisher is enabled.
               store.updateVideoInvalid(
                 item.videoId,
                 item.instanceDomain,
@@ -1406,82 +1411,87 @@ async function thumbnailWorkerLoop(
       // multiple hosts finish details in a different order.
       const videoOrdinal = nextVideoOrdinal();
       const subject = `${host}/${row.videoUuid}`;
-      try {
-        const { detail, protocol } = await fetchVideoDetail(
-          host,
-          row.videoUuid,
-          options,
-          "https:",
-          requestLimiter
-        );
-        const candidates = resolveThumbnailCandidates(detail.thumbnails, host, protocol);
-        const checkedAt = Date.now();
-        if (candidates === null) {
-          // A successful legacy-shaped detail response is not authoritative for
-          // candidate state. Preserve every persisted thumbnail field so SQL NULL
-          // remains resumable and prior authoritative arrays cannot be downgraded.
-          console.warn(
-            formatMetricLog(
-              "thumbnails",
-              [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
-              "legacy",
-              subject
-            )
+      const result = await fetchVideoDetailResult<PeerTubeVideoDetail>(
+        host,
+        row.videoUuid,
+        options,
+        "https:",
+        requestLimiter
+      );
+      switch (result.kind) {
+        case "available": {
+          const candidates = projectDetailThumbnailCandidates(
+            result.detail,
+            host,
+            result.protocol
           );
-        } else {
+          if (candidates === null) {
+            const message = "video detail has no recognized thumbnail representation";
+            store.updateVideoError(row.videoId, row.instanceDomain, message);
+            progress.errors += 1;
+            console.warn(
+              `${formatMetricLog(
+                "thumbnails",
+                [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
+                "incomplete",
+                subject
+              )}: ${message}`
+            );
+            break;
+          }
+
           store.updateVideoThumbnailCandidates(
             row.videoId,
             row.instanceDomain,
             candidates,
-            checkedAt
+            result.checkedAt
           );
           progress.updated += 1;
-          // Successful modern detail is visible in the operator log as well as
-          // SQLite so a long maintenance run has an auditable success signal.
-          if (candidates.length === 0) {
-            console.log(
-              formatMetricLog(
-                "thumbnails",
-                [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors], ["candidates", 0]],
-                "empty",
-                subject
-              )
-            );
-          } else {
-            console.log(
-              formatMetricLog(
-                "thumbnails",
-                [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors], ["candidates", candidates.length]],
-                "",
-                subject
-              )
-            );
-          }
+          console.log(
+            formatMetricLog(
+              "thumbnails",
+              [
+                ["video", videoOrdinal],
+                ["updated", progress.updated],
+                ["errors", progress.errors],
+                ["candidates", candidates.length]
+              ],
+              candidates.length === 0 ? "empty" : "",
+              subject
+            )
+          );
+          break;
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const status = extractHttpStatus(message);
-        // A gone detail UUID is definitive and becomes excluded from future
-        // maintenance. Other errors remain retryable but are recorded so
-        // operators can distinguish unstable remotes from completed work.
-        if (status === 404 || status === 410) {
+        case "not_found":
+        case "gone":
+          // TODO(nodeforge-existing-video-availability-owner): Remove maintenance writes to invalid_reason/invalid_at before the dedicated existing-video availability publisher is enabled.
           store.updateVideoInvalid(
             row.videoId,
             row.instanceDomain,
-            status === 404 ? "not_found" : "gone"
+            result.kind === "not_found" ? "not_found" : "gone"
           );
-        } else {
-          store.updateVideoError(row.videoId, row.instanceDomain, message);
-        }
-        progress.errors += 1;
-        console.warn(
-          `${formatMetricLog(
-            "thumbnails",
-            [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
-            status === 404 || status === 410 ? "invalid" : "error",
-            subject
-          )}: ${message}`
-        );
+          progress.errors += 1;
+          console.warn(
+            formatMetricLog(
+              "thumbnails",
+              [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
+              "invalid",
+              subject
+            )
+          );
+          break;
+        case "unknown":
+          store.updateVideoError(row.videoId, row.instanceDomain, result.error.message);
+          progress.errors += 1;
+          console.warn(
+            `${formatMetricLog(
+              "thumbnails",
+              [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
+              "error",
+              subject
+            )}: ${result.error.message}`
+          );
+          break;
       }
     }
   }
@@ -1496,7 +1506,7 @@ async function fetchVideoTags(
   options: VideoCrawlOptions,
   requestLimiter: RequestLimiter
 ): Promise<string | null> {
-  const { detail } = await fetchVideoDetail(
+  const { detail } = await fetchVideoDetailOrThrow<PeerTubeVideoDetail>(
     host,
     videoUuid,
     options,
@@ -1515,7 +1525,7 @@ async function fetchVideoComments(
   options: VideoCrawlOptions,
   requestLimiter: RequestLimiter
 ): Promise<number | null> {
-  const { detail } = await fetchVideoDetail(
+  const { detail } = await fetchVideoDetailOrThrow<PeerTubeVideoDetail>(
     host,
     videoUuid,
     options,
@@ -1523,13 +1533,6 @@ async function fetchVideoComments(
     requestLimiter
   );
   return toCommentsCount(detail.comments ?? detail.commentsCount ?? detail.comments_count);
-}
-
-/**
- * Handle build video detail url.
- */
-function buildVideoDetailUrl(host: string, videoUuid: string, protocol: string) {
-  return `${protocol}//${host}/api/v1/videos/${encodeURIComponent(videoUuid)}`;
 }
 
 /**
@@ -1566,9 +1569,8 @@ function queryExternalExistingVideoIds(
   return new Set(rows.map((row) => row.video_id));
 }
 
-/**
- * Handle extract http status.
- */
+// TODO(nodeforge-video-detail-result): Remove message-based video-detail status parsing when metadata, tags, and comments consume VideoDetailResult directly.
+/** Extract the temporary throwing-adapter HTTP status from its diagnostic. */
 function extractHttpStatus(message: string): number | null {
   const match = message.match(/HTTP (\d{3})/);
   if (!match) return null;

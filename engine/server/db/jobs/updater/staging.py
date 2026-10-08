@@ -14,8 +14,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
+# TODO(nodeforge-video-availability-generation-cutover): Remove pre-v2 writer-generation rejection only after no supported crawler video corpus can predate atomic initial-tombstone ingest.
 AVAILABILITY_SEMANTICS_KEY = "video_availability_semantics"
-AVAILABILITY_SEMANTICS_VALUE = "canonical_absence_v1"
+AVAILABILITY_SEMANTICS_VALUE = "canonical_absence_atomic_ingest_v2"
+VIDEO_CORPUS_ROLE_KEY = "video_corpus_role"
+UPDATER_STAGING_ROLE = "updater_staging_delta"
 
 
 def remove_db_with_sidecars(db_path: Path) -> None:
@@ -28,7 +31,7 @@ def remove_db_with_sidecars(db_path: Path) -> None:
 
 
 def init_staging_db(staging_db: Path, schema_path: Path) -> None:
-    """Recreate DB/sidecars and stamp fresh staging with current availability semantics before returning.
+    """Recreate DB/sidecars and stamp fresh staging writer semantics plus corpus kind.
 
     Successful initialization commits the marker; both success and failure close
     the connection. No legacy staging is upgraded in place.
@@ -46,11 +49,15 @@ def init_staging_db(staging_db: Path, schema_path: Path) -> None:
             "INSERT OR REPLACE INTO crawl_state(key, value) VALUES (?, ?)",
             (AVAILABILITY_SEMANTICS_KEY, AVAILABILITY_SEMANTICS_VALUE),
         )
+        conn.execute(
+            "INSERT OR REPLACE INTO crawl_state(key, value) VALUES (?, ?)",
+            (VIDEO_CORPUS_ROLE_KEY, UPDATER_STAGING_ROLE),
+        )
         conn.commit()
 
 
 def assert_video_availability_staging_semantics_conn(conn: sqlite3.Connection, schema: str) -> None:
-    """Authorize only exact current availability-semantics evidence from the DB generation being consumed.
+    """Authorize only the exact writer generation and updater-delta corpus kind.
 
     Merge passes its already attached stage within its transaction; pathname
     validation is a fail-fast wrapper only. Legacy staging is never converted.
@@ -59,9 +66,13 @@ def assert_video_availability_staging_semantics_conn(conn: sqlite3.Connection, s
         raise ValueError("Unsupported staging semantics schema")
     error = "Unsupported legacy staging: recreate staging without --resume-staging/--retry-errors."
     try:
-        row = conn.execute(
+        semantics_row = conn.execute(
             f"SELECT value FROM {schema}.crawl_state WHERE key = ?",
             (AVAILABILITY_SEMANTICS_KEY,),
+        ).fetchone()
+        role_row = conn.execute(
+            f"SELECT value FROM {schema}.crawl_state WHERE key = ?",
+            (VIDEO_CORPUS_ROLE_KEY,),
         ).fetchone()
     except sqlite3.OperationalError as exc:
         # Only absence of the store is legacy evidence; unrelated I/O/lock
@@ -69,7 +80,12 @@ def assert_video_availability_staging_semantics_conn(conn: sqlite3.Connection, s
         if "no such table" not in str(exc):
             raise
         raise RuntimeError(error) from exc
-    if row is None or row[0] != AVAILABILITY_SEMANTICS_VALUE:
+    if semantics_row is None or semantics_row[0] != AVAILABILITY_SEMANTICS_VALUE:
+        raise RuntimeError(error)
+    # Corpus kind is permanent workflow identity rather than part of the
+    # removable writer-generation cutover. Roleless standalone DBs must never
+    # be admitted to the updater delta-merge lifecycle.
+    if role_row is None or role_row[0] != UPDATER_STAGING_ROLE:
         raise RuntimeError(error)
 
 

@@ -39,6 +39,11 @@ export interface ResolvedThumbnail {
   height: number | null;
 }
 
+type LegacyThumbnailObservation =
+  | { kind: "usable"; candidate: ThumbnailCandidate }
+  | { kind: "policy_rejected" }
+  | { kind: "unrecognized" };
+
 /** Resolve one PeerTube asset field into an absolute HTTP(S) URL when possible. */
 export function resolvePeerTubeMediaUrl(
   value: unknown,
@@ -110,6 +115,40 @@ export function resolveThumbnailCandidates(
 }
 
 /**
+ * Project authoritative card-thumbnail state from a successful detail payload.
+ *
+ * `null` means the detail did not expose a structurally recognized thumbnail
+ * representation. `[]` means it did expose one and the authoritative usable
+ * candidate set is empty. This distinction prevents malformed federated data
+ * from erasing last-known-good persisted candidates.
+ */
+export function projectDetailThumbnailCandidates(
+  detail: PeerTubeVideoMediaLike,
+  host: string,
+  protocol: string
+): ThumbnailCandidate[] | null {
+  // An actual modern array is the strongest PeerTube representation. Even an
+  // empty or entirely unusable array is an authoritative observation and must
+  // never fall through to legacy singular fields.
+  const modern = resolveThumbnailCandidates(detail.thumbnails, host, protocol);
+  if (modern !== null) return modern;
+
+  let sawPolicyRejectedReference = false;
+  for (const value of [
+    detail.thumbnailPath,
+    detail.thumbnailUrl,
+    detail.thumbnail_path,
+    detail.thumbnail
+  ]) {
+    const observation = resolveLegacyThumbnailObservation(value, host, protocol);
+    if (observation.kind === "usable") return [observation.candidate];
+    if (observation.kind === "policy_rejected") sawPolicyRejectedReference = true;
+  }
+
+  return sawPolicyRejectedReference ? [] : null;
+}
+
+/**
  * Resolve only the legacy singular compatibility thumbnail.
  *
  * Detail legacy fields win, followed by list modern candidates and list legacy
@@ -160,6 +199,33 @@ function resolveFirstLegacyThumbnail(
     if (url) return { url, width: null, height: null };
   }
   return { url: null, width: null, height: null };
+}
+
+/** Distinguish recognized media rejected by policy from malformed field shape. */
+function resolveLegacyThumbnailObservation(
+  value: unknown,
+  host: string,
+  protocol: string
+): LegacyThumbnailObservation {
+  const reference = extractAssetValue(value);
+  if (!reference) return { kind: "unrecognized" };
+
+  const schemeMatch = reference.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/u);
+  if (schemeMatch) {
+    const scheme = schemeMatch[1].toLowerCase();
+    if (scheme !== "http" && scheme !== "https") {
+      return { kind: "policy_rejected" };
+    }
+  }
+
+  // The shared resolver is the single authority for whether HTTP(S) and
+  // relative references are structurally valid and resolvable. Its null result
+  // means schema uncertainty here, while explicit non-HTTP schemes were
+  // already classified above as recognized policy rejections.
+  const url = resolvePeerTubeMediaUrl(reference, host, protocol);
+  return url
+    ? { kind: "usable", candidate: { url, width: null, height: null } }
+    : { kind: "unrecognized" };
 }
 
 /** Extract the underlying asset path or URL from mixed PeerTube field shapes. */

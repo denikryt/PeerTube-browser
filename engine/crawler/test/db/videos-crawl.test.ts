@@ -22,15 +22,17 @@ import { NoNetworkError } from "../../src/http.js";
  * Start a minimal PeerTube-like HTTP server for one crawl scenario.
  */
 async function startPeerTubeFixtureServer(
-  detailResponse: { status?: number; body?: object } = {
+  detailResponse: { status?: number; body?: object; rawBody?: string } = {
     body: {
+      uuid: "uuid-1",
       thumbnails: [
         { fileUrl: "/lazy-static/thumbnails/small.jpg", width: 280, height: 157 },
         { fileUrl: "/lazy-static/thumbnails/fresh.jpg", width: 850, height: 480 }
       ],
       previewPath: "/lazy-static/previews/fresh.jpg"
     }
-  }
+  },
+  listVideoOverrides: Record<string, unknown> = {}
 ) {
   const requests: string[] = [];
   const server = http.createServer((request, response) => {
@@ -48,7 +50,7 @@ async function startPeerTubeFixtureServer(
               uuid: "uuid-1",
               name: "Song",
               description: "List payload keeps stale media",
-              url: "http://HOST/w/uuid-1",
+              url: `http://${request.headers.host}/w/uuid-1`,
               thumbnailPath: "/lazy-static/thumbnails/list.jpg",
               previewPath: "/lazy-static/previews/stale.jpg",
               embedPath: "/videos/embed/uuid-1",
@@ -57,8 +59,9 @@ async function startPeerTubeFixtureServer(
                 id: "c1",
                 name: "music",
                 displayName: "Music",
-                url: "http://HOST/video-channels/music"
-              }
+                url: `http://${request.headers.host}/video-channels/music`
+              },
+              ...listVideoOverrides
             }
           ]
         })
@@ -68,7 +71,7 @@ async function startPeerTubeFixtureServer(
 
     if (url.pathname === "/api/v1/videos/uuid-1") {
       response.writeHead(detailResponse.status ?? 200, { "content-type": "application/json" });
-      response.end(JSON.stringify(detailResponse.body ?? {}));
+      response.end(detailResponse.rawBody ?? JSON.stringify(detailResponse.body ?? {}));
       return;
     }
 
@@ -98,6 +101,13 @@ async function startPeerTubeFixtureServer(
 /**
  * Seed one crawlable channel for the scenario test.
  */
+function insertLiveVideos(store: VideoStore, rows: VideoUpsertRow[]) {
+  store.insertNewVideos(rows.map((row) => ({
+    row,
+    initialInvalidity: { reason: null, observedAt: null }
+  })));
+}
+
 function seedChannel(dbPath: string, host: string, videosCount: number | null = 1) {
   const channels = new ChannelStore({ dbPath });
   channels.markInstanceDone(host);
@@ -413,13 +423,12 @@ test("crawlVideos does not mistake overlapping staging and prod IDs for a fully 
   try {
     seedChannel(temp.dbPath, host, 51);
     new VideoStore({ dbPath: prod.dbPath }).close();
-    execSql(
-      temp.dbPath,
-      "INSERT INTO videos(video_id, video_uuid, instance_domain, last_checked_at) VALUES (?, ?, ?, 0)",
-      "existing",
-      "existing",
-      host
-    );
+    seedThumbnailVideo(temp.dbPath, host, {
+      videoId: "existing",
+      videoUuid: "existing",
+      thumbnailUrl: null,
+      previewPath: null
+    });
     execSql(
       prod.dbPath,
       "INSERT INTO videos(video_id, video_uuid, instance_domain, last_checked_at) VALUES (?, ?, ?, 0)",
@@ -465,6 +474,47 @@ test("crawlVideos does not mistake overlapping staging and prod IDs for a fully 
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     temp.cleanup();
     prod.cleanup();
+  }
+});
+
+
+test("list item without UUID performs no detail request and remains list-derived", async () => {
+  const temp = createTempDb("crawler-videos-no-detail-uuid");
+  const fixture = await startPeerTubeFixtureServer(undefined, { uuid: undefined, id: 7 });
+  try {
+    seedChannel(temp.dbPath, fixture.host);
+    await crawlVideos(metadataOptions(temp.dbPath));
+    assert.equal(fixture.requests.filter((path) => path.startsWith("/api/v1/videos/")).length, 0);
+    assert.deepEqual(
+      getRow<{ video_id: string; video_uuid: string | null; invalid_reason: string | null; thumbnail_candidates_json: string | null }>(
+        temp.dbPath,
+        "SELECT video_id,video_uuid,invalid_reason,thumbnail_candidates_json FROM videos WHERE video_id='7'"
+      ),
+      { video_id: "7", video_uuid: null, invalid_reason: null, thumbnail_candidates_json: null }
+    );
+  } finally {
+    await fixture.close();
+    temp.cleanup();
+  }
+});
+
+test("definitive new-row absence skips ActivityPub enrichment", async () => {
+  const temp = createTempDb("crawler-videos-absent-skips-activitypub");
+  const fixture = await startPeerTubeFixtureServer(
+    { status: 404, body: { error: "missing" } },
+    { isLive: true }
+  );
+  try {
+    seedChannel(temp.dbPath, fixture.host);
+    await crawlVideos(metadataOptions(temp.dbPath));
+    assert.equal(fixture.requests.filter((path) => path === "/w/uuid-1").length, 0);
+    assert.equal(
+      getRow<{ invalid_reason: string }>(temp.dbPath, "SELECT invalid_reason FROM videos WHERE video_id='uuid-1'").invalid_reason,
+      "not_found"
+    );
+  } finally {
+    await fixture.close();
+    temp.cleanup();
   }
 });
 
@@ -523,10 +573,10 @@ test("crawlVideos prefers live detail media over stale list media during normal 
 
 
 
-test("normal crawl keeps SQL NULL for successful legacy detail without preview promotion", async () => {
+test("normal crawl persists successful legacy detail as an authoritative singleton candidate", async () => {
   const temp = createTempDb("crawler-videos-legacy-thumbnail-shape");
   const fixture = await startPeerTubeFixtureServer({
-    body: { thumbnailPath: "/legacy-detail.jpg", previewPath: "/legacy-preview.jpg" }
+    body: { uuid: "uuid-1", thumbnailPath: "/legacy-detail.jpg", previewPath: "/legacy-preview.jpg" }
   });
   try {
     seedChannel(temp.dbPath, fixture.host);
@@ -538,9 +588,35 @@ test("normal crawl keeps SQL NULL for successful legacy detail without preview p
         "SELECT thumbnail_candidates_json, thumbnail_url, preview_path FROM videos WHERE video_id='uuid-1'"
       ),
       {
-        thumbnail_candidates_json: null,
+        thumbnail_candidates_json: JSON.stringify([
+          { url: `http://${fixture.host}/legacy-detail.jpg`, width: null, height: null }
+        ]),
         thumbnail_url: `http://${fixture.host}/legacy-detail.jpg`,
         preview_path: "/legacy-preview.jpg"
+      }
+    );
+  } finally {
+    await fixture.close();
+    temp.cleanup();
+  }
+});
+
+test("invalid JSON detail text cannot create a false new-row tombstone", async () => {
+  const temp = createTempDb("crawler-videos-invalid-json-false-absence");
+  const fixture = await startPeerTubeFixtureServer({ rawBody: "HTTP 404" });
+  try {
+    seedChannel(temp.dbPath, fixture.host);
+    await crawlVideos(metadataOptions(temp.dbPath));
+
+    assert.deepEqual(
+      getRow<{ invalid_reason: string | null; thumbnail_candidates_json: string | null; thumbnail_url: string }>(
+        temp.dbPath,
+        "SELECT invalid_reason,thumbnail_candidates_json,thumbnail_url FROM videos WHERE video_id='uuid-1'"
+      ),
+      {
+        invalid_reason: null,
+        thumbnail_candidates_json: null,
+        thumbnail_url: `http://${fixture.host}/lazy-static/thumbnails/list.jpg`
       }
     );
   } finally {
@@ -557,14 +633,15 @@ test("normal crawl detail failure keeps SQL NULL and list thumbnail but never us
     await crawlVideos(metadataOptions(temp.dbPath, { maxRetries: 0 }));
 
     assert.deepEqual(
-      getRow<{ thumbnail_candidates_json: string | null; thumbnail_url: string; preview_path: string }>(
+      getRow<{ thumbnail_candidates_json: string | null; thumbnail_url: string; preview_path: string; invalid_reason: string | null }>(
         temp.dbPath,
-        "SELECT thumbnail_candidates_json, thumbnail_url, preview_path FROM videos WHERE video_id='uuid-1'"
+        "SELECT thumbnail_candidates_json, thumbnail_url, preview_path, invalid_reason FROM videos WHERE video_id='uuid-1'"
       ),
       {
         thumbnail_candidates_json: null,
         thumbnail_url: `http://${fixture.host}/lazy-static/thumbnails/list.jpg`,
-        preview_path: "/lazy-static/previews/stale.jpg"
+        preview_path: "/lazy-static/previews/stale.jpg",
+        invalid_reason: null
       }
     );
   } finally {
@@ -576,7 +653,7 @@ test("normal crawl detail failure keeps SQL NULL and list thumbnail but never us
 test("normal crawl authoritative empty thumbnails clear the singular compatibility mirror", async () => {
   const temp = createTempDb("crawler-videos-empty-thumbnail-array");
   const fixture = await startPeerTubeFixtureServer({
-    body: { thumbnails: [], thumbnailPath: "/legacy-detail.jpg", previewPath: "/preview.jpg" }
+    body: { uuid: "uuid-1", thumbnails: [], thumbnailPath: "/legacy-detail.jpg", previewPath: "/preview.jpg" }
   });
   try {
     seedChannel(temp.dbPath, fixture.host);
@@ -588,6 +665,158 @@ test("normal crawl authoritative empty thumbnails clear the singular compatibili
         "SELECT thumbnail_candidates_json, thumbnail_url FROM videos WHERE video_id='uuid-1'"
       ),
       { thumbnail_candidates_json: "[]", thumbnail_url: null }
+    );
+  } finally {
+    await fixture.close();
+    temp.cleanup();
+  }
+});
+
+
+test("new detail 404 is born invalid while existing detail 404 stays owned by later availability work", async () => {
+  const fresh = createTempDb("crawler-new-detail-404");
+  const existing = createTempDb("crawler-existing-detail-404");
+  const fixture = await startPeerTubeFixtureServer({ status: 404, body: { error: "missing" } });
+  try {
+    seedChannel(fresh.dbPath, fixture.host);
+    await crawlVideos(metadataOptions(fresh.dbPath));
+    assert.deepEqual(
+      getRow<{ invalid_reason: string; invalid_at: number; last_error: string; last_error_at: number; error_count: number }>(
+        fresh.dbPath,
+        "SELECT invalid_reason, invalid_at, last_error, last_error_at, error_count FROM videos WHERE video_id='uuid-1'"
+      ),
+      {
+        invalid_reason: "not_found",
+        invalid_at: getRow<{ invalid_at: number }>(fresh.dbPath, "SELECT invalid_at FROM videos WHERE video_id='uuid-1'").invalid_at,
+        last_error: "not_found",
+        last_error_at: getRow<{ last_error_at: number }>(fresh.dbPath, "SELECT last_error_at FROM videos WHERE video_id='uuid-1'").last_error_at,
+        error_count: 1
+      }
+    );
+    const freshTimes = getRow<{ invalid_at: number; last_error_at: number }>(
+      fresh.dbPath,
+      "SELECT invalid_at,last_error_at FROM videos WHERE video_id='uuid-1'"
+    );
+    assert.equal(freshTimes.invalid_at, freshTimes.last_error_at);
+
+    seedChannel(existing.dbPath, fixture.host);
+    const store = new VideoStore({ dbPath: existing.dbPath });
+    insertLiveVideos(store, [{
+      videoId: "uuid-1", videoUuid: "uuid-1", videoNumericId: 1, instanceDomain: fixture.host,
+      channelId: "c1", channelName: "Music", channelUrl: null, accountName: null, accountUrl: null,
+      title: "Stored", description: null, tagsJson: null, category: null, publishedAt: null,
+      videoUrl: null, duration: null, thumbnailUrl: `http://${fixture.host}/stored.jpg`,
+      thumbnailCandidatesJson: JSON.stringify([{ url: `http://${fixture.host}/stored.jpg`, width: 640, height: 360 }]),
+      thumbnailWidth: 640, thumbnailHeight: 360, embedPath: null, views: null, likes: null, dislikes: null,
+      commentsCount: null, nsfw: 0, previewPath: null, lastCheckedAt: 1, metadataVersion: 0
+    }]);
+    store.close();
+    await crawlVideos(metadataOptions(existing.dbPath));
+    assert.deepEqual(
+      getRow<{ invalid_reason: string | null; invalid_at: number | null; thumbnail_candidates_json: string }>(
+        existing.dbPath,
+        "SELECT invalid_reason,invalid_at,thumbnail_candidates_json FROM videos WHERE video_id='uuid-1'"
+      ),
+      {
+        invalid_reason: null,
+        invalid_at: null,
+        thumbnail_candidates_json: JSON.stringify([{ url: `http://${fixture.host}/stored.jpg`, width: 640, height: 360 }])
+      }
+    );
+  } finally {
+    await fixture.close();
+    fresh.cleanup();
+    existing.cleanup();
+  }
+});
+
+test("semantic-invalid detail cannot project another video's metadata or thumbnails", async () => {
+  const temp = createTempDb("crawler-detail-identity-mismatch");
+  const fixture = await startPeerTubeFixtureServer({
+    body: {
+      uuid: "other-video",
+      name: "Wrong detail",
+      thumbnails: [{ fileUrl: "/wrong.jpg", width: 999, height: 999 }]
+    }
+  });
+  try {
+    seedChannel(temp.dbPath, fixture.host);
+    await crawlVideos(metadataOptions(temp.dbPath));
+    assert.deepEqual(
+      getRow<{ title: string; thumbnail_candidates_json: string | null; thumbnail_url: string; invalid_reason: string | null }>(
+        temp.dbPath,
+        "SELECT title,thumbnail_candidates_json,thumbnail_url,invalid_reason FROM videos WHERE video_id='uuid-1'"
+      ),
+      {
+        title: "Song",
+        thumbnail_candidates_json: null,
+        thumbnail_url: `http://${fixture.host}/lazy-static/thumbnails/list.jpg`,
+        invalid_reason: null
+      }
+    );
+  } finally {
+    await fixture.close();
+    temp.cleanup();
+  }
+});
+
+test("malformed HTTP legacy thumbnail reference preserves existing candidates during ordinary refresh", async () => {
+  const temp = createTempDb("crawler-detail-malformed-http-thumbnail-existing");
+  const fixture = await startPeerTubeFixtureServer({
+    body: { uuid: "uuid-1", name: "Detail", thumbnailPath: "http:" }
+  });
+  try {
+    seedChannel(temp.dbPath, fixture.host);
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    insertLiveVideos(store, [{
+      videoId: "uuid-1", videoUuid: "uuid-1", videoNumericId: 1, instanceDomain: fixture.host,
+      channelId: "c1", channelName: "Music", channelUrl: null, accountName: null, accountUrl: null,
+      title: "Stored", description: null, tagsJson: null, category: null, publishedAt: null,
+      videoUrl: null, duration: null, thumbnailUrl: `http://${fixture.host}/stored.jpg`,
+      thumbnailCandidatesJson: JSON.stringify([{ url: `http://${fixture.host}/stored.jpg`, width: 640, height: 360 }]),
+      thumbnailWidth: 640, thumbnailHeight: 360, embedPath: null, views: null, likes: null, dislikes: null,
+      commentsCount: null, nsfw: 0, previewPath: null, lastCheckedAt: 1, metadataVersion: 0
+    }]);
+    store.close();
+
+    await crawlVideos(metadataOptions(temp.dbPath));
+    assert.deepEqual(
+      getRow<{ thumbnail_candidates_json: string; thumbnail_url: string; thumbnail_width: number; thumbnail_height: number }>(
+        temp.dbPath,
+        "SELECT thumbnail_candidates_json,thumbnail_url,thumbnail_width,thumbnail_height FROM videos WHERE video_id='uuid-1'"
+      ),
+      {
+        thumbnail_candidates_json: JSON.stringify([
+          { url: `http://${fixture.host}/stored.jpg`, width: 640, height: 360 }
+        ]),
+        thumbnail_url: `http://${fixture.host}/stored.jpg`,
+        thumbnail_width: 640,
+        thumbnail_height: 360
+      }
+    );
+  } finally {
+    await fixture.close();
+    temp.cleanup();
+  }
+});
+
+test("matching detail without recognized thumbnail representation preserves list compatibility", async () => {
+  const temp = createTempDb("crawler-detail-thumbnail-unobserved");
+  const fixture = await startPeerTubeFixtureServer({
+    body: { uuid: "uuid-1", name: "Detail", thumbnails: { unexpected: true }, thumbnailPath: 123 }
+  });
+  try {
+    seedChannel(temp.dbPath, fixture.host);
+    await crawlVideos(metadataOptions(temp.dbPath));
+    assert.deepEqual(
+      getRow<{ thumbnail_candidates_json: string | null; thumbnail_url: string }>(
+        temp.dbPath,
+        "SELECT thumbnail_candidates_json,thumbnail_url FROM videos WHERE video_id='uuid-1'"
+      ),
+      {
+        thumbnail_candidates_json: null,
+        thumbnail_url: `http://${fixture.host}/lazy-static/thumbnails/list.jpg`
+      }
     );
   } finally {
     await fixture.close();
@@ -770,13 +999,14 @@ function seedMetadataChannel(dbPath: string, host: string) {
   channels.close();
 }
 
-async function metadataFixture(handler: (url: URL) => object) {
+async function metadataFixture(handler: (url: URL) => object | string) {
   let requests = 0;
   const server = http.createServer((request, response) => {
     requests += 1;
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify(handler(url)));
+    const result = handler(url);
+    response.end(typeof result === "string" ? result : JSON.stringify(result));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -815,7 +1045,7 @@ test("ordinary repeated crawl protects embedding inputs while refreshing safe me
   try {
     seedMetadataChannel(temp.dbPath, remote.host);
     const store = new VideoStore({ dbPath: temp.dbPath });
-    store.insertNewVideos([{
+    insertLiveVideos(store, [{
       videoId: "uuid-1", videoUuid: "uuid-1", videoNumericId: 1, instanceDomain: remote.host,
       channelId: "c1", channelName: "Music", channelUrl: `http://${remote.host}/video-channels/music`,
       accountName: "Old Alice", accountUrl: null, title: "Stored title", description: "Stored description",
@@ -933,7 +1163,7 @@ test("metadata mode updates migrated DB without schema mutation", async () => {
   try {
     seedMetadataChannel(temp.dbPath, remote.host);
     const store = new VideoStore({ dbPath: temp.dbPath });
-    store.insertNewVideos([{
+    insertLiveVideos(store, [{
       videoId: "v1", videoUuid: "uuid-1", videoNumericId: 1, instanceDomain: remote.host,
       channelId: "c1", channelName: "Music", channelUrl: `http://${remote.host}/video-channels/music`,
       accountName: null, accountUrl: null, title: "Current", description: null, tagsJson: null,
@@ -972,6 +1202,108 @@ test("metadata mode updates migrated DB without schema mutation", async () => {
   }
 });
 
+
+test("metadata maintenance keeps legacy-only thumbnail state untouched but still accepts modern arrays", async () => {
+  const legacyDb = createTempDb("crawler-metadata-legacy-thumbnail-owner");
+  const modernDb = createTempDb("crawler-metadata-modern-thumbnail-owner");
+  const legacy = await metadataFixture(() => ({
+    uuid: "uuid-1",
+    name: "Detail",
+    thumbnailPath: "/legacy-new.jpg",
+    channel: { id: "c1", name: "music" },
+    isLive: false
+  }));
+  const modern = await metadataFixture(() => ({
+    uuid: "uuid-1",
+    name: "Detail",
+    thumbnails: [{ fileUrl: "/modern-new.jpg", width: 640, height: 360 }],
+    channel: { id: "c1", name: "music" },
+    isLive: false
+  }));
+  try {
+    seedThumbnailVideo(legacyDb.dbPath, legacy.host);
+    seedThumbnailVideo(modernDb.dbPath, modern.host);
+
+    await crawlVideos(metadataOptions(legacyDb.dbPath, { metadataOnly: true }));
+    assert.deepEqual(
+      getRow<{ thumbnail_candidates_json: string | null; thumbnail_url: string }>(
+        legacyDb.dbPath,
+        "SELECT thumbnail_candidates_json,thumbnail_url FROM videos WHERE video_id='v1'"
+      ),
+      {
+        thumbnail_candidates_json: null,
+        thumbnail_url: `http://${legacy.host}/legacy-old.jpg`
+      }
+    );
+
+    await crawlVideos(metadataOptions(modernDb.dbPath, { metadataOnly: true }));
+    assert.deepEqual(
+      getRow<{ thumbnail_candidates_json: string; thumbnail_url: string }>(
+        modernDb.dbPath,
+        "SELECT thumbnail_candidates_json,thumbnail_url FROM videos WHERE video_id='v1'"
+      ),
+      {
+        thumbnail_candidates_json: JSON.stringify([
+          { url: `http://${modern.host}/modern-new.jpg`, width: 640, height: 360 }
+        ]),
+        thumbnail_url: `http://${modern.host}/modern-new.jpg`
+      }
+    );
+  } finally {
+    await Promise.all([legacy.close(), modern.close()]);
+    legacyDb.cleanup();
+    modernDb.cleanup();
+  }
+});
+
+test("invalid JSON maintenance detail cannot synthesize canonical absence from decoder text", async () => {
+  const temp = createTempDb("crawler-metadata-invalid-json-false-absence");
+  const remote = await metadataFixture(() => "HTTP 410");
+  try {
+    seedThumbnailVideo(temp.dbPath, remote.host);
+    await crawlVideos(metadataOptions(temp.dbPath, { metadataOnly: true }));
+    assert.deepEqual(
+      getRow<{ invalid_reason: string | null; invalid_at: number | null; last_error: string; error_count: number }>(
+        temp.dbPath,
+        "SELECT invalid_reason,invalid_at,last_error,error_count FROM videos WHERE video_id='v1'"
+      ),
+      {
+        invalid_reason: null,
+        invalid_at: null,
+        last_error: "invalid JSON response",
+        error_count: 1
+      }
+    );
+  } finally {
+    await remote.close();
+    temp.cleanup();
+  }
+});
+
+test("semantic-invalid metadata detail cannot synthesize a 404 from remote UUID text", async () => {
+  const temp = createTempDb("crawler-metadata-fixed-validation-diagnostic");
+  const remote = await metadataFixture(() => ({ uuid: "HTTP 404", name: "Wrong" }));
+  try {
+    seedThumbnailVideo(temp.dbPath, remote.host);
+    await crawlVideos(metadataOptions(temp.dbPath, { metadataOnly: true }));
+    assert.deepEqual(
+      getRow<{ invalid_reason: string | null; invalid_at: number | null; last_error: string; error_count: number }>(
+        temp.dbPath,
+        "SELECT invalid_reason,invalid_at,last_error,error_count FROM videos WHERE video_id='v1'"
+      ),
+      {
+        invalid_reason: null,
+        invalid_at: null,
+        last_error: "invalid video detail identity",
+        error_count: 1
+      }
+    );
+  } finally {
+    await remote.close();
+    temp.cleanup();
+  }
+});
+
 /** Seed one existing video for dedicated thumbnail-maintenance scenarios. */
 function seedThumbnailVideo(
   dbPath: string,
@@ -979,7 +1311,7 @@ function seedThumbnailVideo(
   overrides: Partial<VideoUpsertRow> = {}
 ) {
   const store = new VideoStore({ dbPath });
-  store.insertNewVideos([{
+  insertLiveVideos(store, [{
     videoId: "v1",
     videoUuid: "uuid-1",
     videoNumericId: 1,
@@ -1083,6 +1415,7 @@ test("thumbnail maintenance persists ordered candidates without probing image UR
     assert.equal(url.pathname, "/api/v1/videos/uuid-1");
     return {
       body: {
+        uuid: "uuid-1",
         thumbnails: [
           { fileUrl: "/thumb-small.jpg", width: 280, height: 157 },
           { fileUrl: "/thumb-large.jpg", width: 850, height: 480 }
@@ -1124,9 +1457,9 @@ test("thumbnail maintenance persists ordered candidates without probing image UR
   }
 });
 
-test("thumbnail maintenance preserves legacy-shaped rows and generic video health", async () => {
+test("thumbnail maintenance completes usable legacy detail as a singleton candidate", async () => {
   const temp = createTempDb("crawler-thumbnail-legacy-refresh");
-  const remote = await thumbnailDetailFixture(() => ({ body: { thumbnailPath: "/legacy-new.jpg" } }));
+  const remote = await thumbnailDetailFixture(() => ({ body: { uuid: "uuid-1", thumbnailPath: "/legacy-new.jpg" } }));
   try {
     seedThumbnailVideo(temp.dbPath, remote.host);
     execSql(
@@ -1135,18 +1468,50 @@ test("thumbnail maintenance preserves legacy-shaped rows and generic video healt
     );
     await crawlVideos(metadataOptions(temp.dbPath, { refreshThumbnails: true, resume: true }));
     await crawlVideos(metadataOptions(temp.dbPath, { refreshThumbnails: true, resume: true }));
-    assert.equal(remote.requests.length, 2);
+    assert.equal(remote.requests.length, 1);
     assert.deepEqual(
-      getRow<{ thumbnail_candidates_json: string | null; thumbnail_url: string; error_count: number; last_error: string; last_error_at: number }>(
+      getRow<{ thumbnail_candidates_json: string; thumbnail_url: string; error_count: number; last_error: string; last_error_at: number }>(
         temp.dbPath,
         "SELECT thumbnail_candidates_json, thumbnail_url, error_count, last_error, last_error_at FROM videos WHERE video_id='v1'"
       ),
       {
-        thumbnail_candidates_json: null,
-        thumbnail_url: `http://${remote.host}/legacy-old.jpg`,
+        thumbnail_candidates_json: JSON.stringify([
+          { url: `http://${remote.host}/legacy-new.jpg`, width: null, height: null }
+        ]),
+        thumbnail_url: `http://${remote.host}/legacy-new.jpg`,
         error_count: 2,
         last_error: "existing-error",
         last_error_at: 123
+      }
+    );
+  } finally {
+    await remote.close();
+    temp.cleanup();
+  }
+});
+
+
+test("thumbnail malformed-only detail stays resumable and preserves persisted media", async () => {
+  const temp = createTempDb("crawler-thumbnail-malformed-refresh");
+  const remote = await thumbnailDetailFixture(() => ({
+    body: { uuid: "uuid-1", thumbnails: { unexpected: true }, thumbnailPath: "https:" }
+  }));
+  try {
+    seedThumbnailVideo(temp.dbPath, remote.host);
+    await crawlVideos(metadataOptions(temp.dbPath, { refreshThumbnails: true, resume: true }));
+    await crawlVideos(metadataOptions(temp.dbPath, { refreshThumbnails: true, resume: true }));
+    assert.equal(remote.requests.length, 2);
+    assert.deepEqual(
+      getRow<{ thumbnail_candidates_json: string | null; thumbnail_url: string; last_checked_at: number; last_error: string; error_count: number }>(
+        temp.dbPath,
+        "SELECT thumbnail_candidates_json,thumbnail_url,last_checked_at,last_error,error_count FROM videos WHERE video_id='v1'"
+      ),
+      {
+        thumbnail_candidates_json: null,
+        thumbnail_url: `http://${remote.host}/legacy-old.jpg`,
+        last_checked_at: 1,
+        last_error: "video detail has no recognized thumbnail representation",
+        error_count: 2
       }
     );
   } finally {
@@ -1198,10 +1563,11 @@ async function mutableThumbnailDetailFixture() {
       return;
     }
     response.writeHead(200, { "content-type": "application/json" });
+    const videoUuid = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
     response.end(JSON.stringify(
       mode === "legacy"
-        ? { thumbnailPath: "/legacy.jpg" }
-        : { thumbnails: [{ fileUrl: "/modern.jpg", width: 850, height: 480 }] }
+        ? { uuid: videoUuid, thumbnailPath: "/legacy.jpg" }
+        : { uuid: videoUuid, thumbnails: [{ fileUrl: "/modern.jpg", width: 850, height: 480 }] }
     ));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -1220,7 +1586,7 @@ function seedThumbnailRow(dbPath: string, host: string, videoId: string, videoUu
   seedThumbnailVideo(dbPath, host, { videoId, videoUuid });
 }
 
-test("thumbnail max-instances alone cannot advance past a persistently legacy first host", async () => {
+test("thumbnail max-instances advances after a legacy singleton completes the first host", async () => {
   const temp = createTempDb("crawler-thumbnail-resume-legacy-starvation");
   const firstFixture = await mutableThumbnailDetailFixture();
   const secondFixture = await mutableThumbnailDetailFixture();
@@ -1239,14 +1605,16 @@ test("thumbnail max-instances alone cannot advance past a persistently legacy fi
     await crawlVideos(options);
     await crawlVideos(options);
 
-    assert.equal(fixtures[0].requests.length, 2);
-    assert.equal(fixtures[1].requests.length, 0);
-    for (const id of ["v-a", "v-b"]) {
-      assert.equal(
-        getRow<{ value: string | null }>(temp.dbPath, `SELECT thumbnail_candidates_json AS value FROM videos WHERE video_id='${id}'`).value,
-        null
-      );
-    }
+    assert.equal(fixtures[0].requests.length, 1);
+    assert.equal(fixtures[1].requests.length, 1);
+    assert.equal(
+      getRow<{ value: string }>(temp.dbPath, "SELECT thumbnail_candidates_json AS value FROM videos WHERE video_id='v-a'").value,
+      JSON.stringify([{ url: `http://${fixtures[0].host}/legacy.jpg`, width: null, height: null }])
+    );
+    assert.equal(
+      getRow<{ value: string }>(temp.dbPath, "SELECT thumbnail_candidates_json AS value FROM videos WHERE video_id='v-b'").value,
+      JSON.stringify([{ url: `http://${fixtures[1].host}/modern.jpg`, width: 850, height: 480 }])
+    );
   } finally {
     await Promise.all([firstFixture.close(), secondFixture.close()]);
     temp.cleanup();

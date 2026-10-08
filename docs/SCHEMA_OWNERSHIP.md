@@ -162,9 +162,11 @@ Thumbnail candidate ownership:
 
 ```text
 videos.thumbnail_candidates_json is crawler-owned TEXT state.
-SQL NULL = legacy/unknown/unavailable candidate state; absent/null/non-array REST `thumbnails` does not publish authoritative candidate JSON.
-JSON arrays = authoritative ordered candidate objects with `url`, `width`, and `height`.
-thumbnail_url/thumbnail_width/thumbnail_height mirror candidate 0 only for authoritative arrays; legacy states may keep the singular compatibility thumbnail.
+SQL NULL = no authoritative full-detail thumbnail projection has been stored; absent/malformed/unrecognized-only detail thumbnail representations do not publish candidate JSON.
+JSON arrays = authoritative ordered candidate objects with `url`, `width`, and `height`, including authoritative empty `[]`.
+Normal channel ingest/refresh and dedicated thumbnail maintenance own the full-detail projection: actual modern array first, otherwise recognized usable legacy singleton, explicit policy-rejected recognized reference as `[]`, otherwise projection `null`.
+Metadata maintenance deliberately keeps only its existing modern-array-only candidate side effect until its later ownership cleanup.
+thumbnail_url/thumbnail_width/thumbnail_height mirror candidate 0 for authoritative arrays; non-authoritative/new compatibility states may keep the singular list thumbnail.
 ```
 
 The TypeScript crawler schema and `migrate-whitelist.py` own additive migration of this field. Fresh `sync-whitelist.py` outputs call the same shared thumbnail-column helper before schema compatibility/copy so current crawler columns are present without duplicating a second column list.
@@ -677,11 +679,7 @@ Embedding-source fields are intentionally protected on existing rows: `title`, `
 ## Canonical video availability
 
 Crawler direct-video-detail observations and canonical migration/import own
-`videos.invalid_reason` / `invalid_at` under the current availability semantics. Current absence writes accept
-only `not_found` (404) and `gone` (410), setting both fields together. SQL NULL
-means no canonical observation established absence. Every other non-NULL legacy
-value, including `''`, stays conservative and is excluded by canonical serving,
-identity/seed resolution, Prepared Discovery, and Search source builders.
+`videos.invalid_reason` / `invalid_at` under the current availability semantics. For a newly discovered identity, the insert-only video persistence boundary owns initial canonical invalidity: a direct-detail 404/410 is committed as `not_found`/`gone` in the first successful `INSERT OR IGNORE`, so no intermediate live row is published. An ignored insert conflict cannot transfer that candidate invalidity to a pre-existing identity. Existing-row availability publication remains a separate ownership boundary; ordinary channel crawl does not acquire it. Current absence writes accept only `not_found` (404) and `gone` (410), setting both fields together. SQL NULL means no canonical observation established absence. Every other non-NULL legacy value, including `''`, stays conservative and is excluded by canonical serving, identity/seed resolution, Prepared Discovery, and Search source builders.
 
 `error_count`, `last_error`, and `last_error_at` remain diagnostics. Their current
 serving thresholds remain only where already present; prepared facets, Search
@@ -693,5 +691,4 @@ Canonical migration/import clears exactly `timeout`, `tls_error`, `cert_expired`
 and their `invalid_at`; unknown reasons and diagnostic history are preserved.
 Prepared Discovery schema version 2 records the exact-NULL source semantics;
 version 1 is rejected even when cleanup changes zero rows. No production schema
-columns/tables are added. The temporary staging marker lives in existing
-`crawl_state`; it is lifecycle evidence, not canonical video availability.
+columns/tables are added. Operational crawler lifecycle evidence lives in the existing/lazily created `crawl_state` key/value table rather than canonical video columns. `video_availability_semantics=canonical_absence_atomic_ingest_v2` is writer-generation evidence only: it proves rows that can be newly minted use the atomic initial-tombstone writer semantics, not that any particular row is absent and not that a standalone crawl is complete. `video_corpus_role=updater_staging_delta` is independent corpus-kind/publication-exclusion evidence owned by updater staging lifecycle; role absence is the supported standalone shape in this scope but is not full-build readiness proof. Updater resume/retry/direct merge validate exact v2 plus the updater role, while destructive full sync validates exact v2 and rejects updater/unknown explicit roles from the same attached source snapshot before replacement DML.

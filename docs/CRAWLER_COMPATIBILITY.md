@@ -187,19 +187,19 @@ The existing `--tags` / `--update-tags` maintenance modes may change `tags_json`
 
 ## Thumbnail candidate persistence and maintenance
 
-### REST detail owns authoritative card-thumbnail candidates
+### REST detail owns field-specific card-thumbnail projection
 
 Decision:
 
 ```text
-An actual `/api/v1/videos/:uuid` `thumbnails[]` array is the only authoritative multi-candidate source. SQLite stores the normalized ordered candidate objects (`url`, `width`, `height`) so the primary mirror and candidate provenance stay deterministic. Preview fields never enter card-thumbnail fallback semantics.
+Normal channel ingest/refresh and dedicated thumbnail maintenance own the full-detail projection. An actual `/api/v1/videos/:uuid` `thumbnails[]` array is authoritative and normalizes to `[]` or ordered `{url,width,height}` candidates. Without an actual modern array, a structurally recognized usable legacy detail reference becomes a singleton candidate; a recognized reference rejected only by explicit URL policy yields authoritative `[]`. Absent, malformed, or otherwise unrecognized thumbnail representations establish no thumbnail authority and project `null`. Preview fields never enter card-thumbnail fallback semantics.
 ```
 
-Compatibility state is explicit: SQL `NULL` means the modern candidate source is legacy/unknown/unavailable, while JSON arrays of `{url,width,height}` objects mean an authoritative modern candidate set. An actual empty array is authoritative `[]`. Existing rows with authoritative arrays cannot be downgraded by later legacy/list refreshes; ordinary `baseRefreshStmt` does not write thumbnail candidate or mirror fields.
+Compatibility state is explicit: SQL `NULL` means no authoritative full-detail candidate projection has been stored. JSON arrays mean an authoritative candidate set, including authoritative empty `[]`. Existing rows with authoritative arrays are not erased by malformed/unrecognized detail or list refreshes, and a new row may retain its singular list compatibility thumbnail while candidate JSON remains `NULL` when detail identity is valid but thumbnail authority is not established. Metadata maintenance intentionally retains its narrower existing modern-array-only side effect until the later ownership cleanup; a legacy-only metadata run therefore does not acquire full thumbnail-repair ownership.
 
-### Thumbnail backfill records failed detail health without probing images
+### Thumbnail backfill records failed or incomplete detail health without probing images
 
-`crawl:videos:thumbnails` reuses the existing command name. It validates the target schema read-only, performs one video-detail request per selected non-invalid row, and never GETs/HEADs candidate images. A successful legacy/non-array detail shape preserves thumbnail state; only an actual REST `thumbnails` array replaces candidate state. A definitive detail `404`/`410` records the existing invalid reason, while other detail failures use the existing generic error recording path so later maintenance can avoid known-invalid videos.
+`crawl:videos:thumbnails` reuses the existing command name. It validates the target schema read-only, performs one video-detail request per selected non-invalid row, and never GETs/HEADs candidate images. A successful actual modern array replaces candidate state with `[]` or normalized candidates. If no modern array exists, a recognized usable legacy detail reference writes a singleton and completes the row. A valid-identity detail with only absent/malformed/unrecognized thumbnail representation records an incomplete diagnostic without candidate/mirror/check-time mutation, so SQL-`NULL` remains resumable. A definitive detail `404`/`410` records the existing invalid reason, while transport/protocol uncertainty records the existing generic error state without destroying thumbnail state.
 
 `--resume` selects SQL-`NULL` rows only. Explicit `--hosts-file` batches are the production maintenance-window boundary; `--max-instances` is only a cap inside that selected scope and is not a durable progression cursor.
 

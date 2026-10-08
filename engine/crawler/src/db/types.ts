@@ -145,6 +145,24 @@ export interface VideoUpsertRow {
   lastCheckedAt: number;
 }
 
+/** Canonical absence reasons that may be persisted for a video identity. */
+export type CanonicalVideoInvalidReason = "not_found" | "gone";
+
+/**
+ * Initial canonical availability for a row that does not yet exist locally.
+ * The discriminated shape prevents reason/time pairs that cannot be stored
+ * consistently in the first committed row state.
+ */
+export type InitialVideoInvalidity =
+  | { reason: null; observedAt: null }
+  | { reason: CanonicalVideoInvalidReason; observedAt: number };
+
+/** Insert-only lifecycle wrapper for a newly discovered video identity. */
+export interface NewVideoInsertRow {
+  row: VideoUpsertRow;
+  initialInvalidity: InitialVideoInvalidity;
+}
+
 /**
  * Metadata that may be applied only after a successful per-video detail read.
  * Optional live keys distinguish an absent remote field from an explicit false.

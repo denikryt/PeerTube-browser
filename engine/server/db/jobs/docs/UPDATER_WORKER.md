@@ -242,18 +242,15 @@ systemctl list-timers --all peertube-updater.timer
 
 The updater is the canonical production writer of `random-cache.db`. The random rebuild runs after Engine has been stopped and prepared Discovery has already succeeded, uses `precompute-random-index-ids.py --refresh`, builds/validates a temporary sibling database, and publishes it atomically. Engine runtime consumes the final artifact read-only and does not hot-reload replacements. A random-cache rebuild failure therefore retains the existing restart-in-finally behavior; only unavailable prepared Discovery blocks the updater's restart.
 
-## Availability-semantics first run and resume
+## Availability-writer first run and resume
 
-After production availability migration and Prepared v2/Search rebuild, discard
-pre-cutover staging plus SQLite `-wal` / `-shm` sidecars. The first run must omit
-`--resume-staging` and `--retry-errors`; the updater itself creates replacement
-staging and stamps `crawl_state['video_availability_semantics']='canonical_absence_v1'`.
-Missing/wrong marker on resume fails before network/crawler/service-stop work,
-and direct merge checks the exact attached generation before production DML.
-There is no in-place conversion. Later current-era crash/resume remains supported.
+After production availability migration and Prepared v2/Search rebuild, discard pre-cutover staging plus SQLite `-wal` / `-shm` sidecars. Before any new staging generation is created, deploy crawler source and run `npm run build` in `engine/crawler` so updater cannot launch an old generated writer. The first run must omit `--resume-staging` and `--retry-errors`; the updater itself creates replacement staging and stamps:
 
-Recommended rollout restarts Engine after offline semantic cutover, before the
-first normal updater, which retains its own stop/start around merge. If the
-outer rollout intentionally holds Engine offline through this run, pass
-`--skip-systemctl`; the outer workflow remains sole owner of restart. See
-`docs/DATA_BUILD.md` for writer quiescence, artifact verification and rollback.
+```text
+crawl_state['video_availability_semantics'] = 'canonical_absence_atomic_ingest_v2'
+crawl_state['video_corpus_role'] = 'updater_staging_delta'
+```
+
+The first key is writer-generation evidence for atomic initial tombstone ingest. The second is independent updater-delta corpus kind; it prevents this partial staging corpus from being mistaken for a standalone destructive full-sync source. Resume/retry require the exact pair before network/crawler/service-stop work, and direct merge checks the exact attached generation before production DML. Missing/v1/malformed semantics, roleless v2, and wrong/unknown roles are rejected; there is no in-place conversion. Later current-era crash/resume remains supported.
+
+Recommended rollout restarts Engine after offline semantic cutover, before the first normal updater, which retains its own stop/start around merge. If the outer rollout intentionally holds Engine offline through this run, pass `--skip-systemctl`; the outer workflow remains sole owner of restart. See `docs/DATA_BUILD.md` for writer quiescence, generated-runtime ordering, artifact verification and rollback.

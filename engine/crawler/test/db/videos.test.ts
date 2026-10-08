@@ -9,11 +9,18 @@ import Database from "better-sqlite3";
 import { ChannelStore } from "../../src/db/channels.js";
 import type {
   ExistingVideoRefresh,
+  NewVideoInsertRow,
   VideoChannelRow,
   VideoDetailMetadataPatch,
   VideoUpsertRow
 } from "../../src/db/types.js";
-import { VideoStore } from "../../src/db/videos.js";
+import {
+  UPDATER_STAGING_ROLE,
+  VIDEO_AVAILABILITY_SEMANTICS_KEY,
+  VIDEO_AVAILABILITY_SEMANTICS_VALUE,
+  VIDEO_CORPUS_ROLE_KEY,
+  VideoStore
+} from "../../src/db/videos.js";
 import { assertMetadataMaintenanceSchema, assertThumbnailMaintenanceSchema } from "../../src/db/schema.js";
 import { allRows, createTempDb, getRow } from "./helpers.js";
 
@@ -45,6 +52,18 @@ const video: VideoUpsertRow = {
   previewPath: "/lazy-static/previews/uuid.jpg",
   lastCheckedAt: 100
 };
+
+function liveInsert(row: VideoUpsertRow): NewVideoInsertRow {
+  return { row, initialInvalidity: { reason: null, observedAt: null } };
+}
+
+function absentInsert(
+  row: VideoUpsertRow,
+  reason: "not_found" | "gone",
+  observedAt: number
+): NewVideoInsertRow {
+  return { row, initialInvalidity: { reason, observedAt } };
+}
 
 function seedChannel(dbPath: string) {
   const channels = new ChannelStore({ dbPath });
@@ -172,7 +191,7 @@ test("VideoStore uses explicit insert/refresh semantics and preserves maintenanc
   try {
     seedChannel(temp.dbPath);
     const store = new VideoStore({ dbPath: temp.dbPath });
-    store.insertNewVideos([video]);
+    store.insertNewVideos([liveInsert(video)]);
     store.refreshExistingVideoMetadata([{ base: { ...video, title: "Updated song", views: 20 } }]);
     assert.equal(
       allRows(temp.dbPath, "SELECT * FROM videos WHERE video_id = ?", "v1").length,
@@ -247,12 +266,287 @@ test("VideoStore uses explicit insert/refresh semantics and preserves maintenanc
   }
 });
 
+test("new video initial invalidity is atomic and insert conflicts remain no-ops", () => {
+  const temp = createTempDb("crawler-videos-initial-invalidity");
+  try {
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    const observer = new Database(temp.dbPath);
+    observer.exec(`
+      CREATE TABLE insert_observations(video_id TEXT, invalid_reason TEXT, invalid_at INTEGER);
+      CREATE TRIGGER observe_video_insert
+      AFTER INSERT ON videos
+      BEGIN
+        INSERT INTO insert_observations(video_id, invalid_reason, invalid_at)
+        VALUES (NEW.video_id, NEW.invalid_reason, NEW.invalid_at);
+      END;
+    `);
+    observer.close();
+
+    const observedAt = 123456;
+    store.insertNewVideos([absentInsert(video, "not_found", observedAt)]);
+    assert.deepEqual(
+      getRow(temp.dbPath, "SELECT invalid_reason, invalid_at, last_error, last_error_at, error_count FROM videos WHERE video_id='v1'"),
+      {
+        invalid_reason: "not_found",
+        invalid_at: observedAt,
+        last_error: "not_found",
+        last_error_at: observedAt,
+        error_count: 1
+      }
+    );
+    assert.deepEqual(
+      allRows(temp.dbPath, "SELECT video_id, invalid_reason, invalid_at FROM insert_observations ORDER BY video_id"),
+      [{ video_id: "v1", invalid_reason: "not_found", invalid_at: observedAt }]
+    );
+
+    store.insertNewVideos([liveInsert({ ...video, videoId: "v2", videoUuid: "uuid-2" })]);
+    assert.deepEqual(
+      getRow(temp.dbPath, "SELECT invalid_reason, invalid_at, error_count FROM videos WHERE video_id='v2'"),
+      { invalid_reason: null, invalid_at: null, error_count: 0 }
+    );
+    assert.deepEqual(
+      getRow(temp.dbPath, "SELECT invalid_reason, invalid_at FROM insert_observations WHERE video_id='v2'"),
+      { invalid_reason: null, invalid_at: null }
+    );
+
+    // INSERT OR IGNORE owns identity conflicts. A later candidate with a
+    // different absence observation cannot mutate the already committed row.
+    store.insertNewVideos([
+      absentInsert({ ...video, title: "wrong replacement" }, "gone", observedAt + 1)
+    ]);
+    assert.deepEqual(
+      getRow(temp.dbPath, "SELECT title, invalid_reason, invalid_at, error_count FROM videos WHERE video_id='v1'"),
+      {
+        title: "Song",
+        invalid_reason: "not_found",
+        invalid_at: observedAt,
+        error_count: 1
+      }
+    );
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("live initial state cannot carry an invalidity timestamp", () => {
+  const temp = createTempDb("crawler-videos-invalid-live-state");
+  try {
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    assert.throws(
+      () => store.insertNewVideos([{
+        row: video,
+        initialInvalidity: { reason: null, observedAt: 1 }
+      } as unknown as NewVideoInsertRow]),
+      /live initial video state/u
+    );
+    assert.equal(allRows(temp.dbPath, "SELECT * FROM videos").length, 0);
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("first standalone insert atomically mints only current writer evidence", () => {
+  const temp = createTempDb("crawler-videos-writer-evidence");
+  try {
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    store.insertNewVideos([liveInsert(video)]);
+    assert.deepEqual(
+      allRows(temp.dbPath, "SELECT key, value FROM crawl_state ORDER BY key"),
+      [{ key: VIDEO_AVAILABILITY_SEMANTICS_KEY, value: VIDEO_AVAILABILITY_SEMANTICS_VALUE }]
+    );
+    assert.equal(allRows(temp.dbPath, "SELECT * FROM videos").length, 1);
+
+    store.insertNewVideos([liveInsert({ ...video, videoId: "v2", videoUuid: "uuid-2" })]);
+    assert.equal(allRows(temp.dbPath, "SELECT * FROM videos").length, 2);
+    assert.equal(
+      allRows(temp.dbPath, "SELECT * FROM crawl_state WHERE key = ?", VIDEO_CORPUS_ROLE_KEY).length,
+      0
+    );
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("empty insert batch does not mint writer evidence or corpus role", () => {
+  const temp = createTempDb("crawler-videos-empty-batch");
+  try {
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    store.insertNewVideos([]);
+    assert.equal(
+      getRow<{ count: number }>(temp.dbPath, "SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='crawl_state'").count,
+      0
+    );
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("updater staging inserts preserve its explicit role and require current semantics", () => {
+  const temp = createTempDb("crawler-videos-updater-role");
+  try {
+    const db = new Database(temp.dbPath);
+    db.exec("CREATE TABLE crawl_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    db.prepare("INSERT INTO crawl_state(key, value) VALUES (?, ?)").run(
+      VIDEO_AVAILABILITY_SEMANTICS_KEY,
+      VIDEO_AVAILABILITY_SEMANTICS_VALUE
+    );
+    db.prepare("INSERT INTO crawl_state(key, value) VALUES (?, ?)").run(
+      VIDEO_CORPUS_ROLE_KEY,
+      UPDATER_STAGING_ROLE
+    );
+    db.close();
+
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    store.insertNewVideos([liveInsert(video)]);
+    assert.deepEqual(
+      getRow(temp.dbPath, "SELECT value FROM crawl_state WHERE key = ?", VIDEO_CORPUS_ROLE_KEY),
+      { value: UPDATER_STAGING_ROLE }
+    );
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("updater staging role cannot repair missing or pre-cutover writer semantics", () => {
+  for (const semantics of [null, "canonical_absence_v1"]) {
+    const temp = createTempDb(`crawler-videos-updater-incompatible-${semantics ?? "missing"}`);
+    try {
+      const db = new Database(temp.dbPath);
+      db.exec("CREATE TABLE crawl_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+      db.prepare("INSERT INTO crawl_state(key, value) VALUES (?, ?)").run(
+        VIDEO_CORPUS_ROLE_KEY,
+        UPDATER_STAGING_ROLE
+      );
+      if (semantics !== null) {
+        db.prepare("INSERT INTO crawl_state(key, value) VALUES (?, ?)").run(
+          VIDEO_AVAILABILITY_SEMANTICS_KEY,
+          semantics
+        );
+      }
+      db.close();
+
+      const store = new VideoStore({ dbPath: temp.dbPath });
+      assert.throws(
+        () => store.insertNewVideos([liveInsert(video)]),
+        /updater staging video corpus has incompatible writer semantics/u
+      );
+      assert.equal(allRows(temp.dbPath, "SELECT * FROM videos").length, 0);
+      assert.deepEqual(
+        allRows(temp.dbPath, "SELECT key, value FROM crawl_state ORDER BY key"),
+        semantics === null
+          ? [{ key: VIDEO_CORPUS_ROLE_KEY, value: UPDATER_STAGING_ROLE }]
+          : [
+              { key: VIDEO_AVAILABILITY_SEMANTICS_KEY, value: semantics },
+              { key: VIDEO_CORPUS_ROLE_KEY, value: UPDATER_STAGING_ROLE }
+            ]
+      );
+      store.close();
+    } finally {
+      temp.cleanup();
+    }
+  }
+});
+
+test("empty standalone corpus with explicit old writer evidence is not upgraded in place", () => {
+  const temp = createTempDb("crawler-videos-empty-old-writer");
+  try {
+    const db = new Database(temp.dbPath);
+    db.exec("CREATE TABLE crawl_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    db.prepare("INSERT INTO crawl_state(key, value) VALUES (?, ?)").run(
+      VIDEO_AVAILABILITY_SEMANTICS_KEY,
+      "canonical_absence_v1"
+    );
+    db.close();
+
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    assert.throws(
+      () => store.insertNewVideos([liveInsert(video)]),
+      /video corpus has incompatible writer semantics/u
+    );
+    assert.equal(allRows(temp.dbPath, "SELECT * FROM videos").length, 0);
+    assert.deepEqual(allRows(temp.dbPath, "SELECT key, value FROM crawl_state"), [
+      { key: VIDEO_AVAILABILITY_SEMANTICS_KEY, value: "canonical_absence_v1" }
+    ]);
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("writer authorization rejects unknown roles and pre-cutover non-empty corpora without mutation", () => {
+  const unknownRole = createTempDb("crawler-videos-unknown-role");
+  try {
+    const db = new Database(unknownRole.dbPath);
+    db.exec("CREATE TABLE crawl_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    db.prepare("INSERT INTO crawl_state(key, value) VALUES (?, ?)").run(VIDEO_CORPUS_ROLE_KEY, "future_role");
+    db.close();
+    const store = new VideoStore({ dbPath: unknownRole.dbPath });
+    assert.throws(() => store.insertNewVideos([liveInsert(video)]), /unsupported video corpus role/u);
+    assert.equal(allRows(unknownRole.dbPath, "SELECT * FROM videos").length, 0);
+    assert.deepEqual(allRows(unknownRole.dbPath, "SELECT key, value FROM crawl_state"), [
+      { key: VIDEO_CORPUS_ROLE_KEY, value: "future_role" }
+    ]);
+    store.close();
+  } finally {
+    unknownRole.cleanup();
+  }
+
+  const legacy = createTempDb("crawler-videos-legacy-corpus");
+  try {
+    // Seed a legacy row directly so the new writer is not allowed to certify
+    // the corpus merely because it has now been opened by current code.
+    const seed = new VideoStore({ dbPath: legacy.dbPath });
+    seed.close();
+    const db = new Database(legacy.dbPath);
+    db.prepare(
+      "INSERT INTO videos(video_id, instance_domain, last_checked_at) VALUES ('legacy', 'example.org', 1)"
+    ).run();
+    db.close();
+
+    const store = new VideoStore({ dbPath: legacy.dbPath });
+    assert.throws(
+      () => store.insertNewVideos([liveInsert({ ...video, videoId: "v2", videoUuid: "uuid-2" })]),
+      /predates current atomic initial-tombstone/u
+    );
+    assert.equal(allRows(legacy.dbPath, "SELECT video_id FROM videos ORDER BY video_id").length, 1);
+    assert.equal(
+      getRow<{ count: number }>(legacy.dbPath, "SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='crawl_state'").count,
+      0
+    );
+    store.close();
+  } finally {
+    legacy.cleanup();
+  }
+});
+
+test("writer evidence rolls back when the first insert batch fails", () => {
+  const temp = createTempDb("crawler-videos-writer-rollback");
+  try {
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    const invalidRow = { ...video, instanceDomain: null } as unknown as VideoUpsertRow;
+    assert.throws(() => store.insertNewVideos([liveInsert(invalidRow)]));
+    assert.equal(allRows(temp.dbPath, "SELECT * FROM videos").length, 0);
+    assert.equal(
+      getRow<{ count: number }>(temp.dbPath, "SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='crawl_state'").count,
+      0
+    );
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
 test("VideoStore persists authoritative candidate objects and resumes only SQL NULL rows", () => {
   const temp = createTempDb("crawler-videos-thumbnails");
   try {
     seedChannel(temp.dbPath);
     const store = new VideoStore({ dbPath: temp.dbPath });
-    store.insertNewVideos([video]);
+    store.insertNewVideos([liveInsert(video)]);
 
     assert.deepEqual(store.listVideosForThumbnailRefresh(true), [
       {
@@ -318,7 +612,7 @@ test("VideoStore thumbnail refresh excludes definitively invalid videos", () => 
   try {
     seedChannel(temp.dbPath);
     const store = new VideoStore({ dbPath: temp.dbPath });
-    store.insertNewVideos([video]);
+    store.insertNewVideos([liveInsert(video)]);
     store.updateVideoInvalid("v1", "example.org", "not_found");
 
     assert.deepEqual(store.listVideosForThumbnailRefresh(false), []);
@@ -334,7 +628,7 @@ test("base refresh never overwrites authoritative thumbnail state", () => {
   try {
     seedChannel(temp.dbPath);
     const store = new VideoStore({ dbPath: temp.dbPath });
-    store.insertNewVideos([video]);
+    store.insertNewVideos([liveInsert(video)]);
     store.updateVideoThumbnailCandidates(
       "v1",
       "example.org",
@@ -597,7 +891,7 @@ test("category id only follows an unchanged protected category label", () => {
   const temp = createTempDb("crawler-category-pair");
   try {
     const store = new VideoStore({ dbPath: temp.dbPath });
-    store.insertNewVideos([metadataRow()]);
+    store.insertNewVideos([liveInsert(metadataRow())]);
     store.refreshExistingVideoMetadata([
       metadataRefresh(metadataRow({
         category: "Gaming",
@@ -637,7 +931,7 @@ test("existing video channel tuple is preserved across a real channel move", () 
   const temp = createTempDb("crawler-channel-tuple");
   try {
     const store = new VideoStore({ dbPath: temp.dbPath });
-    store.insertNewVideos([metadataRow()]);
+    store.insertNewVideos([liveInsert(metadataRow())]);
     store.refreshExistingVideoMetadata([
       metadataRefresh(metadataRow({
         channelId: "c2",
@@ -668,7 +962,7 @@ test("same channel id can fill a previously missing channel URL without changing
   const temp = createTempDb("crawler-channel-fill");
   try {
     const store = new VideoStore({ dbPath: temp.dbPath });
-    store.insertNewVideos([metadataRow({ channelUrl: null })]);
+    store.insertNewVideos([liveInsert(metadataRow({ channelUrl: null }))]);
     store.refreshExistingVideoMetadata([
       metadataRefresh(metadataRow({
         channelId: "c1",
@@ -699,7 +993,7 @@ test("failed enrichment preserves last-known-good metadata and never lowers meta
   try {
     const store = new VideoStore({ dbPath: temp.dbPath });
     store.insertNewVideos([
-      metadataRow({
+      liveInsert(metadataRow({
         language: "en",
         languageLabel: "English",
         licenceId: "1",
@@ -708,7 +1002,7 @@ test("failed enrichment preserves last-known-good metadata and never lowers meta
         permanentLive: 1,
         liveSaveReplay: 0,
         metadataVersion: 1
-      })
+      }))
     ]);
     store.refreshExistingVideoMetadata([
       { base: metadataRow({
@@ -753,7 +1047,7 @@ test("metadata backfill rolls channel owner and video checkpoint back together",
   try {
     seedChannel(temp.dbPath);
     const store = new VideoStore({ dbPath: temp.dbPath });
-    store.insertNewVideos([metadataRow()]);
+    store.insertNewVideos([liveInsert(metadataRow())]);
     const db = new Database(temp.dbPath);
     db.exec(`
       CREATE TRIGGER fail_metadata_video_update

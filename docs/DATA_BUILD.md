@@ -225,7 +225,7 @@ npm run crawl:videos:thumbnails -- \
   --hosts-file /path/to/thumbnail-batch-01.txt
 ```
 
-Successful modern detail writes `[]` or an ordered JSON array of `{url,width,height}` candidate objects. Detail request failure and successful legacy/non-array detail shapes leave SQL `NULL` for retry; definitive 404/410 failures mark the video invalid and other failures record the existing generic video error state. This thumbnail-only maintenance does not require Discovery/Search/embedding/ANN/random/similarity rebuilds because none of those artifacts depend on thumbnail state. Initial production use should keep Engine stopped during each bounded write window unless concurrent-writer behavior is separately validated.
+Successful detail with an actual modern `thumbnails[]` writes authoritative `[]` or an ordered JSON array of `{url,width,height}` candidate objects. When no modern array exists, a structurally recognized usable legacy detail reference writes a singleton candidate and completes that row for `--resume`; a recognized explicit reference rejected only by crawler URL policy yields authoritative `[]`. A valid-identity detail with absent/malformed/unrecognized-only thumbnail representations is incomplete for this projection: candidate/mirror/check state is not advanced, SQL `NULL` remains resumable, and the owned diagnostic is recorded. Transport/protocol uncertainty is likewise non-destructive. Definitive 404/410 failures mark the video invalid and other failures record the existing generic video error state. This thumbnail-only maintenance does not require a production canonical-schema migration or Discovery/Search/embedding/ANN/random/similarity rebuilds because none of those artifacts depend on thumbnail state. Initial production use should keep Engine stopped during each bounded write window unless concurrent-writer behavior is separately validated.
 
 Existing embedding-source fields are protected during ordinary repeat crawl and metadata backfill: `title`, `description`, `tags_json`, `category`, and `channel_name`. Intentionally changing any of those fields after embeddings exist requires a full embedding/artifact rebuild. The legacy tags maintenance commands remain embedding-affecting for existing rows. `comments_count` is dynamic metadata and is **not** an embedding input.
 
@@ -382,7 +382,7 @@ For an existing production DB, quiesce every process/command able to mutate
 canonical videos or Prepared/Search source/readiness state and stop Engine (which
 still has lazy canonical writes). Updater/direct merge, crawler maintenance,
 destructive denylist purge, migration/import and Engine are examples; mutation
-ownership defines the boundary. Deploy the new availability-semantics code with writers stopped, then:
+ownership defines the boundary. Disable updater/timer and publication writers, deploy the new source, and **run `npm run build` in `engine/crawler` before any current-generation crawler/updater DB is created**, because updater executes generated `dist/*.js`. Then:
 
 ```bash
 python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whitelist.db
@@ -399,14 +399,11 @@ transaction after schema migration; schema `executescript()` is not included in
 that atomicity claim. A second run changes zero rows.
 
 Before restart, verify Prepared snapshot version **2**, plausible source counts,
-Search counts, and valid/invalid/high-error route smoke results. Delete legacy
-staging and its `-wal` / `-shm` sidecars; do not separately initialize replacement
-staging. Start the Engine with the new availability semantics after this in-place cutover, then run the first
-ordinary updater without `--resume-staging` or `--retry-errors`. That updater
-creates/stamps staging and owns its normal Engine stop/start around merge. If the
-outer rollout intentionally stays offline through this first updater, use
-`--skip-systemctl` and let the outer workflow alone own restart. Do not run old
-writer binaries against the migrated lifecycle.
+Search counts, and valid/invalid/high-error route smoke results. Delete any `canonical_absence_v1` or otherwise incompatible staging plus its `-wal` / `-shm` sidecars; do not separately initialize replacement staging. Start the Engine with the new availability semantics after this in-place cutover, then run the first ordinary updater without `--resume-staging` or `--retry-errors`. That updater creates staging with `video_availability_semantics=canonical_absence_atomic_ingest_v2` and `video_corpus_role=updater_staging_delta` and owns its normal Engine stop/start around merge. If the outer rollout intentionally stays offline through this first updater, use `--skip-systemctl` and let the outer workflow alone own restart. Do not run old writer binaries against the migrated lifecycle.
+
+Standalone raw crawler DBs have a separate publication boundary. A post-cutover `sync-whitelist.py` source must carry exact `video_availability_semantics=canonical_absence_atomic_ingest_v2` and must be roleless in this scope. `video_corpus_role=updater_staging_delta` and every unknown explicit role are rejected before canonical replacement; updater staging must never be supplied to destructive full sync. A pre-v2 raw DB that must be published again must be recreated/recrawled by the current writer rather than certified in place. Legacy raw DBs may remain for investigation or non-publication maintenance only.
+
+Exact v2 plus role absence proves writer provenance, **not build completeness**. Bounded crawls (`--max-*`, host filters, retry scopes) and interrupted standalone builds can be roleless v2 corpora; they remain operator-ineligible for destructive `sync-whitelist.py` until the documented standalone build workflow has actually completed. This scope intentionally does not add a positive full-build readiness marker.
 
 Permanent `sync-whitelist.py` contract:
 
