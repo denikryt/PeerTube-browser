@@ -217,3 +217,27 @@ Pre-cutover transient-invalid writers are unsupported after the production
 semantic cutover. Deploy matching crawler/jobs/Engine code and discard legacy
 staging rather than resuming it. A typed video-detail result and existing-row availability
 recovery remain separate work.
+
+## Report-only existing-video observations
+
+`videos-cli --check-availability` dispatches to a separate updater-staging worker,
+using `fetchVideoDetailResult` for exact UUID identity and outcome interpretation.
+It never invokes ordinary video maintenance or writes canonical video fields.
+Only DB and network tuning options are accepted (explicit zero crawler limits are
+harmless); selectors, resume, production DB references and maintenance modes are
+rejected. Wrong staging role/generation, incompatible work DDL/index, absent DB or
+nonpending work fail before network and without schema bootstrapping.
+
+Work preserves the original `(video_id, instance_domain)` PK. Host grouping is
+`lower(trim(instance_domain))`, with indexed bounded composite keyset batches and
+one preflight per host. Failed preflight is host UNKNOWN with NULL `checked_at`
+and no detail fanout. Completed detail operations have an epoch-ms timestamp;
+Python updater owns the sole structured report. Shared schema and merge rules do
+not include the operational work table.
+
+`instances-cli --allow-empty-scoped-whitelist` is a permanent explicit opt-in for
+resumed, nonempty scoped discovery without graph/expansion. Only structurally
+empty registry lists are admitted by its parser/fetch permission; unusable nonempty
+lists and fetch errors still fail. `crawl` alone returns a closed-store no-op after
+filtering, without creating/enqueueing parents or claiming discovery progress.
+Default callers, including live-thumbnail smoke, retain empty-registry rejection.

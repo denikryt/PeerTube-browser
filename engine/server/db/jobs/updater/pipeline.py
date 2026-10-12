@@ -8,6 +8,7 @@ same subprocess jobs and crawler CLIs.
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import time
@@ -37,18 +38,22 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - direct script execution path.
     from data.prepared_discovery import prepared_discovery_available
 
+from .cli import validate_availability_sweep_mode
 from .commands import CommandRun, run_cmd, run_with_cpu_fallback, systemctl_cmd
 from .locks import single_run_lock
 from .paths import from_args, validate_required_files
 from .staging import (
-    assert_video_availability_staging_semantics,
     assert_production_schema_compatible,
+    assert_video_availability_staging_semantics,
     count_staging_deltas,
     init_staging_db,
     inject_replace_embedding_for_test,
     load_scoped_hosts_file,
+    materialize_video_availability_work,
     prune_staging_local_non_ok_instances,
+    reset_video_availability_work,
     seed_staging_from_prod,
+    video_availability_report,
 )
 from .sync import (
     fetch_join_hosts,
@@ -58,20 +63,6 @@ from .sync import (
     purge_hosts_from_staging,
     write_hosts_file,
 )
-
-
-def _run_cmd(cmd: list[str], *, cwd: Path | None, runner: CommandRun | None) -> None:
-    """Run a command through the injectable shell boundary."""
-
-    run_cmd(cmd, cwd=cwd, runner=runner)
-
-
-def _run_with_fallback(
-    cmd: list[str], *, stage: str, cwd: Path | None, runner: CommandRun | None
-) -> None:
-    """Run a GPU-aware command through the injectable shell boundary."""
-
-    run_with_cpu_fallback(cmd, stage=stage, cwd=cwd, runner=runner)
 
 
 def _prepared_discovery_is_available(prod_db: Path) -> bool:
@@ -95,6 +86,8 @@ def run_pipeline(
 ) -> None:
     """Run the updater pipeline with current stage order and compatibility behavior."""
 
+    frozen_included_hosts = validate_availability_sweep_mode(args)
+    availability = bool(getattr(args, "check_existing_video_availability", False))
     paths = from_args(args)
     if validate_files:
         validate_required_files(paths)
@@ -121,6 +114,15 @@ def run_pipeline(
                 assert_video_availability_staging_semantics(paths.staging_db)
             denied_hosts = load_denied_hosts(paths.prod_db)
             logging.info("moderation deny_hosts_active=%d", len(denied_hosts))
+
+            frozen_hosts_file = None
+            if availability and frozen_included_hosts is not None:
+                frozen_hosts_file = write_hosts_file(
+                    frozen_included_hosts, "ptb-availability-scope-"
+                )
+                if frozen_hosts_file is None:
+                    raise RuntimeError("Failed to freeze nonempty availability host scope")
+                temp_files.append(frozen_hosts_file)
 
             sync_new_hosts: set[str] = set()
             sync_stale_hosts: set[str] = set()
@@ -165,6 +167,8 @@ def run_pipeline(
                     seed_staging_from_prod(paths.prod_db, paths.staging_db)
                     logging.info("staging seeded from prod (instances + channels)")
 
+            reset_video_availability_work(paths.staging_db)
+
             if denied_hosts:
                 staging_prune = purge_hosts_from_staging(paths.staging_db, denied_hosts)
                 if staging_prune:
@@ -181,12 +185,16 @@ def run_pipeline(
 
             host_concurrency = int(getattr(args, "host_concurrency", 2))
             host_delay_ms = int(getattr(args, "host_delay_ms", 200))
-            run_crawl_stages = retry_errors or (not args.sync_join_whitelist) or bool(sync_new_hosts)
+            run_crawl_stages = (
+                retry_errors or (not args.sync_join_whitelist) or bool(sync_new_hosts)
+            )
             if run_crawl_stages:
                 # Keep one host-scope file flowing through every crawler stage so a
                 # targeted updater run stays constrained after instances discovery.
                 host_scope_args: list[str] = []
-                if args.hosts_file:
+                if frozen_hosts_file is not None:
+                    host_scope_args = ["--hosts-file", frozen_hosts_file.as_posix()]
+                elif args.hosts_file:
                     host_scope_args = ["--hosts-file", args.hosts_file]
 
                 # Registry discovery has no error-only selector. A retry run
@@ -211,13 +219,17 @@ def run_pipeline(
                         str(args.max_retries),
                         *host_scope_args,
                     ]
+                    if availability and frozen_included_hosts is not None:
+                        instances_cmd.append("--allow-empty-scoped-whitelist")
                     if whitelist_hosts_file is not None:
                         instances_cmd.extend(["--whitelist-file", whitelist_hosts_file.as_posix()])
                     else:
                         instances_cmd.extend(["--whitelist-url", args.whitelist_url])
                     if exclude_hosts_file is not None:
-                        instances_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
-                    _run_cmd(instances_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                        instances_cmd.extend(
+                            ["--exclude-hosts-file", exclude_hosts_file.as_posix()]
+                        )
+                    run_cmd(instances_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
                 if args.skip_local_dead:
                     prune_staging_local_non_ok_instances(
@@ -348,17 +360,17 @@ def run_pipeline(
                         host_pipeline_cmd.extend(
                             ["--exclude-hosts-file", exclude_hosts_file.as_posix()]
                         )
-                    _run_cmd(host_pipeline_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                    run_cmd(host_pipeline_cmd, cwd=paths.crawler_dir, runner=command_runner)
                 else:
-                    _run_cmd(channels_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                    run_cmd(channels_cmd, cwd=paths.crawler_dir, runner=command_runner)
                     # Resolve only missing counts before videos-cli selects rows
                     # with videos_count > 0. Each successful channel write is its
                     # own resume checkpoint inside the count worker.
-                    _run_cmd(counts_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                    run_cmd(counts_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
                     # Video progress stores the next page offset after every
                     # successful page, so a resumed run continues within a channel.
-                    _run_cmd(videos_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                    run_cmd(videos_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
                 if retry_errors:
                     # Error retry is deliberately a staging-repair operation.
@@ -375,6 +387,37 @@ def run_pipeline(
                     logging.info("sync-join no changes detected; finishing early")
                     return
 
+            if availability:
+                missing_uuid = materialize_video_availability_work(
+                    paths.prod_db,
+                    paths.staging_db,
+                    included_hosts=frozen_included_hosts,
+                    denied_hosts=denied_hosts,
+                )
+                run_cmd(
+                    [
+                        args.node_bin,
+                        (paths.crawler_dist / "videos-cli.js").as_posix(),
+                        "--check-availability",
+                        "--db",
+                        paths.staging_db.as_posix(),
+                        "--concurrency",
+                        str(args.concurrency),
+                        "--host-concurrency",
+                        str(host_concurrency),
+                        "--host-delay",
+                        str(host_delay_ms),
+                        "--timeout",
+                        str(args.timeout_ms),
+                        "--max-retries",
+                        str(args.max_retries),
+                    ],
+                    cwd=paths.crawler_dir,
+                    runner=command_runner,
+                )
+                report = video_availability_report(paths.staging_db, missing_uuid=missing_uuid)
+                logging.info("video_availability_report %s", json.dumps(report, sort_keys=True))
+
             # Staging is disposable working state. Rebuild embeddings with the
             # currently deployed recipe immediately before every production merge,
             # including --resume-staging, so stale pre-deploy vectors can never leak
@@ -390,7 +433,7 @@ def run_pipeline(
                 embeddings_cmd.append("--gpu")
             else:
                 embeddings_cmd.append("--cpu")
-            _run_with_fallback(
+            run_with_cpu_fallback(
                 embeddings_cmd,
                 stage="build-video-embeddings",
                 cwd=paths.repo_root,
@@ -401,15 +444,20 @@ def run_pipeline(
                     prod_db=paths.prod_db, staging_db=paths.staging_db
                 )
 
-            scoped_hosts = (
-                load_scoped_hosts_file(Path(args.hosts_file)) if args.hosts_file else set()
-            )
-            logging.info("staging delta summary start scoped_hosts=%d", len(scoped_hosts))
-            deltas = count_staging_deltas(
-                paths.prod_db,
-                paths.staging_db,
-                scoped_hosts=scoped_hosts,
-            )
+            if availability:
+                # One invocation scope survives operator-file deletion and embeddings.
+                scoped_hosts = frozen_included_hosts or set()
+                deltas = count_staging_deltas(
+                    paths.prod_db, paths.staging_db, scoped_hosts=scoped_hosts, json_host_scope=True
+                )
+            else:
+                scoped_hosts = (
+                    load_scoped_hosts_file(Path(args.hosts_file)) if args.hosts_file else set()
+                )
+                logging.info("staging delta summary start scoped_hosts=%d", len(scoped_hosts))
+                deltas = count_staging_deltas(
+                    paths.prod_db, paths.staging_db, scoped_hosts=scoped_hosts
+                )
             logging.info(
                 "staging delta instances=%d channels=%d videos=%d embeddings=%d",
                 deltas["instances_new"],
@@ -423,7 +471,7 @@ def run_pipeline(
 
             try:
                 if not args.skip_systemctl:
-                    _run_cmd(
+                    run_cmd(
                         systemctl_cmd(
                             systemctl_bin=args.systemctl_bin,
                             service_name=args.service_name,
@@ -448,7 +496,7 @@ def run_pipeline(
                         stale_applied,
                     )
 
-                _run_cmd(
+                run_cmd(
                     [
                         args.python_bin,
                         (paths.script_dir / "merge-staging-db.py").as_posix(),
@@ -473,7 +521,7 @@ def run_pipeline(
                     if safety_prune:
                         logging.info("post-merge denylist safety prune=%s", safety_prune)
 
-                _run_cmd(
+                run_cmd(
                     [
                         args.python_bin,
                         (paths.script_dir / "recompute-popularity.py").as_posix(),
@@ -484,7 +532,7 @@ def run_pipeline(
                     cwd=paths.repo_root,
                     runner=command_runner,
                 )
-                _run_cmd(
+                run_cmd(
                     [
                         args.python_bin,
                         (paths.script_dir / "rebuild-video-discovery-data.py").as_posix(),
@@ -494,7 +542,7 @@ def run_pipeline(
                     cwd=paths.repo_root,
                     runner=command_runner,
                 )
-                _run_cmd(
+                run_cmd(
                     [
                         args.python_bin,
                         (paths.script_dir / "sync-video-index-ids.py").as_posix(),
@@ -506,7 +554,7 @@ def run_pipeline(
                 )
                 # Search v1 is a full-rebuild artifact: it depends on merged video
                 # rows but not on ANN, random-cache, or similarity artifacts.
-                _run_cmd(
+                run_cmd(
                     [
                         args.python_bin,
                         (paths.script_dir / "rebuild-video-search-index.py").as_posix(),
@@ -535,7 +583,7 @@ def run_pipeline(
                     ann_cmd.append("--gpu")
                 else:
                     ann_cmd.append("--cpu")
-                _run_with_fallback(
+                run_with_cpu_fallback(
                     ann_cmd,
                     stage="build-ann-index",
                     cwd=paths.repo_root,
@@ -565,7 +613,7 @@ def run_pipeline(
                             str(DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE),
                         ]
                     )
-                _run_cmd(random_cache_cmd, cwd=paths.repo_root, runner=command_runner)
+                run_cmd(random_cache_cmd, cwd=paths.repo_root, runner=command_runner)
 
                 if args.fail_after_merge_before_similarity:
                     raise RuntimeError(
@@ -596,7 +644,7 @@ def run_pipeline(
                     precompute_cmd.extend(["--gpu", "--gpu-device", "0"])
                 else:
                     precompute_cmd.append("--cpu")
-                _run_with_fallback(
+                run_with_cpu_fallback(
                     precompute_cmd,
                     stage="precompute-similar-ann",
                     cwd=paths.repo_root,
@@ -605,7 +653,7 @@ def run_pipeline(
             finally:
                 if service_stopped and not args.skip_systemctl:
                     if _prepared_discovery_is_available(paths.prod_db):
-                        _run_cmd(
+                        run_cmd(
                             systemctl_cmd(
                                 systemctl_bin=args.systemctl_bin,
                                 service_name=args.service_name,

@@ -95,28 +95,6 @@ export class CrawlerStore {
   }
 
   /**
-   * Handle get state.
-   */
-  getState(key: string): string | undefined {
-    if (!this.hasStateTable) return undefined;
-    const row = this.db.prepare("SELECT value FROM crawl_state WHERE key = ?").get(key) as
-      | { value: string }
-      | undefined;
-    return row?.value;
-  }
-
-  /**
-   * Handle increment state.
-   */
-  incrementState(key: string, delta: number) {
-    if (!Number.isFinite(delta) || delta === 0) return;
-    const current = this.getState(key);
-    const currentValue = current ? Number(current) : 0;
-    const nextValue = Number.isFinite(currentValue) ? currentValue + delta : delta;
-    this.setState(key, String(nextValue));
-  }
-
-  /**
    * Handle ensure instance.
    */
   ensureInstance(host: string) {

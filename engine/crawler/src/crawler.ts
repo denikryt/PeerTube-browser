@@ -21,6 +21,25 @@ const PAGE_SIZE = 50;
  * Handle crawl.
  */
 export async function crawl(options: CrawlOptions) {
+  if (options.allowEmptyScopedWhitelist !== undefined &&
+      typeof options.allowEmptyScopedWhitelist !== "boolean") {
+    throw new Error("allowEmptyScopedWhitelist must be boolean");
+  }
+  // Freeze the opt-in scope before registry await; empty-after-await cannot widen it.
+  const validatedInclude = options.allowEmptyScopedWhitelist
+    ? loadHostsFromFile(options.hostsFile)
+    : null;
+  // Validate before store initialization so opt-in misuse cannot reset a corpus.
+  if (options.allowEmptyScopedWhitelist) {
+    if (
+      !options.resume || options.collectGraph || options.expandBeyondWhitelist ||
+      validatedInclude!.size === 0
+    ) {
+      throw new Error(
+        "--allow-empty-scoped-whitelist requires nonempty hosts scope, resume and no graph/expand"
+      );
+    }
+  }
   const store = new CrawlerStore({
     dbPath: options.dbPath,
     resume: options.resume,
@@ -32,9 +51,10 @@ export async function crawl(options: CrawlOptions) {
     ? Array.from(loadHostsFromFile(options.whitelistFile))
     : await fetchInstanceRegistryHosts(whitelistUrl, {
         timeoutMs: options.timeoutMs,
-        maxRetries: options.maxRetries
+        maxRetries: options.maxRetries,
+        allowEmptyList: options.allowEmptyScopedWhitelist === true
       });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = validatedInclude ?? loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const filteredWhitelistHosts = scopeHosts(
     fetchedWhitelistHosts,
@@ -46,6 +66,12 @@ export async function crawl(options: CrawlOptions) {
       ? filteredWhitelistHosts.slice(0, options.maxInstances)
       : filteredWhitelistHosts;
   if (whitelistHosts.length === 0) {
+    if (options.allowEmptyScopedWhitelist && includedHosts.size > 0) {
+      // Empty discovery does not authorize parent creation or progress stamps.
+      store.close();
+      console.log("[crawl] empty scoped registry intersection; no discovery work");
+      return;
+    }
     throw new Error("Whitelist is empty after host include/exclude filtering.");
   }
   const whitelistSet = new Set(whitelistHosts);

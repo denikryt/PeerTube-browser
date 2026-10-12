@@ -6,13 +6,14 @@ operations out of the executable updater wrapper.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 import sqlite3
 import time
 from contextlib import closing
 from pathlib import Path
 from urllib.parse import urlparse
-
 
 # TODO(nodeforge-video-availability-generation-cutover): Remove pre-v2 writer-generation rejection only after no supported crawler video corpus can predate atomic initial-tombstone ingest.
 AVAILABILITY_SEMANTICS_KEY = "video_availability_semantics"
@@ -53,6 +54,7 @@ def init_staging_db(staging_db: Path, schema_path: Path) -> None:
             "INSERT OR REPLACE INTO crawl_state(key, value) VALUES (?, ?)",
             (VIDEO_CORPUS_ROLE_KEY, UPDATER_STAGING_ROLE),
         )
+        _ensure_video_availability_work(conn)
         conn.commit()
 
 
@@ -234,6 +236,7 @@ def _host_scope_sql(
     table: str,
     alias: str,
     scoped_hosts: set[str],
+    json_host_scope: bool = False,
 ) -> tuple[str, list[str]]:
     """Build a host-scope predicate for staging rows when a targeted run is active.
 
@@ -253,7 +256,14 @@ def _host_scope_sql(
         preferred=("instance_domain", "host"),
     )
     if scope_column is None:
+        if json_host_scope:
+            raise RuntimeError(f"Scoped JSON delta count requires host column in {table}")
         return "", []
+    if json_host_scope:
+        return (
+            f"WHERE lower(trim({alias}.{scope_column})) IN (SELECT value FROM json_each(?))",
+            [json.dumps(sorted(_validated_host_set(scoped_hosts)))],
+        )
     placeholders = ", ".join("?" for _ in scoped_hosts)
     return (
         f"WHERE lower({alias}.{scope_column}) IN ({placeholders})",
@@ -278,6 +288,7 @@ def _count_missing_rows(
     table: str,
     identity_candidates: list[tuple[str, ...]],
     scoped_hosts: set[str] | None = None,
+    json_host_scope: bool = False,
 ) -> int:
     """Count staging rows absent from prod using the first compatible identity key.
 
@@ -291,12 +302,17 @@ def _count_missing_rows(
     prod_columns = _table_columns(conn, "main", table)
     staging_columns = _table_columns(conn, "staging", table)
 
-    normalized_scope = _normalize_host_tokens(scoped_hosts)
+    normalized_scope = (
+        _validated_host_set(scoped_hosts or set())
+        if json_host_scope
+        else _normalize_host_tokens(scoped_hosts)
+    )
     scope_sql, scope_params = _host_scope_sql(
         conn,
         table=table,
         alias="s",
         scoped_hosts=normalized_scope,
+        json_host_scope=json_host_scope,
     )
 
     for columns in identity_candidates:
@@ -322,8 +338,7 @@ def _count_missing_rows(
                 f"LEFT JOIN main.{table} p ON {join_sql} "
                 f"WHERE p.{primary_column} IS NULL"
                 if not scope_sql
-                else
-                f"SELECT COUNT(*) FROM ("
+                else f"SELECT COUNT(*) FROM ("
                 f"SELECT * FROM staging.{table} s {scope_sql}"
                 f") s LEFT JOIN main.{table} p ON {join_sql} "
                 f"WHERE p.{primary_column} IS NULL",
@@ -371,7 +386,11 @@ def seed_staging_from_prod(prod_db: Path, staging_db: Path) -> None:
 
 
 def count_staging_deltas(
-    prod_db: Path, staging_db: Path, scoped_hosts: set[str] | None = None
+    prod_db: Path,
+    staging_db: Path,
+    scoped_hosts: set[str] | None = None,
+    *,
+    json_host_scope: bool = False,
 ) -> dict[str, int]:
     """Count current staging rows not present in prod by primary identity.
 
@@ -387,6 +406,7 @@ def count_staging_deltas(
             table="instances",
             identity_candidates=[("host",)],
             scoped_hosts=scoped_hosts,
+            json_host_scope=json_host_scope,
         )
         channels_new = _count_missing_rows(
             conn,
@@ -396,6 +416,7 @@ def count_staging_deltas(
                 ("host", "name"),
             ],
             scoped_hosts=scoped_hosts,
+            json_host_scope=json_host_scope,
         )
         videos_new = _count_missing_rows(
             conn,
@@ -406,19 +427,22 @@ def count_staging_deltas(
                 ("host", "uuid"),
             ],
             scoped_hosts=scoped_hosts,
+            json_host_scope=json_host_scope,
         )
         embeddings_new = 0
         prod_has_embeddings = conn.execute(
             "SELECT COUNT(*) FROM main.sqlite_master WHERE type='table' AND name='video_embeddings'"
         ).fetchone()[0]
         staging_has_embeddings = conn.execute(
-            
-                "SELECT COUNT(*) FROM staging.sqlite_master "
-                "WHERE type='table' AND name='video_embeddings'"
-            
+            "SELECT COUNT(*) FROM staging.sqlite_master "
+            "WHERE type='table' AND name='video_embeddings'"
         ).fetchone()[0]
         if prod_has_embeddings and staging_has_embeddings:
-            embedding_scope = _normalize_host_tokens(scoped_hosts)
+            embedding_scope = (
+                _validated_host_set(scoped_hosts or set())
+                if json_host_scope
+                else _normalize_host_tokens(scoped_hosts)
+            )
             prod_embedding_columns = _table_columns(conn, "main", "video_embeddings")
             staging_embedding_columns = _table_columns(conn, "staging", "video_embeddings")
             composite_identity = {"video_id", "instance_domain"}.issubset(
@@ -435,7 +459,29 @@ def count_staging_deltas(
             if composite_identity:
                 identity_match += " AND p.instance_domain = s.instance_domain"
 
-            if embedding_scope:
+            if embedding_scope and json_host_scope:
+                # EXISTS recovers hostless identity without multiplying embeddings
+                # when the same video ID is present on several selected domains.
+                if "instance_domain" in staging_embedding_columns:
+                    scope_expr = (
+                        "lower(trim(s.instance_domain)) IN (SELECT value FROM json_each(?))"
+                    )
+                else:
+                    if "instance_domain" not in _table_columns(conn, "staging", "videos"):
+                        raise RuntimeError("Scoped JSON embeddings require videos.instance_domain")
+                    scope_expr = (
+                        "EXISTS (SELECT 1 FROM staging.videos sv WHERE sv.video_id=s.video_id "
+                        "AND lower(trim(sv.instance_domain)) IN (SELECT value FROM json_each(?)))"
+                    )
+                embeddings_new = conn.execute(
+                    "SELECT COUNT(*) FROM staging.video_embeddings s WHERE "
+                    + scope_expr
+                    + " AND NOT EXISTS (SELECT 1 FROM main.video_embeddings p WHERE "
+                    + identity_match
+                    + ")",
+                    [json.dumps(sorted(embedding_scope))],
+                ).fetchone()[0]
+            elif embedding_scope:
                 placeholders = ", ".join("?" for _ in embedding_scope)
                 if "instance_domain" in staging_embedding_columns:
                     scope_expr = f"lower(s.instance_domain) IN ({placeholders})"
@@ -539,3 +585,186 @@ def inject_replace_embedding_for_test(*, prod_db: Path, staging_db: Path) -> Non
         )
         staging.commit()
         logging.info("test embedding injection inserted overlapping video_embeddings row")
+
+
+AVAILABILITY_WORK_DDL = """CREATE TABLE IF NOT EXISTS video_availability_work (
+  video_id TEXT NOT NULL,
+  instance_domain TEXT NOT NULL,
+  video_uuid TEXT NOT NULL,
+  outcome TEXT CHECK (outcome IS NULL OR outcome IN ('available', 'not_found', 'gone', 'unknown')),
+  checked_at INTEGER,
+  error TEXT,
+  PRIMARY KEY (video_id, instance_domain)
+)"""
+AVAILABILITY_WORK_INDEX_DDL = """CREATE INDEX IF NOT EXISTS idx_availability_work_host_identity
+ ON video_availability_work (lower(trim(instance_domain)), video_id, instance_domain)"""
+WORK_SCOPE_SQL = """
+ AND lower(trim(v.instance_domain)) NOT IN (SELECT value FROM json_each(:denied_json))
+ AND (:unscoped = 1 OR lower(trim(v.instance_domain)) IN
+      (SELECT value FROM json_each(:included_json)))
+"""
+
+
+def require_sqlite_json_each() -> None:
+    """Probe the actual updater SQLite runtime before side effects; no fallback."""
+    try:
+        with closing(sqlite3.connect(":memory:")) as conn:
+            if conn.execute("SELECT value FROM json_each(?)", ('["capability"]',)).fetchall() != [
+                ("capability",)
+            ]:
+                raise RuntimeError("SQLite json_each/JSON1 unavailable in updater Python runtime")
+    except sqlite3.Error as exc:
+        raise RuntimeError(
+            "SQLite json_each/JSON1 unavailable in updater Python runtime; upgrade Python SQLite"
+        ) from exc
+
+
+def _validated_host_set(hosts: set[str]) -> set[str]:
+    """Reject non-string or noncanonical membership before serialization."""
+    if not isinstance(hosts, (set, frozenset)):
+        raise ValueError("Host scope must be a normalized string set")
+    for host in hosts:
+        if not isinstance(host, str) or not host or _normalize_host_token(host) != host:
+            raise ValueError("Host scope must contain normalized nonblank strings only")
+    return set(hosts)
+
+
+def _ddl_fingerprint(sql: str) -> str:
+    """Compare the owned DDL, including constraints and expression index."""
+    # Literal labels are case-sensitive CHECK values; normalize SQL syntax only.
+    parts = re.split("('(?:''|[^'])*')", sql)
+    return "".join(
+        part if i % 2 else "".join(part.lower().split()).replace("ifnotexists", "")
+        for i, part in enumerate(parts)
+    ).rstrip(";")
+
+
+def _ensure_video_availability_work(conn: sqlite3.Connection) -> None:
+    """Ensure only additive exact updater work schema; never repair legacy DDL."""
+    assert_video_availability_staging_semantics_conn(conn, "main")
+    for name, ddl in [
+        ("video_availability_work", AVAILABILITY_WORK_DDL),
+        ("idx_availability_work_host_identity", AVAILABILITY_WORK_INDEX_DDL),
+    ]:
+        row = conn.execute("SELECT sql FROM sqlite_master WHERE name=?", (name,)).fetchone()
+        if row and (row[0] is None or _ddl_fingerprint(row[0]) != _ddl_fingerprint(ddl)):
+            raise RuntimeError(
+                "Incompatible video availability work schema; recreate staging without resume"
+            )
+    # Validate both definitions before creating either, preserving incompatible evidence.
+    conn.execute(AVAILABILITY_WORK_DDL)
+    conn.execute(AVAILABILITY_WORK_INDEX_DDL)
+
+
+def reset_video_availability_work(staging_db: Path) -> None:
+    """Discard old observations on every accepted invocation, including resume."""
+    with (
+        closing(sqlite3.connect(staging_db.resolve().as_uri() + "?mode=rw", uri=True)) as conn,
+        conn,
+    ):
+        _ensure_video_availability_work(conn)
+        conn.execute("DELETE FROM video_availability_work")
+
+
+def materialize_video_availability_work(
+    prod_db: Path,
+    staging_db: Path,
+    *,
+    included_hosts: set[str] | None,
+    denied_hosts: set[str],
+) -> int:
+    """Copy production identities and count UUID skips in one short read snapshot.
+
+    Production is read-only and detached/closed before the caller starts HTTP.
+    Result identity preserves original domain bytes; host scope is normalized.
+    """
+    included = None if included_hosts is None else _validated_host_set(included_hosts)
+    if included is not None and not included:
+        raise ValueError("Explicit availability host scope must be nonempty")
+    denied = _validated_host_set(denied_hosts)
+    params = dict(
+        included_json=json.dumps(sorted(included or [])),
+        denied_json=json.dumps(sorted(denied)),
+        unscoped=int(included is None),
+    )
+    with closing(sqlite3.connect(staging_db.resolve().as_uri() + "?mode=rw", uri=True)) as conn:
+        _ensure_video_availability_work(conn)
+        if conn.execute("SELECT COUNT(*) FROM video_availability_work").fetchone()[0]:
+            raise RuntimeError("Availability work must be reset before materialization")
+        conn.execute(
+            "ATTACH DATABASE ? AS production",
+            (prod_db.resolve().as_uri() + "?mode=ro",),
+        )
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            missing = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM production.videos v WHERE "
+                    "(v.video_uuid IS NULL OR length(trim(v.video_uuid))=0)" + WORK_SCOPE_SQL,
+                    params,
+                ).fetchone()[0]
+            )
+            conn.execute(
+                "INSERT INTO main.video_availability_work(video_id,instance_domain,video_uuid) "
+                "SELECT v.video_id,v.instance_domain,v.video_uuid FROM production.videos v "
+                "WHERE v.video_uuid IS NOT NULL AND length(trim(v.video_uuid))>0" + WORK_SCOPE_SQL,
+                params,
+            )
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            conn.execute("DETACH DATABASE production")
+    return missing
+
+
+def video_availability_report(staging_db: Path, *, missing_uuid: int) -> dict[str, int]:
+    """Build the sole finished report; reject partial or inconsistent evidence."""
+    with closing(sqlite3.connect(staging_db.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+        # Named aggregates keep report and validation independent of SELECT order.
+        conn.row_factory = sqlite3.Row
+        counts = conn.execute("""SELECT COUNT(*) AS selected_videos,
+          COUNT(*) FILTER (WHERE outcome='available') AS available,
+          COUNT(*) FILTER (WHERE outcome='not_found') AS not_found,
+          COUNT(*) FILTER (WHERE outcome='gone') AS gone,
+          COUNT(*) FILTER (WHERE outcome='unknown') AS unknown,
+          COUNT(*) FILTER (WHERE outcome IS NULL) AS unfinished,
+          COUNT(checked_at) AS video_requests_attempted
+          FROM video_availability_work""").fetchone()
+        invalid = conn.execute("""SELECT COUNT(*) FROM video_availability_work
+          WHERE (checked_at IS NULL AND (outcome IS NOT 'unknown' OR error IS NULL
+                 OR error NOT LIKE 'host_preflight: %'))
+          OR (checked_at IS NOT NULL AND (typeof(checked_at) != 'integer'
+              OR checked_at < 0 OR checked_at > 9007199254740991))
+          OR (outcome='unknown' AND (error IS NULL OR length(trim(error))=0
+              OR length(error)>512 OR instr(error,char(10))>0 OR instr(error,char(13))>0))
+          OR (checked_at IS NULL AND length(error)<=length('host_preflight: '))
+          OR (outcome IN ('available','not_found','gone') AND error IS NOT NULL)
+          OR (checked_at IS NOT NULL AND error LIKE 'host_preflight: %')""").fetchone()[0]
+        hosts = conn.execute("""SELECT lower(trim(instance_domain)) AS host_key,
+          COUNT(*) AS selected, COUNT(*) FILTER (WHERE checked_at IS NULL) AS skipped
+          FROM video_availability_work GROUP BY lower(trim(instance_domain))""").fetchall()
+        if (
+            counts["unfinished"]
+            or invalid
+            or counts["selected_videos"] != (
+                counts["available"] + counts["not_found"] + counts["gone"] + counts["unknown"]
+            )
+            or not 0 <= counts["video_requests_attempted"] <= counts["selected_videos"]
+            or any(0 < host["skipped"] < host["selected"] for host in hosts)
+        ):
+            raise RuntimeError("Availability sweep incomplete or inconsistent; no success report")
+    if not isinstance(missing_uuid, int) or missing_uuid < 0:
+        raise ValueError("Invalid missing UUID count")
+    return dict(
+        selected_videos=counts["selected_videos"],
+        available=counts["available"],
+        not_found=counts["not_found"],
+        gone=counts["gone"],
+        unknown=counts["unknown"],
+        missing_uuid=missing_uuid,
+        hosts_processed=sum(host["skipped"] == 0 for host in hosts),
+        hosts_skipped_preflight=sum(host["skipped"] > 0 for host in hosts),
+        video_requests_attempted=counts["video_requests_attempted"],
+    )

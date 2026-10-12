@@ -77,6 +77,7 @@ def _patch_lightweight(
     monkeypatch.setattr(pipeline, "fetch_join_hosts", lambda url: set(join))
     monkeypatch.setattr(pipeline, "list_prod_hosts", lambda prod_db: set(prod))
     monkeypatch.setattr(pipeline, "purge_hosts", lambda **kwargs: {})
+    monkeypatch.setattr(pipeline, "reset_video_availability_work", lambda staging_db: None)
     monkeypatch.setattr(pipeline, "init_staging_db", lambda staging_db, schema_path: None)
     monkeypatch.setattr(pipeline, "seed_staging_from_prod", lambda prod_db, staging_db: None)
     monkeypatch.setattr(pipeline, "purge_hosts_from_staging", lambda staging_db, hosts: {})

@@ -254,3 +254,61 @@ crawl_state['video_corpus_role'] = 'updater_staging_delta'
 The first key is writer-generation evidence for atomic initial tombstone ingest. The second is independent updater-delta corpus kind; it prevents this partial staging corpus from being mistaken for a standalone destructive full-sync source. Resume/retry require the exact pair before network/crawler/service-stop work, and direct merge checks the exact attached generation before production DML. Missing/v1/malformed semantics, roleless v2, and wrong/unknown roles are rejected; there is no in-place conversion. Later current-era crash/resume remains supported.
 
 Recommended rollout restarts Engine after offline semantic cutover, before the first normal updater, which retains its own stop/start around merge. If the outer rollout intentionally holds Engine offline through this run, pass `--skip-systemctl`; the outer workflow remains sole owner of restart. See `docs/DATA_BUILD.md` for writer quiescence, generated-runtime ordering, artifact verification and rollback.
+
+## Existing-video availability observations
+
+`--check-existing-video-availability` is an opt-in **report-only** sweep: ordinary
+instances/channels/counts/new-video crawling runs first, then production video
+identities are materialized into staging, checked, and reported before embeddings,
+Engine stop, normal merge and derived jobs. The sweep itself writes only
+`video_availability_work`; it does not publish canonical availability, repair
+metadata/thumbnails, alter `error_count`, or trigger additional derived builds.
+Build the crawler JS before running this mode.
+
+The deployed updater Python SQLite must pass a functional `json_each()` probe.
+The updater fails before staging/network activity when unavailable; there is no
+fallback. Optional `--hosts-file` must be readable UTF-8 with a nonempty normalized
+host set. Blank paths, empty/comment-only files and missing files fail early.
+Omitting the option means unscoped; a valid nonempty scope with no eligible rows
+produces a zero-work report. Denylist takes precedence. Use explicit small host
+partitions for the first live run; ordinary crawler page/instance limits and
+`--skip-local-dead` do not select sweep rows.
+
+A scoped run freezes its validated host set once. Every ordinary crawler receives
+the same temporary scope file; production selection and post-embeddings delta
+counters use the retained set in memory. Editing or deleting the original file
+cannot widen or interrupt the run. Availability-mode delta counters use bounded
+JSON membership for instances, channels, videos and embeddings, including legacy
+hostless embeddings; ordinary updater SQL remains unchanged.
+
+Only scoped availability adds `--allow-empty-scoped-whitelist` to instances CLI.
+A production host absent from JoinPeerTube can therefore still be probed even
+without staging parent records. A successfully parsed `[]` or `{data: []}` registry,
+or empty registry/include/deny intersection, is a successful zero-discovery no-op.
+Malformed registry structure, nonempty unusable entries, HTTP/DNS, file and SQLite
+errors remain fatal. Ordinary discovery still rejects empty whitelists. No-op does
+not create parents, enqueue hosts or stamp successful discovery progress.
+
+One logical preflight per normalized host suppresses detail fanout on uncertainty.
+Preflight failure (including 404/410) writes host-prefixed staging UNKNOWN with no
+`checked_at`; it never establishes video absence. Responsive hosts use the shared
+typed UUID detail API and existing limiter/retries. Exact production identity is
+retained; Node opens staging only. Python closes its production snapshot before
+any sweep HTTP request, leaving production available during the network portion.
+
+Python emits one `video_availability_report` JSON line with `selected_videos`,
+`available`, `not_found`, `gone`, `unknown`, `missing_uuid`, `hosts_processed`,
+`hosts_skipped_preflight` and `video_requests_attempted`. The last field counts
+logical detail operations, including detail UNKNOWN, rather than transport retries
+or preflights. Remote UNKNOWN is normal; schema/SQLite/process/incomplete-work
+failure blocks embeddings and merge and emits no successful sweep report.
+
+Fresh and resumed accepted runs, with or without sweep, ensure/clear staging work.
+Partial/completed observations are never reused between invocations. Work is
+operational evidence, excluded from production schema and merge rules. Do not run
+external crawler processes against the updater staging DB concurrently; updater
+lock covers updater invocations, and the role stamp is not an external-writer lock.
+
+This mode currently rejects `--retry-errors`, `--sync-join-whitelist` (including
+`--dry-run`) and `--host-pipeline` before any mutation/network. Integration of these
+advanced modes and canonical publication remain separate work.

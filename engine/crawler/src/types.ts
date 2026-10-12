@@ -5,6 +5,8 @@
 export type CrawlStatus = "pending" | "processing" | "done" | "error";
 
 export interface CrawlOptions {
+  /** Scoped resumed discovery may finish without registry overlap; default false. */
+  allowEmptyScopedWhitelist?: boolean;
   whitelistUrl: string;
   whitelistFile: string | null;
   hostsFile: string | null;

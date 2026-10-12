@@ -81,6 +81,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
         formatter_class=CompactHelpFormatter,
     )
+    parser.add_argument(
+        "--check-existing-video-availability",
+        action="store_true",
+        help="Report-only sweep of existing production videos before embeddings/merge.",
+    )
     parser.add_argument("--prod-db", default=str(default_prod), help="Path to prod DB.")
     parser.add_argument("--staging-db", default=str(default_stage), help="Path to staging DB.")
     parser.add_argument(
@@ -293,6 +298,40 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         # Resolve the operator-supplied file against the updater invocation cwd
         # before pipeline stages switch cwd to engine/crawler for Node CLIs.
         args.hosts_file = str(Path(args.hosts_file).resolve())
+    try:
+        validate_availability_sweep_mode(args)
+    except (ValueError, OSError, RuntimeError) as exc:
+        parser.error(str(exc))
     if not args.service_name:
         args.service_name = resolve_default_engine_service_name(args.mode)
     return args
+
+
+def validate_availability_sweep_mode(args) -> set[str] | None:
+    """Validate opt-in boundaries before paths, locks, DB writes or HTTP.
+
+    Return the normalized inclusion snapshot; explicit empty input is never all.
+    """
+    if not getattr(args, "check_existing_video_availability", False):
+        return None
+    # TODO(nodeforge-availability-advanced-updater-modes): Remove this temporary sweep/mode rejection once retry, strict-sync and host-pipeline orchestration have explicit parent eligibility and end-to-end coverage.
+    if any(
+        getattr(args, mode, False)
+        for mode in ("retry_errors", "sync_join_whitelist", "host_pipeline")
+    ):
+        raise ValueError(
+            "--check-existing-video-availability cannot combine with --retry-errors, --sync-join-whitelist or --host-pipeline"
+        )
+    from .staging import load_scoped_hosts_file, require_sqlite_json_each
+
+    hosts = None
+    if getattr(args, "hosts_file", None) is not None:
+        if not args.hosts_file.strip():
+            raise ValueError("Availability --hosts-file must name a readable nonempty host file")
+        hosts = load_scoped_hosts_file(Path(args.hosts_file))
+        if not hosts:
+            raise ValueError(
+                "Availability --hosts-file must contain a nonempty normalized host set"
+            )
+    require_sqlite_json_each()
+    return hosts
