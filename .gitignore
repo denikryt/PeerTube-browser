@@ -6,8 +6,11 @@ __pycache__/
 .pytest_cache
 *.pyc
 .env
+*.bundle
 
 # Local data files
+*.db-shm.bak-*
+*.db-wal.bak-*
 *.db
 *.db-journal
 *.db-shm
