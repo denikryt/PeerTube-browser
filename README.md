@@ -22,15 +22,12 @@ See `docs/DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset an
 
 
 ## Documentation
-- `docs/ARCHITECTURE.md`: component boundaries and runtime flow.
-- `docs/DEVELOPMENT.md`: local navigation and verification commands.
-- `docs/TESTING.md`: regression and smoke test guidance.
-- `docs/DATA_BUILD.md`: crawler and dataset build flow.
-- `docs/DEPLOYMENT.md`: service installation and runtime deployment.
-- `docs/ROADMAP.md`: product direction, not a task tracker.
-- `docs/SCHEMA_OWNERSHIP.md`: SQLite schema ownership and compatibility wrappers.
-- `docs/UPDATER_COMPATIBILITY.md`: updater split compatibility decisions.
-- `docs/FRAMEWORK_COMPATIBILITY.md`: FastAPI migration compatibility decisions.
+- `docs/ARCHITECTURE.md`: component responsibilities and boundaries.
+- `docs/ARCHITECTURE_DIAGRAM.md`: architecture and flow diagrams.
+- `docs/PROJECT_MAP.md`: source tree and code ownership map.
+- `docs/RUNNING.md`: installation, startup, shutdown, and verification.
+- `docs/HOW_IT_WORKS.md`: internal runtime and data behavior.
+- `docs/UPDATER.md`: updater operation, recovery, and systemd timer.
 
 ## Development checks
 Use `make test-fast` for the fast regression baseline before refactoring. `make test` is an alias for the same command. See `docs/DEVELOPMENT.md` and `docs/TESTING.md` for setup, dependency-heavy checks, and smoke tests.

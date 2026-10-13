@@ -1,40 +1,36 @@
-"""Verify schema ownership documentation stays present and scoped."""
+"""Verify current data-store ownership remains documented in one place."""
 from __future__ import annotations
 
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DOC = ROOT / "docs" / "SCHEMA_OWNERSHIP.md"
+DOC = ROOT / "docs" / "HOW_IT_WORKS.md"
 
 
 def test_schema_ownership_documentation_contains_required_sections() -> None:
-    """The schema ownership document must cover every current DB family."""
+    """The internals document must cover every current database family."""
     text = DOC.read_text(encoding="utf-8")
 
     for heading in [
-        "Client users DB",
-        "Crawler raw crawl DB",
-        "Engine main dataset DB",
-        "Engine runtime tables and indexes",
-        "Engine similarity cache DB",
-        "Engine random cache DB",
-        "Engine derived artifacts",
-        "Removed transitional schema wrappers",
-        "Future ownership by stage",
+        "Client Database",
+        "Crawler Database",
+        "Canonical Engine Database",
+        "Derived Artifacts",
     ]:
         assert heading in text
 
 
-def test_schema_ownership_documentation_records_removed_wrapper_decisions() -> None:
-    """The document must record the removed transitional wrapper decisions."""
+def test_schema_ownership_documentation_names_current_data_owners() -> None:
+    """The internals document must identify current schema and artifact owners."""
     text = DOC.read_text(encoding="utf-8")
 
     for phrase in [
-        "Decision: remove client/backend/lib/users_store.py::ensure_user_schema",
-        "Decision: remove engine/server/data/interaction_events.py::ensure_interaction_event_schema",
-        "Decision: remove engine/server/data/channels.py::ensure_channels_indexes",
-        "Decision: remove engine/server/data/similarity_cache.py::ensure_similarity_schema",
-        "Implementation action:",
-        "Tests:",
+        "client/backend/db/bootstrap.py",
+        "engine/crawler/schema.sql",
+        "engine/server/db/whitelist.db",
+        "video_facets_snapshot",
+        "whitelist-video-embeddings.faiss",
+        "similarity-cache.db",
+        "random-cache.db",
     ]:
         assert phrase in text

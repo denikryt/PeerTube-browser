@@ -42,13 +42,9 @@ def test_random_runtime_has_no_hot_reload_or_startup_refresh_switch() -> None:
     assert "random_cache_mtime" not in server
 
 def test_random_publication_contract_is_documented_offline_without_hot_reload() -> None:
-    """Positive/negative: supported production publication is stop/build/start, not hot replacement."""
-    data_build = (ROOT / "docs/DATA_BUILD.md").read_text().lower()
-    deployment = (ROOT / "docs/DEPLOYMENT.md").read_text().lower()
-    architecture = (ROOT / "docs/ARCHITECTURE.md").read_text().lower()
+    """Positive/negative: Updater is the sole owner of the Random publication contract."""
+    updater = (ROOT / "docs/UPDATER.md").read_text().lower()
 
-    assert "offline operation" in data_build
-    assert "stop engine" in data_build and "restart" in data_build
-    assert "does not hot-reload" in data_build
-    assert "no hot reload is supported" in deployment
-    assert "offline stop -> build/validate/atomic-replace -> start" in architecture
+    assert "atomically rebuild the random cache" in updater
+    assert "engine does not hot-reload it" in updater
+    assert "stops the configured engine service" in updater

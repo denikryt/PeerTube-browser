@@ -1,69 +1,130 @@
 # Architecture
 
-## Purpose
+Purpose: define the system components, their responsibilities, and their boundaries.
 
-This document defines the current PeerTube Browser component boundaries and the runtime data flow that must remain stable during refactoring.
+## Components
 
-## Runtime Flow
+| Component | Responsibility |
+|---|---|
+| Frontend | Render the browser UI and send browser actions to Client. |
+| Client | Expose the browser-facing API, persist local profiles and likes, and call Engine over HTTP. |
+| Engine | Serve discovery, search, metadata, similarity, and interaction-ingest behavior from Engine-owned data. |
+| Crawler | Collect public PeerTube instance, channel, and video data into crawler-owned SQLite data. |
+| Updater | Refresh the production dataset and publish the derived artifacts consumed by Engine. |
+
+Updater operation is documented only in `docs/UPDATER.md`.
+
+## Runtime Boundary
+
+The browser-facing request path is:
 
 ```text
-crawler -> SQLite datasets/indexes/caches -> Engine API -> Client backend -> Frontend
+Browser -> Frontend -> Client -> Engine -> Engine data
 ```
 
-The crawler and update jobs build local datasets and derived artifacts. The Engine API reads those artifacts and serves metadata, recommendations, and internal ingest endpoints. The Client backend is the browser-facing gateway and owns local user/profile state. The frontend renders UI and talks to the Client backend.
+The data publication path is:
 
-## Component Ownership
+```text
+PeerTube -> Crawler -> Updater -> Engine data
+```
 
-### Frontend
+Frontend never calls Engine directly. Client never imports Engine modules or reads Engine database files. Engine does not own browser profile persistence. Crawler and Updater do not serve browser requests.
 
-The frontend owns page state, rendering, UI interactions, and calls to the Client backend. It must not call Engine internal or read APIs directly.
+## Frontend
 
-### Client Backend
+Frontend owns page state, rendering, navigation, filtering controls, request cancellation, pagination state, and presentation of errors. It calls only Client browser-facing routes.
 
-The Client backend owns browser-facing profile and write behavior, local user data, Client API error shaping, and HTTP gateway calls to Engine. It must not import Engine modules or read Engine database files directly.
+Frontend does not own recommendation ranking, canonical video data, user-profile persistence, or Engine routes.
 
-Internally, `client/backend/server.py` remains the executable process entrypoint and now launches the FastAPI app from `client/backend/app.py`. Client profile/write behavior, Engine read proxying, bridge publishing, and Client-owned persistence wrappers live under `client/backend/services/` and `client/backend/repositories/`. This framework migration does not change public routes or component boundaries.
+## Client
 
-### Engine API
+Client is the public API boundary for the browser. It owns:
 
-The Engine API owns recommendation behavior, video/channel metadata reads, internal Client-to-Engine contracts, interaction ingest, and Engine-readable data access. It must not own Client local user profile persistence.
+- local users and likes;
+- browser-facing validation and error responses;
+- normalization of user actions;
+- discovery and search response envelopes;
+- HTTP forwarding to Engine;
+- publication of normalized interaction events to Engine.
 
-Internally, `engine/server/api/server.py` owns process startup, runtime state, DB/cache/index wiring, FAISS/index loading, and the FastAPI/uvicorn launch. `engine/server/api/app.py` registers the active FastAPI routes. Route-specific request/response adapters live under `engine/server/api/routes/`, while non-trivial API orchestration that is not pure data access or recommendation-domain logic lives under `engine/server/api/services/`. Data access remains in `engine/server/data/`, and recommendation internals remain in `engine/server/api/recommendations/`.
+Client communicates with Engine only through HTTP. Direct imports from Engine and direct access to `engine/server/db/` are forbidden.
 
-### Crawler and Jobs
+## Engine
 
-The crawler and data-build jobs own PeerTube data collection, dataset updates, derived artifacts, and schema production for Engine consumption. Generated crawler JavaScript is a build output, not source code. `engine/server/db/jobs/updater-worker.py` remains the stable updater entrypoint, while updater orchestration internals live under `engine/server/db/jobs/updater/`.
+Engine owns:
 
-## SQLite Schema Ownership
+- recommendation computation;
+- Fresh, Popular, Trending, and Random provider behavior;
+- video and channel metadata reads;
+- search and video-filter semantics;
+- canonical serving eligibility and moderation filtering;
+- internal video resolution and metadata contracts;
+- interaction-event ingest;
+- reads from the canonical dataset, FAISS index, and derived caches.
 
-SQLite schemas are owned by the component that creates or publishes the database artifact. Client backend owns the local users/likes DB, the crawler owns the raw crawl DB schema, Engine jobs own data-build output shapes, and Engine runtime owns runtime/cache helper tables. Detailed owners, compatibility wrappers, and schema-ownership migration resources are documented in `docs/SCHEMA_OWNERSHIP.md`.
+Engine does not persist Client profiles or browser-owned likes. Request-time ranking uses likes supplied through the Client request context; aggregated interaction signals are stored but are not currently used by discovery ranking.
 
-## Forbidden Coupling
+## Crawler
 
-- Frontend code must not bypass the Client backend to call Engine directly.
-- Client backend code must not import Engine internals or read Engine DB files directly.
-- Engine code must not own browser profile state.
-- Crawler build outputs must not be committed as source files.
+Crawler owns PeerTube network collection, pagination, retry classification, crawl progress, and writes to the crawler schema. It produces source data; it does not rank results or define browser API behavior.
 
-## Refactoring Rule
+Generated crawler JavaScript is runtime output and is not source code.
 
-Structural refactoring should preserve these boundaries until a later plan explicitly changes them with tests and documentation updates.
+## Data Ownership
 
-## Frontend Internal Layout
+| Data | Writer | Reader |
+|---|---|---|
+| Client users and likes | Client | Client |
+| Raw crawl database | Crawler | Crawler and data-build jobs |
+| Canonical videos, channels, and instances | Data-build jobs and Updater | Engine |
+| Interaction events and aggregate signals | Engine ingest | Engine data layer |
+| Prepared tags and facet snapshot | Data-build jobs and Updater | Engine |
+| Video embeddings and stable index IDs | Data-build jobs and Updater | Engine and artifact builders |
+| FAISS index | Data-build jobs and Updater | Engine |
+| Similarity cache | Data-build jobs and Updater | Engine |
+| Random cache | Updater and data-build jobs | Engine, read-only |
 
-The frontend module split keeps the same Vite/vanilla TypeScript runtime while splitting reusable frontend code into narrower modules. Page entrypoints remain the lifecycle controllers, while shared Client API facades, rendering helpers, state helpers, and formatting utilities live under `client/frontend/src/api/`, `client/frontend/src/components/`, `client/frontend/src/state/`, and `client/frontend/src/utils/`.
+Runtime must not rebuild production artifacts. Publication of canonical data and derived artifacts is an offline writer responsibility.
 
-This split does not change the component boundary: frontend project API calls still go through the Client backend, and public PeerTube instance fallback on the video page remains PeerTube-specific metadata fallback behavior.
+## HTTP Ownership
 
-## HTTP Adapter Ownership
+Client owns browser-facing routes, including:
 
-The stdlib HTTP removal finalizes the HTTP framework migration: FastAPI app factories are the only active Client and Engine HTTP adapters. The `server.py` files remain stable executable launchers for compatibility, but they no longer own stdlib HTTP server or request-handler classes. Route behavior belongs to the FastAPI apps and the route/service modules listed above. HTTP response construction stays at the FastAPI adapter boundary, while services return plain data or framework-neutral route results.
+```text
+/api/user-profile
+/api/user-profile/likes
+/api/user-profile/reset
+/api/user-action
+/api/v1/discovery/*
+/api/v1/search/*
+/api/v1/video-facets
+/api/v1/videos/*
+```
 
+Engine owns provider and internal routes, including:
 
-## Discovery API v1 Boundary
+```text
+/recommendations
+/videos/similar
+/videos/{id}/similar
+/api/video
+/api/channels
+/internal/discovery/*
+/internal/search/videos
+/internal/video-facets
+/internal/videos/resolve
+/internal/videos/metadata
+/internal/events/ingest
+```
 
-The discovery read path is `Frontend -> Client backend /api/v1/... -> Engine provider routes`. The Client backend owns browser-facing route validation, cursor envelopes, user-like lookup, and API error shape. Engine owns canonical video-filter semantics, serving eligibility, Fresh/Popular/Random provider ordering, recommendation computation, facets, and video metadata.
+Legacy browser-facing proxy routes exposed by Client remain Client routes even when their response is supplied by Engine.
 
-Home treats providers according to their actual source model: Fresh/Popular are keyset-paged, Random is paged over an updater-owned persisted order, and Recommended remains one finite legacy computation with strict final filtering and terminal pagination. The frontend exposes one Home interaction surface without making those internals artificially symmetric.
+## Required Boundaries
 
-`random-cache.db` is a derived artifact owned by jobs/updater for writes. Runtime opens it read-only, attaches the canonical DB read-only for current filtering/moderation, and never bootstraps or hot-reloads it. Publication to the authoritative production path is an offline stop -> build/validate/atomic-replace -> start operation.
+- Frontend calls Client only.
+- Client calls Engine through HTTP only.
+- Client owns browser profile state.
+- Engine owns ranking and canonical read behavior.
+- Crawler owns its source schema and network collection behavior.
+- Updater owns production refresh and artifact publication.
+- Component boundaries are verified by `tests/check-frontend-client-gateway.sh` and `tests/check-client-engine-boundary.sh`.
