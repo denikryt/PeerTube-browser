@@ -42,7 +42,7 @@ def test_temporary_video_compatibility_markers_have_exact_bounded_inventory() ->
 
     assert detail_text.count("TODO(nodeforge-video-detail-result)") == 1
     assert worker_text.count("TODO(nodeforge-video-detail-result)") == 1
-    assert worker_text.count("TODO(nodeforge-existing-video-availability-owner)") == 4
+    assert worker_text.count("TODO(nodeforge-existing-video-availability-owner)") == 0
     assert generation_text.count("TODO(nodeforge-video-availability-generation-cutover)") == 3
     assert "standalone_full_sync_source" not in generation_text
 
@@ -71,3 +71,12 @@ def test_operational_writer_evidence_does_not_enter_canonical_schema() -> None:
     assert "video_availability_semantics" not in schema
     assert "video_corpus_role" not in schema
     assert "updater_staging_delta" not in schema
+
+
+def test_maintenance_has_no_canonical_writer_api() -> None:
+    """Diagnostics cannot reintroduce an existing-row availability writer."""
+    store = (ROOT / "engine/crawler/src/db/videos.ts").read_text()
+    assert "updateVideoInvalid" not in store
+    assert "updateVideoInvalid" not in WORKER_SOURCE.read_text()
+    method = store.split("updateVideoError(", 1)[1].split("interface StoredVideoIdentity", 1)[0]
+    assert "invalid_reason" not in method and "invalid_at" not in method

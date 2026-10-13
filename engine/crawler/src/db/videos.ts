@@ -2,7 +2,7 @@
  * Video crawl persistence for the TypeScript crawler.
  *
  * VideoStore owns video rows, video progress, tags/comments updates, and
- * invalid/error recording. PeerTube request behavior remains in videos-worker.ts.
+ * initial invalidity and maintenance diagnostics. PeerTube request behavior remains in videos-worker.ts.
  */
 
 import Database from "better-sqlite3";
@@ -13,7 +13,6 @@ import { CURRENT_VIDEO_METADATA_VERSION } from "../video-metadata.js";
 import type { ThumbnailCandidate } from "../video-media.js";
 import { deleteInstancesInChunks } from "./utils.js";
 import type {
-  CanonicalVideoInvalidReason,
   ExistingVideoRefresh,
   NewVideoInsertRow,
   VideoActivityPubMetadataPatch,
@@ -784,19 +783,6 @@ export class VideoStore {
          WHERE video_id = ? AND instance_domain = ?`
       )
       .run(commentsCount, videoId, instanceDomain);
-  }
-
-  /**
-   * Persist paired canonical absence and retain current diagnostic side effects.
-   */
-  updateVideoInvalid(videoId: string, instanceDomain: string, reason: CanonicalVideoInvalidReason) {
-    this.db
-      .prepare(
-        `UPDATE videos
-         SET invalid_reason = ?, invalid_at = ?, last_error = ?, last_error_at = ?, error_count = error_count + 1
-         WHERE video_id = ? AND instance_domain = ?`
-      )
-      .run(reason, Date.now(), reason, Date.now(), videoId, instanceDomain);
   }
 
   /**

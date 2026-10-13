@@ -466,10 +466,10 @@ async function processTagInstance(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const status = extractHttpStatus(message);
-      // Only direct-detail absence is canonical; retain the process outage abort.
+      // Retain detail-absence diagnostics and the existing process outage abort.
       if (status === 404 || status === 410) {
-        // TODO(nodeforge-existing-video-availability-owner): Remove maintenance writes to invalid_reason/invalid_at before the dedicated existing-video availability publisher is enabled.
-        store.updateVideoInvalid(item.videoId, normalizedHost, status === 404 ? "not_found" : "gone");
+        // Maintenance owns diagnostics only; offline publication owns canonical absence.
+        store.updateVideoError(item.videoId, normalizedHost, status === 404 ? "not_found" : "gone");
       } else if (isNoNetworkError(error)) {
         throw error;
 
@@ -504,10 +504,10 @@ async function processCommentsInstance(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const status = extractHttpStatus(message);
-      // Only direct-detail absence is canonical; retain the process outage abort.
+      // Retain detail-absence diagnostics and the existing process outage abort.
       if (status === 404 || status === 410) {
-        // TODO(nodeforge-existing-video-availability-owner): Remove maintenance writes to invalid_reason/invalid_at before the dedicated existing-video availability publisher is enabled.
-        store.updateVideoInvalid(item.videoId, normalizedHost, status === 404 ? "not_found" : "gone");
+        // Maintenance owns diagnostics only; offline publication owns canonical absence.
+        store.updateVideoError(item.videoId, normalizedHost, status === 404 ? "not_found" : "gone");
       } else if (isNoNetworkError(error)) {
         throw error;
 
@@ -1306,11 +1306,11 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
             const message = error instanceof Error ? error.message : String(error);
             const status = extractHttpStatus(message);
             // A successful PeerTube detail response that says the resource is
-            // gone is definitive for this stored UUID. Transient transport,
+            // gone is a diagnostic for this stored UUID. Transient transport,
             // rate-limit, and server failures deliberately remain resumable.
             if (status === 404 || status === 410) {
-              // TODO(nodeforge-existing-video-availability-owner): Remove maintenance writes to invalid_reason/invalid_at before the dedicated existing-video availability publisher is enabled.
-              store.updateVideoInvalid(
+              // This existing-row error must not overwrite canonical availability.
+              store.updateVideoError(
                 item.videoId,
                 item.instanceDomain,
                 status === 404 ? "not_found" : "gone"
@@ -1464,8 +1464,8 @@ async function thumbnailWorkerLoop(
         }
         case "not_found":
         case "gone":
-          // TODO(nodeforge-existing-video-availability-owner): Remove maintenance writes to invalid_reason/invalid_at before the dedicated existing-video availability publisher is enabled.
-          store.updateVideoInvalid(
+          // Thumbnail errors retain diagnostics without acquiring canonical ownership.
+          store.updateVideoError(
             row.videoId,
             row.instanceDomain,
             result.kind === "not_found" ? "not_found" : "gone"

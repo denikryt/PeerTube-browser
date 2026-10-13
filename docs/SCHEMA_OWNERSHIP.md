@@ -678,17 +678,38 @@ Embedding-source fields are intentionally protected on existing rows: `title`, `
 
 ## Canonical video availability
 
-Crawler direct-video-detail observations and canonical migration/import own
-`videos.invalid_reason` / `invalid_at` under the current availability semantics. For a newly discovered identity, the insert-only video persistence boundary owns initial canonical invalidity: a direct-detail 404/410 is committed as `not_found`/`gone` in the first successful `INSERT OR IGNORE`, so no intermediate live row is published. An ignored insert conflict cannot transfer that candidate invalidity to a pre-existing identity. Existing-row availability publication remains a separate ownership boundary; ordinary channel crawl does not acquire it. Current absence writes accept only `not_found` (404) and `gone` (410), setting both fields together. SQL NULL means no canonical observation established absence. Every other non-NULL legacy value, including `''`, stays conservative and is excluded by canonical serving, identity/seed resolution, Prepared Discovery, and Search source builders.
+Initial crawler direct-video-detail observations, the offline existing-row updater publisher, and canonical migration/import own
+`videos.invalid_reason` / `invalid_at` under the current availability semantics. For a newly discovered identity, the insert-only video persistence boundary owns initial canonical invalidity: a direct-detail 404/410 is committed as `not_found`/`gone` in the first successful `INSERT OR IGNORE`, so no intermediate live row is published. An ignored insert conflict cannot transfer that candidate invalidity to a pre-existing identity. Existing-row availability is owned by `updater/availability_publish.py::publish_existing_video_availability`; ordinary channel crawl and maintenance do not acquire it. Current absence writes accept only `not_found` (404) and `gone` (410), setting both fields together. SQL NULL means no canonical observation established absence. Every other non-NULL legacy value, including `''`, stays conservative and is excluded by canonical serving, identity/seed resolution, Prepared Discovery, and Search source builders.
 
 `error_count`, `last_error`, and `last_error_at` remain diagnostics. Their current
 serving thresholds remain only where already present; prepared facets, Search
 source, seeds, Client-like admission and internal resolve gain no threshold.
-A later diagnostics-serving cleanup owns threshold removal. The existing invalid writer retains diagnostic
-side effects until existing-row availability ownership moves to a dedicated publisher.
+A later diagnostics-serving cleanup owns threshold removal. Maintenance tags/comments/metadata/thumbnails write only `updateVideoError`: direct 404/410 retain `last_error=not_found/gone`, `last_error_at`, and the error increment, without changing either canonical field. `VideoStore.updateVideoInvalid` has been removed.
 
 Canonical migration/import clears exactly `timeout`, `tls_error`, `cert_expired`
 and their `invalid_at`; unknown reasons and diagnostic history are preserved.
 Prepared Discovery schema version 2 records the exact-NULL source semantics;
 version 1 is rejected even when cleanup changes zero rows. No production schema
 columns/tables are added. Operational crawler lifecycle evidence lives in the existing/lazily created `crawl_state` key/value table rather than canonical video columns. `video_availability_semantics=canonical_absence_atomic_ingest_v2` is writer-generation evidence only: it proves rows that can be newly minted use the atomic initial-tombstone writer semantics, not that any particular row is absent and not that a standalone crawl is complete. `video_corpus_role=updater_staging_delta` is independent corpus-kind/publication-exclusion evidence owned by updater staging lifecycle; role absence is the supported standalone shape in this scope but is not full-build readiness proof. Updater resume/retry/direct merge validate exact v2 plus the updater role, while destructive full sync validates exact v2 and rejects updater/unknown explicit roles from the same attached source snapshot before replacement DML.
+
+### Offline existing-row publication
+
+`--apply-existing-video-availability` gathers the same staging observations as
+report-only, then publishes after merge and denylist safety purge, before popularity
+and derived rebuilds. Production writers must be quiescent. The attached read-only
+source must have exact v2/updater role, work DDL/index, completed terminal evidence
+and counts matching this invocation's report. No production schema is added.
+
+Exact composite PK plus saved UUID is required; UUID drift is fatal. Matched
+canonical `invalid_at` must be NULL/integer. Missing identities, current active
+instance denylist and noncanonical reasons are disjoint skips. `unknown` has no
+publication authority. Desired-pair equality uses both fields, NULL-safe. Staleness
+is checked only on actual changes using `invalid_at > checked_at` or contradictory
+negative outcomes at equal times. `last_checked_at` is metadata-only: it can advance
+after a failed remote fetch and is neither validated, compared nor written here.
+
+One guarded UPDATE changes only `invalid_reason/invalid_at`; the independent bucket
+sum must match `changes()`. Prepared readiness invalidation commits in that same
+production transaction only when rows changed. `video_tags` membership and stable
+`video_index_ids` remain intact. Public facets and FTS source eligibility are rebuilt
+from exact-NULL availability; runtime visibility excludes tombstones independently.

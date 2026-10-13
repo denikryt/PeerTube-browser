@@ -205,9 +205,10 @@ Compatibility state is explicit: SQL `NULL` means no authoritative full-detail c
 
 ## Direct-detail absence versus diagnostics
 
-The video-store canonical invalid writer now accepts only `not_found | gone`.
-Tags/comments join metadata/thumbnail maintenance in mapping direct-detail 404 to
-`not_found` and 410 to `gone`. TLS, certificate, timeout, invalid JSON, access,
+The existing-row `VideoStore.updateVideoInvalid` API is removed.
+Tags/comments/metadata/thumbnail maintenance map direct-detail 404/410 to
+`updateVideoError` messages `not_found`/`gone`, preserving diagnostic increments
+and canonical pairs. Initial insert-only video absence is unchanged. TLS, certificate, timeout, invalid JSON, access,
 rate-limit and server failures leave availability unchanged and follow existing
 diagnostics/retry behavior. Tags/comments retain their existing no-network
 rethrow before generic diagnostics. Diagnostic writes cannot overwrite canonical
@@ -215,10 +216,11 @@ absence; successful maintenance does not introduce a recovery publisher.
 
 Pre-cutover transient-invalid writers are unsupported after the production
 semantic cutover. Deploy matching crawler/jobs/Engine code and discard legacy
-staging rather than resuming it. A typed video-detail result and existing-row availability
-recovery remain separate work.
+staging rather than resuming it. Existing-row canonical transitions and recovery
+belong to the opt-in offline updater publisher; the throwing detail adapter remains
+until its separately planned consumer migration.
 
-## Report-only existing-video observations
+## Existing-video observations and offline publication
 
 `videos-cli --check-availability` dispatches to a separate updater-staging worker,
 using `fetchVideoDetailResult` for exact UUID identity and outcome interpretation.
@@ -241,3 +243,10 @@ empty registry lists are admitted by its parser/fetch permission; unusable nonem
 lists and fetch errors still fail. `crawl` alone returns a closed-store no-op after
 filtering, without creating/enqueueing parents or claiming discovery progress.
 Default callers, including live-thumbnail smoke, retain empty-registry rejection.
+
+The Python updater uses this same observation-only Node worker for mutually exclusive
+report/apply modes. `--apply-existing-video-availability` publishes validated current-run
+work to production offline after merge; Node never receives production write ownership.
+The report-only mode keeps production availability of existing identities unchanged
+while allowing normal new-row merge. Maintenance diagnostics remain local even when
+apply is disabled; no hidden canonical writer fallback is retained.

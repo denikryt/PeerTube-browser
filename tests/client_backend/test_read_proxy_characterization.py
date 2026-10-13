@@ -2,6 +2,42 @@
 from __future__ import annotations
 
 
+def test_video_availability_recovery_forwards_404_then_200(
+    start_json_engine, start_client_backend
+) -> None:
+    """One Client and URL preserve Engine status/body before and after recovery.
+
+    The fake replaces only the Engine HTTP boundary: publisher and canonical
+    transitions are covered by Engine lifecycle tests, not owned by Client.
+    """
+    missing = {"error": "Video not found"}
+    recovered = {
+        "video_id": "123", "video_uuid": "uuid-123",
+        "instance_domain": "example.org", "videoUuid": "uuid-123",
+        "title": "Recovered video", "description": "",
+        "thumbnail_url": None, "thumbnail_urls": [], "preview_path": None,
+        "views": 0, "likes": 0, "publishedAt": None,
+    }
+    upstream = {"status": 404, "payload": missing}
+
+    def engine_video(_request):
+        """Expose the current availability through the same upstream HTTP route."""
+        return upstream["status"], upstream["payload"]
+
+    engine = start_json_engine({("GET", "/api/video"): engine_video})
+    client = start_client_backend(f"http://127.0.0.1:{engine.server_port}")
+    url = "/api/video?id=123&host=example.org"
+    absent = client.get(url)
+    assert absent.status_code == 404
+    assert absent.json() == missing
+    # Recovery keeps the Client and identity, detecting cached or reshaped responses.
+    upstream.update(status=200, payload=recovered)
+    available = client.get(url)
+    assert available.status_code == 200
+    assert available.json() == recovered
+    assert [request["full_path"] for request in engine.requests] == [url, url]
+
+
 def test_get_api_video_rejects_unknown_query_parameter(
     start_json_engine, start_client_backend
 ) -> None:

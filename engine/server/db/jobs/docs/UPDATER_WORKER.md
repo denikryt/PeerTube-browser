@@ -36,7 +36,7 @@ Temporary output:
 
 The worker runs this sequence:
 
-1. Acquire single-run lock (`/tmp/peertube-browser-staging-sync.lock` by default).
+1. Validate writable output ownership (also in CLI before logging/service discovery), then acquire single-run lock (`/tmp/peertube-browser-staging-sync.lock` by default).
 2. Prepare staging DB:
    - default: recreate staging DB from crawler schema (`schema.sql`);
    - with `--resume-staging`: reuse existing staging DB and progress state.
@@ -311,4 +311,28 @@ lock covers updater invocations, and the role stamp is not an external-writer lo
 
 This mode currently rejects `--retry-errors`, `--sync-join-whitelist` (including
 `--dry-run`) and `--host-pipeline` before any mutation/network. Integration of these
-advanced modes and canonical publication remain separate work.
+advanced modes remains separate work in both report and apply modes.
+
+### Applying existing-video observations
+
+`--apply-existing-video-availability` is mutually exclusive with report-only. It
+runs the same sweep/report before embeddings, then publishes after Engine stop,
+INSERT_ONLY merge and denylist safety prune, before popularity/Prepared/Search/ANN/
+random/similarity rebuilds. Apply requires SQLite >=3.33.0 and JSON1; invalid modes,
+bad host scopes or aliased writable files fail before side effects. Logs, lock,
+index/metadata, staging and random/similarity SQLite namespaces must be physically
+distinct from production and each other, including potential SQLite sidecars.
+
+Publication requires exact PK+UUID and complete current-run evidence. Only canonical
+NULL/not_found/gone can transition; unknown, denied, missing and noncanonical rows
+remain untouched. Timestamp authority is `invalid_at`, never metadata `last_checked_at`.
+Actual stale changes and contradictory same-time negatives abort the whole publication;
+exact pair no-ops do not. Diagnostics, metadata and stable index IDs are not updated.
+
+After durable commit, `video_availability_publication` logs source outcomes plus
+eligible/applied/unchanged/skip counters. Its bucket sum must equal eligible count;
+actual UPDATE changes must equal both applied buckets. Any change atomically removes
+Prepared readiness. A successful sweep report alone never means successful publication.
+Errors stop downstream jobs; the existing restart gate permits starting stopped Engine
+only with valid Prepared. With `--skip-systemctl`, the operator must hold all production
+writers offline through completion. Every accepted resumed run resets old work.

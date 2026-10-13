@@ -123,3 +123,47 @@ Legacy staging is unsupported and never converted/backfilled. Ordinary resume, `
 Rollout ordering matters because updater executes generated `engine/crawler/dist/*.js`: disable updater/timer and other publication writers, deploy source, run `npm run build` in `engine/crawler`, discard pre-cutover staging plus `-wal`/`-shm` sidecars, and only then allow creation of the first v2 staging generation. The first post-cutover updater must not use old `--resume-staging` or `--retry-errors`; the updater creates the replacement staging itself. If an outer offline rollout retains restart ownership, use `--skip-systemctl` as documented in `DATA_BUILD.md`.
 
 The pre-v2 generation rejection is a temporary cutover guard. The `updater_staging_delta` corpus-kind check is permanent workflow/publication exclusion and must not be removed when the temporary generation cutover can eventually be deleted.
+
+### Writable output ownership before side effects
+
+Decision: Every updater mode uses one `validate_updater_output_paths` preflight.
+`prod_db`, `staging_db`, `random_cache_db`, `similarity_db`, `lock_file`, `index_path`,
+`index_meta_path`, and `logs` are distinct roles. SQLite roles reserve main, `-wal`,
+`-shm`, `-journal`, including future files. One pass registers resolved pathnames
+and existing `(st_dev, st_ino)` in two local dictionaries. Cross-role aliases fail
+with both roles, original/resolved candidates and collision type; only missing
+future files skip inode inspection. Other filesystem errors fail closed.
+
+Reason: Staging reset, stale lock cleanup, cache replacement, index/JSON and log
+writes can destroy a different role's data. CLI checks before service discovery
+and logging; direct pipeline checks before lock, including `validate_files=False`.
+Defaults and operator overrides stay unchanged; no automatic path repair or mode
+exception is allowed. This preflight is not protection against concurrent filesystem
+replacement: operators must maintain writer/filesystem quiescence.
+
+Tests: `tests/jobs/test_updater_output_paths.py`, CLI and pipeline characterizations.
+
+### Opt-in existing-video publication
+
+Decision: `--check-existing-video-availability` remains report-only;
+`--apply-existing-video-availability` is mutually exclusive and runs the same
+current-invocation sweep followed by offline publication. Both reject retry,
+strict-sync/dry-run and host-pipeline combinations and require JSON1. Apply additionally
+requires SQLite >=3.33.0; there is no UPDATE FROM fallback.
+
+Implementation action: Preserve the frozen host scope and disposable work reset on
+every run, including resume. Publish after merge/denylist safety purge, before derived
+jobs. Report-only preserves canonical pairs of original retained production identities;
+ordinary INSERT_ONLY merge can still add new videos. Crawler maintenance writes only
+diagnostics. Unknown/noncanonical outcomes cannot erase canonical state. Invalid UUID,
+evidence, canonical time or changing stale evidence aborts the entire transaction.
+Only `invalid_at` versions negative availability; metadata `last_checked_at` does not.
+
+The publication JSON is logged only after commit. Counters satisfy
+`eligible_observations = applied_available + applied_absent + unchanged + skipped_missing
++ skipped_denied + skipped_noncanonical_reason`. Canonical changes and Prepared
+invalidation commit together. A later rebuild error remains a failure and the existing
+restart gate prohibits starting Engine with unavailable Prepared. A new accepted run
+must collect new evidence; no replay of earlier staging observations.
+
+Tests: publication SQLite matrix, actual merge/apply pipeline and Engine lifecycle tests.

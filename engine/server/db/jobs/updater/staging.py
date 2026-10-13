@@ -64,7 +64,7 @@ def assert_video_availability_staging_semantics_conn(conn: sqlite3.Connection, s
     Merge passes its already attached stage within its transaction; pathname
     validation is a fail-fast wrapper only. Legacy staging is never converted.
     """
-    if schema not in {"main", "stage"}:
+    if schema not in {"main", "stage", "evidence"}:
         raise ValueError("Unsupported staging semantics schema")
     error = "Unsupported legacy staging: recreate staging without --resume-staging/--retry-errors."
     try:
@@ -719,52 +719,82 @@ def materialize_video_availability_work(
     return missing
 
 
-def video_availability_report(staging_db: Path, *, missing_uuid: int) -> dict[str, int]:
-    """Build the sole finished report; reject partial or inconsistent evidence."""
-    with closing(sqlite3.connect(staging_db.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
-        # Named aggregates keep report and validation independent of SELECT order.
-        conn.row_factory = sqlite3.Row
-        counts = conn.execute("""SELECT COUNT(*) AS selected_videos,
-          COUNT(*) FILTER (WHERE outcome='available') AS available,
-          COUNT(*) FILTER (WHERE outcome='not_found') AS not_found,
-          COUNT(*) FILTER (WHERE outcome='gone') AS gone,
-          COUNT(*) FILTER (WHERE outcome='unknown') AS unknown,
-          COUNT(*) FILTER (WHERE outcome IS NULL) AS unfinished,
-          COUNT(checked_at) AS video_requests_attempted
-          FROM video_availability_work""").fetchone()
-        invalid = conn.execute("""SELECT COUNT(*) FROM video_availability_work
-          WHERE (checked_at IS NULL AND (outcome IS NOT 'unknown' OR error IS NULL
-                 OR error NOT LIKE 'host_preflight: %'))
-          OR (checked_at IS NOT NULL AND (typeof(checked_at) != 'integer'
-              OR checked_at < 0 OR checked_at > 9007199254740991))
-          OR (outcome='unknown' AND (error IS NULL OR length(trim(error))=0
-              OR length(error)>512 OR instr(error,char(10))>0 OR instr(error,char(13))>0))
-          OR (checked_at IS NULL AND length(error)<=length('host_preflight: '))
-          OR (outcome IN ('available','not_found','gone') AND error IS NOT NULL)
-          OR (checked_at IS NOT NULL AND error LIKE 'host_preflight: %')""").fetchone()[0]
-        hosts = conn.execute("""SELECT lower(trim(instance_domain)) AS host_key,
-          COUNT(*) AS selected, COUNT(*) FILTER (WHERE checked_at IS NULL) AS skipped
-          FROM video_availability_work GROUP BY lower(trim(instance_domain))""").fetchall()
-        if (
-            counts["unfinished"]
-            or invalid
-            or counts["selected_videos"] != (
-                counts["available"] + counts["not_found"] + counts["gone"] + counts["unknown"]
-            )
-            or not 0 <= counts["video_requests_attempted"] <= counts["selected_videos"]
-            or any(0 < host["skipped"] < host["selected"] for host in hosts)
-        ):
-            raise RuntimeError("Availability sweep incomplete or inconsistent; no success report")
-    if not isinstance(missing_uuid, int) or missing_uuid < 0:
-        raise ValueError("Invalid missing UUID count")
+def inspect_video_availability_work(
+    conn: sqlite3.Connection, schema: str = "main"
+) -> dict[str, int]:
+    """Inspect completed evidence read-only in the caller's consistent snapshot.
+
+    Only owned aliases are interpolated. Generation, corpus, table and index
+    must match exactly; this function never creates or repairs work schema.
+    """
+    if schema not in {"main", "evidence"}:
+        raise ValueError("Unsupported availability evidence schema")
+    assert_video_availability_staging_semantics_conn(conn, schema)
+    for name, ddl in (
+        ("video_availability_work", AVAILABILITY_WORK_DDL),
+        ("idx_availability_work_host_identity", AVAILABILITY_WORK_INDEX_DDL),
+    ):
+        row = conn.execute(
+            f"SELECT sql FROM {schema}.sqlite_master WHERE name=?", (name,)
+        ).fetchone()
+        if not row or row[0] is None or _ddl_fingerprint(row[0]) != _ddl_fingerprint(ddl):
+            raise RuntimeError("Incompatible video availability work schema; recreate staging")
+    # Named aggregates keep report and validation independent of SELECT order.
+    cursor = conn.cursor()
+    cursor.row_factory = sqlite3.Row
+    counts = cursor.execute(f"""SELECT COUNT(*) AS selected_videos,
+      COUNT(*) FILTER (WHERE outcome='available') AS available,
+      COUNT(*) FILTER (WHERE outcome='not_found') AS not_found,
+      COUNT(*) FILTER (WHERE outcome='gone') AS gone,
+      COUNT(*) FILTER (WHERE outcome='unknown') AS unknown,
+      COUNT(*) FILTER (WHERE outcome IS NULL) AS unfinished,
+      COUNT(checked_at) AS video_requests_attempted
+      FROM {schema}.video_availability_work""").fetchone()
+    invalid = cursor.execute(f"""SELECT COUNT(*) FROM {schema}.video_availability_work
+      WHERE typeof(video_id) != 'text' OR length(trim(video_id))=0
+          OR typeof(instance_domain) != 'text' OR length(trim(instance_domain))=0
+          OR typeof(video_uuid) != 'text' OR length(trim(video_uuid))=0
+          OR (checked_at IS NULL AND (outcome IS NOT 'unknown' OR error IS NULL
+             OR error NOT LIKE 'host_preflight: %'))
+      OR (checked_at IS NOT NULL AND (typeof(checked_at) != 'integer'
+          OR checked_at < 0 OR checked_at > 9007199254740991))
+      OR (outcome='unknown' AND (error IS NULL OR length(trim(error))=0
+          OR length(error)>512 OR instr(error,char(10))>0 OR instr(error,char(13))>0))
+      OR (checked_at IS NULL AND length(error)<=length('host_preflight: '))
+      OR (outcome IN ('available','not_found','gone') AND error IS NOT NULL)
+      OR (checked_at IS NOT NULL AND error LIKE 'host_preflight: %')""").fetchone()[0]
+    hosts = cursor.execute(f"""SELECT lower(trim(instance_domain)) AS host_key,
+      COUNT(*) AS selected, COUNT(*) FILTER (WHERE checked_at IS NULL) AS skipped
+      FROM {schema}.video_availability_work GROUP BY lower(trim(instance_domain))""").fetchall()
+    if (
+        counts["unfinished"]
+        or invalid
+        or counts["selected_videos"] != (
+            counts["available"] + counts["not_found"] + counts["gone"] + counts["unknown"]
+        )
+        or not 0 <= counts["video_requests_attempted"] <= counts["selected_videos"]
+        or any(0 < host["skipped"] < host["selected"] for host in hosts)
+    ):
+        raise RuntimeError("Availability sweep incomplete or inconsistent; no success report")
     return dict(
         selected_videos=counts["selected_videos"],
         available=counts["available"],
         not_found=counts["not_found"],
         gone=counts["gone"],
         unknown=counts["unknown"],
-        missing_uuid=missing_uuid,
         hosts_processed=sum(host["skipped"] == 0 for host in hosts),
         hosts_skipped_preflight=sum(host["skipped"] > 0 for host in hosts),
         video_requests_attempted=counts["video_requests_attempted"],
     )
+
+
+def video_availability_report(staging_db: Path, *, missing_uuid: int) -> dict[str, int]:
+    """Build the finished sweep report without authorizing canonical publication."""
+    if not isinstance(missing_uuid, int) or missing_uuid < 0:
+        raise ValueError("Invalid missing UUID count")
+    with closing(sqlite3.connect(staging_db.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+        # Keep all integrity/count reads in one snapshot even for standalone reports.
+        conn.execute("BEGIN")
+        result = inspect_video_availability_work(conn)
+    result["missing_uuid"] = missing_uuid
+    return result

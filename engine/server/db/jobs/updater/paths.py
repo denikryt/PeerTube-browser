@@ -36,6 +36,7 @@ class ResolvedUpdaterPaths:
     random_cache_db: Path
     merge_rules: Path
     lock_file: Path
+    logs: Path
 
 
 def from_args(args) -> ResolvedUpdaterPaths:
@@ -57,7 +58,60 @@ def from_args(args) -> ResolvedUpdaterPaths:
         random_cache_db=Path(args.random_cache_db).resolve(),
         merge_rules=Path(args.merge_rules).resolve(),
         lock_file=Path(args.lock_file).resolve(),
+        logs=Path(args.logs).resolve(),
     )
+
+
+def validate_updater_output_paths(paths: ResolvedUpdaterPaths) -> None:
+    """Reject cross-role pathname/inode ownership before updater side effects.
+
+    Future SQLite sidecars reserve names too. This local preflight assumes a
+    quiescent filesystem; it cannot coordinate concurrent pathname replacement.
+    Only missing future files may skip the physical inode check.
+    """
+    roles = (
+        ("prod_db", paths.prod_db, True),
+        ("staging_db", paths.staging_db, True),
+        ("random_cache_db", paths.random_cache_db, True),
+        ("similarity_db", paths.similarity_db, True),
+        ("lock_file", paths.lock_file, False),
+        ("index_path", paths.index_path, False),
+        ("index_meta_path", paths.index_meta_path, False),
+        ("logs", paths.logs, False),
+    )
+    candidates = (
+        (role, Path(f"{base}{suffix}"))
+        for role, base, is_sqlite in roles
+        for suffix in (("", "-wal", "-shm", "-journal") if is_sqlite else ("",))
+    )
+    path_owners = {}
+    inode_owners = {}
+    # A single registration pass preserves original/resolved candidate paths
+    # for diagnostics, without repeatedly probing pairs of filesystem objects.
+    for role, original in candidates:
+        resolved = original.resolve(strict=False)
+        owner = (role, original, resolved)
+        previous = path_owners.get(resolved)
+        if previous is not None and previous[0] != role:
+            raise RuntimeError(
+                f"updater path collision (resolved pathname): "
+                f"{previous[0]}: {previous[1]} -> {previous[2]}; "
+                f"{role}: {original} -> {resolved}"
+            )
+        path_owners.setdefault(resolved, owner)
+        try:
+            info = resolved.stat()
+        except FileNotFoundError:
+            continue
+        identity = (info.st_dev, info.st_ino)
+        previous = inode_owners.get(identity)
+        if previous is not None and previous[0] != role:
+            raise RuntimeError(
+                f"updater path collision (device/inode {identity}): "
+                f"{previous[0]}: {previous[1]} -> {previous[2]}; "
+                f"{role}: {original} -> {resolved}"
+            )
+        inode_owners.setdefault(identity, owner)
 
 
 def required_runtime_files(paths: ResolvedUpdaterPaths) -> tuple[Path, ...]:

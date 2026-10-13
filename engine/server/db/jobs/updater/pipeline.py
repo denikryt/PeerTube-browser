@@ -38,10 +38,11 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - direct script execution path.
     from data.prepared_discovery import prepared_discovery_available
 
+from .availability_publish import publish_existing_video_availability
 from .cli import validate_availability_sweep_mode
 from .commands import CommandRun, run_cmd, run_with_cpu_fallback, systemctl_cmd
 from .locks import single_run_lock
-from .paths import from_args, validate_required_files
+from .paths import from_args, validate_required_files, validate_updater_output_paths
 from .staging import (
     assert_production_schema_compatible,
     assert_video_availability_staging_semantics,
@@ -87,8 +88,12 @@ def run_pipeline(
     """Run the updater pipeline with current stage order and compatibility behavior."""
 
     frozen_included_hosts = validate_availability_sweep_mode(args)
-    availability = bool(getattr(args, "check_existing_video_availability", False))
+    apply_availability = getattr(args, "apply_existing_video_availability", False)
+    availability = getattr(args, "check_existing_video_availability", False) or apply_availability
     paths = from_args(args)
+    # Direct Python callers receive the same protection as the executable CLI,
+    # even when runtime-file validation is intentionally disabled by a harness.
+    validate_updater_output_paths(paths)
     if validate_files:
         validate_required_files(paths)
 
@@ -520,6 +525,14 @@ def run_pipeline(
                     )
                     if safety_prune:
                         logging.info("post-merge denylist safety prune=%s", safety_prune)
+
+                # Evidence belongs to this completed invocation; report-only never
+                # enters this writer boundary. Publication precedes every derived
+                # job while the existing offline/restart guard remains in force.
+                if apply_availability:
+                    publish_existing_video_availability(
+                        paths.prod_db, paths.staging_db, sweep_report=report
+                    )
 
                 run_cmd(
                     [

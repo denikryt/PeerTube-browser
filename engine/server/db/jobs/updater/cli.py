@@ -7,11 +7,12 @@ while making parser construction testable through an optional argv parameter.
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
-from .paths import JOBS_DIR, REPO_ROOT, SERVER_DIR
+from .paths import JOBS_DIR, REPO_ROOT, SERVER_DIR, from_args, validate_updater_output_paths
 
 if str(SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(SERVER_DIR))
@@ -81,10 +82,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
         formatter_class=CompactHelpFormatter,
     )
-    parser.add_argument(
+    availability_group = parser.add_mutually_exclusive_group()
+    availability_group.add_argument(
         "--check-existing-video-availability",
         action="store_true",
         help="Report-only sweep of existing production videos before embeddings/merge.",
+    )
+    availability_group.add_argument(
+        "--apply-existing-video-availability",
+        action="store_true",
+        help="Sweep existing videos, then publish canonical availability while Engine is offline.",
     )
     parser.add_argument("--prod-db", default=str(default_prod), help="Path to prod DB.")
     parser.add_argument("--staging-db", default=str(default_stage), help="Path to staging DB.")
@@ -300,6 +307,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         args.hosts_file = str(Path(args.hosts_file).resolve())
     try:
         validate_availability_sweep_mode(args)
+        # Logging and service-name discovery happen outside run_pipeline, so
+        # CLI authorization must reject every writable alias before returning.
+        validate_updater_output_paths(from_args(args))
     except (ValueError, OSError, RuntimeError) as exc:
         parser.error(str(exc))
     if not args.service_name:
@@ -312,7 +322,11 @@ def validate_availability_sweep_mode(args) -> set[str] | None:
 
     Return the normalized inclusion snapshot; explicit empty input is never all.
     """
-    if not getattr(args, "check_existing_video_availability", False):
+    report = getattr(args, "check_existing_video_availability", False)
+    apply = getattr(args, "apply_existing_video_availability", False)
+    if type(report) is not bool or type(apply) is not bool or (report and apply):
+        raise ValueError("Availability report/apply flags must be mutually exclusive booleans")
+    if not (report or apply):
         return None
     # TODO(nodeforge-availability-advanced-updater-modes): Remove this temporary sweep/mode rejection once retry, strict-sync and host-pipeline orchestration have explicit parent eligibility and end-to-end coverage.
     if any(
@@ -320,7 +334,8 @@ def validate_availability_sweep_mode(args) -> set[str] | None:
         for mode in ("retry_errors", "sync_join_whitelist", "host_pipeline")
     ):
         raise ValueError(
-            "--check-existing-video-availability cannot combine with --retry-errors, --sync-join-whitelist or --host-pipeline"
+            "Availability report/apply cannot combine with --retry-errors, "
+            "--sync-join-whitelist or --host-pipeline"
         )
     from .staging import load_scoped_hosts_file, require_sqlite_json_each
 
@@ -334,4 +349,6 @@ def validate_availability_sweep_mode(args) -> set[str] | None:
                 "Availability --hosts-file must contain a nonempty normalized host set"
             )
     require_sqlite_json_each()
+    if apply and sqlite3.sqlite_version_info < (3, 33, 0):
+        raise RuntimeError("Availability publication requires SQLite >= 3.33.0 (UPDATE FROM)")
     return hosts

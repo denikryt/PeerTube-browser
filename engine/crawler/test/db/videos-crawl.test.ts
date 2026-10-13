@@ -1345,7 +1345,7 @@ function seedThumbnailVideo(
 
 for (const mode of ["tagsOnly", "commentsOnly", "metadataOnly", "refreshThumbnails"] as const) {
   for (const observation of ["ok", "404", "410", "403", "429", "500", "tls", "cert", "timeout", "json", "no-network"] as const) {
-    test(`${mode} detail ${observation} persists only canonical absence`, async () => {
+    test(`${mode} detail ${observation} preserves canonical state and diagnostics`, async () => {
       const temp = createTempDb(`canonical_absence_v1-${mode}-${observation}`);
       const originalFetch = globalThis.fetch;
       try {
@@ -1375,8 +1375,12 @@ for (const mode of ["tagsOnly", "commentsOnly", "metadataOnly", "refreshThumbnai
           temp.dbPath, "SELECT invalid_reason,invalid_at,error_count FROM videos WHERE video_id='v1'"
         );
         const reason = observation === "404" ? "not_found" : observation === "410" ? "gone" : null;
-        assert.equal(row.invalid_reason, reason);
-        assert.equal(row.invalid_at !== null, reason !== null);
+        assert.equal(row.invalid_reason, null);
+        assert.equal(row.invalid_at, null);
+        if (reason) {
+          assert.equal(getRow<{ last_error: string }>(temp.dbPath, "SELECT last_error FROM videos WHERE video_id='v1'").last_error, reason);
+          assert.equal(row.error_count, 1);
+        }
         if (observation === "no-network" && (mode === "tagsOnly" || mode === "commentsOnly")) assert.equal(row.error_count, 0);
         if (["404", "410", "403", "429", "500", "tls", "cert", "timeout", "json"].includes(observation)) assert.ok(row.error_count > 0);
       } finally {
@@ -1724,3 +1728,34 @@ test("thumbnail maintenance only-healthy-hosts excludes error and unknown instan
     temp.cleanup();
   }
 });
+
+// Simulate an authoritative tombstone written after maintenance selected its
+// batch. Neither successful metadata nor negative diagnostics may overwrite it.
+for (const mode of ["tagsOnly", "commentsOnly", "metadataOnly", "refreshThumbnails"] as const) {
+  for (const status of [200, 404, 410]) {
+    test(`${mode} preserves a tombstone arriving after batch selection on HTTP ${status}`, async () => {
+      const temp = createTempDb(`maintenance-owner-${mode}-${status}`);
+      const originalFetch = globalThis.fetch;
+      try {
+        seedThumbnailVideo(temp.dbPath, "example.org");
+        globalThis.fetch = async () => {
+          const conn = new Database(temp.dbPath);
+          conn.prepare("UPDATE videos SET invalid_reason='gone',invalid_at=123 WHERE video_id='v1'").run();
+          conn.close();
+          return new Response(JSON.stringify({ id: 1, uuid: "uuid-1", name: "Video", tags: ["linux"], comments: 2, thumbnails: [] }), { status });
+        };
+        await crawlVideos(metadataOptions(temp.dbPath, { [mode]: true, maxRetries: 0 }));
+        const row = getRow<{ invalid_reason: string; invalid_at: number; last_error: string | null; error_count: number }>(
+          temp.dbPath, "SELECT invalid_reason,invalid_at,last_error,error_count FROM videos WHERE video_id='v1'"
+        );
+        assert.equal(row.invalid_reason, "gone");
+        assert.equal(row.invalid_at, 123);
+        assert.equal(row.error_count, status === 200 ? 0 : 1);
+        assert.equal(row.last_error, status === 200 ? null : status === 404 ? "not_found" : "gone");
+      } finally {
+        globalThis.fetch = originalFetch;
+        temp.cleanup();
+      }
+    });
+  }
+}

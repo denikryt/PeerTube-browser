@@ -225,7 +225,7 @@ npm run crawl:videos:thumbnails -- \
   --hosts-file /path/to/thumbnail-batch-01.txt
 ```
 
-Successful detail with an actual modern `thumbnails[]` writes authoritative `[]` or an ordered JSON array of `{url,width,height}` candidate objects. When no modern array exists, a structurally recognized usable legacy detail reference writes a singleton candidate and completes that row for `--resume`; a recognized explicit reference rejected only by crawler URL policy yields authoritative `[]`. A valid-identity detail with absent/malformed/unrecognized-only thumbnail representations is incomplete for this projection: candidate/mirror/check state is not advanced, SQL `NULL` remains resumable, and the owned diagnostic is recorded. Transport/protocol uncertainty is likewise non-destructive. Definitive 404/410 failures mark the video invalid and other failures record the existing generic video error state. This thumbnail-only maintenance does not require a production canonical-schema migration or Discovery/Search/embedding/ANN/random/similarity rebuilds because none of those artifacts depend on thumbnail state. Initial production use should keep Engine stopped during each bounded write window unless concurrent-writer behavior is separately validated.
+Successful detail with an actual modern `thumbnails[]` writes authoritative `[]` or an ordered JSON array of `{url,width,height}` candidate objects. When no modern array exists, a structurally recognized usable legacy detail reference writes a singleton candidate and completes that row for `--resume`; a recognized explicit reference rejected only by crawler URL policy yields authoritative `[]`. A valid-identity detail with absent/malformed/unrecognized-only thumbnail representations is incomplete for this projection: candidate/mirror/check state is not advanced, SQL `NULL` remains resumable, and the owned diagnostic is recorded. Transport/protocol uncertainty is likewise non-destructive. Direct 404/410 failures record diagnostics (`last_error='not_found'/'gone'` and the existing error increment) without changing canonical availability; other failures retain the existing generic video error state. Existing-row tombstones and recovery belong to the offline availability publisher. This thumbnail-only maintenance does not require a production canonical-schema migration or Discovery/Search/embedding/ANN/random/similarity rebuilds because none of those artifacts depend on thumbnail state. Initial production use should keep Engine stopped during each bounded write window unless concurrent-writer behavior is separately validated.
 
 Existing embedding-source fields are protected during ordinary repeat crawl and metadata backfill: `title`, `description`, `tags_json`, `category`, and `channel_name`. Intentionally changing any of those fields after embeddings exist requires a full embedding/artifact rebuild. The legacy tags maintenance commands remain embedding-affecting for existing rows. `comments_count` is dynamic metadata and is **not** an embedding input.
 
@@ -446,3 +446,37 @@ Before any writes under the new availability semantics, rollback may restore the
 matching application version. After new writes, restore a consistent DB/application
 generation and discard incompatible staging. Rebuild Prepared/Search from the
 restored canonical generation; derived artifacts are not rollback authority.
+
+## Offline existing-video availability publication
+
+Deploy crawler and updater together after backing up production/staging SQLite with
+sidecars and derived artifacts. Build current crawler JS with `npm ci && npm run build`.
+Verify all eight file roles are physically distinct: production, staging, random and
+similarity SQLite namespaces (including `-wal`, `-shm`, `-journal`), lock, FAISS index,
+index metadata and log. Test deliberately aliased paths only against temporary copies;
+the updater must refuse before logging/lock/filesystem mutations in every mode.
+
+Stop external crawler/import/runtime writers for the offline section. Updater controls
+Engine stop/start unless `--skip-systemctl` delegates that entire lifecycle to the
+operator. Its process lock is not a global writer lock. First inspect a small nonempty
+host partition in report mode, then explicitly opt in to publication:
+
+```bash
+python3 engine/server/db/jobs/updater-worker.py --check-existing-video-availability --hosts-file hosts-small.txt
+python3 engine/server/db/jobs/updater-worker.py --apply-existing-video-availability --hosts-file hosts-small.txt
+```
+
+Report-only does not publish sweep results but still performs ordinary new-row merge.
+Apply publishes after merge/denylist purge and before derived jobs. Compare source
+report/outcomes with committed publication counters and exact changed canonical pairs.
+Check Prepared v2 readiness, public facets and Search counts, stable index IDs, hidden
+404/410 and recovered 200 API smoke; diagnostics thresholds remain independent. Increase
+scope gradually. New accepted runs always reset work, including `--resume-staging`.
+
+Before COMMIT failures roll back canonical state plus readiness. After COMMIT a derived
+build failure leaves canonical truth committed and Engine restart blocked while Prepared
+is unavailable. Restore a consistent production-plus-artifacts backup or run a new full
+sweep/rebuild; never replay previous staging evidence. Restart only after readiness.
+Recovered availability does not repair thumbnails/text and does not reset diagnostics.
+Metadata `last_checked_at` cannot prove a newer availability result. No online publication
+ordering is claimed; correctness requires external writer/filesystem quiescence.

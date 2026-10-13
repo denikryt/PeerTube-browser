@@ -250,3 +250,43 @@ pytest -q tests/engine_data/test_metadata_runtime.py -k thumbnail
 ```
 
 These prove exact v2 + `updater_staging_delta` for updater staging, exact-v2 roleless compatibility for operator-managed standalone full sync, rejection of old/wrong generations before publication DML, and the downstream SQL `NULL` versus authoritative `[]` thumbnail read contract. Roleless v2 is writer provenance only; these tests do not certify that a bounded or interrupted standalone build is complete.
+
+## Existing-video availability publication regression matrix
+
+The Client read-proxy recovery regression uses the same Client and video URL for
+Engine 404 followed by 200. Both status and complete JSON body must pass through
+unchanged; only the upstream Engine HTTP boundary is simulated.
+
+```bash
+python3 -m pytest tests/client_backend/test_read_proxy_characterization.py tests/client_backend/test_read_proxy_failure_characterization.py
+```
+
+Use temporary SQLite and real publisher/pipeline/routes. Check positive and negative
+ownership outcomes for all writable roles, identical/symlink/hardlink aliases and future
+sidecars, filesystem errors and disjoint paths. Both entrypoints reject before effects,
+including advanced modes and `validate_files=False`. Test observable safety rather than
+counts of internal filesystem probes.
+
+Publication tests cover canonical transitions/recovery, immutable metadata/diagnostics/
+stable IDs, exact pair no-op and staleness only on changes, UUID/invalid_at validation,
+report/schema/role drift, unknown host/detail outcomes, active denylist, missing rows,
+noncanonical/empty reasons, rollback during UPDATE/invalidation/commit, count mismatch,
+100k identities and >999 hosts with indexed joins. Actual Engine metadata refresh after
+remote failure and success advances last_checked_at without blocking publication.
+
+Real merge tests distinguish existing-pair preservation from legal new INSERT_ONLY rows.
+Apply failures cannot bypass the Prepared restart gate. Lifecycle tests publish then
+rebuild: normalized tag membership stays, public facets/runtime tag results/FTS hide and
+recover; random provider and internal identity/metadata resolution keep stable IDs.
+Crawler tests exercise four maintenance modes, diagnostic increments and unchanged
+canonical pairs on 404/410 and successful refresh, plus static absence of the old API.
+
+```bash
+python3 -m pytest tests/jobs/test_updater_output_paths.py tests/jobs/test_video_availability_publication.py tests/jobs/test_video_availability_apply_pipeline.py tests/jobs/test_video_availability_sweep.py tests/jobs/test_updater_staging.py tests/jobs/test_updater_cli_characterization.py tests/jobs/test_updater_pipeline_commands.py
+python3 -m pytest tests/engine_api/test_video_availability_lifecycle.py tests/engine_data/test_prepared_discovery.py tests/engine_data/test_video_filters.py tests/engine_data/test_video_search_fts.py
+python3 -m pytest tests/contracts tests/compatibility tests/engine_data tests/engine_api tests/client_backend
+cd engine/crawler && npm ci && npm run build && npm run test:db
+```
+
+Compare full Python and Node baseline/final suites without changing unrelated failing
+tests. Deployment smoke requires real offline/quiescence, backups and gradual scope.
