@@ -108,8 +108,8 @@ def test_rebuild_creates_tables_and_searches_indexed_fields() -> None:
 
 
 @pytest.mark.parametrize("reason", [None, "not_found", "gone", "unknown", ""])
-def test_search_source_uses_exact_availability_without_error_threshold(reason):
-    """Search source includes high-error live rows but runtime retains its optional threshold."""
+def test_search_source_uses_exact_availability_independent_of_error_count(reason):
+    """High diagnostic counts never hide canonically available search rows."""
     conn = _db()
     conn.execute("UPDATE videos SET invalid_reason=?,error_count=10 WHERE video_id='v1'", (reason,))
     rebuild_video_search_index(conn)
@@ -117,9 +117,9 @@ def test_search_source_uses_exact_availability_without_error_threshold(reason):
         reason is None
     )
     rows, _ = search_videos(
-        conn, query="Linux", limit=10, offset=0, visibility=ServingVisibility(error_threshold=3)
+        conn, query="Linux", limit=10, offset=0, visibility=ServingVisibility()
     )
-    assert rows == []
+    assert [row["video_id"] for row in rows] == (["v1"] if reason is None else [])
     conn.close()
 
 

@@ -47,8 +47,7 @@ function validateVideoDetailIdentity(
   }
   const record = value as Record<string, unknown>;
   if (typeof record.uuid !== "string" || record.uuid.length === 0 || record.uuid !== requestedUuid) {
-    // Keep this fixed and local: deferred maintenance temporarily extracts
-    // HTTP status from Error.message, so remote values must never enter it.
+    // Untrusted payload fields never become trusted identity or diagnostic text.
     throw new Error("invalid video detail identity");
   }
   return record;
@@ -122,16 +121,4 @@ export async function fetchVideoDetailResult<TDetail extends Record<string, unkn
       checkedAt
     };
   }
-}
-
-// TODO(nodeforge-video-detail-result): Remove this throwing compatibility adapter when metadata, tags, and comments consume VideoDetailResult directly.
-/** Preserve the existing exception-driven maintenance contract over the same request implementation. */
-export async function fetchVideoDetailOrThrow<TDetail extends Record<string, unknown>>(
-  host: string,
-  videoUuid: string,
-  options: VideoDetailRequestOptions,
-  protocol: string,
-  requestLimiter: RequestLimiter
-): Promise<VideoDetailFetchResult<TDetail>> {
-  return fetchVideoDetailInternal<TDetail>(host, videoUuid, options, protocol, requestLimiter);
 }

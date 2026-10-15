@@ -15,7 +15,8 @@ from contextlib import closing
 from pathlib import Path
 from urllib.parse import urlparse
 
-# TODO(nodeforge-video-availability-generation-cutover): Remove pre-v2 writer-generation rejection only after no supported crawler video corpus can predate atomic initial-tombstone ingest.
+# TODO(peertube-browser-video-availability-generation-cutover): Remove legacy corpus
+# rejection after pre-v2 corpora are unsupported.
 AVAILABILITY_SEMANTICS_KEY = "video_availability_semantics"
 AVAILABILITY_SEMANTICS_VALUE = "canonical_absence_atomic_ingest_v2"
 VIDEO_CORPUS_ROLE_KEY = "video_corpus_role"

@@ -16,12 +16,10 @@ from data.serving_moderation import ServingVisibility, serving_visibility_from_s
 def test_runtime_flags_freeze_once_into_serving_visibility() -> None:
     """Positive: explicit runtime moderation flags become one immutable policy object."""
     server = SimpleNamespace(
-        video_error_threshold=7,
         enable_instance_ignore=False,
         enable_channel_blocklist=True,
     )
     assert serving_visibility_from_server(server) == ServingVisibility(
-        error_threshold=7,
         apply_instance_filter=False,
         apply_channel_filter=True,
     )
@@ -30,13 +28,12 @@ def test_runtime_flags_freeze_once_into_serving_visibility() -> None:
 def test_missing_runtime_flags_use_existing_visibility_defaults() -> None:
     """Negative/boundary: absent optional runtime attributes preserve current safe defaults."""
     assert serving_visibility_from_server(SimpleNamespace()) == ServingVisibility(
-        error_threshold=None,
         apply_instance_filter=True,
         apply_channel_filter=True,
     )
 
 
-def test_exact_availability_is_independent_of_legacy_threshold():
+def test_exact_availability_is_independent_of_diagnostic_error_counts():
     """Both policy branches enforce SQL NULL rather than admitting empty-string reasons."""
     import sqlite3
 
@@ -45,12 +42,11 @@ def test_exact_availability_is_independent_of_legacy_threshold():
     conn.executemany(
         "INSERT INTO videos VALUES(?,?)", [(None, 0), ("", 0), ("gone", 0), (None, 10)]
     )
-    for threshold, count in [(None, 2), (3, 1)]:
-        sql, args = build_serving_visibility_sql("v", ServingVisibility(threshold, False, False))
-        assert "COALESCE" not in sql
-        assert (
-            conn.execute(f"SELECT COUNT(*) FROM videos v WHERE {sql}", args).fetchone()[0] == count
-        )
+    sql = build_serving_visibility_sql("v", ServingVisibility(False, False))
+    assert isinstance(sql, str)
+    assert "COALESCE" not in sql and "error_count" not in sql
+    assert "?" not in sql and ":threshold" not in sql
+    assert conn.execute(f"SELECT COUNT(*) FROM videos v WHERE {sql}").fetchone()[0] == 2
     conn.close()
 
 
@@ -78,13 +74,14 @@ def test_services_pass_policy_objects_and_data_layer_builds_sql() -> None:
     video_search = (ROOT / "engine/server/data/video_search.py").read_text()
     video_filters = (ROOT / "engine/server/data/video_filters.py").read_text()
 
-    for service in (discovery, search, facets):
+    for service in (discovery, search):
         assert "serving_visibility_from_server" in service
         assert "build_serving_visibility_sql" not in service
+    assert "build_serving_visibility_sql" not in facets
     assert "visibility: ServingVisibility" in video_search
-    assert "visibility: ServingVisibility" in video_filters
+    assert "visibility: ServingVisibility" not in video_filters
     assert "build_serving_visibility_sql" in video_search
-    assert "build_serving_visibility_sql" in video_filters
+    assert "build_serving_visibility_sql" not in video_filters  # Filter compilation is separate.
 
 
 def test_client_like_admission_precedes_request_context_publication():

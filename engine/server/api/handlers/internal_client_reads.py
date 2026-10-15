@@ -81,7 +81,6 @@ def handle_internal_videos_metadata(server: Any, body: dict[str, Any]) -> RouteR
         metadata = fetch_metadata_by_ids(
             server.db,
             entries,
-            error_threshold=getattr(server, "video_error_threshold", None),
         )
 
     rows: list[dict[str, Any]] = []

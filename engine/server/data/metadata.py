@@ -63,7 +63,6 @@ def _metadata_row(row: sqlite3.Row, *, lookup_field: str | None = None) -> dict[
 def fetch_metadata(
     conn: sqlite3.Connection,
     rowids: list[int],
-    error_threshold: int | None = None,
 ) -> dict[int, dict[str, Any]]:
     """Fetch video metadata for embedding rowids."""
     if not rowids:
@@ -71,11 +70,7 @@ def fetch_metadata(
     result: dict[int, dict[str, Any]] = {}
     for batch in _chunk(rowids, 900):
         placeholders = ",".join(["?"] * len(batch))
-        error_clause = ""
         params: list[Any] = list(batch)
-        if error_threshold is not None and error_threshold > 0:
-            error_clause = "AND (v.error_count IS NULL OR v.error_count < ?)"
-            params.append(error_threshold)
         query = conn.execute(
             f"""
             SELECT
@@ -88,7 +83,6 @@ def fetch_metadata(
               ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
             WHERE e.rowid IN ({placeholders})
               AND v.invalid_reason IS NULL
-              {error_clause}
             """,
             params,
         )
@@ -100,7 +94,6 @@ def fetch_metadata(
 def fetch_metadata_by_index_ids(
     conn: sqlite3.Connection,
     index_ids: list[int],
-    error_threshold: int | None = None,
 ) -> dict[int, dict[str, Any]]:
     """Fetch video metadata for stable `video_index_ids.index_id` values.
 
@@ -113,11 +106,7 @@ def fetch_metadata_by_index_ids(
     result: dict[int, dict[str, Any]] = {}
     for batch in _chunk(index_ids, 900):
         placeholders = ",".join(["?"] * len(batch))
-        error_clause = ""
         params: list[Any] = list(batch)
-        if error_threshold is not None and error_threshold > 0:
-            error_clause = "AND (v.error_count IS NULL OR v.error_count < ?)"
-            params.append(error_threshold)
         rows = conn.execute(
             f"""
             SELECT
@@ -133,7 +122,6 @@ def fetch_metadata_by_index_ids(
             WHERE vii.index_id IN ({placeholders})
               AND vii.is_active = 1
               AND v.invalid_reason IS NULL
-              {error_clause}
             """,
             params,
         ).fetchall()
@@ -150,7 +138,6 @@ def _chunk(values: list[Any], size: int) -> list[list[Any]]:
 def fetch_metadata_by_ids(
     conn: sqlite3.Connection,
     entries: list[dict[str, Any]],
-    error_threshold: int | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Fetch video metadata for (video_id, instance_domain) pairs."""
     if not entries:
@@ -165,10 +152,6 @@ def fetch_metadata_by_ids(
         for entry in batch:
             params.append(entry.get("video_id"))
             params.append(entry.get("instance_domain") or "")
-        error_clause = ""
-        if error_threshold is not None and error_threshold > 0:
-            error_clause = "AND (v.error_count IS NULL OR v.error_count < ?)"
-            params.append(error_threshold)
         rows = conn.execute(
             f"""
             SELECT
@@ -180,7 +163,6 @@ def fetch_metadata_by_ids(
               ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
             WHERE ({conditions})
               AND v.invalid_reason IS NULL
-              {error_clause}
             """,
             params,
         ).fetchall()

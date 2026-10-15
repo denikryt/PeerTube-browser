@@ -130,7 +130,8 @@ async function processAvailabilityHost(
   try {
     protocol = await preflight(host, options, limiter);
   } catch (error) {
-    // TODO(nodeforge-availability-network-outage): Replace this temporary host-UNKNOWN treatment when parent orchestration can positively distinguish a process-wide network outage from remote-host failure.
+    // TODO(peertube-browser-availability-network-outage): Distinguish local outages from
+    // remote-host failures in parent orchestration.
     workStore.markHostPreflightUnknown(host, classifyCrawlError(error).kind);
     return;
   }

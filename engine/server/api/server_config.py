@@ -76,7 +76,6 @@ INCLUDE_DYNAMIC_STATS = True
 # Allow returning debug metadata in recommendation responses when debug=1 is passed.
 RECOMMENDATIONS_DEBUG_ENABLED = True
 # Hide videos after this many recorded access errors (0 disables the filter).
-VIDEO_ERROR_THRESHOLD = 3
 
 # Use client-provided likes JSON as the default source (temporary mode).
 DEFAULT_USE_CLIENT_LIKES = True

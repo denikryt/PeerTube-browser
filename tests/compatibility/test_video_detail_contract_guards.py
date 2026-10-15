@@ -1,4 +1,4 @@
-"""Static guards for video-detail ownership and temporary compatibility scope."""
+"""Static guards for video-detail ownership and availability boundaries."""
 
 from __future__ import annotations
 
@@ -34,17 +34,20 @@ def test_video_detail_boundary_has_one_request_owner_and_no_persistence_dependen
     assert "updateVideoInvalid" not in text
 
 
-def test_temporary_video_compatibility_markers_have_exact_bounded_inventory() -> None:
-    """Planned shims remain searchable while permanent role guards stay unmarked."""
-    detail_text = DETAIL_SOURCE.read_text(encoding="utf-8")
-    worker_text = WORKER_SOURCE.read_text(encoding="utf-8")
+def test_video_availability_cutover_markers_have_exact_bounded_inventory() -> None:
+    """The remaining legacy-corpus guards have one searchable project marker."""
     generation_text = "\n".join(path.read_text(encoding="utf-8") for path in GENERATION_SOURCES)
 
-    assert detail_text.count("TODO(nodeforge-video-detail-result)") == 1
-    assert worker_text.count("TODO(nodeforge-video-detail-result)") == 1
-    assert worker_text.count("TODO(nodeforge-existing-video-availability-owner)") == 0
-    assert generation_text.count("TODO(nodeforge-video-availability-generation-cutover)") == 3
-    assert "standalone_full_sync_source" not in generation_text
+    assert generation_text.count(
+        "TODO(peertube-browser-video-availability-generation-cutover)"
+    ) == 3
+
+
+def test_direct_video_counter_refresh_has_one_project_marker() -> None:
+    """Deferred counter refresh has one searchable marker in its owning handler."""
+    source = (ROOT / "engine/server/api/handlers/video.py").read_text(encoding="utf-8")
+
+    assert source.count("TODO(peertube-browser-persisted-video-counter-refresh)") == 1
 
 
 def test_video_implementation_sources_use_semantic_names_instead_of_numbered_phase_labels() -> None:

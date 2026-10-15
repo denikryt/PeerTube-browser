@@ -60,7 +60,6 @@ If the total `mix_ratio` is 0, output quotas are split evenly.
 - `DEFAULT_SIMILARITY_SEARCH_LIMIT` — ANN upper bound.
 - `DEFAULT_SIMILARITY_MAX_PER_AUTHOR` — author cap before mixing.
 - `DEFAULT_SIMILARITY_EXCLUDE_SOURCE_AUTHOR`
-- `VIDEO_ERROR_THRESHOLD`
 - `DEFAULT_SIMILAR_FROM_LIKES_SOURCE` (cache-optimized vs ann)
 - `DEFAULT_SIMILARITY_REQUIRE_FULL_CACHE` — treat partial cache as miss.
 - `DEFAULT_SIMILARITY_ALLOW_ANN_ON_CACHE_MISS` — allow ANN fallback per like when cache misses.
@@ -100,7 +99,6 @@ If there are no likes, the layer returns empty (fallback goes to random/popular 
 
 ### Source Params
 - `DEFAULT_FRESH_POOL_SIZE` (0 -> uses `DEFAULT_SIMILAR_PER_LIKE`)
-- `VIDEO_ERROR_THRESHOLD`
 
 If likes exist, `similarity_score` is computed against liked vectors.
 If there are no likes, a random sample is taken from the recent pool.

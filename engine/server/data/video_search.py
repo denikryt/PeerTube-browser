@@ -165,7 +165,7 @@ def search_videos(
         return [], None
     filters = filters or VideoFilters()
     visibility = visibility or ServingVisibility()
-    visibility_sql, visibility_args = build_serving_visibility_sql("v", visibility)
+    visibility_sql = build_serving_visibility_sql("v", visibility)
     filter_sql, filter_args = build_video_filter_sql("v", filters)
     fetch_limit = max(limit, 1) + 1
     safe_offset = max(offset, 0)
@@ -198,7 +198,7 @@ def search_videos(
           COALESCE(published_at, 0) DESC, instance_domain ASC, video_id ASC
         LIMIT ? OFFSET ?
         """,
-        [fts_query, *visibility_args, *filter_args, fetch_limit, safe_offset],
+        [fts_query, *filter_args, fetch_limit, safe_offset],
     ).fetchall()
     items = rows[: max(limit, 1)]
     next_offset = safe_offset + len(items) if len(rows) > len(items) else None

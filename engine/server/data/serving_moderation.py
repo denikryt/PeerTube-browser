@@ -16,7 +16,6 @@ from data.moderation import ModerationFilterStats, filter_rows_by_moderation
 class ServingVisibility:
     """SQL-visible serving policy evaluated before pagination or aggregation."""
 
-    error_threshold: int | None = None
     apply_instance_filter: bool = True
     apply_channel_filter: bool = True
 
@@ -24,7 +23,6 @@ class ServingVisibility:
 def serving_visibility_from_server(server: Any) -> ServingVisibility:
     """Freeze Engine runtime moderation settings into one query policy object."""
     return ServingVisibility(
-        error_threshold=getattr(server, "video_error_threshold", None),
         apply_instance_filter=bool(getattr(server, "enable_instance_ignore", True)),
         apply_channel_filter=bool(getattr(server, "enable_channel_blocklist", True)),
     )
@@ -35,7 +33,7 @@ def build_serving_visibility_sql(
     flags: ServingVisibility,
     *,
     schema: str = "main",
-) -> tuple[str, list[object]]:
+) -> str:
     """Build canonical visibility predicates for one trusted video-table alias.
 
     ``schema`` is deliberately limited to the two namespaces used by runtime
@@ -46,10 +44,6 @@ def build_serving_visibility_sql(
         raise ValueError("Unsupported serving visibility schema")
 
     clauses = [f"{alias}.invalid_reason IS NULL"]
-    params: list[object] = []
-    if flags.error_threshold is not None and flags.error_threshold > 0:
-        clauses.append(f"({alias}.error_count IS NULL OR {alias}.error_count < ?)")
-        params.append(flags.error_threshold)
     if flags.apply_instance_filter:
         clauses.append(
             f"""NOT EXISTS (
@@ -67,7 +61,7 @@ def build_serving_visibility_sql(
                 AND lower(trim(blocked.instance_domain)) = lower(trim({alias}.instance_domain))
             )"""
         )
-    return " AND ".join(f"({clause})" for clause in clauses), params
+    return " AND ".join(f"({clause})" for clause in clauses)
 
 
 def apply_serving_moderation_filters(

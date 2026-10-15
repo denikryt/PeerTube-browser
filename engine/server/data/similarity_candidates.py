@@ -6,7 +6,7 @@ from __future__ import annotations
 #
 # This module provides a single entry point for building similar candidates used by
 # recommendation routes. It centralizes cache policy, ANN fallback,
-# and filtering rules (seed exclusion, per-author limits, and error thresholds).
+# and filtering rules (seed exclusion, per-author limits, canonical availability).
 
 
 import logging
@@ -173,15 +173,11 @@ def _build_rows(
     meta_start = perf_counter()
     if lock is None:
         metadata = fetch_metadata_by_ids(
-            db, entries, error_threshold=getattr(server, "video_error_threshold", None)
+            db, entries
         )
     else:
         with lock:
-            metadata = fetch_metadata_by_ids(
-                db,
-                entries,
-                error_threshold=getattr(server, "video_error_threshold", None),
-            )
+            metadata = fetch_metadata_by_ids(db, entries)
     meta_ms = int((perf_counter() - meta_start) * 1000)
 
     source_meta = _source_from_seed(seed)

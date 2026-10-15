@@ -96,6 +96,7 @@ Documentation helps a reader navigate the project, use it, run it, and understan
 ### Writing Rules
 
 - Write briefly, factually, and only about important information.
+- Every paragraph must help the reader perform a concrete task or understand a required contract; otherwise omit it.
 - Describe only the current project state.
 - Do not restate in prose what the code already expresses.
 - Do not add narrative writing, speculation, invented behavior, history, plans, or filler.

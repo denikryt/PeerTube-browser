@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from handlers import video
+from services.peertube_video_detail import VideoDetailResult
 
 from engine.server.data.prepared_discovery import rebuild_prepared_discovery
 from engine.server.data.video_search import rebuild_video_search_index
@@ -55,20 +56,20 @@ def _seed(conn):
 def test_direct_route_rejects_invalidity_before_live_fetch(
     engine_state, engine_client, monkeypatch, index
 ):
-    """Invalid/high-error lookup is 404 before live fetch; live lookup overlays normally."""
+    """All canonical live rows, even with high diagnostics, may reach the overlay."""
     _seed(engine_state.db)
     fetched = []
 
     def detail(host, identity):
         """Replace only live PeerTube access and record its admitted identities."""
         fetched.append(identity)
-        return {"title": "live title"}
+        return VideoDetailResult("available", detail={"title": "live title"})
 
-    monkeypatch.setattr(video, "fetch_instance_video_dynamic", detail)
+    monkeypatch.setattr(video, "fetch_peertube_video_detail", detail)
     response = engine_client.get(f"/api/video?id={index}&host=example.org")
-    assert response.status_code == (200 if index == 0 else 404)
-    assert fetched == ([str(index)] if index == 0 else [])
-    if index == 0:
+    assert response.status_code == (200 if index in [0, 5] else 404)
+    assert fetched == ([f"uuid-{index}"] if index in [0, 5] else [])
+    if index in [0, 5]:
         assert response.json()["title"] == "live title"
     else:
         assert response.json() == {"error": "Video not found"}
@@ -83,18 +84,18 @@ def test_direct_route_rejects_invalidity_before_live_fetch(
     ],
 )
 def test_paged_route_visibility_excludes_every_non_null_reason(engine_state, engine_client, path):
-    """Shared route visibility keeps only the live low-error matrix row before cutting results."""
+    """Shared route visibility excludes non-null invalidity but not diagnostics."""
     _seed(engine_state.db)
     response = engine_client.get(path)
     assert response.status_code == 200
-    assert [row["video_id"] for row in response.json()["rows"]] == ["0"]
+    assert {row["video_id"] for row in response.json()["rows"]} == {"0", "5"}
 
 
 @pytest.mark.parametrize("index", range(6))
 def test_internal_resolve_and_metadata_keep_distinct_error_policies(
     engine_state, engine_client, index
 ):
-    """Resolve admits high-error live seeds; metadata retains its existing output threshold."""
+    """Seed and metadata endpoints both admit canonically available high-error rows."""
     _seed(engine_state.db)
     resolved = engine_client.post(
         "/internal/videos/resolve", json={"uuid": f"uuid-{index}", "host": "example.org"}
@@ -105,7 +106,7 @@ def test_internal_resolve_and_metadata_keep_distinct_error_policies(
         json={"entries": [{"video_id": str(index), "instance_domain": "example.org"}]},
     )
     assert metadata.status_code == 200
-    assert metadata.json()["count"] == int(index == 0)
+    assert metadata.json()["count"] == int(index in [0, 5])
 
 
 @pytest.mark.parametrize("negative", ["not_found", "gone"])
@@ -131,7 +132,7 @@ def test_publisher_drives_routes_facets_tags_and_search(
     conn = engine_state.db
     _seed(conn)
     # Keep one row with a unique public tag; other rows remain excluded by their
-    # canonical or independent error policy. This also proves tag zero-count behavior.
+    # canonical invalidity policy. This also proves tag zero-count behavior.
     conn.execute("UPDATE videos SET tags_json='[\"recovered-tag\"]' WHERE video_id='0'")
     conn.commit()
     rebuild_prepared_discovery(conn)
@@ -140,7 +141,7 @@ def test_publisher_drives_routes_facets_tags_and_search(
         evidence.execute(
             "INSERT INTO video_availability_work VALUES('0','example.org','uuid-0',NULL,NULL,NULL)"
         )
-    monkeypatch.setattr(video, "fetch_instance_json", lambda *a: None)
+    monkeypatch.setattr(video, "fetch_peertube_video_detail", lambda *a: VideoDetailResult("unknown", error="offline"))
     membership = [tuple(r) for r in conn.execute("SELECT * FROM video_tags ORDER BY tag,video_id")]
     stable = [tuple(r) for r in conn.execute("SELECT * FROM video_index_ids")]
     from engine.server.data.random_cache import open_random_provider_readonly
@@ -201,7 +202,7 @@ def test_publisher_drives_routes_facets_tags_and_search(
         from data.metadata import fetch_metadata_by_index_ids
         from data.similarity_candidates import SimilarityCandidatesPolicy, get_similar_candidates
 
-        assert list(fetch_metadata_by_index_ids(conn, [1], error_threshold=3)) == (
+        assert list(fetch_metadata_by_index_ids(conn, [1])) == (
             [1] if visible else []
         )
         # Replace only the heavyweight ANN edge. The real candidate service resolves
@@ -262,18 +263,18 @@ def test_real_metadata_refresh_cannot_block_independent_publication(
         )
     monkeypatch.setattr(
         video,
-        "fetch_instance_json",
-        lambda *a: {"uuid": "uuid-0", "name": "remote"} if remote_success else None,
+        "fetch_peertube_video_detail",
+        lambda _host, _uuid: (
+            VideoDetailResult("available", detail={"title": "remote"})
+            if remote_success else VideoDetailResult("unknown", error="offline")
+        ),
     )
-    monkeypatch.setattr(video, "now_ms", lambda: 5000)
     response = engine_client.get("/api/video?id=0&host=example.org")
     assert response.status_code == 200
     assert response.json()["title"] == ("remote" if remote_success else "availabilityword")
-    assert tuple(
-        conn.execute(
-            "SELECT last_checked_at,invalid_reason,invalid_at FROM videos WHERE video_id='0'"
-        ).fetchone()
-    ) == (5000, None, None)
+    assert tuple(conn.execute(
+        "SELECT last_checked_at,invalid_reason,invalid_at FROM videos WHERE video_id='0'"
+    ).fetchone()) == (1, None, None)
     result = publish_existing_video_availability(
         prod, stage, sweep_report=staging.video_availability_report(stage, missing_uuid=0)
     )
@@ -284,4 +285,4 @@ def test_real_metadata_refresh_cannot_block_independent_publication(
             "SELECT video_id,last_checked_at,invalid_reason,invalid_at FROM videos "
             "WHERE video_id IN ('0','1') ORDER BY video_id"
         )
-    ] == [("0", 5000, "not_found", 3000), ("1", 1, "gone", 3000)]
+    ] == [("0", 1, "not_found", 3000), ("1", 1, "gone", 3000)]

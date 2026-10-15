@@ -246,14 +246,13 @@ def _extract_video_id_from_similar_path(path: str) -> str | None:
 
 def fetch_random_rows_from_server(server: Any, limit: int) -> list[dict[str, Any]]:
     """Fetch random rows through the current cache-first fallback contract."""
-    rows = fetch_random_rows_from_cache(server, limit, error_threshold=server.video_error_threshold)
+    rows = fetch_random_rows_from_cache(server, limit)
     if rows:
         return rows
     with server.db_lock:
         return fetch_random_rows(
             server.db,
             limit,
-            error_threshold=server.video_error_threshold,
         )
 
 
@@ -466,7 +465,6 @@ def handle_vector_search(
         metadata = fetch_metadata_by_index_ids(
             server.db,
             index_ids,
-            error_threshold=server.video_error_threshold,
         )
     meta_ms = int((perf_counter() - meta_start) * 1000)
     logging.info(

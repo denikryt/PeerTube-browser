@@ -46,7 +46,7 @@ flowchart TD
 
     Hcaps --> Hr[Random pick N]
 
-    F3 --> S[Similarity candidates filters<br/>seed exclude<br/>error_threshold<br/>max_per_author<br/>exclude_source_author]
+    F3 --> S[Similarity candidates filters<br/>seed exclude<br/>max_per_author<br/>exclude_source_author]
     S --> G1
 
     Hr --> I[Gather limits by profile<br/>batch_size * gather_ratio<br/>* overfetch_factor<br/>ratios normalized over active layers]

@@ -77,7 +77,7 @@ def _connect_internal_video_db() -> sqlite3.Connection:
 def _client_with_internal_video_db() -> tuple[TestClient, sqlite3.Connection]:
     """Build a FastAPI client backed by the internal-video fixture DB."""
     conn = _connect_internal_video_db()
-    state = make_engine_state(db=conn, db_lock=threading.RLock(), video_error_threshold=2)
+    state = make_engine_state(db=conn, db_lock=threading.RLock())
     return TestClient(create_app(state)), conn
 
 

@@ -492,7 +492,8 @@ export class VideoStore {
     }
 
     if (videoCount > 0) {
-      // TODO(nodeforge-video-availability-generation-cutover): Remove pre-v2 writer-generation rejection only after no supported crawler video corpus can predate atomic initial-tombstone ingest.
+      // TODO(peertube-browser-video-availability-generation-cutover): Remove legacy corpus
+      // rejection after pre-v2 corpora are unsupported.
       throw new Error("video corpus predates current atomic initial-tombstone writer semantics");
     }
     throw new Error("video corpus has incompatible writer semantics");

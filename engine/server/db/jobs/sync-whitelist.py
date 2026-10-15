@@ -229,7 +229,8 @@ def assert_source_video_publication_compatible(conn: sqlite3.Connection) -> None
             raise
         raise RuntimeError(error) from exc
 
-    # TODO(nodeforge-video-availability-generation-cutover): Remove pre-v2 writer-generation rejection only after no supported crawler video corpus can predate atomic initial-tombstone ingest.
+    # TODO(peertube-browser-video-availability-generation-cutover): Remove legacy corpus
+    # rejection after pre-v2 corpora are unsupported.
     if semantics is None or semantics[0] != VIDEO_AVAILABILITY_SEMANTICS_VALUE:
         raise RuntimeError(error)
 

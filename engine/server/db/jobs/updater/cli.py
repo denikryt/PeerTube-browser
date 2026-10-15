@@ -328,7 +328,8 @@ def validate_availability_sweep_mode(args) -> set[str] | None:
         raise ValueError("Availability report/apply flags must be mutually exclusive booleans")
     if not (report or apply):
         return None
-    # TODO(nodeforge-availability-advanced-updater-modes): Remove this temporary sweep/mode rejection once retry, strict-sync and host-pipeline orchestration have explicit parent eligibility and end-to-end coverage.
+    # TODO(peertube-browser-availability-advanced-updater-modes): Allow combined modes only
+    # after parent eligibility has end-to-end coverage.
     if any(
         getattr(args, mode, False)
         for mode in ("retry_errors", "sync_join_whitelist", "host_pipeline")

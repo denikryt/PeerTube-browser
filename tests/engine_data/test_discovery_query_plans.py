@@ -109,7 +109,6 @@ def _plan_after_provider_call(conn: _RecordingConnection) -> list[str]:
 def _visibility_without_policy_subqueries() -> ServingVisibility:
     """Keep the planner test focused on ordering/tag access rather than moderation indexes."""
     return ServingVisibility(
-        error_threshold=None,
         apply_instance_filter=False,
         apply_channel_filter=False,
     )
@@ -219,7 +218,7 @@ def test_video_availability_direct_and_seed_lookups_keep_indexed_identity_plans(
     )
     conn.execute("CREATE INDEX idx_videos_uuid_instance ON videos(video_uuid,instance_domain)")
     conn.execute("ANALYZE")
-    assert fetch_video_row(conn, "u-42", "example.org")["video_id"] == "42"
+    assert fetch_video_row(conn, "u-42", "example.org", _visibility_without_policy_subqueries())["video_id"] == "42"
     assert fetch_seed_embedding(conn, None, "example.org", "u-42")["video_id"] == "42"
     assert fetch_seed_embedding(conn, "42", "example.org", None)["video_id"] == "42"
     queries = list(conn.queries)
@@ -231,6 +230,6 @@ def test_video_availability_direct_and_seed_lookups_keep_indexed_identity_plans(
         assert any("SEARCH v" in detail for detail in plan), plan
         assert not any(detail.startswith("SCAN v ") for detail in plan), plan
     conn.execute("UPDATE videos SET invalid_reason='' WHERE video_id='42'")
-    assert fetch_video_row(conn, "u-42", "example.org") is None
+    assert fetch_video_row(conn, "u-42", "example.org", _visibility_without_policy_subqueries()) is None
     assert fetch_seed_embedding(conn, None, "example.org", "u-42") is None
     conn.close()

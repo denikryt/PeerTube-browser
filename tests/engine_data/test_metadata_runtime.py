@@ -61,19 +61,19 @@ def _db() -> sqlite3.Connection:
 
 
 @pytest.mark.parametrize("reason", [None, "not_found", "gone", "legacy_unknown", ""])
-@pytest.mark.parametrize("errors,threshold", [(0, None), (10, None), (10, 3)])
-def test_all_metadata_identity_paths_enforce_canonical_availability(reason, errors, threshold):
-    """All resolver identities exclude non-NULL availability and retain optional diagnostics gates."""
+@pytest.mark.parametrize("errors", [0, 10, 100])
+def test_all_metadata_identity_paths_enforce_canonical_availability(reason, errors):
+    """All resolver identities exclude canonical invalidity but ignore diagnostic errors."""
     conn = _db()
     conn.execute("UPDATE videos SET invalid_reason=?,error_count=?", (reason, errors))
-    expected = reason is None and (threshold is None or errors < threshold)
+    expected = reason is None
     rowid = conn.execute("SELECT rowid FROM video_embeddings").fetchone()[0]
-    assert bool(fetch_metadata(conn, [rowid], threshold)) == expected
-    assert bool(fetch_metadata_by_index_ids(conn, [7], threshold)) == expected
+    assert bool(fetch_metadata(conn, [rowid])) == expected
+    assert bool(fetch_metadata_by_index_ids(conn, [7])) == expected
     assert (
         bool(
             fetch_metadata_by_ids(
-                conn, [{"video_id": "v1", "instance_domain": "example.org"}], threshold
+                conn, [{"video_id": "v1", "instance_domain": "example.org"}]
             )
         )
         == expected
@@ -83,7 +83,7 @@ def test_all_metadata_identity_paths_enforce_canonical_availability(reason, erro
 
 @pytest.mark.parametrize("reason,errors", [("gone", 0), ("", 0), (None, 10)])
 def test_metadata_batch_gates_cover_first_middle_and_last_identities(reason, errors):
-    """Bad identities never bypass canonical/diagnostic gates through OR precedence."""
+    """Batch OR clauses reject invalid rows regardless of position, not diagnostics."""
     conn = _db()
     columns = [row[1] for row in conn.execute("PRAGMA table_info(videos)")]
     for video_id in ["first", "middle", "last"]:
@@ -100,8 +100,12 @@ def test_metadata_batch_gates_cover_first_middle_and_last_identities(reason, err
     entries = [
         {"video_id": v, "instance_domain": "example.org"} for v in ["first", "v1", "middle", "last"]
     ]
-    result = fetch_metadata_by_ids(conn, entries, 3)
-    assert list(result) == ["v1::example.org"]
+    result = fetch_metadata_by_ids(conn, entries)
+    expected_ids = ["v1::example.org"]
+    if reason is None:
+        # A high diagnostic counter does not invalidate any batch member.
+        expected_ids = [f"{video_id}::example.org" for video_id in ("first", "v1", "middle", "last")]
+    assert list(result) == expected_ids
     conn.close()
 
 
@@ -259,7 +263,7 @@ def test_stale_random_cache_ids_resolve_through_canonical_metadata(invalid):
         random_cache_db=cache,
         random_cache_lock=threading.RLock(),
     )
-    result = fetch_random_rows_from_cache(server, 1, 3)
+    result = fetch_random_rows_from_cache(server, 1)
     assert [row["video_id"] for row in result] == ([] if invalid else ["v1"])
     conn.close()
     cache.close()

@@ -29,7 +29,7 @@ import {
   type ThumbnailCandidate
 } from "./video-media.js";
 import { normalizeVideoMetadata } from "./video-metadata.js";
-import { fetchVideoDetailOrThrow, fetchVideoDetailResult } from "./video-detail.js";
+import { fetchVideoDetailResult } from "./video-detail.js";
 import {
   fetchActivityPubLiveMetadata,
   type ActivityPubLiveMetadata
@@ -458,25 +458,35 @@ async function processTagInstance(
   const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
   console.log(formatMetricLog("tags", [["videos", items.length]], "start", normalizedHost));
   for (const item of items) {
-    try {
-      const tagsJson = await fetchVideoTags(normalizedHost, item.videoUuid, options, requestLimiter);
-      if (tagsJson !== null) {
-        store.updateVideoTags(item.videoId, normalizedHost, tagsJson);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const status = extractHttpStatus(message);
-      // Retain detail-absence diagnostics and the existing process outage abort.
-      if (status === 404 || status === 410) {
-        // Maintenance owns diagnostics only; offline publication owns canonical absence.
-        store.updateVideoError(item.videoId, normalizedHost, status === 404 ? "not_found" : "gone");
-      } else if (isNoNetworkError(error)) {
-        throw error;
-
-      } else {
-        store.updateVideoError(item.videoId, normalizedHost, message);
-        console.warn(`[tags] error ${normalizedHost}/${item.videoUuid}: ${message}`);
-      }
+    const result = await fetchVideoDetailResult<PeerTubeVideoDetail>(
+      normalizedHost, item.videoUuid, options, "https:", requestLimiter
+    );
+    // Only a validated primary detail permits a projection write.
+    switch (result.kind) {
+      case "available":
+        try {
+          const tagsJson = toTagsJson(result.detail.tags);
+          if (tagsJson !== null) {
+            store.updateVideoTags(item.videoId, normalizedHost, tagsJson);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          store.updateVideoError(item.videoId, normalizedHost, message);
+          console.warn(`[tags] projection error ${normalizedHost}/${item.videoUuid}: ${message}`);
+        }
+        break;
+      case "not_found":
+      case "gone":
+        store.updateVideoError(item.videoId, normalizedHost, result.kind);
+        break;
+      case "unknown":
+        if (isNoNetworkError(result.error.cause)) {
+          // Preserve process-level outage abort without changing availability.
+          throw result.error.cause;
+        }
+        store.updateVideoError(item.videoId, normalizedHost, result.error.message);
+        console.warn(`[tags] error ${normalizedHost}/${item.videoUuid}: ${result.error.message}`);
+        break;
     }
   }
 
@@ -496,25 +506,37 @@ async function processCommentsInstance(
   const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
   console.log(formatMetricLog("comments", [["videos", items.length]], "start", normalizedHost));
   for (const item of items) {
-    try {
-      const commentsCount = await fetchVideoComments(normalizedHost, item.videoUuid, options, requestLimiter);
-      if (commentsCount !== null) {
-        store.updateVideoComments(item.videoId, normalizedHost, commentsCount);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const status = extractHttpStatus(message);
-      // Retain detail-absence diagnostics and the existing process outage abort.
-      if (status === 404 || status === 410) {
-        // Maintenance owns diagnostics only; offline publication owns canonical absence.
-        store.updateVideoError(item.videoId, normalizedHost, status === 404 ? "not_found" : "gone");
-      } else if (isNoNetworkError(error)) {
-        throw error;
-
-      } else {
-        store.updateVideoError(item.videoId, normalizedHost, message);
-        console.warn(`[comments] error ${normalizedHost}/${item.videoUuid}: ${message}`);
-      }
+    const result = await fetchVideoDetailResult<PeerTubeVideoDetail>(
+      normalizedHost, item.videoUuid, options, "https:", requestLimiter
+    );
+    // Only a validated primary detail permits a projection write.
+    switch (result.kind) {
+      case "available":
+        try {
+          const commentsCount = toCommentsCount(
+            result.detail.comments ?? result.detail.commentsCount ?? result.detail.comments_count
+          );
+          if (commentsCount !== null) {
+            store.updateVideoComments(item.videoId, normalizedHost, commentsCount);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          store.updateVideoError(item.videoId, normalizedHost, message);
+          console.warn(`[comments] projection error ${normalizedHost}/${item.videoUuid}: ${message}`);
+        }
+        break;
+      case "not_found":
+      case "gone":
+        store.updateVideoError(item.videoId, normalizedHost, result.kind);
+        break;
+      case "unknown":
+        if (isNoNetworkError(result.error.cause)) {
+          // Preserve process-level outage abort without changing availability.
+          throw result.error.cause;
+        }
+        store.updateVideoError(item.videoId, normalizedHost, result.error.message);
+        console.warn(`[comments] error ${normalizedHost}/${item.videoUuid}: ${result.error.message}`);
+        break;
     }
   }
 
@@ -1229,15 +1251,23 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
           // stable crawl-wide ordinal instead of ambiguous host-local counters.
           const videoOrdinal = nextVideoOrdinal();
           const subject = `${item.instanceDomain}/${item.videoId}`;
+          const detailResult = await fetchVideoDetailResult<PeerTubeVideoDetail>(
+            host, item.videoUuid, options, "https:", limiter
+          );
+          if (detailResult.kind !== "available") {
+            // Maintenance owns diagnostics, never the existing row's availability.
+            const diagnostic = detailResult.kind === "unknown"
+              ? detailResult.error.message : detailResult.kind;
+            store.updateVideoError(item.videoId, item.instanceDomain, diagnostic);
+            errors += 1;
+            console.warn(formatMetricLog(
+              "metadata", [["video", videoOrdinal], ["updated", updated], ["errors", errors]],
+              detailResult.kind === "unknown" ? "error" : "invalid", subject
+            ));
+            continue;
+          }
+          const detail = detailResult.detail;
           try {
-            const detailResult = await fetchVideoDetailOrThrow<PeerTubeVideoDetail>(
-              host,
-              item.videoUuid,
-              options,
-              "https:",
-              limiter
-            );
-            const detail = detailResult.detail;
             const channelRef = detail.channel;
             // Metadata maintenance intentionally preserves its pre-existing
             // modern-array-only thumbnail ownership. Legacy/empty repair is
@@ -1258,7 +1288,7 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
                 ),
                 channelUrl: toNullableString(channelRef?.url)
               },
-              Date.now(),
+              detailResult.checkedAt,
               {
                 kind: "available",
                 detail,
@@ -1303,30 +1333,14 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
               )
             );
           } catch (error) {
+            // A projection/DB failure must not reinterpret a validated video detail.
             const message = error instanceof Error ? error.message : String(error);
-            const status = extractHttpStatus(message);
-            // A successful PeerTube detail response that says the resource is
-            // gone is a diagnostic for this stored UUID. Transient transport,
-            // rate-limit, and server failures deliberately remain resumable.
-            if (status === 404 || status === 410) {
-              // This existing-row error must not overwrite canonical availability.
-              store.updateVideoError(
-                item.videoId,
-                item.instanceDomain,
-                status === 404 ? "not_found" : "gone"
-              );
-            } else {
-              store.updateVideoError(item.videoId, item.instanceDomain, message);
-            }
+            store.updateVideoError(item.videoId, item.instanceDomain, message);
             errors += 1;
-            console.warn(
-              formatMetricLog(
-                "metadata",
-                [["video", videoOrdinal], ["updated", updated], ["errors", errors]],
-                status === 404 || status === 410 ? "invalid" : "error",
-                subject
-              )
-            );
+            console.warn(formatMetricLog(
+              "metadata", [["video", videoOrdinal], ["updated", updated], ["errors", errors]],
+              "error", subject
+            ));
           }
         }
       }
@@ -1420,46 +1434,59 @@ async function thumbnailWorkerLoop(
       );
       switch (result.kind) {
         case "available": {
-          const candidates = projectDetailThumbnailCandidates(
-            result.detail,
-            host,
-            result.protocol
-          );
-          if (candidates === null) {
-            const message = "video detail has no recognized thumbnail representation";
-            store.updateVideoError(row.videoId, row.instanceDomain, message);
-            progress.errors += 1;
-            console.warn(
-              `${formatMetricLog(
+          try {
+            const candidates = projectDetailThumbnailCandidates(
+              result.detail,
+              host,
+              result.protocol
+            );
+            if (candidates === null) {
+              const message = "video detail has no recognized thumbnail representation";
+              store.updateVideoError(row.videoId, row.instanceDomain, message);
+              progress.errors += 1;
+              console.warn(
+                `${formatMetricLog(
+                  "thumbnails",
+                  [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
+                  "incomplete",
+                  subject
+                )}: ${message}`
+              );
+              break;
+            }
+
+            store.updateVideoThumbnailCandidates(
+              row.videoId,
+              row.instanceDomain,
+              candidates,
+              result.checkedAt
+            );
+            progress.updated += 1;
+            console.log(
+              formatMetricLog(
                 "thumbnails",
-                [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
-                "incomplete",
+                [
+                  ["video", videoOrdinal],
+                  ["updated", progress.updated],
+                  ["errors", progress.errors],
+                  ["candidates", candidates.length]
+                ],
+                candidates.length === 0 ? "empty" : "",
                 subject
-              )}: ${message}`
+              )
             );
             break;
-          }
-
-          store.updateVideoThumbnailCandidates(
-            row.videoId,
-            row.instanceDomain,
-            candidates,
-            result.checkedAt
-          );
-          progress.updated += 1;
-          console.log(
-            formatMetricLog(
+          } catch (error) {
+            // Projection and SQLite errors are diagnostics, never video absence.
+            const message = error instanceof Error ? error.message : String(error);
+            store.updateVideoError(row.videoId, row.instanceDomain, message);
+            progress.errors += 1;
+            console.warn(`${formatMetricLog(
               "thumbnails",
-              [
-                ["video", videoOrdinal],
-                ["updated", progress.updated],
-                ["errors", progress.errors],
-                ["candidates", candidates.length]
-              ],
-              candidates.length === 0 ? "empty" : "",
-              subject
-            )
-          );
+              [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
+              "error", subject
+            )}: ${message}`);
+          }
           break;
         }
         case "not_found":
@@ -1498,44 +1525,6 @@ async function thumbnailWorkerLoop(
 }
 
 /**
- * Handle fetch video tags.
- */
-async function fetchVideoTags(
-  host: string,
-  videoUuid: string,
-  options: VideoCrawlOptions,
-  requestLimiter: RequestLimiter
-): Promise<string | null> {
-  const { detail } = await fetchVideoDetailOrThrow<PeerTubeVideoDetail>(
-    host,
-    videoUuid,
-    options,
-    "https:",
-    requestLimiter
-  );
-  return toTagsJson(detail.tags);
-}
-
-/**
- * Handle fetch video comments.
- */
-async function fetchVideoComments(
-  host: string,
-  videoUuid: string,
-  options: VideoCrawlOptions,
-  requestLimiter: RequestLimiter
-): Promise<number | null> {
-  const { detail } = await fetchVideoDetailOrThrow<PeerTubeVideoDetail>(
-    host,
-    videoUuid,
-    options,
-    "https:",
-    requestLimiter
-  );
-  return toCommentsCount(detail.comments ?? detail.commentsCount ?? detail.comments_count);
-}
-
-/**
  * Handle open existing db.
  */
 function openExistingDb(options: VideoCrawlOptions): Database.Database | null {
@@ -1567,12 +1556,4 @@ function queryExternalExistingVideoIds(
     )
     .all(instanceDomain, ...ids) as { video_id: string }[];
   return new Set(rows.map((row) => row.video_id));
-}
-
-// TODO(nodeforge-video-detail-result): Remove message-based video-detail status parsing when metadata, tags, and comments consume VideoDetailResult directly.
-/** Extract the temporary throwing-adapter HTTP status from its diagnostic. */
-function extractHttpStatus(message: string): number | null {
-  const match = message.match(/HTTP (\d{3})/);
-  if (!match) return null;
-  return Number(match[1]);
 }

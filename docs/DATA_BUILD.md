@@ -351,8 +351,8 @@ python3 engine/server/db/jobs/rebuild-video-discovery-data.py \
 
 The rebuild creates its own prepared tables when absent, normalizes tags, and writes
 the facet snapshot atomically with the new tag relation. Facets summarize canonical
-metadata rows whose `invalid_reason` is empty; they intentionally do not mirror
-runtime error thresholds, instance denylist, or channel moderation counts.
+metadata rows whose `invalid_reason IS NULL`; they intentionally do not mirror
+instance denylist or channel moderation counts.
 
 For the first rollout onto an older production DB, keep Engine stopped, deploy the
 new code without automatic restart, run `ensure-video-indexes.py`, run the prepared

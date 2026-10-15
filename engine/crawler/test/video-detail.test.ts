@@ -3,10 +3,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  fetchVideoDetailOrThrow,
-  fetchVideoDetailResult
-} from "../src/video-detail.js";
+import { fetchVideoDetailResult } from "../src/video-detail.js";
 import type { RequestLimiter } from "../src/request-limiter.js";
 
 const immediateLimiter: RequestLimiter = {
@@ -205,22 +202,11 @@ test("eligible fallback exhaustion returns one unknown without a caller retry lo
   });
 });
 
-test("throwing compatibility adapter uses the same validation boundary", async () => {
+test("wrong identity with HTTP-like text remains unknown, not absent", async () => {
   await withFetchStub(async () => response({ uuid: "video-b", note: "HTTP 410" }), async () => {
-    await assert.rejects(
-      fetchVideoDetailOrThrow<Record<string, unknown>>(
-        "example.org",
-        "video-a",
-        options,
-        "https:",
-        immediateLimiter
-      ),
-      (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.equal(error.message, "invalid video detail identity");
-        assert.doesNotMatch(error.message, /HTTP 410/u);
-        return true;
-      }
+    const result = await fetchVideoDetailResult<Record<string, unknown>>(
+      "example.org", "video-a", options, "https:", immediateLimiter
     );
+    assert.equal(result.kind, "unknown");
   });
 });

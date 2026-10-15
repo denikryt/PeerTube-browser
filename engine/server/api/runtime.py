@@ -34,7 +34,6 @@ class EngineRuntimeState:
     recommendation_strategy: Any
     related_personalization_deps: Any
     related_personalization_enabled: bool
-    video_error_threshold: int
     recommendations_debug_enabled: bool
     use_client_likes: bool
     rate_limiter: RateLimiter | None

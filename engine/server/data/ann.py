@@ -45,7 +45,6 @@ def compute_similar_items(server: Any, seed: dict[str, Any], limit: int) -> list
         metadata = fetch_metadata_by_index_ids(
             server.db,
             index_ids,
-            error_threshold=getattr(server, "video_error_threshold", None),
         )
     logging.info("[similar-server] ann_metadata=%d", len(metadata))
     source_author_key = None

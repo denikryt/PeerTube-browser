@@ -202,7 +202,6 @@ state = SimpleNamespace(
     db=conn,
     db_lock=threading.RLock(),
     rate_limiter=None,
-    video_error_threshold=3,
     enable_instance_ignore=True,
     enable_channel_blocklist=True,
 )

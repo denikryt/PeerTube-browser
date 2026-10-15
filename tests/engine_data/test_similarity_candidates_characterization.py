@@ -130,7 +130,6 @@ def _server(conn: sqlite3.Connection) -> SimpleNamespace:
         db_lock=threading.RLock(),
         similarity_db=None,
         similarity_db_lock=threading.RLock(),
-        video_error_threshold=2,
         similarity_max_per_author=1,
         similarity_exclude_source_author=True,
     )

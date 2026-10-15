@@ -54,11 +54,11 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
-def test_recent_videos_are_newest_first_and_exclude_over_threshold_errors() -> None:
+def test_recent_videos_are_newest_first_independent_of_diagnostics() -> None:
     """Recent fallback should prefer newest usable rows and respect limit."""
-    rows = fetch_recent_videos(_connect(), limit=2, error_threshold=2)
+    rows = fetch_recent_videos(_connect(), limit=2)
 
-    assert [row["video_id"] for row in rows] == ["new", "popular"]
+    assert [row["video_id"] for row in rows] == ["bad", "new"]
     assert rows[0]["thumbnail_urls"] == ["https://example.org/thumb.jpg"]
 
 
@@ -68,20 +68,18 @@ def test_legacy_feeds_filter_availability_before_top_n(reason):
     conn = _connect()
     conn.execute("UPDATE videos SET invalid_reason=? WHERE video_id='popular'", (reason,))
     conn.execute("UPDATE videos SET invalid_reason=? WHERE video_id='new'", (reason,))
-    expected = {"old", "new", "popular"} if reason is None else {"old"}
+    expected = {"old", "bad", "new", "popular"} if reason is None else {"old", "bad"}
     for fetch in [fetch_random_rows, fetch_recent_videos, fetch_popular_videos]:
-        assert {r["video_id"] for r in fetch(conn, 10, 2)} == expected
-    assert [r["video_id"] for r in fetch_popular_videos(conn, 1, 2)] == (
-        ["popular"] if reason is None else ["old"]
-    )
+        assert {r["video_id"] for r in fetch(conn, 10)} == expected
+    assert [r["video_id"] for r in fetch_popular_videos(conn, 1)] == ["bad"]
     conn.close()
 
 
-def test_popular_videos_use_current_popularity_order_and_error_filter() -> None:
-    """Popular fallback should order by popularity while excluding unusable rows."""
-    rows = fetch_popular_videos(_connect(), limit=2, error_threshold=2)
+def test_popular_videos_use_current_popularity_order_independent_of_diagnostics() -> None:
+    """Popular fallback retains high-error available rows in popularity order."""
+    rows = fetch_popular_videos(_connect(), limit=2)
 
-    assert [row["video_id"] for row in rows] == ["popular", "new"]
+    assert [row["video_id"] for row in rows] == ["bad", "popular"]
 
 
 def test_popular_videos_preserve_candidate_cut_before_embedding_filter() -> None:
@@ -93,20 +91,20 @@ def test_popular_videos_preserve_candidate_cut_before_embedding_filter() -> None
     conn.execute("DELETE FROM video_embeddings WHERE video_id = 'popular'")
     conn.commit()
 
-    rows = fetch_popular_videos(conn, limit=2, error_threshold=2)
+    rows = fetch_popular_videos(conn, limit=2)
 
     # Legacy semantics cut the canonical top-N first; embedding eligibility then
     # filters that fixed window instead of pulling lower-ranked replacements.
-    assert [row["video_id"] for row in rows] == ["new"]
+    assert [row["video_id"] for row in rows] == ["bad"]
 
 
 def test_random_rows_return_usable_unique_rows_with_limit() -> None:
-    """Random fallback should respect limit and filter high-error rows."""
-    rows = fetch_random_rows(_connect(), limit=3, error_threshold=2)
+    """Random fallback respects limit without using diagnostic error counts."""
+    rows = fetch_random_rows(_connect(), limit=3)
 
     ids = [row["video_id"] for row in rows]
     assert len(ids) == 3
-    assert "bad" not in ids
+    assert all(video_id in {"bad", "new", "popular", "old"} for video_id in ids)
     assert len(set(ids)) == len(ids)
 
 
@@ -125,11 +123,11 @@ def test_interaction_signals_do_not_change_legacy_random_likes_or_popular_order(
     )
     conn.commit()
 
-    popular = fetch_popular_videos(conn, limit=4, error_threshold=2)
-    assert [row["video_id"] for row in popular][:2] == ["popular", "new"]
+    popular = fetch_popular_videos(conn, limit=4)
+    assert [row["video_id"] for row in popular][:2] == ["bad", "popular"]
     assert all("interaction_signal_score" not in row for row in popular)
 
-    random_rows = fetch_random_rows(conn, limit=10, error_threshold=2)
+    random_rows = fetch_random_rows(conn, limit=10)
     by_id = {row["video_id"]: row for row in random_rows}
     assert by_id["new"]["likes"] == 2
     assert by_id["popular"]["likes"] == 20

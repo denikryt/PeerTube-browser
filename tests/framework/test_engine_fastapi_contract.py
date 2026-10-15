@@ -17,6 +17,15 @@ sys.path.insert(0, str(ROOT / "engine" / "server" / "api"))
 sys.path.insert(0, str(ROOT / "engine" / "server"))
 for module_name in ("app", "runtime", "http_adapters"):
     sys.modules.pop(module_name, None)
+# Client and Engine own different modules under the same top-level `services`
+# import name. During combined collection, make both sets available for tests.
+import services  # noqa: E402
+engine_services = str(ROOT / "engine" / "server" / "api" / "services")
+client_services = str(ROOT / "client" / "backend" / "services")
+for package_path in (engine_services, client_services):
+    if package_path not in services.__path__:
+        services.__path__.append(package_path)
+
 fake_ann = types.ModuleType("data.ann")
 fake_ann.search_index = lambda *_args, **_kwargs: ([], [])
 sys.modules["data.ann"] = fake_ann
@@ -50,7 +59,6 @@ def make_state() -> EngineRuntimeState:
         recommendation_strategy=SimpleNamespace(name="test"),
         related_personalization_deps=None,
         related_personalization_enabled=False,
-        video_error_threshold=3,
         recommendations_debug_enabled=False,
         use_client_likes=True,
         rate_limiter=RateLimiter(10_000, 60),

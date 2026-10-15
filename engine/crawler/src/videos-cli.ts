@@ -67,17 +67,17 @@ program
   )
   .option(
     "--tags",
-    "Tags-only mode: fetch per-video tags via /api/v1/videos/:uuid for videos with tags_json NULL or []",
+    "Tags maintenance: refresh stored tags from available video detail; select tags_json NULL or []",
     false
   )
   .option(
     "--update-tags",
-    "Tags-only mode: refresh tags via /api/v1/videos/:uuid for videos with existing tags_json",
+    "Tags maintenance: refresh already-populated tags from available video detail",
     false
   )
   .option(
     "--comments",
-    "Comments-only mode: fetch per-video comments via /api/v1/videos/:uuid",
+    "Comments maintenance: refresh comments_count from available video detail",
     false
   )
   .option(
@@ -87,12 +87,12 @@ program
   )
   .option(
     "--metadata",
-    "Metadata-v1 backfill mode for rows below the current metadata version",
+    "Metadata projection backfill for rows below the current metadata version",
     false
   )
   .option(
     "--update-metadata",
-    "Metadata-v1 maintenance mode that explicitly revisits completed rows",
+    "Metadata projection maintenance: explicitly revisit completed rows without updating availability",
     false
   )
   .option(

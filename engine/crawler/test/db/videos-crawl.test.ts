@@ -1391,6 +1391,91 @@ for (const mode of ["tagsOnly", "commentsOnly", "metadataOnly", "refreshThumbnai
   }
 }
 
+// Exercise the real maintenance selectors and projection stores with only the
+// PeerTube transport stubbed. An absent optional field must not clear old data.
+for (const mode of ["tagsOnly", "updateTags", "commentsOnly"] as const) {
+  for (const valid of [true, false]) {
+    test(`${mode} ${valid ? "accepts" : "skips"} optional projection without availability writes`, async () => {
+      const temp = createTempDb(`maintenance-projection-${mode}-${valid}`);
+      const originalFetch = globalThis.fetch;
+      try {
+        const storedTags = mode === "updateTags" ? '["old"]' : null;
+        const storedComments = valid ? null : 7;
+        seedThumbnailVideo(temp.dbPath, "example.org", {
+          tagsJson: storedTags,
+          commentsCount: storedComments
+        });
+        globalThis.fetch = async () => new Response(JSON.stringify({
+          uuid: "uuid-1",
+          name: "Video",
+          tags: valid ? ["linux", "foss"] : "not-a-tag-array",
+          comments: valid ? 0 : null
+        }), { status: 200 });
+
+        await crawlVideos(metadataOptions(temp.dbPath, {
+          [mode]: true,
+          resume: valid,
+          maxRetries: 0
+        }));
+        const row = getRow<{
+          tags_json: string | null; comments_count: number | null;
+          invalid_reason: string | null; invalid_at: number | null;
+          error_count: number;
+        }>(temp.dbPath, `SELECT tags_json, comments_count, invalid_reason, invalid_at,
+          error_count FROM videos WHERE video_id='v1'`);
+        assert.equal(row.tags_json, mode === "commentsOnly"
+          ? storedTags : valid ? '["linux","foss"]' : storedTags);
+        assert.equal(row.comments_count, mode === "commentsOnly" && valid ? 0 : storedComments);
+        assert.equal(row.invalid_reason, null);
+        assert.equal(row.invalid_at, null);
+        assert.equal(row.error_count, 0);
+      } finally {
+        globalThis.fetch = originalFetch;
+        temp.cleanup();
+      }
+    });
+  }
+}
+
+test("thumbnail projection DB failure records diagnostics without publishing availability", async () => {
+  const temp = createTempDb("thumbnail-projection-failure-diagnostic");
+  const originalFetch = globalThis.fetch;
+  try {
+    seedThumbnailVideo(temp.dbPath, "example.org");
+    const db = new Database(temp.dbPath);
+    try {
+      // A failed thumbnail projection must be handled locally, independently of
+      // the validated video-detail outcome and its canonical availability.
+      db.exec(`CREATE TRIGGER fail_thumbnail_projection
+        BEFORE UPDATE OF thumbnail_candidates_json ON videos
+        BEGIN SELECT RAISE(ABORT, 'intentional thumbnail projection failure'); END`);
+    } finally {
+      db.close();
+    }
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      uuid: "uuid-1",
+      thumbnails: [{ fileUrl: "/fresh.jpg", width: 850, height: 480 }]
+    }), { status: 200 });
+
+    await crawlVideos(metadataOptions(temp.dbPath, { refreshThumbnails: true, maxRetries: 0 }));
+
+    const row = getRow<{
+      invalid_reason: string | null; invalid_at: number | null;
+      thumbnail_candidates_json: string | null; error_count: number;
+      last_error: string;
+    }>(temp.dbPath, `SELECT invalid_reason, invalid_at, thumbnail_candidates_json,
+      error_count, last_error FROM videos WHERE video_id='v1'`);
+    assert.equal(row.invalid_reason, null);
+    assert.equal(row.invalid_at, null);
+    assert.equal(row.thumbnail_candidates_json, null);
+    assert.equal(row.error_count, 1);
+    assert.match(row.last_error, /intentional thumbnail projection failure/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    temp.cleanup();
+  }
+});
+
 /** Start one detail-only HTTP fixture and expose every requested path. */
 async function thumbnailDetailFixture(
   responder: (url: URL) => { status?: number; body?: object }

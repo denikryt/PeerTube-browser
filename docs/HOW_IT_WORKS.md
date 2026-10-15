@@ -79,9 +79,9 @@ Engine cannot serve recommendations without canonical embeddings and a compatibl
 
 Engine reads canonical videos, channels, instances, embeddings, moderation state, prepared discovery data, and search data from `whitelist.db`.
 
-Serving excludes videos that fail canonical availability or moderation rules. `invalid_reason IS NULL` is the canonical available state. Diagnostic fields such as `error_count` and `last_error` remain separate from canonical availability.
+Serving requires `invalid_reason IS NULL`; diagnostic fields do not hide videos. Instance and channel moderation are applied independently before result limits and direct-video network requests.
 
-Video metadata lookup accepts project identity forms such as ID or UUID with host. The response uses canonical database fields and may overlay current public PeerTube metadata when that request path supports it. Unusable or moderated rows are filtered before returning a frontend-compatible row.
+Direct `/api/video` resolves the stored host and UUID, then requests PeerTube detail over HTTPS without following redirects. Matching data overlays the response; a direct 404/410 returns request-only 404, while other failures use cached fields. The request never writes Engine data; existing-row availability remains Updater-owned.
 
 ## Discovery Providers
 
