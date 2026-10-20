@@ -1,6 +1,7 @@
 """Regression coverage for Discovery pagination invariants and Random traversal."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import base64
 import json
 import sqlite3
@@ -57,6 +58,7 @@ def _install_canonical_schema(conn: sqlite3.Connection) -> None:
         ) WITHOUT ROWID;
         """
     )
+    ensure_parent_health_schema(conn)
     conn.execute("ALTER TABLE videos ADD COLUMN thumbnail_candidates_json TEXT")
 
 

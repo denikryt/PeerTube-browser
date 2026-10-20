@@ -1,6 +1,7 @@
 """Behavior tests for the SQLite FTS5 lightweight video search index."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
 import pytest
 
@@ -69,6 +70,7 @@ def _db() -> sqlite3.Connection:
         CREATE TABLE channel_moderation (channel_id TEXT, instance_domain TEXT, status TEXT, PRIMARY KEY(channel_id, instance_domain));
         """
     )
+    ensure_parent_health_schema(conn)
     conn.execute(
         "INSERT INTO channels(channel_id, channel_name, display_name, instance_domain, followers_count) VALUES (?, ?, ?, ?, ?)",
         ("c1", "linuxchannel", "Linux Lab", "a.example", 10),

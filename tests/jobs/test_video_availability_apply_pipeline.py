@@ -1,6 +1,7 @@
 """Same-run sweep publication through real updater lifecycle and merge job."""
 
 import logging
+import json
 import sqlite3
 import subprocess
 import sys
@@ -10,9 +11,29 @@ import pytest
 
 from engine.server.data.prepared_discovery import rebuild_prepared_discovery
 from engine.server.db.bootstrap import bootstrap_engine_runtime_db
-from tests.jobs.test_video_availability_sweep import accepted_pipeline as _accepted_pipeline
+from tests.jobs.test_video_availability_sweep import (
+    accepted_pipeline as _accepted_pipeline,
+    simulate_parent_cli_observation,
+)
 
 accepted_pipeline = _accepted_pipeline
+
+
+def _use_parent_video_merge_rules(args):
+    """Use a real merger contract without unrelated embeddings in lightweight fixtures."""
+    Path(args.merge_rules).write_text(json.dumps({"tables": [
+        {"name": "instances", "strategy": "INSERT_ONLY", "keys": ["host"]},
+        {"name": "channels", "strategy": "INSERT_ONLY", "keys": ["channel_id", "instance_domain"]},
+        {"name": "videos", "strategy": "INSERT_ONLY", "keys": ["video_id", "instance_domain"]},
+    ]}), encoding="utf-8")
+
+
+def _real_merge(cmd, cwd):
+    """Execute the actual CLI and expose its failure instead of faking publication."""
+    completed = subprocess.run([sys.executable, *cmd[1:]], cwd=cwd, capture_output=True, text=True)
+    if completed.returncode:
+        raise RuntimeError(completed.stderr)
+    return completed.stderr
 
 
 @pytest.mark.parametrize("mode", ["ordinary", "report", "apply"])
@@ -31,10 +52,12 @@ def test_real_merge_and_opt_in_publication(accepted_pipeline, mode, caplog):
         conn.row_factory = sqlite3.Row
         rebuild_prepared_discovery(conn)
     commands = []
+    merger_logs = []
 
     def runner(cmd, cwd):
         """Replace crawler/network and heavy artifacts; execute actual merge SQL."""
         name = Path(cmd[1]).name
+        simulate_parent_cli_observation(stage, cmd)
         commands.append(name)
         if name == "videos-cli.js" and "--check-availability" not in cmd:
             with sqlite3.connect(stage) as conn:
@@ -54,10 +77,7 @@ def test_real_merge_and_opt_in_publication(accepted_pipeline, mode, caplog):
                     "instance_domain TEXT)"
                 )
         if name == "merge-staging-db.py":
-            completed = subprocess.run(
-                [sys.executable, *cmd[1:]], cwd=cwd, capture_output=True, text=True
-            )
-            assert completed.returncode == 0, completed.stderr
+            merger_logs.append(_real_merge(cmd, cwd))
         if name == "recompute-popularity.py":
             with sqlite3.connect(prod) as conn:
                 pair = conn.execute(
@@ -79,7 +99,7 @@ def test_real_merge_and_opt_in_publication(accepted_pipeline, mode, caplog):
             "SELECT invalid_reason,invalid_at FROM videos WHERE video_id='b'"
         ).fetchone() == (("not_found", 123) if mode == "apply" else (None, None))
     assert caplog.text.count("video_availability_report ") == int(mode != "ordinary")
-    assert caplog.text.count("video_availability_publication ") == int(mode == "apply")
+    assert sum("video_availability_publication " in line for line in merger_logs) == int(mode == "apply")
     assert (
         commands.index("stop")
         < commands.index("merge-staging-db.py")
@@ -98,6 +118,7 @@ def test_apply_failure_obeys_durable_restart_guard(accepted_pipeline, monkeypatc
     args.check_existing_video_availability = False
     args.apply_existing_video_availability = True
     from engine.server.data.prepared_discovery import prepared_discovery_available
+    _use_parent_video_merge_rules(args)
 
     def ready(path):
         """Read real durable Prepared readiness at the existing restart boundary."""
@@ -117,30 +138,32 @@ def test_apply_failure_obeys_durable_restart_guard(accepted_pipeline, monkeypatc
     def runner(cmd, cwd):
         """Inject source drift or a derived build fault at actual lifecycle boundaries."""
         name = Path(cmd[1]).name
+        simulate_parent_cli_observation(stage, cmd)
         commands.append(name)
         if "--check-availability" in cmd:
             with sqlite3.connect(stage) as conn:
                 conn.execute("UPDATE video_availability_work SET outcome='gone',checked_at=123")
         if name == "merge-staging-db.py":
-            # Merge owns invalidation even before publisher; reflect that canonical
-            # transaction effect without invoking unrelated derived jobs.
-            from engine.server.data.prepared_discovery import invalidate_prepared_discovery
-
-            with sqlite3.connect(prod) as conn:
-                invalidate_prepared_discovery(conn)
-                if failure == "uuid":
-                    conn.execute("UPDATE videos SET video_uuid='drift' WHERE video_id='a'")
+            if failure == "uuid":
+                # Evidence identity drift must fail inside the same canonical
+                # transaction after merge, without changing production first.
+                with sqlite3.connect(stage) as conn:
+                    conn.execute("UPDATE video_availability_work SET video_uuid='drift' "
+                                 "WHERE video_id='a'")
+            _real_merge(cmd, cwd)
         if name == "rebuild-video-discovery-data.py":
             raise RuntimeError("derived rebuild failed")
 
     with caplog.at_level(logging.INFO), pytest.raises(RuntimeError):
         pipeline.run_pipeline(args, command_runner=runner, validate_files=False)
-    assert "start" not in commands and not ready(prod)
+    # Before COMMIT the old prepared generation is still valid; after COMMIT,
+    # a failed derived build must keep Engine stopped for rebuild.
+    assert ("start" in commands) == (failure == "uuid")
+    assert ready(prod) == (failure == "uuid")
     with sqlite3.connect(prod) as conn:
         assert conn.execute("SELECT invalid_reason FROM videos WHERE video_id='b'").fetchone() == (
             None if failure == "uuid" else "gone",
         )
-    assert caplog.text.count("video_availability_publication ") == int(failure == "derived")
     assert ("recompute-popularity.py" in commands) == (failure == "derived")
 
 
@@ -157,20 +180,25 @@ def test_cli_valid_modes_share_sweep_contract(apply, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "extra",
+    "extra,allowed",
     [
-        ["--check-existing-video-availability"],
-        ["--retry-errors", "--resume-staging"],
-        ["--sync-join-whitelist", "--dry-run"],
-        ["--host-pipeline"],
+        (["--check-existing-video-availability"], False),
+        (["--retry-errors", "--resume-staging"], False),
+        (["--sync-join-whitelist", "--dry-run"], True),
+        (["--host-pipeline"], True),
     ],
 )
-def test_apply_cli_incompatible_modes_fail_before_effects(extra):
-    """Apply inherits sweep eligibility and rejects simultaneous report mode."""
+def test_apply_cli_mode_contract_before_effects(extra, allowed):
+    """Application and report cannot coexist; fresh parent modes remain supported."""
     from engine.server.db.jobs.updater import cli
 
-    with pytest.raises(SystemExit):
-        cli.parse_args(["--apply-existing-video-availability", *extra, "--service-name", "test"])
+    cmd = ["--apply-existing-video-availability", *extra, "--service-name", "test"]
+    if allowed:
+        parsed = cli.parse_args(cmd)
+        assert parsed.apply_existing_video_availability is True
+    else:
+        with pytest.raises(SystemExit):
+            cli.parse_args(cmd)
 
 
 def test_direct_conflicting_flags_and_old_sqlite_fail_before_paths(tmp_path, monkeypatch):
@@ -197,6 +225,7 @@ def test_resumed_apply_discards_old_work_and_keeps_frozen_scope(accepted_pipelin
     pipeline, args, prod, stage = accepted_pipeline
     args.check_existing_video_availability = False
     args.apply_existing_video_availability = True
+    _use_parent_video_merge_rules(args)
     scope = tmp_path / "hosts"
     scope.write_text("example.org\n")
     args.hosts_file = str(scope)
@@ -222,6 +251,7 @@ def test_resumed_apply_discards_old_work_and_keeps_frozen_scope(accepted_pipelin
                     )
                 scope.unlink()
             commands.append(cmd)
+            simulate_parent_cli_observation(stage, cmd)
             if "--hosts-file" in cmd:
                 frozen = Path(cmd[cmd.index("--hosts-file") + 1])
                 assert frozen != scope and frozen.read_text().strip() == "example.org"
@@ -240,6 +270,8 @@ def test_resumed_apply_discards_old_work_and_keeps_frozen_scope(accepted_pipelin
                         )
                 if interrupted:
                     raise RuntimeError("interrupted sweep")
+            if Path(cmd[1]).name == "merge-staging-db.py":
+                _real_merge(cmd, cwd)
 
         if interrupted:
             with pytest.raises(RuntimeError, match="interrupted sweep"):

@@ -32,7 +32,19 @@ def corpus(tmp_path):
         c.execute(
             "UPDATE videos SET invalid_reason='gone',invalid_at=9,error_count=100 WHERE video_id='a'"
         )
+        # Production keeps original PK/host spelling, while fresh parent
+        # eligibility is resolved against normalized staging host identity.
+        c.execute("UPDATE videos SET channel_id='owned'")
     with sqlite3.connect(stage) as c:
+        for host in ("example.org", "denied.org"):
+            c.execute("INSERT INTO instances(host,health_status,health_checked_at) "
+                      "VALUES(?,'ok',123)", (host,))
+            c.execute("INSERT INTO channels(channel_id,channel_name,instance_domain,health_status,health_checked_at) "
+                      "VALUES('owned','owned',?,'ok',123)", (host,))
+            c.execute("INSERT INTO channel_crawl_progress(instance_domain,status,last_start,updated_at) "
+                      "VALUES(?,'done',0,123)", (host,))
+            c.execute("INSERT INTO crawl_state(key,value) VALUES(?,?)",
+                      ("parent_enumeration_v1:" + host, "page_zero_complete_v1"))
         c.execute(
             "INSERT INTO videos(video_id,instance_domain,video_uuid,last_checked_at) VALUES('stage-only','example.org','stage-only',0)"
         )
@@ -97,18 +109,23 @@ def test_explicit_empty_scope_fails_validation(tmp_path, text):
         )
 
 
-@pytest.mark.parametrize("mode", ["retry_errors", "sync_join_whitelist", "host_pipeline"])
-def test_incompatible_modes_rejected(mode):
-    """Advanced combinations are rejected by the shared direct-call validator."""
+@pytest.mark.parametrize("mode,allowed", [
+    ("retry_errors", False), ("sync_join_whitelist", True), ("host_pipeline", True),
+])
+def test_availability_mode_boundary_matches_parent_lifecycle(mode, allowed):
+    """Retry cannot publish; strict sync and host-pipeline run fresh parent checks."""
     args = SimpleNamespace(check_existing_video_availability=True, hosts_file=None, **{mode: True})
-    with pytest.raises(ValueError):
-        cli.validate_availability_sweep_mode(args)
+    if allowed:
+        assert cli.validate_availability_sweep_mode(args) is None
+    else:
+        with pytest.raises(ValueError, match="retry-errors"):
+            cli.validate_availability_sweep_mode(args)
     args.check_existing_video_availability = False
     assert cli.validate_availability_sweep_mode(args) is None
 
 
-def test_report_requires_finished_evidence_and_counts_nulls(corpus):
-    """A failed host is terminal but is never counted as a detail request."""
+def test_report_requires_one_detail_observation_per_selected_video(corpus):
+    """Legacy host-wide skips are rejected; attempted detail unknowns are valid."""
     prod, stage = corpus
     staging.reset_video_availability_work(stage)
     staging.materialize_video_availability_work(
@@ -117,30 +134,19 @@ def test_report_requires_finished_evidence_and_counts_nulls(corpus):
     with pytest.raises(RuntimeError):
         staging.video_availability_report(stage, missing_uuid=2)
     with sqlite3.connect(stage) as c:
-        c.execute(
-            "UPDATE video_availability_work SET outcome='available',checked_at=123 WHERE video_id='a'"
-        )
-        c.execute(
-            "UPDATE video_availability_work SET outcome='unknown',error='host_preflight: unavailable' WHERE video_id='b'"
-        )
-    # Mixed detail/preflight evidence for the same host must fail closed.
+        c.execute("UPDATE video_availability_work SET outcome='available',checked_at=123 "
+                  "WHERE video_id='a'")
+        c.execute("UPDATE video_availability_work SET outcome='unknown',"
+                  "error='host_preflight: unavailable' WHERE video_id='b'")
+    # A legacy skip never authorizes success, even when all hosts differ.
     with pytest.raises(RuntimeError):
         staging.video_availability_report(stage, missing_uuid=2)
     with sqlite3.connect(stage) as c:
-        c.execute(
-            "UPDATE video_availability_work SET instance_domain='other.org' WHERE video_id='b'"
-        )
-    r = staging.video_availability_report(stage, missing_uuid=2)
-    assert r == dict(
-        selected_videos=2,
-        available=1,
-        not_found=0,
-        gone=0,
-        unknown=1,
-        missing_uuid=2,
-        hosts_processed=1,
-        hosts_skipped_preflight=1,
-        video_requests_attempted=1,
+        c.execute("UPDATE video_availability_work SET checked_at=124,"
+                  "error='detail: network' WHERE video_id='b'")
+    assert staging.video_availability_report(stage, missing_uuid=2) == dict(
+        selected_videos=2, available=1, not_found=0, gone=0, unknown=1,
+        missing_uuid=2, hosts_processed=1, video_requests_attempted=2,
     )
     staging.reset_video_availability_work(stage)
     assert all(v == 0 for v in staging.video_availability_report(stage, missing_uuid=0).values())
@@ -227,13 +233,14 @@ def test_full_pipeline_uses_frozen_scope_through_real_late_counts(
     host_file.write_text(" A.example \n" + "\n".join(f"host{i}.org" for i in range(1001)))
     args.hosts_file = str(host_file)
     prod, stage = Path(args.prod_db), Path(args.staging_db)
-    # Production has no parent rows for selected videos, and staging-only IDs
-    # must not become work. All schema/selection/report/counter code runs real.
+    # Production video identities are preserved; only freshly checked staged
+    # parents authorize existing-video work. All SQLite paths remain real.
     with sqlite3.connect(prod) as c:
         c.executescript(SCHEMA.read_text())
         for i, host in [("a", "a.example"), ("b", "b.example")]:
             c.execute(
-                "INSERT INTO videos(video_id,instance_domain,video_uuid,last_checked_at) VALUES(?,?,?,0)",
+                "INSERT INTO videos(video_id,instance_domain,video_uuid,last_checked_at,channel_id) "
+                "VALUES(?,?,?,0,'owned')",
                 (i, host, "uuid-" + i),
             )
     staging.init_staging_db(stage, SCHEMA)
@@ -261,6 +268,31 @@ def test_full_pipeline_uses_frozen_scope_through_real_late_counts(
                     host_file.unlink()
                 else:
                     host_file.write_text("b.example\n" if edit == "replace" else "# empty\n")
+        # Fake only PeerTube network answers, preserving their SQLite effects.
+        # The operator file can change after the first discovery request, but
+        # that must not admit b.example or alter the current frozen scope.
+        if name == "instances-cli.js":
+            with connect(stage) as c:
+                c.execute("INSERT OR IGNORE INTO instances(host) VALUES('a.example')")
+                c.execute("INSERT INTO channels(channel_id,channel_name,instance_domain) "
+                          "VALUES('owned','owned','a.example')")
+        if name == "channels-cli.js" and "--initialize-only" in cmd:
+            with connect(stage) as c:
+                c.execute("INSERT INTO channel_crawl_progress(instance_domain,status,last_start,updated_at) "
+                          "VALUES('a.example','pending',0,123)")
+                c.execute("INSERT INTO crawl_state(key,value) "
+                          "VALUES('parent_enumeration_v1:a.example','page_zero_complete_v1')")
+        if name == "instances-health-cli.js":
+            with connect(stage) as c:
+                c.execute("UPDATE instances SET health_status='ok',health_checked_at=123 "
+                          "WHERE host='a.example'")
+        if name == "channels-cli.js" and "--already-initialized" in cmd:
+            with connect(stage) as c:
+                c.execute("UPDATE channel_crawl_progress SET status='done' WHERE instance_domain='a.example'")
+        if name == "channels-cli.js" and "--check-health" in cmd:
+            with connect(stage) as c:
+                c.execute("UPDATE channels SET health_status='ok',health_checked_at=123 "
+                          "WHERE instance_domain='a.example'")
         if "--check-availability" in cmd:
             with connect(stage) as c:
                 assert c.execute("SELECT video_id FROM video_availability_work").fetchall() == [
@@ -269,28 +301,32 @@ def test_full_pipeline_uses_frozen_scope_through_real_late_counts(
                 c.execute("UPDATE video_availability_work SET outcome='available',checked_at=123")
         if name == "build-video-embeddings.py":
             with connect(stage) as c:
-                c.execute("INSERT INTO instances(host) VALUES('a.example')")
+                c.execute("INSERT OR IGNORE INTO instances(host) VALUES('a.example')")
 
     with caplog.at_level(logging.INFO):
         pipeline.run_pipeline(args, command_runner=runner, validate_files=False)
-    assert (
-        len(snapshots) == 4
-        and len({s[0] for s in snapshots}) == 1
-        and len({s[1] for s in snapshots}) == 1
-    )
+    # The initial operator snapshot and the later selected-host snapshot have
+    # different content, but no stage rereads the mutated operator file.
+    assert len(snapshots) == 7
+    assert snapshots[0][1].startswith("a.example\n")
+    assert "host1000.org" in snapshots[0][1]
+    assert all(body == "a.example\n" for _, body in snapshots[1:])
+    assert len({path for path, _ in snapshots[1:]}) == 1
     assert "--allow-empty-scoped-whitelist" in commands[0]
     assert all("--allow-empty-scoped-whitelist" not in c for c in commands[1:])
     names = [Path(c[1]).name for c in commands]
-    assert names[:6] == [
+    assert names[:8] == [
         "instances-cli.js",
-        "channels-cli.js",
+        "channels-cli.js",  # reset
+        "instances-health-cli.js",
+        "channels-cli.js",  # page-zero enumeration
+        "channels-cli.js",  # unresolved health
         "channels-videos-count-cli.js",
-        "videos-cli.js",
-        "videos-cli.js",
-        "build-video-embeddings.py",
+        "videos-cli.js",  # new ingest
+        "videos-cli.js",  # existing-video detail
     ]
     assert caplog.text.count("video_availability_report ") == 1
-    assert "instances=1 channels=0 videos=0 embeddings=0" in caplog.text
+    assert "instances=1 channels=1 videos=0 embeddings=0" in caplog.text
     assert not Path(snapshots[0][0]).exists()
     with connect(prod) as c:
         assert c.execute(
@@ -328,9 +364,31 @@ def test_large_json_selection_uses_shared_uncorrelated_scope(tmp_path, monkeypat
         for i in range(100000)
     ]
     with sqlite3.connect(prod) as c:
-        c.execute("CREATE TABLE videos(video_id TEXT,instance_domain TEXT,video_uuid TEXT)")
-        c.executemany("INSERT INTO videos VALUES(?,?,?)", rows)
+        # Existing-video work now needs a production channel identity; the
+        # crawler's parent probe owns the corresponding staging eligibility.
+        c.execute("CREATE TABLE videos(video_id TEXT,instance_domain TEXT,video_uuid TEXT,channel_id TEXT)")
+        c.executemany("INSERT INTO videos VALUES(?,?,?, 'owned')", rows)
     staging.init_staging_db(stage, SCHEMA)
+    eligible_hosts = included - denied
+    with sqlite3.connect(stage) as c:
+        c.executemany(
+            "INSERT INTO instances(host,health_status,health_checked_at) VALUES(?,'ok',123)",
+            ((host,) for host in sorted(eligible_hosts)),
+        )
+        c.executemany(
+            "INSERT INTO channels(channel_id,channel_name,instance_domain,health_status,health_checked_at) "
+            "VALUES('owned','owned',?,'ok',123)",
+            ((host,) for host in sorted(eligible_hosts)),
+        )
+        c.executemany(
+            "INSERT INTO channel_crawl_progress(instance_domain,status,last_start,updated_at) "
+            "VALUES(?,'done',0,123)",
+            ((host,) for host in sorted(eligible_hosts)),
+        )
+        c.executemany(
+            "INSERT INTO crawl_state(key,value) VALUES(?,'page_zero_complete_v1')",
+            (("parent_enumeration_v1:" + host,) for host in sorted(eligible_hosts)),
+        )
     statements = []
     connect = sqlite3.connect
 
@@ -360,7 +418,11 @@ def test_large_json_selection_uses_shared_uncorrelated_scope(tmp_path, monkeypat
             "EXPLAIN QUERY PLAN SELECT * FROM production.videos v WHERE 1" + staging.WORK_SCOPE_SQL,
             params,
         ).fetchall()
-        assert not any("CORRELATED" in r[3].upper() for r in plan)
+        # Parent admission is legitimately correlated to a production video.
+        # The 20k-host membership check must instead be an uncorrelated
+        # json_each list, never 20k SQL parameters or one JSON scan per row.
+        assert any("JSON_EACH" in r[3].upper() for r in plan)
+        assert not any("CORRELATED LIST SUBQUERY" in r[3].upper() for r in plan)
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
             c.execute("DELETE FROM production.videos")
     assert not any("TEMP TABLE" in q.upper() for q in statements)
@@ -403,28 +465,26 @@ def test_cli_and_direct_pipeline_reject_bad_scope_before_effects(tmp_path, filen
     assert not Path(args.staging_db).exists()
 
 
-@pytest.mark.parametrize("mode", ["--retry-errors", "--sync-join-whitelist", "--host-pipeline"])
-def test_cli_and_direct_pipeline_reject_incompatible_modes(tmp_path, mode):
-    """The top-of-pipeline validator runs even for manually constructed args."""
+@pytest.mark.parametrize("mode,allowed", [
+    ("--retry-errors", False), ("--sync-join-whitelist", True), ("--host-pipeline", True),
+])
+def test_cli_and_direct_pipeline_availability_mode_contract(tmp_path, mode, allowed):
+    """The public CLI and direct validator accept the same intended modes."""
     from engine.server.db.jobs.updater import pipeline
     from tests.jobs.test_updater_pipeline_commands import _args
 
-    with pytest.raises(SystemExit):
-        cli.parse_args(
-            [
-                "--check-existing-video-availability",
-                mode,
-                "--resume-staging",
-                "--service-name",
-                "test",
-            ]
-        )
-    args = _args(
-        tmp_path, check_existing_video_availability=True, **{mode[2:].replace("-", "_"): True}
-    )
-    with pytest.raises(ValueError):
-        pipeline.run_pipeline(args, validate_files=False)
-    assert not Path(args.staging_db).exists()
+    flags = ["--check-existing-video-availability", mode, "--resume-staging", "--service-name", "test"]
+    args = _args(tmp_path, check_existing_video_availability=True, **{mode[2:].replace("-", "_"): True})
+    if allowed:
+        parsed = cli.parse_args(flags)
+        assert getattr(parsed, mode[2:].replace("-", "_")) is True
+        assert cli.validate_availability_sweep_mode(args) is None
+    else:
+        with pytest.raises(SystemExit):
+            cli.parse_args(flags)
+        with pytest.raises(ValueError, match="retry-errors"):
+            pipeline.run_pipeline(args, validate_files=False)
+        assert not Path(args.staging_db).exists()
 
 
 def test_scoped_json_counters_fail_closed_without_host_column(tmp_path):
@@ -458,6 +518,40 @@ def test_work_reset_rejects_wrong_role_without_mutation(corpus, role):
         assert c.execute("SELECT video_id FROM video_availability_work").fetchall() == [("old",)]
 
 
+def simulate_parent_cli_observation(stage: Path, cmd: list[str]) -> None:
+    """Record the parent facts an accepted fake PeerTube probe would persist.
+
+    The Python pipeline still owns selection, reset, materialization and merge;
+    only the external Node subprocess's SQLite effects are represented here.
+    Old ``done`` alone is never fabricated as current-run evidence.
+    """
+    if cmd[0] != "node":
+        return
+    name = Path(cmd[1]).name
+    if name not in {"channels-cli.js", "instances-health-cli.js"}:
+        return
+    with sqlite3.connect(stage) as c:
+        if name == "channels-cli.js" and "--initialize-only" in cmd:
+            c.execute("INSERT INTO channel_crawl_progress(instance_domain,status,last_start,updated_at) "
+                      "VALUES('example.org','pending',0,123) ON CONFLICT(instance_domain) "
+                      "DO UPDATE SET status='pending',last_start=0,updated_at=123")
+            c.execute("INSERT OR REPLACE INTO crawl_state(key,value) "
+                      "VALUES('parent_enumeration_v1:example.org','page_zero_complete_v1')")
+            c.execute("UPDATE instances SET health_status=NULL,health_checked_at=NULL,health_error=NULL "
+                      "WHERE host='example.org'")
+            c.execute("UPDATE channels SET health_status=NULL,health_checked_at=NULL,health_error=NULL "
+                      "WHERE instance_domain='example.org'")
+        elif name == "instances-health-cli.js":
+            c.execute("UPDATE instances SET health_status='ok',health_checked_at=123 "
+                      "WHERE host='example.org'")
+        elif name == "channels-cli.js" and "--already-initialized" in cmd:
+            c.execute("UPDATE channel_crawl_progress SET status='done',last_start=0 "
+                      "WHERE instance_domain='example.org'")
+        elif name == "channels-cli.js" and "--check-health" in cmd:
+            c.execute("UPDATE channels SET health_status='ok',health_checked_at=123 "
+                      "WHERE instance_domain='example.org'")
+
+
 @pytest.fixture
 def accepted_pipeline(tmp_path, monkeypatch):
     """Run real updater staging lifecycle while substituting subprocesses only."""
@@ -472,7 +566,8 @@ def accepted_pipeline(tmp_path, monkeypatch):
     with sqlite3.connect(prod) as c:
         c.executescript(SCHEMA.read_text())
         c.executemany(
-            "INSERT INTO videos(video_id,instance_domain,video_uuid,last_checked_at) VALUES(?,?,?,0)",
+            "INSERT INTO videos(video_id,instance_domain,video_uuid,last_checked_at,channel_id) "
+            "VALUES(?,?,?,0,'owned')",
             [("a", "example.org", "uuid-a"), ("b", "example.org", "uuid-b")],
         )
         c.execute("CREATE TABLE video_embeddings(video_id TEXT PRIMARY KEY,embedding BLOB)")
@@ -480,6 +575,12 @@ def accepted_pipeline(tmp_path, monkeypatch):
         c.execute("CREATE TABLE derived_evidence(value TEXT)")
         c.execute("INSERT INTO derived_evidence VALUES('untouched')")
     staging.init_staging_db(stage, SCHEMA)
+    # Existing production identities are not sufficient to authorize a sweep.
+    # A resumed fake crawler will freshly reset/probe these staging parents.
+    with sqlite3.connect(stage) as c:
+        c.execute("INSERT INTO instances(host) VALUES('example.org')")
+        c.execute("INSERT INTO channels(channel_id,channel_name,instance_domain) "
+                  "VALUES('owned','owned','example.org')")
     monkeypatch.setattr(pipeline, "_prepared_discovery_is_available", lambda p: True)
     return pipeline, args, prod, stage
 
@@ -498,6 +599,7 @@ def test_interruption_has_no_report_or_merge_and_restart_discards_evidence(
 
     def fail(cmd, cwd):
         commands.append(cmd)
+        simulate_parent_cli_observation(stage, cmd)
         if "--check-availability" in cmd:
             with sqlite3.connect(stage) as c:
                 if point != "before":
@@ -520,6 +622,7 @@ def test_interruption_has_no_report_or_merge_and_restart_discards_evidence(
     commands.clear()
 
     def succeed(cmd, cwd):
+        simulate_parent_cli_observation(stage, cmd)
         if not commands:
             with sqlite3.connect(stage) as c:
                 assert c.execute("SELECT COUNT(*) FROM video_availability_work").fetchone()[0] == 0
@@ -634,7 +737,9 @@ def test_built_node_worker_runs_after_production_file_removed(corpus, tmp_path):
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.count("/api/v1/video-channels") == 1
+    # Parent eligibility was already decided by the persisted staging worklist.
+    # Availability must not re-probe the channel list before video detail.
+    assert result.stdout.count("/api/v1/video-channels") == 0
     assert result.stdout.count("/api/v1/videos/") == 2
     assert "video_availability_report" not in result.stdout
     assert (
@@ -748,7 +853,7 @@ def test_scope_snapshot_creation_failure_precedes_staging_reset(
         c.execute(
             "INSERT INTO video_availability_work(video_id,instance_domain,video_uuid) VALUES('evidence','example.org','uuid')"
         )
-    monkeypatch.setattr(pipeline, "write_hosts_file", lambda *a: None)
+    monkeypatch.setattr(pipeline, "write_hosts_file", lambda *a, **kw: None)
     with pytest.raises(RuntimeError, match="freeze"):
         pipeline.run_pipeline(
             args, command_runner=lambda *a: pytest.fail("crawler ran"), validate_files=False

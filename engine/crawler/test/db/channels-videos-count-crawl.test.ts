@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { crawlChannelVideosCount } from "../../src/channels-videos-count-worker.js";
 import { ChannelStore } from "../../src/db/channels.js";
-import { createTempDb, getRow } from "./helpers.js";
+import { createTempDb, confirmFreshParents, getRow } from "./helpers.js";
 
 test("error-only count crawl retries an error even when resume is enabled", async () => {
   const temp = createTempDb("crawler-count-error-retry");
@@ -32,6 +32,7 @@ test("error-only count crawl retries an error even when resume is enabled", asyn
   }]);
   store.updateChannelVideosCountError("c1", host, "[timeout] prior failure");
   store.close();
+  confirmFreshParents(temp.dbPath, [host]);
 
   try {
     await crawlChannelVideosCount({
@@ -99,6 +100,7 @@ test("normal count resume requests only channels whose count is still missing", 
     }
   ]);
   store.close();
+  confirmFreshParents(temp.dbPath, [host]);
 
   try {
     await crawlChannelVideosCount({

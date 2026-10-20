@@ -206,6 +206,102 @@ export class ChannelStore {
     return rows.map((row) => row.instance_domain);
   }
 
+  /** Initialize exactly one page-zero parent enumeration for the selected hosts.
+   *
+   * The state stamp and cleared parent observations commit with progress. A
+   * retry never infers this provenance from historical status='done' alone.
+   */
+  initializeParentEnumeration(hosts: string[]) {
+    if (!hosts.length) return;
+    this.db.exec("CREATE TABLE IF NOT EXISTS crawl_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    const reset = this.db.prepare(`INSERT INTO channel_crawl_progress
+      (instance_domain,status,last_start,updated_at) VALUES (?,'pending',0,?)
+      ON CONFLICT(instance_domain) DO UPDATE SET
+      status='pending',last_start=0,updated_at=excluded.updated_at`);
+    const clearInstance = this.db.prepare(`UPDATE instances SET
+      health_status=NULL,health_checked_at=NULL,health_error=NULL WHERE host=?`);
+    const clearChannels = this.db.prepare(`UPDATE channels SET
+      health_status=NULL,health_checked_at=NULL,health_error=NULL WHERE instance_domain=?`);
+    const stamp = this.db.prepare(`INSERT INTO crawl_state(key,value)
+      VALUES (?,'page_zero_complete_v1') ON CONFLICT(key) DO UPDATE SET value=excluded.value`);
+    this.db.transaction((selected: string[]) => {
+      for (const host of new Set(selected)) {
+        if (!host || host !== host.trim().toLowerCase()) throw new Error("Invalid parent host selection");
+        reset.run(host, Date.now());
+        clearInstance.run(host);
+        clearChannels.run(host);
+        stamp.run(`parent_enumeration_v1:${host}`);
+      }
+    })(hosts);
+  }
+
+  /** Reject a child invocation whose host was never initialized by the new crawler. */
+  assertParentEnumerationPrepared(hosts: string[]) {
+    if (!hosts.length) return;
+    const query = this.db.prepare(`SELECT 1 FROM channel_crawl_progress p
+      JOIN crawl_state state ON state.key='parent_enumeration_v1:' || p.instance_domain
+      WHERE p.instance_domain=? AND state.value='page_zero_complete_v1' AND p.last_start=0`);
+    for (const host of hosts) {
+      if (!query.get(host)) throw new Error(
+        `Parent enumeration not initialized for ${host}; run ordinary --resume-staging first`
+      );
+    }
+  }
+
+  /** Identify count-repair candidates before imposing parent provenance.
+   * A legacy non-candidate host must not block another host's repair.
+   */
+  listHostsWithCountRepair(hosts: string[]): string[] {
+    if (!hosts.length) return [];
+    const rows = this.db.prepare(`SELECT DISTINCT c.instance_domain AS host
+      FROM channels c
+      WHERE c.instance_domain IN (SELECT value FROM json_each(?))
+        AND c.channel_name IS NOT NULL AND c.videos_count IS NULL
+        AND c.last_error_source='videos_count' ORDER BY host`)
+      .all(JSON.stringify(hosts)) as { host: string }[];
+    return rows.map(row => row.host);
+  }
+
+  /** Identify video-repair candidates without trusting historic parent progress.
+   * Only actionable failed video enumerations require current provenance.
+   */
+  listHostsWithVideoRepair(hosts: string[]): string[] {
+    if (!hosts.length) return [];
+    const rows = this.db.prepare(`SELECT DISTINCT p.instance_domain AS host
+      FROM video_crawl_progress p
+      JOIN channels c ON c.channel_id=p.channel_id
+        AND c.instance_domain=p.instance_domain
+      WHERE p.instance_domain IN (SELECT value FROM json_each(?))
+        AND p.status='error' AND c.videos_count >= 1
+        AND c.channel_name IS NOT NULL ORDER BY host`)
+      .all(JSON.stringify(hosts)) as { host: string }[];
+    return rows.map(row => row.host);
+  }
+
+  /** Select current-instance-ok hosts from the precisely prepared host scope. */
+  listFreshHealthyHosts(hosts: string[], completed = false): string[] {
+    if (!hosts.length) return [];
+    const sql = `SELECT i.host FROM instances i
+      JOIN channel_crawl_progress p ON p.instance_domain=i.host
+      JOIN crawl_state state ON state.key='parent_enumeration_v1:' || i.host
+      WHERE i.host IN (SELECT value FROM json_each(?))
+        AND i.health_status='ok' AND i.health_checked_at IS NOT NULL
+        AND state.value='page_zero_complete_v1' AND p.last_start=0
+        AND p.status ${completed ? "= 'done'" : "IN ('pending','in_progress')"}
+      ORDER BY i.host`;
+    return (this.db.prepare(sql).all(JSON.stringify(hosts)) as {host: string}[]).map(row => row.host);
+  }
+
+  /** Select only unresolved channels on this freshly complete host. */
+  listUnresolvedChannelsForHealth(host: string): ChannelRow[] {
+    if (!this.listFreshHealthyHosts([host], true).length) return [];
+    return this.db.prepare(`SELECT channel_id,channel_name,instance_domain,videos_count,
+      health_status,health_checked_at,health_error,last_error,last_error_at,last_error_source
+      FROM channels WHERE instance_domain=? AND health_status IS NULL
+        AND channel_name IS NOT NULL AND length(trim(channel_name))>0
+      ORDER BY channel_id`).all(host) as ChannelRow[];
+  }
+
   /**
    * Handle prepare channel progress.
    */
@@ -419,6 +515,14 @@ export class ChannelStore {
          WHERE instance_domain = ?
            AND channel_name IS NOT NULL
            AND videos_count IS NULL
+           AND health_status='ok' AND health_checked_at IS NOT NULL
+           AND EXISTS (SELECT 1 FROM instances i
+             JOIN channel_crawl_progress p ON p.instance_domain=i.host
+             JOIN crawl_state state ON state.key='parent_enumeration_v1:' || i.host
+             WHERE i.host=channels.instance_domain
+               AND i.health_status='ok' AND i.health_checked_at IS NOT NULL
+               AND p.status='done' AND p.last_start=0
+               AND state.value='page_zero_complete_v1')
            ${errorFilter}
          ORDER BY channel_id ASC`
       )

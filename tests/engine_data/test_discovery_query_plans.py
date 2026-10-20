@@ -7,6 +7,7 @@ must be visible and the old temp-sort/JSON-expansion hot paths must stay absent.
 """
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
 import sys
 from pathlib import Path
@@ -69,6 +70,7 @@ def _conn() -> _RecordingConnection:
         ) WITHOUT ROWID;
         """
     )
+    ensure_parent_health_schema(conn)
     conn.execute("ALTER TABLE videos ADD COLUMN thumbnail_candidates_json TEXT")
     apply_main_read_indexes(conn)
     conn.executemany(
@@ -171,18 +173,28 @@ def test_tag_filter_uses_video_tags_primary_key_without_runtime_json_expansion()
     assert conn.provider_statement is not None
     sql, _ = conn.provider_statement
 
+    # SQLite may annotate the indexed membership lookup with EXISTS; retain
+    # the exact three-key constraint and prohibit scans/JSON expansion below.
     assert any(
-        "SEARCH vt USING PRIMARY KEY (tag=? AND video_id=? AND instance_domain=?)" in detail
+        detail.startswith("SEARCH vt ")
+        and "USING PRIMARY KEY (tag=? AND video_id=? AND instance_domain=?)" in detail
         for detail in plan
     ), plan
     assert "json_each" not in sql.lower()
     assert not any("SCAN vt" in detail for detail in plan), plan
 
 
-def test_video_availability_direct_and_seed_lookups_keep_indexed_identity_plans():
+def test_video_availability_direct_and_seed_lookups_keep_indexed_identity_plans(monkeypatch):
     """On a representative corpus, extra availability predicates do not force video scans."""
     import numpy as np
     from data.embeddings import fetch_seed_embedding
+    # Mixed Client/Engine subsets may already cache Client services. Extend the
+    # namespace only for this test instead of depending on Engine API conftest
+    # collection order; retain Client modules and restore the path afterwards.
+    import services
+    monkeypatch.setattr(services, "__path__", [
+        *services.__path__, str(ROOT / "engine/server/api/services")
+    ])
     from handlers.video import fetch_video_row
     from engine.server.db.migrations.apply import apply_video_index_ids_migration
 

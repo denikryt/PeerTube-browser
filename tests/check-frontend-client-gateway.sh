@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TARGET_DIR="${ROOT_DIR}/client/frontend/src"
 
-TMP_FILE="$(mktemp /tmp/frontend-client-gateway.XXXXXX)"
+TMP_FILE="$(mktemp "${TMPDIR:-/tmp}/frontend-client-gateway.XXXXXX")"
 trap 'rm -f "${TMP_FILE}"' EXIT
 
 violations=0

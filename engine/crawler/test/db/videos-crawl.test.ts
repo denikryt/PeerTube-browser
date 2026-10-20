@@ -15,7 +15,7 @@ import { ChannelStore } from "../../src/db/channels.js";
 import { VideoStore } from "../../src/db/videos.js";
 import { crawlVideos, type VideoCrawlOptions } from "../../src/videos-worker.js";
 import type { VideoUpsertRow } from "../../src/db/types.js";
-import { createTempDb, execSql, getRow } from "./helpers.js";
+import { createTempDb, confirmFreshParents, execSql, getRow } from "./helpers.js";
 import { NoNetworkError } from "../../src/http.js";
 
 /**
@@ -124,6 +124,7 @@ function seedChannel(dbPath: string, host: string, videosCount: number | null = 
     }
   ]);
   channels.close();
+  confirmFreshParents(dbPath, [host]);
 }
 
 test("crawlVideos stores refreshed count and metadata for a channel known to have videos", async () => {
@@ -860,6 +861,7 @@ test("crawlVideos limits simultaneous requests to one PeerTube host", async () =
     avatarUrl: null
   })));
   channels.close();
+  confirmFreshParents(temp.dbPath, [host]);
 
   try {
     await crawlVideos({
@@ -917,6 +919,7 @@ test("crawlVideos spaces normal crawl requests to one PeerTube host", async () =
     avatarUrl: null
   })));
   channels.close();
+  confirmFreshParents(temp.dbPath, [host]);
 
   try {
     await crawlVideos({
@@ -997,6 +1000,7 @@ function seedMetadataChannel(dbPath: string, host: string) {
     avatarUrl: null
   }]);
   channels.close();
+  confirmFreshParents(dbPath, [host]);
 }
 
 async function metadataFixture(handler: (url: URL) => object | string) {
@@ -1364,9 +1368,10 @@ for (const mode of ["tagsOnly", "commentsOnly", "metadataOnly", "refreshThumbnai
           return response;
         };
         const action = crawlVideos(metadataOptions(temp.dbPath, { [mode]: true, maxRetries: 0 }));
-        // Tags/comments preserve process-level abort. Newer projection workers
-        // keep their existing handling rather than acquiring a new abort policy.
-        if (observation === "no-network" && (mode === "tagsOnly" || mode === "commentsOnly")) {
+        // Confirmed local outage is fatal for every maintenance mode. No
+        // per-video diagnostic should be written for a failure of the runner's
+        // own connectivity, regardless of which projection was requested.
+        if (observation === "no-network") {
           await assert.rejects(action, NoNetworkError);
         } else {
           await action;
@@ -1381,7 +1386,7 @@ for (const mode of ["tagsOnly", "commentsOnly", "metadataOnly", "refreshThumbnai
           assert.equal(getRow<{ last_error: string }>(temp.dbPath, "SELECT last_error FROM videos WHERE video_id='v1'").last_error, reason);
           assert.equal(row.error_count, 1);
         }
-        if (observation === "no-network" && (mode === "tagsOnly" || mode === "commentsOnly")) assert.equal(row.error_count, 0);
+        if (observation === "no-network") assert.equal(row.error_count, 0);
         if (["404", "410", "403", "429", "500", "tls", "cert", "timeout", "json"].includes(observation)) assert.ok(row.error_count > 0);
       } finally {
         globalThis.fetch = originalFetch;

@@ -40,21 +40,26 @@ export class NoNetworkError extends Error {
  * Check whether is no network error.
  */
 export function isNoNetworkError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  if (error instanceof NoNetworkError) return true;
-  const err = error as { code?: string; cause?: { code?: string } };
-  const code = err.cause?.code ?? err.code;
-  if (typeof code !== "string" || code.length === 0) return false;
-  const upper = code.toUpperCase();
-  return (
-    upper === "ENETUNREACH" ||
-    upper === "EHOSTUNREACH" ||
-    upper === "ENOTFOUND" ||
-    upper === "EAI_AGAIN" ||
-    upper === "ECONNREFUSED" ||
-    upper === "ETIMEDOUT" ||
-    upper === "ETIMEOUT"
+  // Only a positively identified process-wide outage is fatal. An ordinary
+  // target's DNS/connection/timeout failure does not prove the local network
+  // is down, and must stay available for per-host classification and retry.
+  return error instanceof NoNetworkError || (
+    typeof error === "object" && error !== null &&
+    "code" in error && error.code === "NO_NETWORK"
   );
+}
+
+/** Recognize native-fetch transport codes eligible for the existing curl fallback.
+ * This is independent of the fatal process-wide network-outage signal.
+ */
+function shouldTryCurl(error: unknown): boolean {
+  if (isNoNetworkError(error) || !error || typeof error !== "object") return false;
+  const value = error as { code?: unknown; cause?: { code?: unknown } };
+  const code = value.cause?.code ?? value.code;
+  return typeof code === "string" && [
+    "ENETUNREACH", "EHOSTUNREACH", "ENOTFOUND", "EAI_AGAIN",
+    "ECONNREFUSED", "ETIMEDOUT", "ETIMEOUT"
+  ].includes(code.toUpperCase());
 }
 
 export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): Promise<T> {
@@ -82,7 +87,7 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
           }
         });
       } catch (error) {
-        if (!isNoNetworkError(error)) {
+        if (!shouldTryCurl(error)) {
           throw error;
         }
         response = await fetchViaCurl(url, options);
@@ -112,10 +117,9 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
         throw error;
       }
     } catch (error) {
-      if (isNoNetworkError(error)) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new NoNetworkError(message);
-      }
+      // Preserve the original local-outage evidence without retry, fallback or
+      // conversion to a remote-health observation.
+      if (isNoNetworkError(error)) throw error;
       const classification = classifyCrawlError(error);
       if (!classification.retryable || attempt > options.maxRetries) {
         throw error;

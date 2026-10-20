@@ -99,8 +99,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--resume-staging",
         action="store_true",
         help=(
-            "Reuse existing staging DB and crawler progress tables instead of "
-            "recreating staging from scratch."
+            "Reuse staging rows but restart parent enumeration at page zero "
+            "with fresh health checks (except explicit count/video --retry-errors)."
         ),
     )
     parser.add_argument("--index-path", default=str(default_index), help="Path to ANN index file.")
@@ -221,7 +221,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--retry-errors",
         action="store_true",
         help=(
-            "Retry only failed channel, video, and video-count records already "
+            "Retry only failed video and video-count records already "
             "stored in a resumed staging DB, then stop before embeddings and merge."
         ),
     )
@@ -328,16 +328,10 @@ def validate_availability_sweep_mode(args) -> set[str] | None:
         raise ValueError("Availability report/apply flags must be mutually exclusive booleans")
     if not (report or apply):
         return None
-    # TODO(peertube-browser-availability-advanced-updater-modes): Allow combined modes only
-    # after parent eligibility has end-to-end coverage.
-    if any(
-        getattr(args, mode, False)
-        for mode in ("retry_errors", "sync_join_whitelist", "host_pipeline")
-    ):
-        raise ValueError(
-            "Availability report/apply cannot combine with --retry-errors, "
-            "--sync-join-whitelist or --host-pipeline"
-        )
+    # Retry is deliberately a staging count/video repair with no publication;
+    # normal host pipeline and strict sync own independent fresh parent probes.
+    if getattr(args, "retry_errors", False):
+        raise ValueError("Availability report/apply cannot combine with --retry-errors")
     from .staging import load_scoped_hosts_file, require_sqlite_json_each
 
     hosts = None

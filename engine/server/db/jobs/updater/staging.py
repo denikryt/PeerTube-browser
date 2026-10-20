@@ -360,19 +360,34 @@ def _count_missing_rows(
     )
 
 
-def seed_staging_from_prod(prod_db: Path, staging_db: Path) -> None:
-    """Seed instances/channels from prod into staging using shared columns only."""
+def seed_staging_from_prod(
+    prod_db: Path, staging_db: Path, hosts: set[str] | None = None
+) -> None:
+    """Seed parent metadata from production, optionally for exact existing hosts.
+
+    Strict-sync availability copies only existing selected parents. A scoped
+    seed cannot import unrelated stale production parents or overwrite new-host
+    discovery; parent health is reset before any fresh network observation.
+    """
 
     with sqlite3.connect(prod_db) as conn:
         conn.execute("ATTACH DATABASE ? AS staging", (staging_db.as_posix(),))
+        scoped_json = json.dumps(sorted(_validated_host_set(hosts))) if hosts is not None else None
         for table in ("instances", "channels"):
             cols = shared_columns(conn, table)
             if not cols:
                 continue
             col_sql = ", ".join(f'"{col}"' for col in cols)
+            host_col = "host" if table == "instances" else "instance_domain"
+            predicate = (
+                f" WHERE {host_col} IN (SELECT value FROM json_each(?))"
+                if scoped_json is not None else ""
+            )
             conn.execute(
-                f"INSERT OR REPLACE INTO staging.{table} ({col_sql}) "
-                f"SELECT {col_sql} FROM main.{table}"
+                f"INSERT OR {'IGNORE' if scoped_json is not None else 'REPLACE'} "
+                f"INTO staging.{table} ({col_sql}) "
+                f"SELECT {col_sql} FROM main.{table}{predicate}",
+                (scoped_json,) if scoped_json is not None else (),
             )
         conn.execute(
             "INSERT OR REPLACE INTO staging.crawl_state(key, value) VALUES (?, datetime('now'))",
@@ -384,6 +399,56 @@ def seed_staging_from_prod(prod_db: Path, staging_db: Path) -> None:
         )
         conn.commit()
         conn.execute("DETACH DATABASE staging")
+
+
+def list_staging_hosts(staging_db: Path) -> set[str]:
+    """Return currently discovered normalized staging hosts for scope freezing.
+
+    This read happens after registry discovery; the selected result becomes a
+    single immutable cross-process host file, not separate CLI selections.
+    """
+    with closing(sqlite3.connect(staging_db.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+        return {str(row[0]) for row in conn.execute("SELECT host FROM instances") if row[0]}
+
+
+def assert_retry_parent_provenance(staging_db: Path, selected: set[str]) -> None:
+    """Validate current enumeration only for actual count/video repair candidates.
+
+    Inspect error records before eligibility filters: a real candidate with old
+    provenance must fail explicitly, while unrelated legacy hosts do not block it.
+    """
+    if not selected:
+        return
+    with closing(sqlite3.connect(staging_db.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+        scope = json.dumps(sorted(selected))
+        count_hosts = {str(row[0]) for row in conn.execute("""
+            SELECT DISTINCT c.instance_domain FROM channels c
+            WHERE c.instance_domain IN (SELECT value FROM json_each(?))
+              AND c.channel_name IS NOT NULL AND c.videos_count IS NULL
+              AND c.last_error_source='videos_count'
+        """, (scope,))}
+        video_hosts = {str(row[0]) for row in conn.execute("""
+            SELECT DISTINCT p.instance_domain FROM video_crawl_progress p
+            JOIN channels c ON c.channel_id=p.channel_id AND c.instance_domain=p.instance_domain
+            WHERE p.instance_domain IN (SELECT value FROM json_each(?))
+              AND p.status='error' AND c.videos_count >= 1
+              AND c.channel_name IS NOT NULL
+        """, (scope,))}
+        candidates = count_hosts | video_hosts
+        if not candidates:
+            return
+        actual = {row[0] for row in conn.execute("""
+            SELECT p.instance_domain FROM channel_crawl_progress p
+            JOIN crawl_state state ON state.key='parent_enumeration_v1:' || p.instance_domain
+            WHERE p.instance_domain IN (SELECT value FROM json_each(?))
+              AND state.value='page_zero_complete_v1' AND p.last_start=0
+        """, (json.dumps(sorted(candidates)),))}
+    missing = candidates - actual
+    if missing:
+        raise RuntimeError(
+            "Missing verified parent enumeration for " + ", ".join(sorted(missing)) +
+            "; run ordinary --resume-staging for these hosts before --retry-errors"
+        )
 
 
 def count_staging_deltas(
@@ -603,6 +668,20 @@ WORK_SCOPE_SQL = """
  AND lower(trim(v.instance_domain)) NOT IN (SELECT value FROM json_each(:denied_json))
  AND (:unscoped = 1 OR lower(trim(v.instance_domain)) IN
       (SELECT value FROM json_each(:included_json)))
+ -- A production video is eligible only after this invocation verified both
+ -- parents, completed page-zero enumeration, and stamped host provenance.
+ AND EXISTS (
+   SELECT 1 FROM instances i
+   JOIN channels c ON c.instance_domain = i.host
+   JOIN channel_crawl_progress p ON p.instance_domain = i.host
+   JOIN crawl_state provenance ON provenance.key = 'parent_enumeration_v1:' || i.host
+   WHERE i.host = lower(trim(v.instance_domain))
+     AND c.channel_id = v.channel_id
+     AND i.health_status = 'ok' AND i.health_checked_at IS NOT NULL
+     AND c.health_status = 'ok' AND c.health_checked_at IS NOT NULL
+     AND p.status = 'done' AND p.last_start = 0
+     AND provenance.value = 'page_zero_complete_v1'
+ )
 """
 
 
@@ -728,7 +807,7 @@ def inspect_video_availability_work(
     Only owned aliases are interpolated. Generation, corpus, table and index
     must match exactly; this function never creates or repairs work schema.
     """
-    if schema not in {"main", "evidence"}:
+    if schema not in {"main", "stage", "evidence"}:
         raise ValueError("Unsupported availability evidence schema")
     assert_video_availability_staging_semantics_conn(conn, schema)
     for name, ddl in (
@@ -753,28 +832,21 @@ def inspect_video_availability_work(
       FROM {schema}.video_availability_work""").fetchone()
     invalid = cursor.execute(f"""SELECT COUNT(*) FROM {schema}.video_availability_work
       WHERE typeof(video_id) != 'text' OR length(trim(video_id))=0
-          OR typeof(instance_domain) != 'text' OR length(trim(instance_domain))=0
-          OR typeof(video_uuid) != 'text' OR length(trim(video_uuid))=0
-          OR (checked_at IS NULL AND (outcome IS NOT 'unknown' OR error IS NULL
-             OR error NOT LIKE 'host_preflight: %'))
-      OR (checked_at IS NOT NULL AND (typeof(checked_at) != 'integer'
-          OR checked_at < 0 OR checked_at > 9007199254740991))
+      OR typeof(instance_domain) != 'text' OR length(trim(instance_domain))=0
+      OR typeof(video_uuid) != 'text' OR length(trim(video_uuid))=0
+      OR typeof(checked_at) != 'integer' OR checked_at < 0
+      OR checked_at > 9007199254740991
       OR (outcome='unknown' AND (error IS NULL OR length(trim(error))=0
           OR length(error)>512 OR instr(error,char(10))>0 OR instr(error,char(13))>0))
-      OR (checked_at IS NULL AND length(error)<=length('host_preflight: '))
       OR (outcome IN ('available','not_found','gone') AND error IS NOT NULL)
-      OR (checked_at IS NOT NULL AND error LIKE 'host_preflight: %')""").fetchone()[0]
-    hosts = cursor.execute(f"""SELECT lower(trim(instance_domain)) AS host_key,
-      COUNT(*) AS selected, COUNT(*) FILTER (WHERE checked_at IS NULL) AS skipped
-      FROM {schema}.video_availability_work GROUP BY lower(trim(instance_domain))""").fetchall()
+      OR error LIKE 'host_preflight: %'""").fetchone()[0]
     if (
         counts["unfinished"]
         or invalid
         or counts["selected_videos"] != (
             counts["available"] + counts["not_found"] + counts["gone"] + counts["unknown"]
         )
-        or not 0 <= counts["video_requests_attempted"] <= counts["selected_videos"]
-        or any(0 < host["skipped"] < host["selected"] for host in hosts)
+        or counts["video_requests_attempted"] != counts["selected_videos"]
     ):
         raise RuntimeError("Availability sweep incomplete or inconsistent; no success report")
     return dict(
@@ -783,8 +855,8 @@ def inspect_video_availability_work(
         not_found=counts["not_found"],
         gone=counts["gone"],
         unknown=counts["unknown"],
-        hosts_processed=sum(host["skipped"] == 0 for host in hosts),
-        hosts_skipped_preflight=sum(host["skipped"] > 0 for host in hosts),
+        hosts_processed=cursor.execute(f"""SELECT COUNT(DISTINCT lower(trim(instance_domain)))
+          FROM {schema}.video_availability_work""").fetchone()[0],
         video_requests_attempted=counts["video_requests_attempted"],
     )
 

@@ -51,8 +51,7 @@ From the repository root:
 
 ```bash
 ./venv/bin/python3 engine/server/db/jobs/updater-worker.py \
-  --gpu \
-  --skip-local-dead
+  --gpu
 ```
 
 `--gpu` runs embedding and FAISS stages on GPU and retries a failed GPU stage in CPU mode. Use `--cpu` to run both stages on CPU only.
@@ -65,23 +64,16 @@ Updater executes these stages in order:
 2. Recreate staging, or validate and reuse it with `--resume-staging`.
 3. Seed staging with production instances and channels for a new run.
 4. Discover instances.
-5. Optionally remove locally non-healthy hosts from staging with `--skip-local-dead`.
-6. Collect channels, missing video counts, and new videos.
-7. Force-build staging embeddings with the deployed embedding recipe.
-8. Stop Engine unless `--skip-systemctl` is set.
-9. Apply an approved strict-whitelist purge when requested.
-10. Merge staging into production using `merge_rules.json`.
-11. Recompute popularity incrementally.
-12. Rebuild prepared tags and facets.
-13. Synchronize stable video index IDs.
-14. Rebuild Search data.
-15. Rebuild the FAISS index.
-16. Atomically rebuild the Random cache.
-17. Refresh similarity entries for already-cached source videos.
-18. Start Engine when prepared Discovery is ready.
-19. Release the lock.
+5. Freeze the exact selected host set after discovery, including a distinct empty scope.
+6. Reset selected parent health and channel progress to page zero; stamp current provenance.
+7. Probe each selected instance, enumerate its channels from page zero, and verify unresolved channel health. Do not advance incomplete or truncated lists.
+8. Admit counts and new-video ingest only for freshly healthy parents with confirmed `done`.
+9. Optionally sweep existing production video identities already admitted by the same parent gate; query video detail directly without a second channel-list preflight.
+10. Force-build staging embeddings, stop Engine unless `--skip-systemctl` is set, apply an authorized strict purge, and merge staging. Parent health publishes only from the frozen scope (`INSERT NULL` then JSON1-scoped `UPDATE`) in one transaction.
+11. Recompute popularity and rebuild prepared tags/facets, video identity indices, Search, FAISS, Random and similarity artifacts.
+12. Start Engine only when prepared Discovery is ready; release the lock.
 
-The default crawler stages are channel lists, missing counts, and video metadata. `--host-pipeline` replaces those separate commands with a scheduler that gives free capacity to channel lists first, missing counts second, and videos third while allowing different hosts to overlap.
+The default crawler stages are fresh instance health, channel lists/health, missing counts and new video metadata. `--host-pipeline` owns its own reset and probe; all admitted hosts enter its concurrent scheduler at `channels`, then progress to `counts` and `videos` only after persisted `done` and healthy-parent checks. `--max-channels` is a global insertion budget for ordinary channels CLI, but a per-host budget under host-pipeline.
 
 ## Staging and Resume
 
@@ -104,7 +96,7 @@ Resume an interrupted current-generation crawl:
 
 Resume behavior is status-aware:
 
-- channel pagination continues from `channel_crawl_progress.last_start`;
+- channel enumeration resets to page zero for every newly selected normal/resumed run; stale `done`/offsets cannot authorize children;
 - persisted channel video counts are skipped;
 - video pagination continues from `video_crawl_progress.last_start`;
 - normal resume processes `pending` and `in_progress` rows;
@@ -123,7 +115,7 @@ Retry only errors already stored in current staging:
   --timeout-ms 15000
 ```
 
-This mode retries failed channel lists, video pages, and video-count rows, then exits before embeddings, production merge, FAISS, and cache rebuilds. Run a normal `--resume-staging` afterward to finish publication.
+This mode retries failed count/video rows only; it does not re-probe instances, re-enumerate channel lists, merge, rebuild derived data or publish availability. Per-host provenance is validated only for hosts with actual repair work. A repair candidate without current page-zero provenance fails before network access; a historical host with no repair work does not block retry. Run a normal `--resume-staging` to rebuild parent observations and complete publication.
 
 ## Limit a Run to Selected Hosts
 
@@ -134,7 +126,7 @@ Create a UTF-8 file with one host per line, then run:
   --hosts-file /path/to/hosts.txt
 ```
 
-The same normalized host set is passed to every crawler stage. Blank, missing, unreadable, empty, or comment-only files fail before work begins.
+The normalized operator scope is frozen once; every later crawler/merge subprocess receives the frozen snapshot. Blank, missing, unreadable, empty or comment-only **operator** files fail before work begins. A legitimately empty computed scope skips network work; it does not select every host.
 
 `--max-instances`, `--max-channels`, and `--max-videos-pages` are test caps. They are not a replacement for an explicit host scope in production work.
 
@@ -160,7 +152,7 @@ Destructive host purge occurs only after Engine has stopped. `--yes` is required
 
 ## Existing-Video Availability
 
-Availability modes inspect production identities through current crawler detail behavior. Both modes run ordinary new-row collection first and reject `--retry-errors`, `--sync-join-whitelist`, `--dry-run`, and `--host-pipeline` combinations.
+Availability modes inspect production video identities only after fresh parent-health, complete channel-enumeration and provenance gates. They make video-detail requests without a second host-level channel preflight. `--retry-errors` remains incompatible; strict-sync and host-pipeline are permitted with their separate parent scopes, and strict-sync dry-run remains a preview without a sweep.
 
 Start with a small report scope:
 
@@ -170,7 +162,7 @@ Start with a small report scope:
   --hosts-file /path/to/hosts-small.txt
 ```
 
-The sweep records disposable staging evidence and emits one `video_availability_report` JSON log entry containing selected, available, absent, unknown, missing-UUID, host, and request counts. Report mode does not publish availability changes, but the surrounding ordinary update pipeline still proceeds.
+The sweep records disposable per-video detail evidence (each terminal row has an attempted-detail timestamp) and emits one `video_availability_report` JSON log entry containing selected, available, absent, unknown, missing-UUID, processed-host and attempted-request counts. Old `host_preflight` evidence is rejected. Report mode does not publish availability changes, but the surrounding ordinary update pipeline still proceeds.
 
 Publish observations explicitly:
 
@@ -180,7 +172,7 @@ Publish observations explicitly:
   --hosts-file /path/to/hosts-small.txt
 ```
 
-Apply mode publishes after merge and any denylist purge while Engine is offline, then rebuilds every dependent artifact. Only complete current-run observations with exact identity can change canonical `invalid_reason` and `invalid_at`. Unknown results, denied hosts, missing identities, and noncanonical reasons do not overwrite canonical state. A stale or contradictory observation aborts the publication transaction.
+Apply mode publishes staging merge and completed availability evidence in a single SQLite transaction while Engine is offline, then rebuilds every dependent artifact. Only complete current-run observations with exact identity can change canonical `invalid_reason` and `invalid_at`. Unknown results, denied hosts and missing identities do not overwrite canonical state. A definitive AVAILABLE clears any legacy video-availability invalidity; moderation denylist remains separate. A stale or contradictory observation aborts the publication transaction.
 
 Availability work is reset for every accepted invocation, including resumed runs. Old observations are never replayed.
 
@@ -207,8 +199,8 @@ When `--skip-systemctl` can mutate production, keep Engine and every external pr
 
 Only one Updater invocation may run at a time.
 
-- A lock whose PID is alive causes a clear failure.
-- A stale lock is removed.
+- A process holding the nonblocking POSIX file lock causes a clear failure; PID text is diagnostic only.
+- An unlocked stale file is reused. The locked inode is checked against the path before work begins.
 - Normal and exceptional exits release the lock.
 
 Do not remove an active lock to force a second run.
@@ -225,7 +217,6 @@ Important crawler controls are:
 --max-retries          bounded retry count
 --whitelist-url        instance registry source
 --hosts-file           explicit host scope
---skip-local-dead      exclude hosts marked non-healthy in production
 --host-pipeline        enable host-stage scheduling
 ```
 
@@ -261,7 +252,7 @@ sudo bash install-service.sh \
   --mode prod \
   --with-updater-timer \
   --updater-oncalendar 'Sat *-*-* 03:00:00' \
-  --updater-flags '--gpu --skip-local-dead --concurrency 5 --timeout-ms 15000 --max-retries 3'
+  --updater-flags '--gpu --concurrency 5 --timeout-ms 15000 --max-retries 3'
 ```
 
 ## Observe a Run
@@ -292,7 +283,7 @@ sqlite3 engine/server/db/similarity-cache.db "select count(*) from similarity_so
 | Engine stopped, before merge | Unchanged | Fix the failure and rerun; confirm Engine restart state. |
 | Canonical mutation committed, prepared rebuild failed | Updated but not ready | Keep Engine offline and rerun the required rebuild or restore a consistent backup. |
 | Prepared Discovery succeeded, later artifact failed | Canonical data is ready; one derived artifact is stale or absent | Rebuild the failed artifact before relying on its provider. Engine may have restarted. |
-| Availability publication failed before commit | Canonical availability unchanged | Fix the evidence or input error and collect a new run. |
+| Combined merge/availability publication failed before commit | Canonical merge, parent health, availability and readiness changes all rolled back | Fix the evidence or input error and collect a new run. |
 | Availability publication committed, later rebuild failed | Canonical availability updated; derived data incomplete | Keep Engine offline until all required rebuilds succeed or restore a consistent generation. |
 
 Do not reuse staging from an incompatible writer generation. Do not treat a successful availability report as a successful publication. Derived artifacts are rebuildable and are not rollback authority; rollback requires a consistent canonical database and matching application version.

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from data.moderation import ModerationFilterStats, filter_rows_by_moderation
+from data.parent_health_visibility import build_parent_visibility_sql, filter_rows_by_parent_health
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,8 @@ def build_serving_visibility_sql(
     if schema not in {"main", "canonical"}:
         raise ValueError("Unsupported serving visibility schema")
 
-    clauses = [f"{alias}.invalid_reason IS NULL"]
+    # Parent failures are independent of runtime moderation configuration.
+    clauses = [f"{alias}.invalid_reason IS NULL", build_parent_visibility_sql(alias, schema=schema)]
     if flags.apply_instance_filter:
         clauses.append(
             f"""NOT EXISTS (
@@ -75,13 +77,15 @@ def apply_serving_moderation_filters(
     apply_instance_filter = visibility.apply_instance_filter
     apply_channel_filter = visibility.apply_channel_filter
 
-    filtered_rows: list[dict[str, Any]] = rows
-    filtered_stats: ModerationFilterStats | None = None
-    if apply_instance_filter or apply_channel_filter:
-        with server.db_lock:
+    # Cached recommendation rows may have been materialized before parent
+    # health changed; enforce the same gate even with moderation disabled.
+    with server.db_lock:
+        filtered_rows = filter_rows_by_parent_health(server.db, rows)
+        filtered_stats: ModerationFilterStats | None = None
+        if apply_instance_filter or apply_channel_filter:
             filtered_rows, filtered_stats = filter_rows_by_moderation(
                 server.db,
-                rows,
+                filtered_rows,
                 apply_instance_filter=apply_instance_filter,
                 apply_channel_filter=apply_channel_filter,
             )

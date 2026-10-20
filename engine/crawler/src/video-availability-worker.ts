@@ -3,11 +3,6 @@ import {
   VideoAvailabilityWorkStore,
   type AvailabilityWorkRow,
 } from "./db/video-availability.js";
-import { fetchJsonWithRetry } from "./http.js";
-import {
-  classifyCrawlError,
-  shouldTryAlternateProtocol,
-} from "./error-classification.js";
 import {
   createRequestLimiter,
   type RequestLimiter,
@@ -25,31 +20,40 @@ export interface AvailabilitySweepOptions {
   maxRetries: number;
 }
 
-/** Stop scheduling on fatal exceptions, then drain already active operations. */
+/** A single invocation-wide stop signal shared by host and detail queues.
+ * It is never global: a failed sweep cannot cancel an independent invocation.
+ */
+interface WorkCancellation {
+  stopped: boolean;
+  reason?: unknown;
+}
+
+/** Stop ALL sibling queues on the first fatal rejection, then drain every
+ * operation already started before allowing the owner to close SQLite.
+ */
 async function bounded<T>(
   items: T[],
   limit: number,
   operation: (item: T) => Promise<void>,
+  cancellation: WorkCancellation,
 ): Promise<void> {
-  let next = 0,
-    failed = false;
-  let failure: unknown;
+  let next = 0;
   await Promise.all(
     Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (!failed && next < items.length) {
+      while (!cancellation.stopped && next < items.length) {
         const item = items[next++];
         try {
           await operation(item);
         } catch (error) {
-          if (!failed) {
-            failed = true;
-            failure = error;
+          if (!cancellation.stopped) {
+            cancellation.stopped = true;
+            cancellation.reason = error;
           }
         }
       }
     }),
   );
-  if (failed) throw failure;
+  if (cancellation.stopped) throw cancellation.reason;
 }
 
 /** Accept only an exact URL authority, rejecting credentials, paths and queries. */
@@ -71,86 +75,35 @@ function safeHost(host: string): boolean {
   }
 }
 
-/** One logical coarse probe with the existing transport-only protocol fallback. */
-async function preflight(
-  host: string,
-  options: AvailabilitySweepOptions,
-  limiter: RequestLimiter,
-): Promise<string> {
-  const request = (protocol: string, retries: number) =>
-    limiter.run(() =>
-      fetchJsonWithRetry<unknown>(
-        `${protocol}//${host}/api/v1/video-channels?start=0&count=1`,
-        { timeoutMs: options.timeoutMs, maxRetries: retries },
-      ),
-    );
-  let protocol = "https:",
-    payload: unknown;
-  try {
-    payload = await request(protocol, options.maxRetries);
-  } catch (error) {
-    if (!shouldTryAlternateProtocol(error)) throw error;
-    protocol = "http:";
-    payload = await request(
-      protocol,
-      Math.max(1, Math.floor(options.maxRetries / 2)),
-    );
-  }
-  // A semantic-invalid successful response never gains HTTP fallback authority.
-  if (!payload || typeof payload !== "object" || Array.isArray(payload))
-    throw new Error("invalid preflight payload");
-  const p = payload as { total?: unknown; data?: unknown };
-  if (
-    typeof p.total !== "number" ||
-    !Number.isFinite(p.total) ||
-    !Number.isInteger(p.total) ||
-    p.total < 0 ||
-    !Array.isArray(p.data)
-  )
-    throw new Error("invalid preflight payload");
-  return protocol;
-}
-
-/** Probe one normalized host once, then consume immutable bounded identity batches. */
+/** Consume a parent-admitted immutable worklist directly at the video boundary.
+ * The upstream materializer has already proved parent eligibility. Rechecking
+ * a channel list here could discard valid video observations on a new failure.
+ */
 async function processAvailabilityHost(
   host: string,
   workStore: VideoAvailabilityWorkStore,
   options: AvailabilitySweepOptions,
+  cancellation: WorkCancellation,
 ): Promise<void> {
+  // Worklist corruption is fatal; never silently mark an entire host unknown.
+  if (!safeHost(host)) throw new Error("Unsafe availability work host");
   const limiter = createRequestLimiter(
-    options.hostConcurrency,
-    options.hostDelayMs,
+    options.hostConcurrency, options.hostDelayMs,
+    () => { if (cancellation.stopped) throw cancellation.reason; },
   );
-  if (!safeHost(host)) {
-    workStore.markHostPreflightUnknown(host, "unsafe_host");
-    return;
-  }
-  let protocol: string;
-  // Catch only preflight failures; result persistence errors remain fatal.
-  try {
-    protocol = await preflight(host, options, limiter);
-  } catch (error) {
-    // TODO(peertube-browser-availability-network-outage): Distinguish local outages from
-    // remote-host failures in parent orchestration.
-    workStore.markHostPreflightUnknown(host, classifyCrawlError(error).kind);
-    return;
-  }
   let cursor: AvailabilityWorkRow | undefined;
   for (;;) {
+    // The other host may have failed while this host was awaiting its batch.
+    if (cancellation.stopped) return;
     const batch = workStore.pendingBatch(host, cursor);
     if (!batch.length) return;
-    // Advance by selected original PK regardless of which rows finish first.
     cursor = batch.at(-1)!;
     await bounded(batch, options.hostConcurrency, async (row) => {
       const result = await fetchVideoDetailResult(
-        host,
-        row.video_uuid,
-        options,
-        protocol,
-        limiter,
+        host, row.video_uuid, options, "https:", limiter,
       );
       workStore.recordResult(row, result);
-    });
+    }, cancellation);
   }
 }
 
@@ -175,9 +128,11 @@ export async function runAvailabilitySweep(
       throw new Error(`Invalid availability ${name}`);
   }
   const store = new VideoAvailabilityWorkStore(options.dbPath);
+  const cancellation: WorkCancellation = { stopped: false };
   try {
     await bounded(store.hosts(), options.concurrency, (host) =>
-      processAvailabilityHost(host, store, options),
+      processAvailabilityHost(host, store, options, cancellation),
+      cancellation,
     );
     store.assertComplete();
   } finally {

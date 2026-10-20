@@ -29,8 +29,8 @@ def test_recommendations_use_longer_engine_timeout(monkeypatch) -> None:
     assert engine_api_client.RECOMMENDATIONS_ENGINE_TIMEOUT_SECONDS > engine_api_client.DEFAULT_ENGINE_TIMEOUT_SECONDS
 
 
-def test_paged_random_discovery_uses_normal_get_timeout(monkeypatch) -> None:
-    """Paged Random uses the internal Discovery GET boundary, not recommendation POST."""
+def test_paged_random_discovery_uses_dedicated_discovery_timeout(monkeypatch) -> None:
+    """Paged Random uses the bounded Discovery GET timeout introduced with Trending."""
     calls: list[tuple[str, dict[str, object] | None, int]] = []
 
     def fake_get_json(url: str, query=None, timeout=engine_api_client.DEFAULT_ENGINE_TIMEOUT_SECONDS):
@@ -42,5 +42,7 @@ def test_paged_random_discovery_uses_normal_get_timeout(monkeypatch) -> None:
     assert calls == [(
         "http://engine.local/internal/discovery/random",
         {"limit": 10},
-        engine_api_client.DEFAULT_ENGINE_TIMEOUT_SECONDS,
+        engine_api_client.DISCOVERY_ENGINE_TIMEOUT_SECONDS,
     )]
+    assert engine_api_client.DEFAULT_ENGINE_TIMEOUT_SECONDS < engine_api_client.DISCOVERY_ENGINE_TIMEOUT_SECONDS
+    assert engine_api_client.DISCOVERY_ENGINE_TIMEOUT_SECONDS < engine_api_client.RECOMMENDATIONS_ENGINE_TIMEOUT_SECONDS

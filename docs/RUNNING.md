@@ -63,6 +63,10 @@ npm run crawl:videos
 cd ../..
 ```
 
+Crawler include scopes intersect `--hosts-file` with any in-process host selection; an explicitly empty include selects zero hosts. Exclusions still apply afterward. A missing include file is an error.
+
+A channel listing stopped by `--max-channels` remains incomplete (`in_progress`, restart offset zero). Only a validated remote end with no eligible rows dropped by the budget is `done`. Host-pipeline stops that host before count/video stages when its channel listing is incomplete.
+
 Build the canonical database:
 
 ```bash
@@ -252,3 +256,76 @@ Full live development-contour install and uninstall check:
 ```bash
 sudo bash tests/run-installers-smoke.sh --mode dev
 ```
+
+## Manual Maintenance and Deployment Barriers
+
+After `npm run build` inside `engine/crawler`, standalone maintenance scripts are available as `npm run crawl:instances`, `crawl:instances:health`, `crawl:channels`, `crawl:channels:health`, `crawl:channels:videos-count`, `crawl:host-pipeline`, `crawl:videos`, `crawl:videos:tags`, `crawl:videos:comments`, `crawl:videos:metadata`, and `crawl:videos:thumbnails` (each accepts its own flags after `--`). An explicit `--hosts-file` selects only its normalized hosts; never run a standalone writer alongside the production Updater. See `docs/UPDATER.md` for scheduled refresh and publication.
+
+The initial dataset commands above are for a fresh installation. For ongoing production updates use `docs/UPDATER.md`; do not run another crawler writer against an active Updater staging database.
+
+Migrate an existing canonical database before using operations that require a newer schema:
+
+```bash
+python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whitelist.db
+```
+
+To refresh historical video metadata, stop Engine and other writers, then run the data-only metadata CLI against a migrated database; it validates the schema and never migrates it:
+
+```bash
+cd engine/crawler
+npm run crawl:videos:metadata -- --db ../server/db/whitelist.db
+cd ../..
+python3 engine/server/db/jobs/rebuild-video-discovery-data.py --db engine/server/db/whitelist.db
+```
+
+A thumbnail-candidate backfill can be limited to a host batch and resumed by SQL-`NULL` candidate state:
+
+```bash
+cd engine/crawler
+npm run crawl:videos:thumbnails -- --db ../server/db/whitelist.db --resume --hosts-file /path/to/host-batch.txt
+cd ../..
+```
+
+Run thumbnail maintenance against production only in a controlled offline write window. Candidate repair does not, by itself, require a rebuild of embeddings or search. The existing single-thumbnail field remains the read fallback when `thumbnail_candidates_json` is SQL `NULL`; an authoritative empty list is `[]` and must not be treated as missing.
+
+Changing `title`, `description`, tags, category or channel name after embeddings were produced requires a coordinated rebuild of embeddings, stable IDs, FAISS, and similarity cache. Do not restart Engine or enable the updater timer until all compatible artifacts pass validation. Routine comments-count maintenance does not change embedding inputs. After direct canonical changes to language, category or tags, rebuild prepared Discovery before Engine resumes serving. Fail closed if a required prepared snapshot is absent.
+
+For the first deployment of a database without prepared tags/facets, stop Engine before deploying code that depends on those structures:
+
+```bash
+python3 engine/server/db/jobs/ensure-video-indexes.py --db engine/server/db/whitelist.db
+python3 engine/server/db/jobs/rebuild-video-discovery-data.py --db engine/server/db/whitelist.db
+sqlite3 engine/server/db/whitelist.db 'SELECT snapshot_id, schema_version FROM video_facets_snapshot WHERE snapshot_id=1;'
+```
+
+Only restart Engine after a valid singleton exists. The operational `--skip-systemctl` flag in Updater means an external operator owns this stop/start barrier (see `docs/UPDATER.md`). Replacing the configured production `random-cache.db` is also offline: stop Engine, run `precompute-random-index-ids.py --refresh --out <configured-path>`, then restart. The cache is atomically replaced and is not hot-reloaded.
+
+## Development and Verification
+
+`make test-fast` (same as `make test`) runs Python compilation, legacy event checks, Client/Engine boundary checks and pytest; it does **not** run the Node builds or live services. Use `python3 -m pytest` for focused Python regressions, `make lint` for scoped Ruff checks, `make test-jobs` for job and framework contracts, and `make test-framework` for framework adapters.
+
+After installing Node dependencies separately in `engine/crawler` and `client/frontend`:
+
+```bash
+make build-crawler
+make test-crawler-db
+make build-frontend
+make test-frontend
+```
+
+`npm run test:db` compiles crawler tests and exercises temporary SQLite databases without contacting PeerTube. `npm run test:live:thumbnails` from `engine/crawler` is an opt-in network smoke and may vary with PeerTube availability; use `-- --report /tmp/thumbnail-smoke.json` to retain findings and `-- --full-instance` only for deliberate exhaustive checks. The frontend uses Vitest; a successful frontend build is not proof its test runner completed.
+
+For service verification run `make test-installers-dry-run` (no service changes), `make test-smoke-arch` (local API boundary smoke), or `sudo bash tests/run-installers-smoke.sh --mode dev` (installs/removes the development contour). The latter requires systemd and sudo. Do not use `--mode all --allow-prod` without explicit production-change approval.
+
+## Split Repository Sync
+
+The monorepo is the source of truth. After configuring `engine-remote` and `client-remote` with their respective split repositories, preview and run subtree publication:
+
+```bash
+bash ./sync-subtrees.sh --dry-run
+bash ./sync-subtrees.sh --require-clean
+bash ./sync-subtrees.sh --engine-only
+bash ./sync-subtrees.sh --client-only
+```
+
+An intentional hotfix made in a split repository can be imported with `git subtree pull --prefix=engine engine-remote main --squash` (or `--prefix=client client-remote main --squash`) and reconciled in the monorepo before the next export. Use `bash ./sync-subtrees.sh --help` for branch/remote overrides; never publish with an unreviewed dirty working tree.

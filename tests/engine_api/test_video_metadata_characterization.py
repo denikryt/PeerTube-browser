@@ -1,6 +1,7 @@
 """Characterize Engine video metadata lookup and dynamic merge behavior."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
 import sys
 import threading
@@ -44,7 +45,8 @@ def _connect() -> sqlite3.Connection:
         );
         """
     )
-    conn.execute("INSERT INTO channels VALUES ('c1', 'example.org', 'slug', 'DB Channel', 10, '/avatar-db.png')")
+    ensure_parent_health_schema(conn)
+    conn.execute("INSERT INTO channels (channel_id,instance_domain,channel_name,display_name,followers_count,avatar_url) VALUES ('c1', 'example.org', 'slug', 'DB Channel', 10, '/avatar-db.png')")
     conn.execute("INSERT INTO instances(host) VALUES ('example.org')")
     conn.execute(
         """

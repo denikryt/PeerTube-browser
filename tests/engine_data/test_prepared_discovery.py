@@ -1,6 +1,7 @@
 """Regression tests for updater-owned prepared Discovery data."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import json
 import sqlite3
 
@@ -47,6 +48,7 @@ def _conn() -> sqlite3.Connection:
         );
         """
     )
+    ensure_parent_health_schema(conn)
     return conn
 
 
@@ -294,6 +296,7 @@ def _create_purge_fixture(conn: sqlite3.Connection) -> None:
         INSERT INTO instances VALUES('purge.example');
         """
     )
+    ensure_parent_health_schema(conn)
     rebuild_prepared_discovery(conn)
 
 
@@ -353,6 +356,7 @@ def test_rebuild_discovery_cli_builds_fresh_artifacts_and_reports_failure(tmp_pa
         conn.execute(
             "INSERT INTO videos VALUES('v1','one.example','c1','en','English','Education','13','[\"linux\"]','',0)"
         )
+        ensure_parent_health_schema(conn)
         conn.commit()
     sqlite3.connect(bad_db).close()
 
@@ -456,6 +460,7 @@ def test_rebuild_discovery_job_runs_optimize_only_after_success(monkeypatch, tmp
         )
         """
     )
+    ensure_parent_health_schema(conn)
     conn.commit()
     monkeypatch.setattr(mod, "parse_args", lambda: SimpleNamespace(db=str(db_path)))
     monkeypatch.setattr(mod, "connect_db", lambda _path: conn)

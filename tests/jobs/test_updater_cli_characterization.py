@@ -3,10 +3,22 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
 from engine.server.db.jobs.updater import cli
+
+
+def test_real_updater_executable_preserves_imports_and_current_flags():
+    """The installed executable must load its complete facade before parsing help."""
+    script = Path(__file__).resolve().parents[2] / "engine/server/db/jobs/updater-worker.py"
+    result = subprocess.run([sys.executable, str(script), "--help"],
+                            capture_output=True, text=True, check=False, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert "--apply-existing-video-availability" in result.stdout
+    assert "--retry-errors" in result.stdout
 
 
 def test_parse_args_keeps_representative_defaults(monkeypatch) -> None:

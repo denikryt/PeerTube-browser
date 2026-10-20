@@ -12,6 +12,7 @@ from typing import Any, Sequence
 from data.metadata import fetch_metadata_by_index_ids
 from data.random_cache import fetch_random_index_ids
 from data.serving_moderation import ServingVisibility, build_serving_visibility_sql
+from data.parent_health_visibility import build_parent_visibility_sql
 from data.video_filters import VideoFilters, build_video_filter_sql
 from data.video_thumbnails import apply_thumbnail_api_fields
 
@@ -276,7 +277,7 @@ def fetch_random_rows(conn: sqlite3.Connection, limit: int) -> list[dict[str, An
           ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
         LEFT JOIN channels c
           ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
-        WHERE v.invalid_reason IS NULL
+        WHERE v.invalid_reason IS NULL AND {build_parent_visibility_sql("v")}
         ORDER BY RANDOM()
         LIMIT ?
         """,
@@ -295,7 +296,7 @@ def fetch_recent_videos(conn: sqlite3.Connection, limit: int) -> list[dict[str, 
           ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
         LEFT JOIN channels c
           ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
-        WHERE v.invalid_reason IS NULL
+        WHERE v.invalid_reason IS NULL AND {build_parent_visibility_sql("v")}
         ORDER BY v.published_at DESC, v.video_id DESC
         LIMIT ?
         """,
@@ -312,7 +313,7 @@ def fetch_popular_videos(conn: sqlite3.Connection, limit: int) -> list[dict[str,
         FROM (
           SELECT v.video_id, v.instance_domain
           FROM videos v
-          WHERE v.invalid_reason IS NULL
+          WHERE v.invalid_reason IS NULL AND {build_parent_visibility_sql("v")}
           ORDER BY
             v.popularity DESC,
             v.likes DESC,

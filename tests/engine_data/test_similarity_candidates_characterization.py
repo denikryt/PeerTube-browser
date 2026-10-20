@@ -1,6 +1,7 @@
 """Characterize Engine similarity candidate row-building behavior."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
 import sys
 import threading
@@ -69,6 +70,7 @@ def _connect() -> sqlite3.Connection:
         );
         """
     )
+    ensure_parent_health_schema(conn)
     conn.execute("ALTER TABLE videos ADD COLUMN thumbnail_candidates_json TEXT")
     # Minimal canonical fixtures include the availability contract.
     conn.execute("ALTER TABLE videos ADD COLUMN invalid_reason TEXT")
@@ -78,7 +80,7 @@ def _connect() -> sqlite3.Connection:
 def _insert_video(conn: sqlite3.Connection, video_id: str, channel_id: str, title: str) -> None:
     """Insert one metadata row and its embedding marker."""
     conn.execute(
-        "INSERT OR IGNORE INTO channels VALUES (?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO channels (channel_id,instance_domain,display_name,avatar_url) VALUES (?, ?, ?, ?)",
         (channel_id, "example.org", f"Channel {channel_id}", f"/{channel_id}.png"),
     )
     conn.execute(

@@ -74,7 +74,7 @@ def rows(prod):
         )
 
 
-@pytest.mark.parametrize("reason", [None, "not_found", "gone", "policy_block", ""])
+@pytest.mark.parametrize("reason", [None, "not_found", "gone", "legacy_unknown", ""])
 @pytest.mark.parametrize("outcome", ["available", "not_found", "gone", "unknown"])
 def test_transition_matrix_preserves_all_other_columns(corpus, reason, outcome, caplog):
     """Only canonical transitions may write, never diagnostics or stable identity."""
@@ -96,7 +96,7 @@ def test_transition_matrix_preserves_all_other_columns(corpus, reason, outcome, 
     with sqlite3.connect(prod) as conn:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(videos)")]
         pair = conn.execute("SELECT invalid_reason,invalid_at FROM videos").fetchone()
-    allowed = reason in (None, "not_found", "gone") and outcome != "unknown"
+    allowed = outcome != "unknown"
     expected = (None, None) if outcome == "available" else (outcome, 3000)
     assert pair == (expected if allowed else (reason, 1000 if reason else None))
     for i, col in enumerate(cols):
@@ -113,7 +113,6 @@ def test_transition_matrix_preserves_all_other_columns(corpus, reason, outcome, 
             "unchanged",
             "skipped_missing",
             "skipped_denied",
-            "skipped_noncanonical_reason",
         )
     )
     assert result["applied_available"] + result["applied_absent"] == int(changed)
@@ -128,8 +127,8 @@ def test_transition_matrix_preserves_all_other_columns(corpus, reason, outcome, 
 
 
 @pytest.mark.parametrize("outcome", ["available", "not_found", "gone"])
-def test_missing_denied_noncanonical_buckets(corpus, outcome):
-    """Skip precedence preserves excluded state and counts each observation once."""
+def test_missing_denied_and_legacy_buckets(corpus, outcome):
+    """Only missing/denied identities skip; legacy availability is authoritative."""
     for identity in ("missing", "denied", "legacy", "live"):
         seed(
             corpus,
@@ -147,11 +146,11 @@ def test_missing_denied_noncanonical_buckets(corpus, outcome):
             "WHERE video_id='denied'"
         )
     result = publisher.publish_existing_video_availability(*corpus, sweep_report=report(corpus))
-    assert (result.skipped_missing, result.skipped_denied, result.skipped_noncanonical_reason) == (
-        1,
-        1,
-        1,
-    )
+    assert (result.skipped_missing, result.skipped_denied) == (1, 1)
+    # A historical unclassified reason is not a policy authority after ownership cut.
+    with sqlite3.connect(corpus[0]) as conn:
+        pair = conn.execute("SELECT invalid_reason, invalid_at FROM videos WHERE video_id='legacy'").fetchone()
+    assert pair == ((None, None) if outcome == "available" else (outcome, 3000))
 
 
 @pytest.mark.parametrize(
@@ -383,30 +382,21 @@ def test_empty_completed_work_is_noop(corpus):
     assert rows(corpus[0]) == before
 
 
-def test_unknown_host_preflight_and_detail_are_not_authority(corpus):
-    """Failed host preflight has no timestamp; detail errors have only diagnostics."""
-    seed(
-        corpus,
-        identity="host",
-        host="host.org",
-        reason="gone",
-        invalid_at=5000,
-        outcome="unknown",
-        checked=None,
-        error="host_preflight: network",
-    )
-    seed(
-        corpus,
-        identity="detail",
-        reason="not_found",
-        invalid_at=5000,
-        outcome="unknown",
-        checked=6000,
-        error="detail: unavailable",
-    )
+def test_legacy_host_preflight_is_not_accepted_as_completed_detail(corpus):
+    """Old host-wide evidence without a video request cannot authorize publication."""
+    seed(corpus, identity="legacy", checked=None, outcome="unknown", error="host_preflight: network")
+    before = rows(corpus[0])
+    with pytest.raises(RuntimeError, match="incomplete or inconsistent"):
+        report(corpus)
+    assert rows(corpus[0]) == before
+
+
+def test_unknown_detail_is_terminal_but_never_absence_authority(corpus):
+    """Attempted detail with a transport failure records unknown, not 404/410."""
+    seed(corpus, identity="detail", outcome="unknown", checked=6000, error="detail: network")
     before = rows(corpus[0])
     summary = publisher.publish_existing_video_availability(*corpus, sweep_report=report(corpus))
-    assert summary.unknown == 2 and summary.eligible_observations == 0
+    assert summary.unknown == 1 and summary.eligible_observations == 0
     assert rows(corpus[0]) == before
 
 

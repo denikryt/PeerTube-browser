@@ -45,6 +45,9 @@ def test_random_publication_contract_is_documented_offline_without_hot_reload() 
     """Positive/negative: Updater is the sole owner of the Random publication contract."""
     updater = (ROOT / "docs/UPDATER.md").read_text().lower()
 
-    assert "atomically rebuild the random cache" in updater
+    # Match the current publication contract rather than an obsolete verb:
+    # the replacement remains atomic and the runtime stays a read-only consumer.
+    assert "random publication builds and validates a sibling temporary database" in updater
+    assert "replaces the production artifact atomically" in updater
     assert "engine does not hot-reload it" in updater
     assert "stops the configured engine service" in updater

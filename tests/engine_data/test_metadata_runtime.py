@@ -1,6 +1,7 @@
 """Canonical runtime metadata projection regression tests."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
 import pytest
 import sys
@@ -40,8 +41,9 @@ def _db() -> sqlite3.Connection:
         );
         """
     )
+    ensure_parent_health_schema(conn)
     apply_video_index_ids_migration(conn)
-    conn.execute("INSERT INTO channels VALUES ('c1', 'example.org', 'Channel', '/a.jpg')")
+    conn.execute("INSERT INTO channels (channel_id,instance_domain,display_name,avatar_url) VALUES ('c1', 'example.org', 'Channel', '/a.jpg')")
     conn.execute(
         """
         INSERT INTO videos VALUES (

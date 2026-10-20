@@ -42,3 +42,5 @@ engine/crawler/dist-test/
 
 # Bundle cache
 peertube-browser
+
+/verification/

@@ -1,6 +1,7 @@
 """Characterize random, recent, and popular Engine fallback feed queries."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
 import pytest
 import sys
@@ -34,13 +35,14 @@ def _connect() -> sqlite3.Connection:
         CREATE TABLE video_embeddings (video_id TEXT, instance_domain TEXT, embedding_dim INTEGER, model_name TEXT, PRIMARY KEY(video_id, instance_domain));
         """
     )
+    ensure_parent_health_schema(conn)
     for video_id, published, views, likes, popularity, error_count in [
         ("old", 1000, 10, 1, 1.0, 0),
         ("new", 3000, 20, 2, 2.0, 0),
         ("bad", 4000, 999, 99, 999.0, 5),
         ("popular", 2000, 100, 20, 50.0, 0),
     ]:
-        conn.execute("INSERT OR IGNORE INTO channels VALUES ('c', 'example.org', 'Channel', '/avatar.png')")
+        conn.execute("INSERT OR IGNORE INTO channels (channel_id,instance_domain,display_name,avatar_url) VALUES ('c', 'example.org', 'Channel', '/avatar.png')")
         conn.execute(
             """
             INSERT INTO videos VALUES (?, ?, ?, 'example.org', 'c', 'c', 'https://example.org/c/c', 'acct',
@@ -112,7 +114,12 @@ def test_compute_popularity_combines_views_likes_and_age_decay() -> None:
     """The shared popularity score formula is a product ranking invariant."""
     score = compute_popularity(views=100, likes=10, published_at=1_000_000, like_weight=2.0, now_ms_value=1_000_000 + 30 * 86_400_000)
 
-    assert score == 60.0
+    # Thirty days is 720 hours; the current Trending contract weights likes
+    # and adds a one-hour denominator floor (changed in 2291fd3).
+    assert score == 120.0 / 721.0
+    recent = compute_popularity(100, 10, 1_000_000, 2.0, 1_000_000 + 3_600_000)
+    assert recent == 60.0
+    assert score < recent
 
 
 def test_interaction_signals_do_not_change_legacy_random_likes_or_popular_order() -> None:

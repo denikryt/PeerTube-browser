@@ -1,6 +1,7 @@
 """Characterize batched embedding lookup used by recommendation layers."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
 import sys
 from pathlib import Path
@@ -99,6 +100,7 @@ def _connect_seed_lookup() -> sqlite3.Connection:
         );
         """
     )
+    ensure_parent_health_schema(conn)
     return conn
 
 
@@ -243,6 +245,7 @@ def test_cache_seed_lookup_uses_video_identity_only() -> None:
         VALUES ('v1', 'uuid-1', 'example.org', 'channel-v1', 'Video v1');
         """
     )
+    ensure_parent_health_schema(conn)
 
     result = fetch_seed_embeddings_for_likes(
         conn,

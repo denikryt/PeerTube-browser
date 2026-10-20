@@ -1,7 +1,7 @@
 /** Canonical side-effect-free PeerTube direct-video-detail request boundary. */
 
 import { classifyCrawlError, shouldTryAlternateProtocol, type CrawlErrorClassification } from "./error-classification.js";
-import { fetchJsonWithRetry } from "./http.js";
+import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import type { RequestLimiter } from "./request-limiter.js";
 
 /** Request settings owned by the existing crawler HTTP retry layer. */
@@ -80,7 +80,8 @@ async function fetchVideoDetailInternal<TDetail extends Record<string, unknown>>
   } catch (error) {
     // Semantic-invalid 2xx validation errors classify as unknown and therefore
     // do not become an accidental reason to retry over another protocol.
-    if (!shouldTryAlternateProtocol(error)) throw error;
+    // An explicit local outage has priority over message-based protocol fallback.
+    if (isNoNetworkError(error) || !shouldTryAlternateProtocol(error)) throw error;
     const fallbackProtocol = protocol === "https:" ? "http:" : "https:";
     return {
       detail: await request(fallbackProtocol, Math.max(1, Math.floor(options.maxRetries / 2))),
@@ -107,6 +108,8 @@ export async function fetchVideoDetailResult<TDetail extends Record<string, unkn
     );
     return { kind: "available", ...result, checkedAt: Date.now() };
   } catch (error) {
+    // Explicit local outage is process-fatal, not an unknown remote video.
+    if (isNoNetworkError(error)) throw error;
     const classification = classifyCrawlError(error);
     const checkedAt = Date.now();
     if (classification.httpStatus === 404) return { kind: "not_found", checkedAt };

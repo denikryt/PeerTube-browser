@@ -107,3 +107,22 @@ flowchart LR
     Similarity --> Engine
     Canonical --> Engine
 ```
+
+## Parent Lifecycle and Publication
+
+```mermaid
+flowchart LR
+    Scope[Frozen host selection] --> Reset[Reset page-zero progress]
+    Reset --> Probe[Instance probe]
+    Probe --> Channels[Channel enumeration and health]
+    Channels --> Eligibility{Fresh ok + done + provenance?}
+    Eligibility -->|yes| Children[Counts and video detail]
+    Eligibility -->|no| Hold[No child requests]
+    Children --> Stage[(Staging DB)]
+    Channels --> Stage
+    Stage --> Merge[INSERT NULL + JSON1-scoped health UPDATE]
+    Merge --> Canonical[(Canonical DB)]
+    Merge --> Invalidate[Prepared Discovery invalidation]
+```
+
+A confirmed local network outage prevents new work across all active host queues; previously started operations drain before staging closes. The canonical Engine side independently filters videos with explicit parent health errors.

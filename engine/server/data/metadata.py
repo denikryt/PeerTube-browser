@@ -7,6 +7,7 @@ from typing import Any
 
 from recommendations.keys import like_key
 from data.video_thumbnails import apply_thumbnail_api_fields
+from data.parent_health_visibility import build_parent_visibility_sql
 
 
 # These fetchers are three identity lookups over one canonical runtime row shape.
@@ -83,6 +84,7 @@ def fetch_metadata(
               ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
             WHERE e.rowid IN ({placeholders})
               AND v.invalid_reason IS NULL
+              AND {build_parent_visibility_sql("v")}
             """,
             params,
         )
@@ -122,6 +124,7 @@ def fetch_metadata_by_index_ids(
             WHERE vii.index_id IN ({placeholders})
               AND vii.is_active = 1
               AND v.invalid_reason IS NULL
+              AND {build_parent_visibility_sql("v")}
             """,
             params,
         ).fetchall()
@@ -163,6 +166,7 @@ def fetch_metadata_by_ids(
               ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
             WHERE ({conditions})
               AND v.invalid_reason IS NULL
+              AND {build_parent_visibility_sql("v")}
             """,
             params,
         ).fetchall()

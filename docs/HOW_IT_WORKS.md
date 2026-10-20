@@ -219,3 +219,32 @@ Thumbnail candidate state distinguishes three cases:
 The first candidate mirrors into the singular thumbnail fields. Preview images are not card-thumbnail candidates.
 
 Canonical availability and crawler diagnostics are separate. Direct detail `404` and `410` can establish `not_found` and `gone` for newly discovered identities. Other failures update diagnostics without establishing canonical absence.
+
+## Parent Health and Child Admission
+
+Crawler parent state is distinct from canonical video availability. Parent health uses the `instances` and `channels` tables; the channel listing has its own `channel_crawl_progress` status. A newly selected host starts at page zero with current per-host provenance, then undergoes fresh instance probe, channel enumeration, and unresolved channel health checks. Channel enumeration reaches `done` only when the remote end is validated and the local channel budget did not discard eligible entries; a truncated result is not completed.
+
+Counts, new-video ingest, and existing-video detail sweeps require a current `ok` instance, a current `ok` channel, confirmed `done` and matching per-host provenance. An old `done` does not authorize new child requests. A confirmed local `NoNetworkError` stops scheduling new work across hosts; remote-host errors remain local to that host. Already-started operations drain before SQLite closes.
+
+The canonical Engine reads filter videos with explicit parent `health_status='error'` in both SQL and already materialized recommendation results. An unset/unknown parent health is not itself proof of permanent absence. Video `invalid_reason` remains the canonical availability filter; diagnostics alone do not tombstone a video.
+
+## Data Ownership and Publication
+
+- Client user/profile schema: `client/backend/db/bootstrap.py` and migrations. Only Client writes users/likes.
+- Crawler source schema: `engine/crawler/schema.sql`. Crawler owns ingestion, health observations, and pagination progress in staging or crawl DB.
+- Canonical database: `engine/server/db/whitelist.db`. Updater/data-build jobs publish canonical video/parent metadata and derived snapshots; Engine owns its runtime/interaction schema via `engine/server/db/bootstrap.py` and `engine/server/db/migrations/`.
+- Derived artifacts: `video_facets_snapshot`, `video_index_ids`, `whitelist-video-embeddings.faiss` and `.json`, `similarity-cache.db`, and `random-cache.db`. Their rebuilds are offline; Engine reads them and never constructs replacements during a request.
+
+Updater merges new parent metadata with `INSERT` health fields set to `NULL`, then publishes only current run's parent observations using a JSON1-scoped `UPDATE` in the same transaction. Existing parent metadata is not rewritten by this health publication. Changes affecting serving visibility invalidate Prepared Discovery atomically; a failed merge rolls back the entire publication.
+
+## Recommendation Configuration
+
+`engine/server/api/recommendations/config.py` owns profiles (`home`, `guest_home`, `upnext`, `guest_upnext`), generators (`exploit`, `explore`, `fresh`, `random`, `popular`) and weights. There is no external YAML/JSON recommendation configuration loader.
+
+- `batch_size × overfetch_factor × gather_ratio` sets each layer's candidate gathering budget, with active ratios normalized. A source's own search limit or pool size can further restrict returned candidates.
+- `mix_ratio` sets final layer quota; `mixing.order` determines fallback when a layer is short.
+- `max_per_author` and `max_per_instance` constrain generator pools; final mixing deduplicates identities and removes already-liked videos.
+- `exploit_min` and `explore.similarity_min/max` filter similarity-based layers; `scoring.weights` and `scoring.layer_weights` determine final order.
+- The similarity cache is keyed by canonical video identity; FAISS and Random use persistent `video_index_ids.index_id`, not the mutable SQLite rowid.
+
+For exact runtime parameter names and default values, inspect the checked-in configuration; descriptions here do not replace validation of that configuration.

@@ -3,13 +3,20 @@
  */
 
 import { Command } from "commander";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { ChannelStore } from "./db/channels.js";
 import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
-import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
+import { loadIncludedHostsFromFile, scopeHosts } from "./host-filters.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
+import { assertWorkActive, stopWork, type WorkCancellation } from "./work-cancellation.js";
 
-interface InstanceHealthOptions {
+export interface InstanceHealthOptions {
+  /** Restrict a shared in-process probe to the owner's frozen host selection. */
+  hosts?: readonly string[];
+  /** Host pipeline may share the same fatal signal with subsequent stages. */
+  cancellation?: WorkCancellation;
   dbPath: string;
   concurrency: number;
   hostDelayMs: number;
@@ -25,8 +32,11 @@ interface InstanceHealthOptions {
 
 interface HealthPage {
   total?: number;
+  data?: unknown[];
 }
 
+/** CLI entry is intentionally excluded when a parent scheduler imports the probe. */
+async function runCommandLine() {
 const program = new Command();
 
 program
@@ -81,10 +91,18 @@ try {
   throw error;
 }
 
+ }
+
+if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+  await runCommandLine();
+}
+
 /**
  * Handle check instances health.
  */
-async function checkInstancesHealth(options: InstanceHealthOptions) {
+export async function checkInstancesHealth(options: InstanceHealthOptions) {
+  const cancellation = options.cancellation ?? { stopped: false };
+  assertWorkActive(cancellation);
   const store = new ChannelStore({ dbPath: options.dbPath });
   const minAgeMs = computeMinAgeMs(options);
   const allHosts = options.host
@@ -92,9 +110,7 @@ async function checkInstancesHealth(options: InstanceHealthOptions) {
     : options.errorsOnly
       ? store.listErrorInstancesNeedingHealth(minAgeMs)
       : store.listInstancesNeedingHealth(minAgeMs);
-  const hosts = options.host
-    ? allHosts
-    : scopeHosts(allHosts, loadHostsFromFile(options.hostsFile), new Set<string>());
+  const hosts = scopeHosts(allHosts, loadIncludedHostsFromFile(options.hostsFile), new Set<string>(), options.hosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
   const total = hosts.length;
   let processed = 0;
@@ -110,12 +126,22 @@ async function checkInstancesHealth(options: InstanceHealthOptions) {
     workerLoop(queue, store, options, total, () => {
       processed += 1;
       return processed;
-    })
+    }, cancellation)
   );
-  await Promise.all(workers);
-
-  console.log("[instances-health] finished");
-  store.close();
+  // One fatal worker must stop issuing new requests, but already active
+  // workers must drain before the shared SQLite connection is released.
+  try {
+    const settled = await Promise.allSettled(workers.map(work => work.catch(error => {
+      stopWork(cancellation, error);
+      queue.length = 0;
+      throw error;
+    })));
+    const rejected = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (rejected) throw rejected.reason;
+    console.log("[instances-health] finished");
+  } finally {
+    store.close();
+  }
 }
 
 /**
@@ -126,12 +152,13 @@ async function workerLoop(
   store: ChannelStore,
   options: InstanceHealthOptions,
   total: number,
-  nextProcessed: () => number
+  nextProcessed: () => number,
+  cancellation: WorkCancellation
 ) {
-  while (true) {
+  while (!cancellation.stopped) {
     const host = queue.pop();
     if (!host) return;
-    await processInstance(host, store, options, total, nextProcessed);
+    await processInstance(host, store, options, total, nextProcessed, cancellation);
   }
 }
 
@@ -143,10 +170,15 @@ async function processInstance(
   store: ChannelStore,
   options: InstanceHealthOptions,
   total: number,
-  nextProcessed: () => number
+  nextProcessed: () => number,
+  cancellation: WorkCancellation
 ) {
+  assertWorkActive(cancellation);
   const normalizedHost = host.toLowerCase();
-  const requestLimiter = createRequestLimiter(1, options.hostDelayMs);
+  const requestLimiter = createRequestLimiter(1, options.hostDelayMs,
+    () => assertWorkActive(cancellation),
+    (error) => { if (isNoNetworkError(error)) stopWork(cancellation, error); }
+  );
   const current = nextProcessed();
   console.log(`[instances-health] start ${current}/${total} ${normalizedHost}`);
 
@@ -157,10 +189,11 @@ async function processInstance(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (isNoNetworkError(error)) {
+      stopWork(cancellation, error);
       console.warn(
         `[instances-health] unchanged ${normalizedHost} local_network=${message}`
       );
-      return;
+      throw error;
     }
     const storedError = formatCrawlError(error);
     store.markInstanceHealthError(normalizedHost, storedError);
@@ -181,18 +214,32 @@ async function fetchInstanceHealth(
 ) {
   const url = buildHealthUrl(host, protocol);
   try {
-    return await requestLimiter.run(() => fetchJsonWithRetry<HealthPage>(url, {
+    const page = await requestLimiter.run(() => fetchJsonWithRetry<HealthPage>(url, {
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries
     }));
+    validateHealthPage(page);
+    return page;
   } catch (error) {
-    if (!shouldTryAlternateProtocol(error)) throw error;
+    // An explicit local outage has priority over message-based protocol fallback.
+    if (isNoNetworkError(error) || !shouldTryAlternateProtocol(error)) throw error;
     const alternate = protocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildHealthUrl(host, alternate);
-    return await requestLimiter.run(() => fetchJsonWithRetry<HealthPage>(alternateUrl, {
+    const page = await requestLimiter.run(() => fetchJsonWithRetry<HealthPage>(alternateUrl, {
       timeoutMs: options.timeoutMs,
       maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
     }));
+    validateHealthPage(page);
+    return page;
+  }
+}
+
+/** A valid 2xx response must prove that the PeerTube instance spoke the API. */
+function validateHealthPage(value: HealthPage) {
+  if (!value || !Array.isArray(value.data) || !Number.isSafeInteger(value.total) ||
+      (value.total as number) < value.data.length || (value.total as number) < 0 ||
+      value.data.length > 1) {
+    throw new Error("Invalid instance-health page");
   }
 }
 

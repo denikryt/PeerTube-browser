@@ -151,22 +151,13 @@ export class VideoAvailabilityWorkStore {
         "Availability work identity/pending write invariant violated",
       );
   }
-  /** Indexed normalized-host bulk skip; no per-video absence or timestamp. */
-  markHostPreflightUnknown(host: string, diagnostic: string): void {
-    this.db
-      .prepare(
-        `UPDATE video_availability_work SET outcome='unknown',checked_at=NULL,error=?
-      WHERE lower(trim(instance_domain))=? AND outcome IS NULL`,
-      )
-      .run(`host_preflight: ${diagnosticKind(diagnostic)}`, host);
-  }
-  /** Refuse process success while any selected identity lacks terminal evidence. */
+  /** Every admitted video needs a real detail attempt and terminal evidence. */
   assertComplete(): void {
     const row = this.db
       .prepare(
         `SELECT COUNT(*) FILTER (WHERE outcome IS NULL) AS unfinished,
-      COUNT(*) FILTER (WHERE checked_at IS NULL AND
-        (outcome IS NOT 'unknown' OR error IS NULL OR error NOT LIKE 'host_preflight: %')) AS invalid
+      COUNT(*) FILTER (WHERE checked_at IS NULL OR typeof(checked_at)!='integer'
+        OR checked_at<0 OR error LIKE 'host_preflight: %') AS invalid
       FROM video_availability_work`,
       )
       .get() as { unfinished: number; invalid: number };

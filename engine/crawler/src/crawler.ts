@@ -9,6 +9,7 @@ import { shouldTryAlternateProtocol } from "./error-classification.js";
 import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
 import {
   loadHostsFromFile,
+  loadIncludedHostsFromFile,
   normalizeHostToken,
   scopeHosts
 } from "./host-filters.js";
@@ -26,19 +27,21 @@ export async function crawl(options: CrawlOptions) {
     throw new Error("allowEmptyScopedWhitelist must be boolean");
   }
   // Freeze the opt-in scope before registry await; empty-after-await cannot widen it.
-  const validatedInclude = options.allowEmptyScopedWhitelist
-    ? loadHostsFromFile(options.hostsFile)
-    : null;
+  const validatedInclude = loadIncludedHostsFromFile(options.hostsFile);
   // Validate before store initialization so opt-in misuse cannot reset a corpus.
   if (options.allowEmptyScopedWhitelist) {
     if (
       !options.resume || options.collectGraph || options.expandBeyondWhitelist ||
-      validatedInclude!.size === 0
+      (!validatedInclude || validatedInclude.size === 0)
     ) {
       throw new Error(
         "--allow-empty-scoped-whitelist requires nonempty hosts scope, resume and no graph/expand"
       );
     }
+  }
+  if (validatedInclude !== null && validatedInclude.size === 0) {
+    console.log("[crawl] empty explicit include scope; no discovery work");
+    return;
   }
   const store = new CrawlerStore({
     dbPath: options.dbPath,
@@ -54,7 +57,7 @@ export async function crawl(options: CrawlOptions) {
         maxRetries: options.maxRetries,
         allowEmptyList: options.allowEmptyScopedWhitelist === true
       });
-  const includedHosts = validatedInclude ?? loadHostsFromFile(options.hostsFile);
+  const includedHosts = validatedInclude;
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const filteredWhitelistHosts = scopeHosts(
     fetchedWhitelistHosts,
@@ -66,7 +69,7 @@ export async function crawl(options: CrawlOptions) {
       ? filteredWhitelistHosts.slice(0, options.maxInstances)
       : filteredWhitelistHosts;
   if (whitelistHosts.length === 0) {
-    if (options.allowEmptyScopedWhitelist && includedHosts.size > 0) {
+    if (options.allowEmptyScopedWhitelist && includedHosts !== null && includedHosts.size > 0) {
       // Empty discovery does not authorize parent creation or progress stamps.
       store.close();
       console.log("[crawl] empty scoped registry intersection; no discovery work");
@@ -257,7 +260,8 @@ async function fetchPage(
       maxRetries: options.maxRetries
     }));
   } catch (error) {
-    if (!shouldTryAlternateProtocol(error)) throw error;
+    // An explicit local outage has priority over message-based protocol fallback.
+    if (isNoNetworkError(error) || !shouldTryAlternateProtocol(error)) throw error;
     const alternateProtocol = preferredProtocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildUrl(host, kind, start, PAGE_SIZE, alternateProtocol);
     return await requestLimiter.run(() => fetchJsonWithRetry<Page<ServerFollowItem>>(alternateUrl, {

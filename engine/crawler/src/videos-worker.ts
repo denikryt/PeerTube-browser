@@ -4,6 +4,7 @@
 
 import Database from "better-sqlite3";
 import { VideoStore } from "./db/videos.js";
+import { ChannelStore } from "./db/channels.js";
 import { assertMetadataMaintenanceSchema, assertThumbnailMaintenanceSchema } from "./db/schema.js";
 import type {
   ExistingVideoRefresh,
@@ -19,7 +20,7 @@ import type {
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
 import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
-import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
+import { loadHostsFromFile, loadIncludedHostsFromFile, scopeHosts } from "./host-filters.js";
 import { createProgressOrdinal, formatMetricLog } from "./log-format.js";
 import {
   projectDetailThumbnailCandidates,
@@ -30,6 +31,7 @@ import {
 } from "./video-media.js";
 import { normalizeVideoMetadata } from "./video-metadata.js";
 import { fetchVideoDetailResult } from "./video-detail.js";
+import { assertWorkActive, stopWork, type WorkCancellation } from "./work-cancellation.js";
 import {
   fetchActivityPubLiveMetadata,
   type ActivityPubLiveMetadata
@@ -68,6 +70,8 @@ export interface VideoCrawlOptions {
   hostDelayMs: number;
   /** In-process host scope used by the optional host-level scheduler. */
   hosts?: readonly string[];
+  /** Shared run-wide cancellation from the host scheduler, if present. */
+  cancellation?: WorkCancellation;
 }
 
 interface Page<T> {
@@ -218,19 +222,34 @@ export async function crawlVideos(options: VideoCrawlOptions) {
     return;
   }
   const store = new VideoStore({ dbPath: options.dbPath });
-  const includedHosts = options.hosts
-    ? new Set(options.hosts.map((host) => host.toLowerCase()))
-    : loadHostsFromFile(options.hostsFile);
+  const includedHosts = loadIncludedHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const existingDb = openExistingDb(options);
   const hostsAll = store.listInstances();
-  const filteredHosts = scopeHosts(hostsAll, includedHosts, excludedHosts);
-  const hosts =
-    options.maxInstances > 0
-      ? filteredHosts.slice(0, options.maxInstances)
-      : filteredHosts;
+  const filteredHosts = scopeHosts(hostsAll, includedHosts, excludedHosts, options.hosts);
+  const selected = options.maxInstances > 0
+    ? filteredHosts.slice(0, options.maxInstances)
+    : filteredHosts;
+  // The store query repeats the gate per channel, but the work queue and its
+  // progress reset must themselves be restricted to eligible host owners.
+  const parentStore = new ChannelStore({ dbPath: options.dbPath });
+  let hosts: string[];
+  try {
+    const repairScope = options.errorsOnly
+      ? parentStore.listHostsWithVideoRepair(selected)
+      : selected;
+    if (options.errorsOnly) parentStore.assertParentEnumerationPrepared(repairScope);
+    hosts = parentStore.listFreshHealthyHosts(repairScope, true);
+  } finally {
+    parentStore.close();
+  }
   // Counts are resolved by the preceding count stage. Selecting only positive
   // rows avoids one request per known-empty or still-unknown channel.
+  if (hosts.length === 0) {
+    existingDb?.close();
+    store.close();
+    return;
+  }
   const channelsAll = store.listChannelsWithVideos(1, hosts);
   const channels =
     options.maxChannels > 0
@@ -250,7 +269,7 @@ export async function crawlVideos(options: VideoCrawlOptions) {
   // cannot reset or increment one another's counters.
   const newVideos: NewVideoCounter = { total: 0 };
 
-  const progressScope = options.hosts ? [...hosts] : undefined;
+  const progressScope = [...hosts];
   store.prepareVideoProgress(channels, options.resume, progressScope);
   const statuses = (options.errorsOnly
     ? ["error"]
@@ -266,6 +285,7 @@ export async function crawlVideos(options: VideoCrawlOptions) {
   );
 
   try {
+    const cancellation: WorkCancellation = options.cancellation ?? { stopped: false };
     const queue = instances.slice();
     const workers = Array.from({ length: workerCount }, () =>
       workerLoop(
@@ -276,10 +296,11 @@ export async function crawlVideos(options: VideoCrawlOptions) {
         existingDb,
         options,
         nextChannelOrdinal,
-        newVideos
+        newVideos,
+        cancellation
       )
     );
-    await Promise.all(workers);
+    await drainVideoWorkers(workers, () => { queue.length = 0; }, cancellation);
 
     console.log(formatMetricLog("videos", [["new_total", newVideos.total]], "finished"));
   } finally {
@@ -293,25 +314,28 @@ export async function crawlVideos(options: VideoCrawlOptions) {
  */
 async function crawlVideoComments(options: VideoCrawlOptions) {
   const store = new VideoStore({ dbPath: options.dbPath });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = loadIncludedHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForComments(options.resume);
   const grouped = groupByInstance(items);
-  const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
+  const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts, options.hosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
 
   console.log(
     `[comments] instances=${instances.length} videos=${items.length} concurrency=${workerCount} resume=${options.resume}`
   );
 
+  const cancellation: WorkCancellation = options.cancellation ?? { stopped: false };
   const queue = instances.slice();
   const workers = Array.from({ length: workerCount }, () =>
-    commentsWorkerLoop(queue, grouped, store, options)
+    commentsWorkerLoop(queue, grouped, store, options, cancellation)
   );
-  await Promise.all(workers);
-
-  console.log("[comments] finished");
-  store.close();
+  try {
+    await drainVideoWorkers(workers, () => { queue.length = 0; }, cancellation);
+    console.log("[comments] finished");
+  } finally {
+    store.close();
+  }
 }
 
 /**
@@ -319,25 +343,28 @@ async function crawlVideoComments(options: VideoCrawlOptions) {
  */
 async function crawlVideoTags(options: VideoCrawlOptions, mode: "missing" | "present") {
   const store = new VideoStore({ dbPath: options.dbPath });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = loadIncludedHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForTags(mode);
   const grouped = groupByInstance(items);
-  const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
+  const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts, options.hosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
 
   console.log(
     `[tags] instances=${instances.length} videos=${items.length} concurrency=${workerCount}`
   );
 
+  const cancellation: WorkCancellation = options.cancellation ?? { stopped: false };
   const queue = instances.slice();
   const workers = Array.from({ length: workerCount }, () =>
-    tagWorkerLoop(queue, grouped, store, options)
+    tagWorkerLoop(queue, grouped, store, options, cancellation)
   );
-  await Promise.all(workers);
-
-  console.log("[tags] finished");
-  store.close();
+  try {
+    await drainVideoWorkers(workers, () => { queue.length = 0; }, cancellation);
+    console.log("[tags] finished");
+  } finally {
+    store.close();
+  }
 }
 
 /**
@@ -351,9 +378,10 @@ async function workerLoop(
   existingDb: Database.Database | null,
   options: VideoCrawlOptions,
   nextChannelOrdinal: () => string,
-  newVideos: NewVideoCounter
+  newVideos: NewVideoCounter,
+  cancellation: WorkCancellation
 ) {
-  while (true) {
+  while (!cancellation.stopped) {
     const host = queue.pop();
     if (!host) return;
     const items = grouped.get(host);
@@ -366,7 +394,8 @@ async function workerLoop(
       existingDb,
       options,
       nextChannelOrdinal,
-      newVideos
+      newVideos,
+      cancellation
     );
   }
 }
@@ -382,10 +411,15 @@ async function processInstance(
   existingDb: Database.Database | null,
   options: VideoCrawlOptions,
   nextChannelOrdinal: () => string,
-  newVideos: NewVideoCounter
+  newVideos: NewVideoCounter,
+  cancellation: WorkCancellation
 ) {
   const normalizedHost = host.toLowerCase();
-  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
+  const requestLimiter = createRequestLimiter(
+    options.hostConcurrency, options.hostDelayMs,
+    () => assertWorkActive(cancellation),
+    (error) => { if (isNoNetworkError(error)) stopWork(cancellation, error); }
+  );
   console.log(formatMetricLog("videos", [["channels", items.length]], "start", normalizedHost));
 
   await mapWithConcurrency(items, CHANNEL_CONCURRENCY, async (item) => {
@@ -402,9 +436,10 @@ async function processInstance(
       options,
       requestLimiter,
       channelOrdinal,
-      newVideos
+      newVideos,
+      cancellation
     );
-  });
+  }, cancellation);
 
   console.log(`[videos] done ${normalizedHost}`);
 }
@@ -416,14 +451,15 @@ async function commentsWorkerLoop(
   queue: string[],
   grouped: Map<string, VideoTagRow[]>,
   store: VideoStore,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  cancellation: WorkCancellation
 ) {
-  while (true) {
+  while (!cancellation.stopped) {
     const host = queue.pop();
     if (!host) return;
     const items = grouped.get(host);
     if (!items) continue;
-    await processCommentsInstance(host, items, store, options);
+    await processCommentsInstance(host, items, store, options, cancellation);
   }
 }
 
@@ -434,14 +470,15 @@ async function tagWorkerLoop(
   queue: string[],
   grouped: Map<string, VideoTagRow[]>,
   store: VideoStore,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  cancellation: WorkCancellation
 ) {
-  while (true) {
+  while (!cancellation.stopped) {
     const host = queue.pop();
     if (!host) return;
     const items = grouped.get(host);
     if (!items) continue;
-    await processTagInstance(host, items, store, options);
+    await processTagInstance(host, items, store, options, cancellation);
   }
 }
 
@@ -452,12 +489,18 @@ async function processTagInstance(
   host: string,
   items: VideoTagRow[],
   store: VideoStore,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  cancellation: WorkCancellation
 ) {
   const normalizedHost = host.toLowerCase();
-  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
+  const requestLimiter = createRequestLimiter(
+    options.hostConcurrency, options.hostDelayMs,
+    () => assertWorkActive(cancellation),
+    (error) => { if (isNoNetworkError(error)) stopWork(cancellation, error); }
+  );
   console.log(formatMetricLog("tags", [["videos", items.length]], "start", normalizedHost));
   for (const item of items) {
+    if (cancellation.stopped) return;
     const result = await fetchVideoDetailResult<PeerTubeVideoDetail>(
       normalizedHost, item.videoUuid, options, "https:", requestLimiter
     );
@@ -500,12 +543,18 @@ async function processCommentsInstance(
   host: string,
   items: VideoTagRow[],
   store: VideoStore,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  cancellation: WorkCancellation
 ) {
   const normalizedHost = host.toLowerCase();
-  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
+  const requestLimiter = createRequestLimiter(
+    options.hostConcurrency, options.hostDelayMs,
+    () => assertWorkActive(cancellation),
+    (error) => { if (isNoNetworkError(error)) stopWork(cancellation, error); }
+  );
   console.log(formatMetricLog("comments", [["videos", items.length]], "start", normalizedHost));
   for (const item of items) {
+    if (cancellation.stopped) return;
     const result = await fetchVideoDetailResult<PeerTubeVideoDetail>(
       normalizedHost, item.videoUuid, options, "https:", requestLimiter
     );
@@ -555,8 +604,10 @@ async function processChannel(
   options: VideoCrawlOptions,
   requestLimiter: RequestLimiter,
   channelOrdinal: string,
-  newVideos: NewVideoCounter
+  newVideos: NewVideoCounter,
+  cancellation: WorkCancellation
 ) {
+  assertWorkActive(cancellation);
   const channelSlug = item.channelName ?? meta?.channelSlug ?? null;
   if (!channelSlug) {
     store.updateVideoProgress(host, item.channelId, "error", item.lastStart, "missing channel slug");
@@ -595,8 +646,10 @@ async function processChannel(
       store,
       existingDb,
       options,
-      requestLimiter
+      requestLimiter,
+      cancellation
     );
+    assertWorkActive(cancellation);
     store.updateVideoProgress(host, item.channelId, "done", 0, null);
     newVideos.total += localCount;
     console.log(
@@ -608,6 +661,9 @@ async function processChannel(
       )
     );
   } catch (error) {
+    // A process-wide outage aborts new work instead of poisoning this host's
+    // progress with a spurious remote failure.
+    if (isNoNetworkError(error) || cancellation.stopped) throw error;
     const message = formatCrawlError(error);
     store.updateVideoProgress(host, item.channelId, "error", startAt, message);
     console.warn(
@@ -636,7 +692,8 @@ async function crawlChannelVideos(
   store: VideoStore,
   existingDb: Database.Database | null,
   options: VideoCrawlOptions,
-  requestLimiter: RequestLimiter
+  requestLimiter: RequestLimiter,
+  cancellation: WorkCancellation
 ) {
   let start = startAt;
   let protocol = "https:";
@@ -646,6 +703,8 @@ async function crawlChannelVideos(
   let pagesFetched = 0;
 
   while (true) {
+    // Cross-host outage must stop page-zero and later page requests alike.
+    assertWorkActive(cancellation);
     const { page, protocol: usedProtocol } = await fetchPage(
       host,
       channel.channelSlug,
@@ -692,7 +751,8 @@ async function crawlChannelVideos(
         existingIds,
         externalExistingIds,
         options,
-        requestLimiter
+        requestLimiter,
+        cancellation
       );
       localCount += rows.newRows.length;
       store.insertNewVideos(rows.newRows);
@@ -742,6 +802,7 @@ async function crawlChannelVideos(
     start = nextStart;
   }
 
+  assertWorkActive(cancellation);
   return { localCount, totalCount };
 }
 
@@ -764,7 +825,8 @@ async function buildVideoRows(
   existingIds: Set<string>,
   externalExistingIds: Set<string>,
   options: VideoCrawlOptions,
-  requestLimiter: RequestLimiter
+  requestLimiter: RequestLimiter,
+  cancellation: WorkCancellation
 ): Promise<{ newRows: NewVideoInsertRow[]; existingRows: ExistingVideoRefresh[] }> {
   const built = new Array<{
     value: BuiltVideoPersistence;
@@ -839,7 +901,8 @@ async function buildVideoRows(
         requestLimiter
       );
       if (value) built[index] = { value, existing: existsLocally, initialInvalidity };
-    }
+    },
+    cancellation
   );
 
   const newRows: NewVideoInsertRow[] = [];
@@ -882,7 +945,8 @@ async function fetchPage(
     }));
     return { page, protocol };
   } catch (error) {
-    if (!shouldTryAlternateProtocol(error)) throw error;
+    // Confirmed local outage has no remote protocol alternative.
+    if (isNoNetworkError(error) || !shouldTryAlternateProtocol(error)) throw error;
     const fallbackProtocol = protocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildChannelVideosUrl(
       host,
@@ -975,8 +1039,8 @@ async function toVideoRow(
         protocol: mediaProtocol
       });
     } catch (error) {
-      // Public AP parity is best-effort. REST metadata remains usable and a
-      // version-0 live row can be retried later by metadata maintenance.
+      // Best-effort AP enrichment must not hide a proven process-wide outage.
+      if (isNoNetworkError(error)) throw error;
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[videos] ActivityPub live metadata fallback ${host}/${videoId}: ${message}`);
     }
@@ -1118,17 +1182,39 @@ function groupByInstance<T extends { instanceDomain: string }>(items: T[]): Map<
   return grouped;
 }
 
+/** Stop scheduling on a fatal worker failure, then drain all in-flight I/O
+ * before the owning function is allowed to close its SQLite connection.
+ */
+async function drainVideoWorkers(
+  workers: Promise<void>[], stop: () => void, cancellation: WorkCancellation,
+): Promise<void> {
+  const settled = await Promise.allSettled(workers.map(worker => worker.catch(error => {
+    // Publish cancellation before the sibling is resumed after its await.
+    if (!cancellation.stopped) {
+      stopWork(cancellation, error);
+    }
+    stop();
+    throw error;
+  })));
+  const rejected = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (rejected) throw cancellation.reason;
+}
+
+/** Bound a nested per-host queue by the invocation-wide failure signal.
+ * A sibling failure cannot authorize a new channel or detail identity.
+ */
 async function mapWithConcurrency<T>(
   items: T[],
   concurrency: number,
-  mapper: (item: T) => Promise<void>
+  mapper: (item: T) => Promise<void>,
+  cancellation: WorkCancellation
 ) {
   if (items.length === 0) return;
   const limit = Math.max(1, concurrency);
   let index = 0;
 
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (true) {
+    while (!cancellation.stopped) {
       const current = index;
       index += 1;
       if (current >= items.length) return;
@@ -1136,7 +1222,7 @@ async function mapWithConcurrency<T>(
     }
   });
 
-  await Promise.all(workers);
+  await drainVideoWorkers(workers, () => { index = items.length; }, cancellation);
 }
 
 /**
@@ -1213,11 +1299,11 @@ function toStringId(value: unknown): string | null {
 async function crawlVideoMetadata(options: VideoCrawlOptions) {
   assertMetadataMaintenanceSchema(options.dbPath);
   const store = new VideoStore({ dbPath: options.dbPath, initializeSchema: false });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = loadIncludedHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForMetadata(Boolean(options.updateMetadata));
   const grouped = groupByInstance(items);
-  const allHosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
+  const allHosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts, options.hosts);
   // Health is a persisted host-level observation, so apply it after explicit
   // include/exclude filters without probing every failed video again.
   const healthyHosts = options.onlyHealthyHosts ? store.listHealthyInstanceHosts() : null;
@@ -1240,13 +1326,19 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
   );
 
   try {
+    const cancellation: WorkCancellation = options.cancellation ?? { stopped: false };
     const queue = hosts.slice();
     const workers = Array.from({ length: workerCount }, async () => {
-      while (true) {
+      while (!cancellation.stopped) {
         const host = queue.shift();
         if (!host) return;
-        const limiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
+        const limiter = createRequestLimiter(
+          options.hostConcurrency, options.hostDelayMs,
+    () => assertWorkActive(cancellation),
+    (error) => { if (isNoNetworkError(error)) stopWork(cancellation, error); }
+        );
         for (const item of grouped.get(host) ?? []) {
+          if (cancellation.stopped) return;
           // Allocate before awaiting I/O so concurrent host workers expose one
           // stable crawl-wide ordinal instead of ambiguous host-local counters.
           const videoOrdinal = nextVideoOrdinal();
@@ -1334,6 +1426,7 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
             );
           } catch (error) {
             // A projection/DB failure must not reinterpret a validated video detail.
+            if (isNoNetworkError(error)) throw error;
             const message = error instanceof Error ? error.message : String(error);
             store.updateVideoError(item.videoId, item.instanceDomain, message);
             errors += 1;
@@ -1345,7 +1438,7 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
         }
       }
     });
-    await Promise.all(workers);
+    await drainVideoWorkers(workers, () => { queue.length = 0; }, cancellation);
     console.log("[metadata] finished");
   } finally {
     store.close();
@@ -1363,11 +1456,11 @@ async function refreshVideoThumbnails(options: VideoCrawlOptions) {
   // Thumbnail maintenance must never become an implicit schema-migration path.
   assertThumbnailMaintenanceSchema(options.dbPath);
   const store = new VideoStore({ dbPath: options.dbPath, initializeSchema: false });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = loadIncludedHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForThumbnailRefresh(options.resume);
   const grouped = groupByInstance(items);
-  const scopedHosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
+  const scopedHosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts, options.hosts);
   // Apply the same persisted `health_status = ok` contract as metadata after
   // explicit include/exclude scope. This avoids retrying known failed hosts
   // while preserving the unfiltered full-refresh behavior unless requested.
@@ -1390,11 +1483,12 @@ async function refreshVideoThumbnails(options: VideoCrawlOptions) {
   );
 
   try {
+    const cancellation: WorkCancellation = options.cancellation ?? { stopped: false };
     const queue = hosts.slice();
     const workers = Array.from({ length: workerCount }, () =>
-      thumbnailWorkerLoop(queue, grouped, store, options, nextVideoOrdinal, progress)
+      thumbnailWorkerLoop(queue, grouped, store, options, nextVideoOrdinal, progress, cancellation)
     );
-    await Promise.all(workers);
+    await drainVideoWorkers(workers, () => { queue.length = 0; }, cancellation);
     console.log("[thumbnails] finished");
   } finally {
     store.close();
@@ -1413,14 +1507,20 @@ async function thumbnailWorkerLoop(
   store: VideoStore,
   options: VideoCrawlOptions,
   nextVideoOrdinal: () => string,
-  progress: { updated: number; errors: number }
+  progress: { updated: number; errors: number },
+  cancellation: WorkCancellation
 ) {
-  while (true) {
+  while (!cancellation.stopped) {
     const host = queue.shift();
     if (!host) return;
     const rows = grouped.get(host) ?? [];
-    const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
+    const requestLimiter = createRequestLimiter(
+      options.hostConcurrency, options.hostDelayMs,
+    () => assertWorkActive(cancellation),
+    (error) => { if (isNoNetworkError(error)) stopWork(cancellation, error); }
+    );
     for (const row of rows) {
+      if (cancellation.stopped) return;
       // Allocate before I/O to retain a stable crawl-wide position even when
       // multiple hosts finish details in a different order.
       const videoOrdinal = nextVideoOrdinal();
@@ -1478,6 +1578,7 @@ async function thumbnailWorkerLoop(
             break;
           } catch (error) {
             // Projection and SQLite errors are diagnostics, never video absence.
+            if (isNoNetworkError(error)) throw error;
             const message = error instanceof Error ? error.message : String(error);
             store.updateVideoError(row.videoId, row.instanceDomain, message);
             progress.errors += 1;

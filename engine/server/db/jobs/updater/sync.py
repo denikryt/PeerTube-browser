@@ -68,10 +68,10 @@ def load_denied_hosts(db_path: Path) -> set[str]:
         return set(list_active_denied_hosts(conn))
 
 
-def write_hosts_file(hosts: set[str], prefix: str) -> Path | None:
+def write_hosts_file(hosts: set[str], prefix: str, *, allow_empty: bool = False) -> Path | None:
     """Write sorted hosts to a temp file, returning None for an empty set."""
 
-    if not hosts:
+    if not hosts and not allow_empty:
         return None
     handle = tempfile.NamedTemporaryFile(
         "w", prefix=prefix, suffix=".txt", delete=False, encoding="utf-8"

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { fetchVideoDetailResult } from "../src/video-detail.js";
+import { NoNetworkError } from "../src/http.js";
 import type { RequestLimiter } from "../src/request-limiter.js";
 
 const immediateLimiter: RequestLimiter = {
@@ -209,4 +210,43 @@ test("wrong identity with HTTP-like text remains unknown, not absent", async () 
     );
     assert.equal(result.kind, "unknown");
   });
+});
+
+/** A confirmed process-local outage is fatal before choosing another protocol. */
+test("explicit local timeout cannot be turned into available by HTTP fallback", async () => {
+  const requests: string[] = [];
+  const failure = new NoNetworkError("confirmed local timeout");
+  await withFetchStub(async (input) => {
+    requests.push(String(input));
+    if (String(input).startsWith("https://")) throw failure;
+    return response({ uuid: "video-a", name: "not-authoritative" });
+  }, async () => {
+    await assert.rejects(
+      fetchVideoDetailResult<Record<string, unknown>>(
+        "example.org", "video-a", options, "https:", immediateLimiter
+      ),
+      error => error === failure
+    );
+  });
+  assert.deepEqual(requests, ["https://example.org/api/v1/videos/video-a"]);
+});
+
+/** A target-specific timeout is not evidence of a process-local outage. */
+test("ordinary remote timeout still permits bounded HTTP fallback", async () => {
+  const requests: string[] = [];
+  await withFetchStub(async (input) => {
+    requests.push(String(input));
+    if (String(input).startsWith("https://")) throw new Error("remote timeout");
+    return response({ uuid: "video-a" });
+  }, async () => {
+    const result = await fetchVideoDetailResult<Record<string, unknown>>(
+      "example.org", "video-a", options, "https:", immediateLimiter
+    );
+    assert.equal(result.kind, "available");
+    if (result.kind === "available") assert.equal(result.protocol, "http:");
+  });
+  assert.deepEqual(requests, [
+    "https://example.org/api/v1/videos/video-a",
+    "http://example.org/api/v1/videos/video-a"
+  ]);
 });

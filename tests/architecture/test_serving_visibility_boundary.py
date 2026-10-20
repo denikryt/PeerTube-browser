@@ -38,9 +38,14 @@ def test_exact_availability_is_independent_of_diagnostic_error_counts():
     import sqlite3
 
     conn = sqlite3.connect(":memory:")
-    conn.execute("CREATE TABLE videos(invalid_reason TEXT,error_count INTEGER)")
+    conn.executescript("""
+        CREATE TABLE videos(invalid_reason TEXT,error_count INTEGER, instance_domain TEXT, channel_id TEXT);
+        CREATE TABLE instances(host TEXT PRIMARY KEY, health_status TEXT);
+        CREATE TABLE channels(channel_id TEXT, instance_domain TEXT, health_status TEXT,
+                              PRIMARY KEY(channel_id, instance_domain));
+    """)
     conn.executemany(
-        "INSERT INTO videos VALUES(?,?)", [(None, 0), ("", 0), ("gone", 0), (None, 10)]
+        "INSERT INTO videos VALUES(?,?,?,?)", [(None, 0, "unknown.example", "c"), ("", 0, "unknown.example", "c"), ("gone", 0, "unknown.example", "c"), (None, 10, "unknown.example", "c")]
     )
     sql = build_serving_visibility_sql("v", ServingVisibility(False, False))
     assert isinstance(sql, str)
@@ -94,5 +99,6 @@ def test_client_like_admission_precedes_request_context_publication():
     assert calls['_resolve_client_likes'] < calls['set_request_client_likes']
     resolver = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_resolve_client_likes')
     body = ast.get_source_segment(source, resolver)
-    assert 'WHERE invalid_reason IS NULL AND ({conditions})' in body
+    assert 'WHERE v.invalid_reason IS NULL AND {build_parent_visibility_sql("v")}' in body
+    assert 'AND ({conditions})' in body
     assert 'error_count' not in body

@@ -42,11 +42,13 @@ program
   )
   .option(
     "--check-health",
-    "Check channel health for all channels in the DB and record channel errors",
+    "Check unresolved channel health only for scoped, fresh instance-ok hosts with complete enumeration",
     false
   )
+  .option("--initialize-only", "Reset selected parent progress/health and stamp page-zero provenance", false)
+  .option("--already-initialized", "Require a prepared parent scope without resetting fresh health", false)
   .option("--resume", "Resume from existing progress", false);
-program.option("--errors", "Process only instances with recorded channel crawl errors", false);
+program.option("--errors", "Legacy channel-list retry unavailable; use normal --resume-staging for page-zero re-enumeration", false);
 
 program.parse(process.argv);
 
@@ -67,7 +69,9 @@ try {
     maxInstances: Number(options.maxInstances),
     maxChannels: Number(options.maxChannels),
     resume: Boolean(options.resume),
-    errorsOnly: Boolean(options.errors)
+    errorsOnly: Boolean(options.errors),
+    initializeOnly: Boolean(options.initializeOnly),
+    alreadyInitialized: Boolean(options.alreadyInitialized)
   });
 } catch (error) {
   if (isNoNetworkError(error)) {

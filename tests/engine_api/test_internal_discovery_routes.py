@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 
+from tests.parent_health_schema import ensure_parent_health_schema
 def _prepare_db(conn) -> None:
     conn.executescript(
         """
@@ -20,7 +21,8 @@ def _prepare_db(conn) -> None:
         CREATE TABLE video_embeddings (video_id TEXT, instance_domain TEXT, embedding_dim INTEGER, model_name TEXT, PRIMARY KEY(video_id, instance_domain));
         """
     )
-    conn.execute("INSERT OR IGNORE INTO channels VALUES ('c', 'example.org', 'Channel', '/avatar.png')")
+    ensure_parent_health_schema(conn)
+    conn.execute("INSERT OR IGNORE INTO channels (channel_id,instance_domain,display_name,avatar_url) VALUES ('c', 'example.org', 'Channel', '/avatar.png')")
     for video_id, published, popularity in [("old", 1000, 1.0), ("new", 3000, 2.0), ("popular", 2000, 50.0)]:
         conn.execute(
             """

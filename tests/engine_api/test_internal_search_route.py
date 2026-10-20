@@ -1,6 +1,7 @@
 """Engine internal video search route behavior tests."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import base64
 import json
 
@@ -24,6 +25,7 @@ def _install_schema(conn) -> None:
         CREATE TABLE channel_moderation (channel_id TEXT, instance_domain TEXT, status TEXT, PRIMARY KEY(channel_id, instance_domain));
         """
     )
+    ensure_parent_health_schema(conn)
     conn.executemany(
         "INSERT INTO videos(video_id, video_uuid, instance_domain, channel_id, channel_name, title, tags_json, category, published_at, popularity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [

@@ -156,3 +156,26 @@ tests/compatibility/        removal guards for obsolete interfaces
 | Crawler schema | `engine/crawler/schema.sql` |
 | Production data refresh | `engine/server/db/jobs/updater/` |
 | Derived artifact build | `engine/server/db/jobs/` |
+
+## Documentation Ownership
+
+| Topic | Owner |
+|---|---|
+| Component boundaries, data and HTTP ownership | `docs/ARCHITECTURE.md` |
+| Component and refresh sequence diagrams | `docs/ARCHITECTURE_DIAGRAM.md` |
+| Source-tree and file navigation | `docs/PROJECT_MAP.md` |
+| Local setup, manual data build, deployment, tests, and repository tooling | `docs/RUNNING.md` |
+| Runtime behavior, stores, schema contracts, and recommendation internals | `docs/HOW_IT_WORKS.md` |
+| Production refresh, host lifecycle, modes, publication, timer, and recovery | `docs/UPDATER.md` |
+
+The Crawler's `schema.sql` and the checked-in Engine/Client migrations are executable schema sources; `engine/server/api/recommendations/config.py` owns current recommendation tuning defaults. Generated `engine/crawler/dist/` and `dist-test/` are not committed.
+
+## Repository Tooling
+
+```text
+sync-subtrees.sh                     publish/synchronize Engine and Client split repos
+pyproject.toml                       pytest configuration
+Makefile                             local verification entrypoints
+client/frontend/vitest.config.ts     frontend test runner
+engine/crawler/tsconfig.test.json    crawler test compilation
+```

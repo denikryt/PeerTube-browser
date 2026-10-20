@@ -1,6 +1,7 @@
 """Characterize Engine internal video route adapters through FastAPI."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
 import threading
 
@@ -46,7 +47,8 @@ def _connect_internal_video_db() -> sqlite3.Connection:
         );
         """
     )
-    conn.execute("INSERT INTO channels VALUES ('c1', 'example.org', 'Channel', '/avatar.png')")
+    ensure_parent_health_schema(conn)
+    conn.execute("INSERT INTO channels (channel_id,instance_domain,display_name,avatar_url) VALUES ('c1', 'example.org', 'Channel', '/avatar.png')")
     conn.execute(
         """
         INSERT INTO videos VALUES (

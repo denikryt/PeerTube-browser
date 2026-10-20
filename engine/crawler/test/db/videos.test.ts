@@ -22,7 +22,7 @@ import {
   VideoStore
 } from "../../src/db/videos.js";
 import { assertMetadataMaintenanceSchema, assertThumbnailMaintenanceSchema } from "../../src/db/schema.js";
-import { allRows, createTempDb, getRow } from "./helpers.js";
+import { allRows, createTempDb, confirmFreshParents, getRow } from "./helpers.js";
 
 const video: VideoUpsertRow = {
   videoId: "v1",
@@ -91,6 +91,7 @@ function seedChannel(dbPath: string) {
   ]);
   channels.markInstanceDone("example.org");
   channels.close();
+  confirmFreshParents(dbPath, ["example.org"]);
 }
 
 test("VideoStore state and channel listing preserve current behavior", () => {
@@ -169,6 +170,7 @@ test("VideoStore scoped resume preserves another host's completed progress", () 
       }
     ]);
     channels.close();
+    confirmFreshParents(temp.dbPath, ["a.example", "b.example"]);
 
     const store = new VideoStore({ dbPath: temp.dbPath });
     const allChannels = store.listChannelsWithVideos(1, ["a.example", "b.example"]);

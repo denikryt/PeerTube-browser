@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TARGET_DIR="${ROOT_DIR}/client/backend"
 
-TMP_FILE="$(mktemp /tmp/client-engine-boundary.XXXXXX)"
+TMP_FILE="$(mktemp "${TMPDIR:-/tmp}/client-engine-boundary.XXXXXX")"
 trap 'rm -f "${TMP_FILE}"' EXIT
 
 violations=0

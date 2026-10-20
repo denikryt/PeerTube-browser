@@ -10,6 +10,7 @@ import {
   type AvailabilityWorkRow,
 } from "../src/db/video-availability.js";
 import { runAvailabilitySweep } from "../src/video-availability-worker.js";
+import { NoNetworkError } from "../src/http.js";
 
 /** Create exact updater-owned table without invoking crawler schema bootstrap. */
 function fixture(rows: Array<[string, string, string]>) {
@@ -45,102 +46,50 @@ const options = {
   maxRetries: 0,
 };
 
-for (const unsafe of [false, true]) {
-  test(`preflight result write failure remains fatal (unsafe=${unsafe})`, async () => {
-    const host = unsafe ? "user:secret@example.org" : "example.org";
-    const f = fixture([["a", host, "uuid"]]);
-    const old = globalThis.fetch;
-    const db = new Database(f.dbPath);
-    // Persistence failure must abort rather than become a successful host skip.
-    db.exec(
-      "CREATE TRIGGER reject_preflight BEFORE UPDATE ON video_availability_work " +
-      "BEGIN SELECT RAISE(ABORT,'preflight write failure'); END",
-    );
-    db.close();
-    const urls: string[] = [];
-    globalThis.fetch = async (input) => {
-      urls.push(String(input));
-      return new Response("{}", { status: 503 });
-    };
-    try {
-      await assert.rejects(
-        runAvailabilitySweep({ dbPath: f.dbPath, ...options }),
-        /preflight write failure/,
-      );
-      assert.equal(urls.length, unsafe ? 0 : 1);
-      const after = new Database(f.dbPath);
-      try {
-        assert.deepEqual(
-          after.prepare(
-            "SELECT outcome,checked_at,error FROM video_availability_work",
-          ).all(),
-          [{ outcome: null, checked_at: null, error: null }],
-        );
-      } finally {
-        after.close();
-      }
-    } finally {
-      globalThis.fetch = old;
-      f.cleanup();
-    }
-  });
-}
+test("detail persistence failure is fatal and leaves evidence pending", async () => {
+  const f = fixture([["a", "example.org", "uuid"]]), old = globalThis.fetch;
+  const db = new Database(f.dbPath);
+  db.exec("CREATE TRIGGER reject_detail BEFORE UPDATE ON video_availability_work " +
+    "BEGIN SELECT RAISE(ABORT,'detail write failure'); END");
+  db.close();
+  const urls: string[] = [];
+  globalThis.fetch = async (input) => {
+    urls.push(String(input));
+    return new Response(JSON.stringify({ uuid: "uuid" }));
+  };
+  try {
+    await assert.rejects(runAvailabilitySweep({ dbPath: f.dbPath, ...options }), /detail write failure/);
+    assert.deepEqual(urls.map(url => new URL(url).pathname), ["/api/v1/videos/uuid"]);
+    const after = new Database(f.dbPath);
+    assert.deepEqual(after.prepare("SELECT outcome,checked_at,error FROM video_availability_work").all(),
+      [{ outcome: null, checked_at: null, error: null }]);
+    after.close();
+  } finally { globalThis.fetch = old; f.cleanup(); }
+});
 
 for (const status of [404, 410, 429, 503]) {
-  test(`preflight HTTP ${status} skips details, preserves canonical rows and continues siblings`, async () => {
-    const f = fixture([
-      ["a", " Broken.org ", "u-a"],
-      ["b", "broken.org", "u-b"],
-      ["c", "good.org", "u-c"],
-    ]);
-    const old = globalThis.fetch;
-    const urls: string[] = [];
+  test(`detail HTTP ${status} produces only per-video evidence, not a host skip`, async () => {
+    const f = fixture([["a", "broken.org", "u-a"], ["b", "broken.org", "u-b"],
+      ["c", "good.org", "u-c"]]);
+    const old = globalThis.fetch, urls: string[] = [];
     globalThis.fetch = async (input) => {
-      const u = new URL(String(input));
-      urls.push(String(u));
-      if (u.host === "broken.org") return new Response("{}", { status });
-      return new Response(
-        JSON.stringify(
-          u.pathname.includes("video-channels")
-            ? { total: 0, data: [] }
-            : { uuid: "u-c" },
-        ),
-        { status: 200 },
-      );
+      const url = new URL(String(input)); urls.push(String(url));
+      if (url.host === "broken.org") return new Response("{}", { status });
+      return new Response(JSON.stringify({ uuid: url.pathname.split("/").at(-1) }));
     };
     try {
       await runAvailabilitySweep({ dbPath: f.dbPath, ...options });
+      assert.ok(urls.every(url => new URL(url).pathname.startsWith("/api/v1/videos/")));
+      assert.equal(urls.filter(url => url.includes("broken.org")).length, 2);
       const db = new Database(f.dbPath);
-      assert.equal(urls.filter((u) => u.includes("broken.org")).length, 1);
-      assert.deepEqual(
-        db
-          .prepare(
-            "SELECT outcome,checked_at FROM video_availability_work WHERE video_id IN ('a','b')",
-          )
-          .all(),
-        [
-          { outcome: "unknown", checked_at: null },
-          { outcome: "unknown", checked_at: null },
-        ],
-      );
-      assert.equal(
-        (
-          db
-            .prepare(
-              "SELECT outcome FROM video_availability_work WHERE video_id='c'",
-            )
-            .get() as any
-        ).outcome,
-        "available",
-      );
-      assert.deepEqual(db.prepare("SELECT * FROM videos").all(), [
-        { video_id: "canonical", error_count: 17 },
-      ]);
+      const expected = status === 404 ? "not_found" : status === 410 ? "gone" : "unknown";
+      const broken = db.prepare("SELECT outcome,checked_at FROM video_availability_work " +
+        "WHERE video_id IN ('a','b') ORDER BY video_id").all() as any[];
+      assert.ok(broken.every(row => row.outcome === expected && Number.isSafeInteger(row.checked_at)));
+      assert.equal((db.prepare("SELECT outcome FROM video_availability_work WHERE video_id='c'").get() as any).outcome, "available");
+      assert.deepEqual(db.prepare("SELECT * FROM videos").all(), [{ video_id: "canonical", error_count: 17 }]);
       db.close();
-    } finally {
-      globalThis.fetch = old;
-      f.cleanup();
-    }
+    } finally { globalThis.fetch = old; f.cleanup(); }
   });
 }
 
@@ -261,83 +210,63 @@ for (const [status, body, outcome] of [
     }
   });
 }
-for (const fault of ["shape", "html", "dns", "tls", "timeout", "unsafe"]) {
-  test(`preflight ${fault} is host UNKNOWN with zero detail fanout`, async () => {
-    const f = fixture([
-        [
-          "a",
-          fault === "unsafe" ? "user:secret@example.org" : "example.org",
-          "uuid",
-        ],
-      ]),
-      old = globalThis.fetch;
-    const paths: string[] = [];
+for (const fault of ["shape", "html", "target-reset", "unsafe"] as const) {
+  test(`detail ${fault} cannot create host-wide unknown evidence`, async () => {
+    const f = fixture([["a", fault === "unsafe" ? "user:secret@example.org" : "example.org", "uuid"]]);
+    const old = globalThis.fetch, paths: string[] = [];
     globalThis.fetch = async (input) => {
       paths.push(String(input));
-      if (fault === "dns")
-        throw Object.assign(
-          new Error(
-            "dns secret https://user:password@example.org?token=secret",
-          ),
-          { code: "ENOTFOUND" },
-        );
-      if (fault === "tls")
-        throw Object.assign(new Error("certificate"), {
-          code: "CERT_HAS_EXPIRED",
-        });
-      if (fault === "timeout")
-        throw Object.assign(new Error("timeout"), { code: "TIMEOUT" });
-      return new Response(
-        fault === "html" ? "<html>" : JSON.stringify({ total: -1, data: [] }),
-      );
+      if (fault === "target-reset") throw Object.assign(new Error("target reset"), { code: "ECONNRESET" });
+      return new Response(fault === "html" ? "<html>" : JSON.stringify({ total: -1, data: [] }));
     };
     try {
-      await runAvailabilitySweep({ dbPath: f.dbPath, ...options });
-      assert.ok(paths.every((p) => p.includes("video-channels")));
-      if (fault === "unsafe") assert.equal(paths.length, 0);
+      if (fault === "unsafe") {
+        await assert.rejects(runAvailabilitySweep({ dbPath: f.dbPath, ...options }), /Unsafe availability work host/);
+        assert.equal(paths.length, 0);
+      } else {
+        await runAvailabilitySweep({ dbPath: f.dbPath, ...options });
+        // A transport reset may attempt the existing bounded protocol fallback;
+        // none of those attempts may request a channel-wide preflight.
+        assert.ok(paths.length >= 1);
+        assert.ok(paths.every(url => new URL(url).pathname === "/api/v1/videos/uuid"));
+      }
       const db = new Database(f.dbPath);
-      const row = db
-        .prepare("SELECT outcome,checked_at,error FROM video_availability_work")
-        .get() as any;
-      assert.equal(row.outcome, "unknown");
-      assert.equal(row.checked_at, null);
-      assert.match(row.error, /^host_preflight: /);
-      assert.ok(!row.error.includes("secret"));
+      const row = db.prepare("SELECT outcome,checked_at,error FROM video_availability_work").get() as any;
+      assert.equal(row.outcome, fault === "unsafe" ? null : "unknown");
+      assert.equal(row.checked_at === null, fault === "unsafe");
+      if (row.error) assert.ok(!row.error.includes("secret"));
       db.close();
-    } finally {
-      globalThis.fetch = old;
-      f.cleanup();
-    }
+    } finally { globalThis.fetch = old; f.cleanup(); }
   });
 }
 
-test("successful alternate preflight protocol flows into details, semantic-invalid 200 never falls back", async () => {
-  const f = fixture([["a", "example.org", "uuid"]]),
-    old = globalThis.fetch;
+test("direct video protocol fallback is independent of channel preflight", async () => {
+  const f = fixture([["a", "example.org", "uuid"]]), old = globalThis.fetch;
   const urls: string[] = [];
-  globalThis.fetch = async (input) => {
-    const url = String(input);
-    urls.push(url);
-    if (url.startsWith("https:"))
-      throw Object.assign(new Error("wrong TLS protocol"), {
-        code: "ERR_SSL_WRONG_VERSION_NUMBER",
-      });
-    return new Response(
-      JSON.stringify(
-        url.includes("video-channels")
-          ? { total: 0, data: [] }
-          : { uuid: "uuid" },
-      ),
-    );
+  globalThis.fetch = async input => {
+    const url = String(input); urls.push(url);
+    if (url.startsWith("https:")) throw Object.assign(new Error("wrong TLS protocol"),
+      { code: "ERR_SSL_WRONG_VERSION_NUMBER" });
+    return new Response(JSON.stringify({ uuid: "uuid" }));
   };
   try {
     await runAvailabilitySweep({ dbPath: f.dbPath, ...options });
-    assert.equal(urls.length, 3);
-    assert.ok(urls[2].startsWith("http:"));
-  } finally {
-    globalThis.fetch = old;
-    f.cleanup();
-  }
+    assert.equal(urls.length, 2);
+    assert.ok(urls[0].startsWith("https://") && urls[1].startsWith("http://"));
+    assert.ok(urls.every(url => url.includes("/api/v1/videos/uuid")));
+  } finally { globalThis.fetch = old; f.cleanup(); }
+});
+
+test("explicit local outage stops detail work without writing remote unknown", async () => {
+  const f = fixture([["a", "example.org", "uuid"]]), old = globalThis.fetch;
+  globalThis.fetch = async () => { throw new NoNetworkError("confirmed local outage"); };
+  try {
+    await assert.rejects(runAvailabilitySweep({ dbPath: f.dbPath, ...options }), /confirmed local outage/);
+    const db = new Database(f.dbPath);
+    assert.deepEqual(db.prepare("SELECT outcome,checked_at,error FROM video_availability_work").all(),
+      [{ outcome: null, checked_at: null, error: null }]);
+    db.close();
+  } finally { globalThis.fetch = old; f.cleanup(); }
 });
 
 test("host and detail concurrency and start delay share one limiter", async () => {
@@ -383,7 +312,9 @@ test("host and detail concurrency and start delay share one limiter", async () =
     assert.ok(maxHosts <= 2);
     assert.ok(maxHosts > 1);
     for (const times of starts.values()) {
-      assert.equal(times.length, 21);
+      // Twenty admitted details per host; the removed channel preflight must
+      // not be counted as a request or reintroduced to satisfy this assertion.
+      assert.equal(times.length, 20);
       for (let i = 1; i < times.length; i++)
         assert.ok(times[i] - times[i - 1] >= 4);
     }
@@ -485,14 +416,7 @@ test("invalid results, unsafe diagnostic text and changed UUID cannot pass the w
         { kind: "gone", checkedAt: 1 },
       ),
     );
-    assert.throws(
-      () =>
-        store.markHostPreflightUnknown(
-          "example.org",
-          "https://user:secret@example.org\nfoo",
-        ),
-      /diagnostic/,
-    );
+    assert.throws(() => store.assertComplete(), /incomplete/);
     assert.throws(
       () =>
         store.recordResult(row, {
@@ -507,7 +431,9 @@ test("invalid results, unsafe diagnostic text and changed UUID cannot pass the w
       /diagnostic/,
     );
     assert.equal(store.pendingBatch("example.org").length, 1);
-    store.markHostPreflightUnknown("example.org", "http_503");
+    store.recordResult(row, { kind: "unknown", checkedAt: 1,
+      error: { classification: { kind: "network" }, message: "unavailable", cause: null }
+    } as any);
     store.assertComplete();
   } finally {
     store.close();
@@ -536,3 +462,116 @@ for (const [key, value] of [
     }
   });
 }
+
+/** An outage in one active host must halt another host's NEXT identity, not just the outer host queue. */
+test("local outage stops new sibling host details and drains the already started detail", async () => {
+  const f = fixture([
+    ["a1", "a.test", "a-1"], ["a2", "a.test", "a-2"], ["a3", "a.test", "a-3"],
+    ["b1", "b.test", "b-1"], ["b2", "b.test", "b-2"],
+  ]);
+  const previousFetch = globalThis.fetch;
+  const requests: string[] = [];
+  let outageRaised = false;
+  let completedFirstA = false;
+  let releaseA: (() => void) | undefined;
+  const allowA = new Promise<void>(resolve => { releaseA = resolve; });
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    requests.push(`${url.hostname}/${url.pathname.split("/").at(-1)}`);
+    if (url.hostname === "b.test") {
+      outageRaised = true;
+      // The sibling remains in flight until after the fatal rejection propagates.
+      setTimeout(() => releaseA?.(), 10);
+      throw new NoNetworkError("confirmed local outage");
+    }
+    await allowA;
+    completedFirstA = true;
+    assert.equal(outageRaised, true);
+    return new Response(JSON.stringify({ uuid: url.pathname.split("/").at(-1) }));
+  };
+  try {
+    await assert.rejects(runAvailabilitySweep({ ...options, dbPath: f.dbPath,
+      concurrency: 2, hostConcurrency: 1 }), /confirmed local outage/);
+    assert.deepEqual(requests.sort(), ["a.test/a-1", "b.test/b-1"]);
+    assert.equal(completedFirstA, true);
+    const db = new Database(f.dbPath, { readonly: true });
+    assert.equal((db.prepare("SELECT outcome FROM video_availability_work WHERE video_id='a1'").get() as any).outcome, "available");
+    assert.equal((db.prepare("SELECT count(*) n FROM video_availability_work WHERE outcome IS NULL").get() as any).n, 4);
+    db.close();
+  } finally { globalThis.fetch = previousFetch; f.cleanup(); }
+});
+
+test("one host's remote 404 does not stop another host's admitted details", async () => {
+  const f = fixture([["a1", "a.test", "a-1"], ["a2", "a.test", "a-2"],
+    ["b1", "b.test", "b-1"]]);
+  const old = globalThis.fetch;
+  const requests: string[] = [];
+  globalThis.fetch = async input => {
+    const u = new URL(String(input));
+    requests.push(`${u.hostname}/${u.pathname.split("/").at(-1)}`);
+    return u.hostname === "b.test" ? new Response("{}", { status: 404 })
+      : new Response(JSON.stringify({ uuid: u.pathname.split("/").at(-1) }));
+  };
+  try {
+    await runAvailabilitySweep({ ...options, dbPath: f.dbPath, hostConcurrency: 1 });
+    assert.deepEqual(requests.sort(), ["a.test/a-1", "a.test/a-2", "b.test/b-1"]);
+    const db = new Database(f.dbPath, { readonly: true });
+    assert.deepEqual(db.prepare("SELECT video_id,outcome FROM video_availability_work ORDER BY video_id").all(),
+      [{video_id:"a1",outcome:"available"},{video_id:"a2",outcome:"available"},{video_id:"b1",outcome:"not_found"}]);
+    db.close();
+  } finally { globalThis.fetch = old; f.cleanup(); }
+});
+
+/** A process-local timeout cannot be erased by a successful alternate URL. */
+test("availability leaves explicit local timeout pending and rejects the run", async () => {
+  const f = fixture([["a", "example.org", "uuid"]]);
+  const original = globalThis.fetch;
+  const requests: string[] = [];
+  const outage = new NoNetworkError("confirmed local timeout");
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    requests.push(String(input));
+    if (String(input).startsWith("https://")) throw outage;
+    return new Response(JSON.stringify({ uuid: "uuid" }));
+  }) as typeof fetch;
+  try {
+    await assert.rejects(runAvailabilitySweep({ dbPath: f.dbPath, ...options }),
+      error => error === outage);
+    assert.deepEqual(requests, ["https://example.org/api/v1/videos/uuid"]);
+    const db = new Database(f.dbPath, { readonly: true });
+    assert.deepEqual(db.prepare(
+      "SELECT outcome,checked_at,error FROM video_availability_work WHERE video_id='a'"
+    ).get(), { outcome: null, checked_at: null, error: null });
+    db.close();
+  } finally {
+    globalThis.fetch = original;
+    f.cleanup();
+  }
+});
+
+test("availability keeps bounded fallback for ordinary remote timeout", async () => {
+  const f = fixture([["a", "example.org", "uuid"]]);
+  const original = globalThis.fetch;
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    requests.push(String(input));
+    if (String(input).startsWith("https://")) throw new Error("remote timeout");
+    return new Response(JSON.stringify({ uuid: "uuid" }));
+  }) as typeof fetch;
+  try {
+    await runAvailabilitySweep({ dbPath: f.dbPath, ...options });
+    assert.deepEqual(requests, [
+      "https://example.org/api/v1/videos/uuid",
+      "http://example.org/api/v1/videos/uuid"
+    ]);
+    const db = new Database(f.dbPath, { readonly: true });
+    const row = db.prepare("SELECT outcome,checked_at FROM video_availability_work WHERE video_id='a'").get() as {
+      outcome: string; checked_at: number
+    };
+    assert.equal(row.outcome, "available");
+    assert.ok(Number.isSafeInteger(row.checked_at));
+    db.close();
+  } finally {
+    globalThis.fetch = original;
+    f.cleanup();
+  }
+});

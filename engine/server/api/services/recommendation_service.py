@@ -21,6 +21,7 @@ from data.embeddings import normalize_vector, resolve_seed
 from data.metadata import fetch_metadata_by_index_ids
 from data.random_videos import fetch_random_rows, fetch_random_rows_from_cache
 from data.serving_moderation import apply_serving_moderation_filters
+from data.parent_health_visibility import build_parent_visibility_sql
 from data.video_filters import VideoFilters, matches_video_filters
 from data.similarity_candidates import SimilarityCandidatesPolicy, get_similar_candidates
 from data.time import now_ms
@@ -179,8 +180,9 @@ def _resolve_client_likes(server: Any, likes: list[dict[str, str]]) -> list[dict
         rows = server.db.execute(
             f"""
             SELECT video_id, video_uuid, instance_domain
-            FROM videos
-            WHERE invalid_reason IS NULL AND ({conditions})
+            FROM videos AS v
+            WHERE v.invalid_reason IS NULL AND {build_parent_visibility_sql("v")}
+              AND ({conditions})
             """,
             params,
         ).fetchall()

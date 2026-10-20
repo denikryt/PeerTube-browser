@@ -204,16 +204,25 @@ export class VideoStore {
    */
   listChannelsWithVideos(minVideos: number, instances: string[]): VideoChannelRow[] {
     if (instances.length === 0) return [];
-    const placeholders = instances.map(() => "?").join(", ");
+    // Child video work needs positive fresh parent health and a completed
+    // page-zero listing; the explicit JSON1 scope scales beyond bind limits.
     const rows = this.db
       .prepare(
         `SELECT channel_id, channel_name, display_name, channel_url, instance_domain, videos_count
-         FROM channels
+         FROM channels c
          WHERE videos_count >= ?
            AND channel_name IS NOT NULL
-           AND instance_domain IN (${placeholders})`
+           AND c.health_status='ok' AND c.health_checked_at IS NOT NULL
+           AND c.instance_domain IN (SELECT value FROM json_each(?))
+           AND EXISTS (SELECT 1 FROM instances i
+             JOIN channel_crawl_progress p ON p.instance_domain=i.host
+             JOIN crawl_state state ON state.key='parent_enumeration_v1:' || i.host
+             WHERE i.host=c.instance_domain
+               AND i.health_status='ok' AND i.health_checked_at IS NOT NULL
+               AND p.status='done' AND p.last_start=0
+               AND state.value='page_zero_complete_v1')`
       )
-      .all(minVideos, ...instances) as VideoChannelRow[];
+      .all(minVideos, JSON.stringify(instances)) as VideoChannelRow[];
     return rows;
   }
 
@@ -381,17 +390,28 @@ export class VideoStore {
     if (scopedInstances && scopedInstances.length === 0) return [];
     const placeholders = statuses.map(() => "?").join(", ");
     const instanceFilter = scopedInstances
-      ? `AND instance_domain IN (${scopedInstances.map(() => "?").join(", ")})`
+      ? "AND p.instance_domain IN (SELECT value FROM json_each(?))"
       : "";
+    // Revalidate parent eligibility at the final authoritative read: resumed
+    // video progress can retain channels now marked unhealthy or missing.
     const rows = this.db
       .prepare(
-        `SELECT instance_domain, channel_id, channel_name, status, last_start, last_error
-         FROM video_crawl_progress
-         WHERE status IN (${placeholders})
+        `SELECT p.instance_domain, p.channel_id, p.channel_name,
+                p.status, p.last_start, p.last_error
+         FROM video_crawl_progress p
+         JOIN channels c ON c.channel_id=p.channel_id AND c.instance_domain=p.instance_domain
+         JOIN instances i ON i.host=p.instance_domain
+         JOIN channel_crawl_progress cp ON cp.instance_domain=p.instance_domain
+         JOIN crawl_state state ON state.key='parent_enumeration_v1:' || p.instance_domain
+         WHERE p.status IN (${placeholders})
+           AND c.health_status='ok' AND c.health_checked_at IS NOT NULL
+           AND i.health_status='ok' AND i.health_checked_at IS NOT NULL
+           AND cp.status='done' AND cp.last_start=0
+           AND state.value='page_zero_complete_v1'
          ${instanceFilter}
-         ORDER BY instance_domain ASC, channel_id ASC`
+         ORDER BY p.instance_domain ASC, p.channel_id ASC`
       )
-      .all(...statuses, ...(scopedInstances ?? [])) as {
+      .all(...statuses, ...(scopedInstances ? [JSON.stringify(scopedInstances)] : [])) as {
       instance_domain: string;
       channel_id: string;
       channel_name: string | null;
