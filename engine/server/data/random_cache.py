@@ -24,6 +24,7 @@ _REQUIRED_CANONICAL_TABLES = {
     "videos",
     "video_embeddings",
     "video_index_ids",
+    "video_tags",
     "channels",
     "instance_denylist",
     "channel_moderation",

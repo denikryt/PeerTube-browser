@@ -55,6 +55,11 @@ export const VIDEO_METADATA_V1_COLUMNS = [
   ["thumbnail_height", "INTEGER"]
 ] as const;
 
+/** Thumbnail candidate storage has its own refresh lifecycle, not metadata-v1. */
+export const VIDEO_THUMBNAIL_COLUMNS = [
+  ["thumbnail_candidates_json", "TEXT"]
+] as const;
+
 /**
  * Handle get columns.
  */
@@ -84,6 +89,7 @@ export function applyBaseSchema(db: Database.Database) {
   migrateChannels(db);
   migrateVideos(db);
   addMetadataV1Columns(db);
+  addThumbnailCandidateColumns(db);
   db.exec(schemaSql);
 }
 
@@ -305,12 +311,20 @@ function migrateVideos(db: Database.Database) {
   const hasErrorCount = columns.includes("error_count");
   const hasInvalidReason = columns.includes("invalid_reason");
   const hasInvalidAt = columns.includes("invalid_at");
+  const hasThumbnailCandidates = columns.includes("thumbnail_candidates_json");
+  const hasThumbnailWidth = columns.includes("thumbnail_width");
+  const hasThumbnailHeight = columns.includes("thumbnail_height");
 
   const lastErrorExpr = hasLastError ? "last_error" : "NULL";
   const lastErrorAtExpr = hasLastErrorAt ? "last_error_at" : "NULL";
   const errorCountExpr = hasErrorCount ? "error_count" : "0";
   const invalidReasonExpr = hasInvalidReason ? "invalid_reason" : "NULL";
   const invalidAtExpr = hasInvalidAt ? "invalid_at" : "NULL";
+  const thumbnailCandidatesExpr = hasThumbnailCandidates
+    ? "thumbnail_candidates_json"
+    : "NULL";
+  const thumbnailWidthExpr = hasThumbnailWidth ? "thumbnail_width" : "NULL";
+  const thumbnailHeightExpr = hasThumbnailHeight ? "thumbnail_height" : "NULL";
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS videos_new (
@@ -331,6 +345,9 @@ function migrateVideos(db: Database.Database) {
       video_url TEXT,
       duration INTEGER,
       thumbnail_url TEXT,
+      thumbnail_candidates_json TEXT,
+      thumbnail_width INTEGER,
+      thumbnail_height INTEGER,
       embed_path TEXT,
       views INTEGER,
       likes INTEGER,
@@ -364,6 +381,9 @@ function migrateVideos(db: Database.Database) {
       video_url,
       duration,
       thumbnail_url,
+      thumbnail_candidates_json,
+      thumbnail_width,
+      thumbnail_height,
       embed_path,
       views,
       likes,
@@ -396,6 +416,9 @@ function migrateVideos(db: Database.Database) {
       video_url,
       duration,
       thumbnail_url,
+      ${thumbnailCandidatesExpr},
+      ${thumbnailWidthExpr},
+      ${thumbnailHeightExpr},
       embed_path,
       views,
       likes,
@@ -425,6 +448,11 @@ function addMetadataV1Columns(db: Database.Database) {
   addMissingColumns(db, "videos", VIDEO_METADATA_V1_COLUMNS);
 }
 
+/** Add crawler-owned thumbnail candidate storage without metadata-version coupling. */
+function addThumbnailCandidateColumns(db: Database.Database) {
+  addMissingColumns(db, "videos", VIDEO_THUMBNAIL_COLUMNS);
+}
+
 /**
  * Validate metadata-maintenance schema without applying crawler migrations.
  * Production callers must run migrate-whitelist.py before this data operation.
@@ -447,6 +475,29 @@ export function assertMetadataMaintenanceSchema(dbPath: string) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
       `${message} Run engine/server/db/jobs/migrate-whitelist.py before metadata backfill.`
+    );
+  } finally {
+    db.close();
+  }
+}
+
+/** Validate thumbnail maintenance prerequisites without mutating production schema. */
+export function assertThumbnailMaintenanceSchema(dbPath: string) {
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    assertRequiredColumns(db, "videos", [
+      "video_id",
+      "video_uuid",
+      "instance_domain",
+      "thumbnail_candidates_json",
+      "thumbnail_url",
+      "thumbnail_width",
+      "thumbnail_height"
+    ]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${message} Run engine/server/db/jobs/migrate-whitelist.py before thumbnail refresh.`
     );
   } finally {
     db.close();

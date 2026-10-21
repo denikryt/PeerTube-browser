@@ -196,7 +196,7 @@ def test_index_id_metadata_row_filters_without_requerying_metadata_boundary(monk
           video_id TEXT, video_uuid TEXT, video_numeric_id INTEGER, instance_domain TEXT, channel_id TEXT,
           channel_name TEXT, channel_url TEXT, account_name TEXT, account_url TEXT, title TEXT, description TEXT,
           tags_json TEXT, category TEXT, category_id TEXT, language TEXT, language_label TEXT, published_at INTEGER,
-          video_url TEXT, duration INTEGER, thumbnail_url TEXT, embed_path TEXT, views INTEGER, likes INTEGER,
+          video_url TEXT, duration INTEGER, thumbnail_url TEXT, thumbnail_candidates_json TEXT, embed_path TEXT, views INTEGER, likes INTEGER,
           dislikes INTEGER, comments_count INTEGER, nsfw INTEGER, preview_path TEXT, last_checked_at INTEGER,
           error_count INTEGER DEFAULT 0, PRIMARY KEY(video_id,instance_domain)
         );
@@ -208,7 +208,7 @@ def test_index_id_metadata_row_filters_without_requerying_metadata_boundary(monk
     apply_video_index_ids_migration(conn)
     conn.execute("INSERT INTO channels VALUES ('c','example.org','Channel',NULL)")
     conn.execute(
-        """INSERT INTO videos VALUES ('v','u',1,'example.org','c','c',NULL,NULL,NULL,'Title',NULL,'["linux"]','Education','0013','uk','Ukrainian',1,NULL,1,NULL,NULL,1,1,0,0,0,NULL,1,0)"""
+        """INSERT INTO videos VALUES ('v','u',1,'example.org','c','c',NULL,NULL,NULL,'Title',NULL,'["linux"]','Education','0013','uk','Ukrainian',1,NULL,1,NULL,'[{"url":"https://cdn.example/recommendation.jpg","width":null,"height":null}]',NULL,1,1,0,0,0,NULL,1,0)"""
     )
     conn.execute("INSERT INTO video_embeddings VALUES ('v','example.org',3,'test')")
     conn.execute("INSERT INTO video_index_ids(index_id,video_id,instance_domain,is_active,created_at,updated_at) VALUES (9,'v','example.org',1,1,1)")
@@ -235,6 +235,7 @@ def test_index_id_metadata_row_filters_without_requerying_metadata_boundary(monk
     )
     assert [item["video_id"] for item in result.payload["rows"]] == ["v"]
     assert result.payload["rows"][0]["category_id"] == "0013"
+    assert result.payload["rows"][0]["thumbnail_urls"] == ["https://cdn.example/recommendation.jpg"]
 
     mismatch = rec_service.build_rows_response(
         server,

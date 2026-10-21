@@ -20,8 +20,41 @@ Client backend keeps its own users DB (default):
 - `client/backend/db/users.db`
 
 Note: Engine recommendation ranking does not require local `engine/server/db/users.db`.
-Write-derived ranking signals in Engine come from bridge-ingested aggregated
-`interaction_signals`.
+Bridge-ingested `interaction_signals` remain stored and aggregated, but current
+Discovery/recommendation serving does not read them for ranking.
+
+### First rollout of prepared Discovery data
+
+An existing production `whitelist.db` predating prepared Discovery does not contain
+`video_tags` or `video_facets_snapshot`. The first deployment of code that requires
+those structures must keep Engine stopped until both read indexes and prepared data
+have been built and verified:
+
+```bash
+systemctl stop peertube-engine
+# Deploy the new code without an automatic Engine restart.
+python3 engine/server/db/jobs/ensure-video-indexes.py --db engine/server/db/whitelist.db
+python3 engine/server/db/jobs/rebuild-video-discovery-data.py --db engine/server/db/whitelist.db
+# Verify the singleton exists before starting Engine.
+sqlite3 engine/server/db/whitelist.db   "select snapshot_id, schema_version from video_facets_snapshot where snapshot_id=1;"
+systemctl start peertube-engine
+```
+
+If the normal deployment mechanism automatically restarts Engine, do not use that
+automatic restart for this one-time rollout. A failed rebuild/readiness check means
+Engine remains stopped; there is no runtime fallback to request-time tag JSON scans
+or facet aggregation.
+
+The repository includes a non-production destructive smoke of the same barrier:
+
+```bash
+bash tests/run-plan18-rollout-smoke.sh
+```
+
+It creates a temporary pre-prepared DB, runs the index/prepared bootstrap, verifies
+readiness, and only then constructs the Engine request surface for one `tag=` request
+and `/internal/video-facets`. It does not replace the production stop/deploy/start
+procedure above.
 
 ## 2) Install systemd services (prod/dev contours)
 Centralized installer (source of truth):

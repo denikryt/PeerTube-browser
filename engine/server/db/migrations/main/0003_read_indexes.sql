@@ -34,3 +34,24 @@ CREATE INDEX IF NOT EXISTS idx_videos_category_normalized
 -- target_columns: instance_domain
 CREATE INDEX IF NOT EXISTS idx_videos_instance_normalized
   ON videos (lower(trim(instance_domain)));
+
+-- target_table: videos
+-- target_columns: published_at, instance_domain, video_id
+CREATE INDEX IF NOT EXISTS idx_videos_fresh_order
+  ON videos (
+    CASE WHEN published_at IS NULL THEN 1 ELSE 0 END ASC,
+    COALESCE(published_at, 0) DESC,
+    instance_domain ASC,
+    video_id ASC
+  );
+-- target_table: videos
+-- target_columns: popularity, instance_domain, video_id
+CREATE INDEX IF NOT EXISTS idx_videos_trending_order
+  ON videos (
+    popularity DESC,
+    instance_domain ASC,
+    video_id ASC
+  );
+
+-- target_table: videos
+DROP INDEX IF EXISTS main.idx_videos_popularity;

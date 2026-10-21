@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "engine" / "server" / "api"))
 sys.path.insert(0, str(ROOT / "engine" / "server"))
 
 from engine.server.data.metadata import fetch_metadata, fetch_metadata_by_ids, fetch_metadata_by_index_ids
+from engine.server.data.video_thumbnails import apply_thumbnail_api_fields
 from engine.server.db.migrations.apply import apply_video_index_ids_migration
 
 
@@ -28,7 +29,7 @@ def _db() -> sqlite3.Connection:
           channel_id TEXT, channel_name TEXT, channel_url TEXT, account_name TEXT, account_url TEXT,
           title TEXT, description TEXT, tags_json TEXT, category TEXT, category_id TEXT,
           language TEXT, language_label TEXT, published_at INTEGER, video_url TEXT, duration INTEGER,
-          thumbnail_url TEXT, embed_path TEXT, views INTEGER, likes INTEGER, dislikes INTEGER,
+          thumbnail_url TEXT, thumbnail_candidates_json TEXT, embed_path TEXT, views INTEGER, likes INTEGER, dislikes INTEGER,
           comments_count INTEGER, nsfw INTEGER, preview_path TEXT, last_checked_at INTEGER,
           error_count INTEGER DEFAULT 0, PRIMARY KEY(video_id, instance_domain)
         );
@@ -45,7 +46,7 @@ def _db() -> sqlite3.Connection:
         INSERT INTO videos VALUES (
           'v1','uuid-v1',1,'example.org','c1','channel','https://example.org/c','acct','https://example.org/a',
           'Title','Desc','[""Linux""]','Education','13','uk','Ukrainian',1000,
-          'https://example.org/w/v1',60,'/t.jpg','/embed',10,2,0,0,0,'/p.jpg',1000,0
+          'https://example.org/w/v1',60,'https://example.org/t.jpg','[{"url":"https://example.org/t.jpg","width":850,"height":480},{"url":"https://example.org/t2.jpg","width":280,"height":157}]','/embed',10,2,0,0,0,'/p.jpg',1000,0
         )
         """.replace('[""Linux""]', '["Linux"]')
     )
@@ -108,3 +109,83 @@ def test_metadata_fetchers_do_not_expose_internal_lookup_keys() -> None:
 
     assert "rowid" not in fetch_metadata(conn, [rowid])[rowid]
     assert "index_id" not in fetch_metadata_by_index_ids(conn, [7])[7]
+
+
+def test_thumbnail_decoder_preserves_legacy_and_authoritative_states() -> None:
+    """Positive: SQL NULL, authoritative empty, and object arrays keep distinct API semantics."""
+    legacy_sql_null = apply_thumbnail_api_fields(
+        {"thumbnail_candidates_json": None, "thumbnail_url": "https://e.test/legacy.jpg"}
+    )
+    authoritative_empty = apply_thumbnail_api_fields(
+        {"thumbnail_candidates_json": "[]", "thumbnail_url": "https://e.test/stale.jpg"}
+    )
+    authoritative_urls = apply_thumbnail_api_fields(
+        {
+            "thumbnail_candidates_json": (
+                '[{"url":"https://e.test/a.jpg","width":850,"height":480},'
+                '{"url":"https://e.test/b.jpg","width":280,"height":157}]'
+            ),
+            "thumbnail_url": "https://e.test/stale.jpg",
+        }
+    )
+
+    assert legacy_sql_null["thumbnail_urls"] == ["https://e.test/legacy.jpg"]
+    assert legacy_sql_null["thumbnail_candidates"] == [
+        {"url": "https://e.test/legacy.jpg", "width": None, "height": None}
+    ]
+    assert authoritative_empty["thumbnail_urls"] == []
+    assert authoritative_empty["thumbnail_candidates"] == []
+    assert authoritative_empty["thumbnail_url"] is None
+    assert authoritative_urls["thumbnail_urls"] == [
+        "https://e.test/a.jpg",
+        "https://e.test/b.jpg",
+    ]
+    assert authoritative_urls["thumbnail_url"] == "https://e.test/a.jpg"
+    assert authoritative_urls["thumbnail_candidates"] == [
+        {"url": "https://e.test/a.jpg", "width": 850, "height": 480},
+        {"url": "https://e.test/b.jpg", "width": 280, "height": 157},
+    ]
+    for row in (legacy_sql_null, authoritative_empty, authoritative_urls):
+        assert "thumbnail_candidates_json" not in row
+
+
+def test_thumbnail_decoder_fails_soft_on_corruption_but_not_inside_authoritative_array() -> None:
+    """Negative: corrupt top-level values fall back, while parsed arrays stay authoritative."""
+    malformed = apply_thumbnail_api_fields(
+        {"thumbnail_candidates_json": "{", "thumbnail_url": "https://e.test/legacy.jpg"}
+    )
+    wrong_top_level = apply_thumbnail_api_fields(
+        {"thumbnail_candidates_json": '"oops"', "thumbnail_url": "https://e.test/legacy.jpg"}
+    )
+    json_null = apply_thumbnail_api_fields(
+        {"thumbnail_candidates_json": "null", "thumbnail_url": "https://e.test/legacy.jpg"}
+    )
+    partial_array = apply_thumbnail_api_fields(
+        {
+            "thumbnail_candidates_json": (
+                '[{"url":"https://e.test/good.jpg","width":850,"height":480},'
+                '123,{"url":"ftp://e.test/bad.jpg","width":1,"height":1},'
+                '{"url":"https://e.test/good.jpg","width":280,"height":157}]'
+            ),
+            "thumbnail_url": "https://e.test/legacy.jpg",
+        }
+    )
+    invalid_array = apply_thumbnail_api_fields(
+        {
+            "thumbnail_candidates_json": (
+                '[123,{"url":"ftp://e.test/bad.jpg","width":1,"height":1}]'
+            ),
+            "thumbnail_url": "https://e.test/legacy.jpg",
+        }
+    )
+
+    assert malformed["thumbnail_urls"] == ["https://e.test/legacy.jpg"]
+    assert wrong_top_level["thumbnail_urls"] == ["https://e.test/legacy.jpg"]
+    assert json_null["thumbnail_urls"] == ["https://e.test/legacy.jpg"]
+    assert partial_array["thumbnail_urls"] == ["https://e.test/good.jpg"]
+    assert partial_array["thumbnail_candidates"] == [
+        {"url": "https://e.test/good.jpg", "width": 850, "height": 480}
+    ]
+    assert invalid_array["thumbnail_urls"] == []
+    assert invalid_array["thumbnail_candidates"] == []
+    assert invalid_array["thumbnail_url"] is None

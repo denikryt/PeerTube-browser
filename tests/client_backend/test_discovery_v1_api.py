@@ -165,8 +165,8 @@ def test_v1_unknown_query_does_not_reach_engine(start_json_engine, start_client_
     assert fake_engine.requests == []
 
 
-def test_v1_recommendations_normalizes_thumbnail_from_relative_preview_path(start_json_engine, start_client_backend) -> None:
-    """Recommendation rows expose a browser-ready thumbnail_url fallback."""
+def test_v1_recommendations_do_not_promote_preview_into_thumbnail_candidates(start_json_engine, start_client_backend) -> None:
+    """Recommendation rows preserve preview metadata without using it as card fallback."""
     fake_engine = start_json_engine(
         {
             ("POST", "/recommendations"): lambda _record: (
@@ -192,13 +192,14 @@ def test_v1_recommendations_normalizes_thumbnail_from_relative_preview_path(star
 
     assert response.status_code == 200
     body = response.json()
-    assert body["items"][0]["thumbnail_url"] == "https://video.blast-info.fr/lazy-static/previews/rec-preview.jpg"
+    assert body["items"][0]["thumbnail_url"] is None
+    assert body["items"][0]["thumbnail_urls"] == []
     assert body["items"][0]["preview_path"] == "/lazy-static/previews/rec-preview.jpg"
     assert body["pagination"]["has_more"] is False
 
 
-def test_v1_video_detail_normalizes_thumbnail_from_relative_preview_path(start_json_engine, start_client_backend) -> None:
-    """Single video metadata responses use the same public thumbnail contract."""
+def test_v1_video_detail_does_not_promote_relative_preview_path(start_json_engine, start_client_backend) -> None:
+    """Single video metadata uses the same no-preview thumbnail contract."""
     fake_engine = start_json_engine(
         {
             ("GET", "/api/video"): lambda _record: (
@@ -219,7 +220,8 @@ def test_v1_video_detail_normalizes_thumbnail_from_relative_preview_path(start_j
 
     assert response.status_code == 200
     body = response.json()
-    assert body["thumbnail_url"] == "https://video.blast-info.fr/lazy-static/previews/v1.jpg"
+    assert body["thumbnail_url"] is None
+    assert body["thumbnail_urls"] == []
     assert body["preview_path"] == "/lazy-static/previews/v1.jpg"
 
 
@@ -250,7 +252,8 @@ def test_v1_similar_normalizes_thumbnail_without_changing_pagination(start_json_
 
     assert response.status_code == 200
     body = response.json()
-    assert body["items"][0]["thumbnail_url"] == "https://video.blast-info.fr/lazy-static/previews/s1.jpg"
+    assert body["items"][0]["thumbnail_url"] is None
+    assert body["items"][0]["thumbnail_urls"] == []
     assert body["pagination"]["has_more"] is True
     assert isinstance(body["pagination"]["next_cursor"], str)
 

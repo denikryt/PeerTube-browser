@@ -69,6 +69,7 @@ def _connect() -> sqlite3.Connection:
         );
         """
     )
+    conn.execute("ALTER TABLE videos ADD COLUMN thumbnail_candidates_json TEXT")
     return conn
 
 

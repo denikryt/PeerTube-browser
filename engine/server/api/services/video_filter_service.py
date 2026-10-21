@@ -5,8 +5,8 @@ import re
 from typing import Any, Iterable
 
 from data.moderation import normalize_host
-from data.video_filters import UNKNOWN_LANGUAGE, VideoFilters, fetch_video_facets
-from data.serving_moderation import serving_visibility_from_server
+from data.prepared_discovery import VideoFacetsUnavailable, fetch_prepared_video_facets
+from data.video_filters import UNKNOWN_LANGUAGE, VideoFilters
 from route_results import RouteResult
 
 FILTER_KEYS = ("language", "category", "tag", "instance")
@@ -69,8 +69,16 @@ def _normalize_lower(value: str | None) -> str | None:
 
 
 def handle_internal_video_facets(server: Any) -> RouteResult:
-    """Return global facets over the same service-visible corpus as browse/search."""
-    visibility = serving_visibility_from_server(server)
+    """Return the updater-prepared facet snapshot without request-time aggregation."""
     with server.db_lock:
-        payload = fetch_video_facets(server.db, visibility=visibility)
+        try:
+            payload = fetch_prepared_video_facets(server.db)
+        except VideoFacetsUnavailable:
+            return RouteResult(
+                503,
+                {
+                    "error": "Video facets unavailable",
+                    "code": "video_facets_unavailable",
+                },
+            )
     return RouteResult(200, payload)

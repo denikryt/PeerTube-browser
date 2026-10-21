@@ -362,6 +362,26 @@ def test_production_schema_preflight_requires_all_crawler_owned_columns(tmp_path
         assert_production_schema_compatible(prod, schema_path)
 
 
+def test_production_schema_preflight_rejects_missing_thumbnail_candidate_column(tmp_path) -> None:
+    """The new crawler-owned thumbnail column is a required production schema boundary."""
+    from engine.server.db.jobs.updater.staging import assert_production_schema_compatible
+
+    schema_path = Path(__file__).resolve().parents[2] / "engine/crawler/schema.sql"
+    prod = tmp_path / "prod-before-thumbnail-candidates.db"
+    schema_sql = schema_path.read_text(encoding="utf-8")
+    legacy_schema_sql = schema_sql.replace("  thumbnail_candidates_json TEXT,\n", "")
+    assert legacy_schema_sql != schema_sql
+    with sqlite3.connect(prod) as conn:
+        conn.executescript(legacy_schema_sql)
+        conn.commit()
+
+    with __import__("pytest").raises(
+        RuntimeError,
+        match=r"videos missing columns: thumbnail_candidates_json.*migrate-whitelist|migrate-whitelist.*thumbnail_candidates_json",
+    ):
+        assert_production_schema_compatible(prod, schema_path)
+
+
 def test_production_schema_preflight_allows_engine_owned_extra_columns(tmp_path) -> None:
     """Crawler-owned schema is a subset contract; production-only columns are valid."""
     from engine.server.db.jobs.updater.staging import assert_production_schema_compatible
@@ -375,3 +395,133 @@ def test_production_schema_preflight_allows_engine_owned_extra_columns(tmp_path)
         conn.commit()
 
     assert_production_schema_compatible(prod, schema_path)
+
+
+
+def _write_merge_rules(path: Path, tables: list[dict[str, object]]) -> None:
+    """Write the minimal rule document accepted by the merge job."""
+    import json
+
+    path.write_text(json.dumps({"tables": tables}), encoding="utf-8")
+
+
+def _seed_merge_prepared_snapshot(conn: sqlite3.Connection) -> None:
+    """Create the narrow prepared-discovery readiness marker used by merge tests."""
+    conn.executescript(
+        """
+        CREATE TABLE video_facets_snapshot(
+          snapshot_id INTEGER PRIMARY KEY CHECK(snapshot_id = 1),
+          schema_version INTEGER NOT NULL,
+          built_at INTEGER NOT NULL,
+          source_video_count INTEGER NOT NULL,
+          tag_membership_count INTEGER NOT NULL,
+          language_count INTEGER NOT NULL,
+          category_count INTEGER NOT NULL,
+          tag_count INTEGER NOT NULL,
+          instance_count INTEGER NOT NULL,
+          payload_json TEXT NOT NULL
+        );
+        INSERT INTO video_facets_snapshot VALUES(1,1,1,0,0,0,0,0,0,'{}');
+        """
+    )
+
+
+def test_merge_invalidates_prepared_snapshot_when_any_video_rule_changes_rows(monkeypatch, tmp_path) -> None:
+    """A committed videos merge invalidates the previous prepared Discovery generation once."""
+    from types import SimpleNamespace
+
+    mod = _load_merge_job()
+    prod = tmp_path / "prod-invalidate.db"
+    stage = tmp_path / "stage-invalidate.db"
+    rules = tmp_path / "rules.json"
+    with sqlite3.connect(prod) as conn:
+        conn.execute("CREATE TABLE videos(video_id TEXT PRIMARY KEY, title TEXT)")
+        conn.execute("INSERT INTO videos VALUES('old','old')")
+        _seed_merge_prepared_snapshot(conn)
+        conn.commit()
+    with sqlite3.connect(stage) as conn:
+        conn.execute("CREATE TABLE videos(video_id TEXT PRIMARY KEY, title TEXT)")
+        conn.execute("INSERT INTO videos VALUES('new','new')")
+        conn.commit()
+    _write_merge_rules(rules, [{"name": "videos", "strategy": "INSERT_ONLY", "keys": ["video_id"]}])
+    monkeypatch.setattr(
+        mod,
+        "parse_args",
+        lambda: SimpleNamespace(prod_db=str(prod), staging_db=str(stage), rules=str(rules)),
+    )
+
+    mod.main()
+
+    with sqlite3.connect(prod) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM videos").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM video_facets_snapshot").fetchone()[0] == 0
+
+
+def test_merge_noop_video_rule_keeps_prepared_snapshot(monkeypatch, tmp_path) -> None:
+    """A videos rule with affected=0 must not create false prepared unavailability."""
+    from types import SimpleNamespace
+
+    mod = _load_merge_job()
+    prod = tmp_path / "prod-noop.db"
+    stage = tmp_path / "stage-noop.db"
+    rules = tmp_path / "rules.json"
+    for path in (prod, stage):
+        with sqlite3.connect(path) as conn:
+            conn.execute("CREATE TABLE videos(video_id TEXT PRIMARY KEY, title TEXT)")
+            conn.execute("INSERT INTO videos VALUES('same','same')")
+            if path == prod:
+                _seed_merge_prepared_snapshot(conn)
+            conn.commit()
+    _write_merge_rules(rules, [{"name": "videos", "strategy": "INSERT_ONLY", "keys": ["video_id"]}])
+    monkeypatch.setattr(
+        mod,
+        "parse_args",
+        lambda: SimpleNamespace(prod_db=str(prod), staging_db=str(stage), rules=str(rules)),
+    )
+
+    mod.main()
+
+    with sqlite3.connect(prod) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM video_facets_snapshot").fetchone()[0] == 1
+
+
+def test_merge_failure_rolls_back_video_change_and_snapshot_invalidation(monkeypatch, tmp_path) -> None:
+    """Prepared invalidation shares the merge transaction and rolls back with failed DML."""
+    from types import SimpleNamespace
+
+    mod = _load_merge_job()
+    prod = tmp_path / "prod-rollback.db"
+    stage = tmp_path / "stage-rollback.db"
+    rules = tmp_path / "rules.json"
+    with sqlite3.connect(prod) as conn:
+        conn.execute("CREATE TABLE videos(video_id TEXT PRIMARY KEY, title TEXT)")
+        conn.execute("CREATE TABLE channels(channel_id TEXT PRIMARY KEY, title TEXT)")
+        conn.execute("CREATE TRIGGER reject_channel BEFORE INSERT ON channels BEGIN SELECT RAISE(ABORT, 'no channel'); END")
+        conn.execute("INSERT INTO videos VALUES('old','old')")
+        _seed_merge_prepared_snapshot(conn)
+        conn.commit()
+    with sqlite3.connect(stage) as conn:
+        conn.execute("CREATE TABLE videos(video_id TEXT PRIMARY KEY, title TEXT)")
+        conn.execute("CREATE TABLE channels(channel_id TEXT PRIMARY KEY, title TEXT)")
+        conn.execute("INSERT INTO videos VALUES('new','new')")
+        conn.execute("INSERT INTO channels VALUES('c1','new')")
+        conn.commit()
+    _write_merge_rules(
+        rules,
+        [
+            {"name": "videos", "strategy": "INSERT_ONLY", "keys": ["video_id"]},
+            {"name": "channels", "strategy": "INSERT_ONLY", "keys": ["channel_id"]},
+        ],
+    )
+    monkeypatch.setattr(
+        mod,
+        "parse_args",
+        lambda: SimpleNamespace(prod_db=str(prod), staging_db=str(stage), rules=str(rules)),
+    )
+
+    with __import__("pytest").raises(sqlite3.IntegrityError, match="no channel"):
+        mod.main()
+
+    with sqlite3.connect(prod) as conn:
+        assert conn.execute("SELECT video_id FROM videos ORDER BY video_id").fetchall() == [("old",)]
+        assert conn.execute("SELECT COUNT(*) FROM video_facets_snapshot").fetchone()[0] == 1

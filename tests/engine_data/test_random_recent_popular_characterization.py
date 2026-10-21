@@ -25,7 +25,7 @@ def _connect() -> sqlite3.Connection:
         CREATE TABLE videos (
           video_id TEXT, video_uuid TEXT, video_numeric_id INTEGER, instance_domain TEXT, channel_id TEXT,
           channel_name TEXT, channel_url TEXT, account_name TEXT, account_url TEXT, title TEXT, description TEXT,
-          tags_json TEXT, category TEXT, category_id TEXT, language TEXT, language_label TEXT, published_at INTEGER, video_url TEXT, duration INTEGER, thumbnail_url TEXT,
+          tags_json TEXT, category TEXT, category_id TEXT, language TEXT, language_label TEXT, published_at INTEGER, video_url TEXT, duration INTEGER, thumbnail_url TEXT, thumbnail_candidates_json TEXT,
           embed_path TEXT, views INTEGER, likes INTEGER, dislikes INTEGER, comments_count INTEGER, nsfw INTEGER,
           preview_path TEXT, popularity REAL, last_checked_at INTEGER, error_count INTEGER DEFAULT 0, invalid_reason TEXT,
           PRIMARY KEY(video_id, instance_domain)
@@ -44,7 +44,7 @@ def _connect() -> sqlite3.Connection:
             """
             INSERT INTO videos VALUES (?, ?, ?, 'example.org', 'c', 'c', 'https://example.org/c/c', 'acct',
             'https://example.org/a/acct', ?, 'desc', '[]', 'cat', '1', 'en', 'English', ?, 'https://example.org/w/x', 60,
-            '/thumb.jpg', '/embed', ?, ?, 0, 0, 0, '/preview.jpg', ?, 1000, ?, NULL)
+            '/thumb.jpg', '[{"url":"https://example.org/thumb.jpg","width":null,"height":null}]', '/embed', ?, ?, 0, 0, 0, '/preview.jpg', ?, 1000, ?, NULL)
             """,
             (video_id, f"uuid-{video_id}", len(video_id), f"Title {video_id}", published, views, likes, popularity, error_count),
         )
@@ -58,6 +58,7 @@ def test_recent_videos_are_newest_first_and_exclude_over_threshold_errors() -> N
     rows = fetch_recent_videos(_connect(), limit=2, error_threshold=2)
 
     assert [row["video_id"] for row in rows] == ["new", "popular"]
+    assert rows[0]["thumbnail_urls"] == ["https://example.org/thumb.jpg"]
 
 
 def test_popular_videos_use_current_popularity_order_and_error_filter() -> None:
@@ -65,6 +66,22 @@ def test_popular_videos_use_current_popularity_order_and_error_filter() -> None:
     rows = fetch_popular_videos(_connect(), limit=2, error_threshold=2)
 
     assert [row["video_id"] for row in rows] == ["popular", "new"]
+
+
+def test_popular_videos_preserve_candidate_cut_before_embedding_filter() -> None:
+    """Missing embeddings may underfill the legacy top-N candidate window."""
+    conn = _connect()
+    conn.execute("UPDATE videos SET popularity = 100 WHERE video_id = 'popular'")
+    conn.execute("UPDATE videos SET popularity = 50 WHERE video_id = 'new'")
+    conn.execute("UPDATE videos SET popularity = 40 WHERE video_id = 'old'")
+    conn.execute("DELETE FROM video_embeddings WHERE video_id = 'popular'")
+    conn.commit()
+
+    rows = fetch_popular_videos(conn, limit=2, error_threshold=2)
+
+    # Legacy semantics cut the canonical top-N first; embedding eligibility then
+    # filters that fixed window instead of pulling lower-ranked replacements.
+    assert [row["video_id"] for row in rows] == ["new"]
 
 
 def test_random_rows_return_usable_unique_rows_with_limit() -> None:
@@ -82,3 +99,21 @@ def test_compute_popularity_combines_views_likes_and_age_decay() -> None:
     score = compute_popularity(views=100, likes=10, published_at=1_000_000, like_weight=2.0, now_ms_value=1_000_000 + 30 * 86_400_000)
 
     assert score == 60.0
+
+
+def test_interaction_signals_do_not_change_legacy_random_likes_or_popular_order() -> None:
+    """Positive/negative: serving candidates use canonical likes/popularity even with extreme signals."""
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO interaction_signals(video_uuid,instance_domain,likes_count,undo_likes_count,signal_score) VALUES ('uuid-new','example.org',500,0,5000)"
+    )
+    conn.commit()
+
+    popular = fetch_popular_videos(conn, limit=4, error_threshold=2)
+    assert [row["video_id"] for row in popular][:2] == ["popular", "new"]
+    assert all("interaction_signal_score" not in row for row in popular)
+
+    random_rows = fetch_random_rows(conn, limit=10, error_threshold=2)
+    by_id = {row["video_id"]: row for row in random_rows}
+    assert by_id["new"]["likes"] == 2
+    assert by_id["popular"]["likes"] == 20

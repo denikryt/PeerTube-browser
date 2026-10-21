@@ -53,14 +53,17 @@ The worker runs this sequence:
      continues and different hosts overlap up to `--concurrency`.
 5. Build embeddings in staging (`build-video-embeddings.py`).
 6. Optionally stop API service (unless `--skip-systemctl`).
-7. Merge staging into prod (`merge-staging-db.py` with `merge_rules.json`).
-8. Recompute popularity incrementally (`recompute-popularity.py --incremental`).
-9. Sync stable video index ids (`sync-video-index-ids.py`).
-10. Rebuild ANN index from prod (`build-ann-index.py`).
-11. Rebuild random index-id cache (`precompute-random-index-ids.py --refresh`).
-12. Refresh similarity cache for already-cached source videos (`precompute-similar-ann.py --refresh-existing`).
-13. Start API service back.
-14. Release lock and finish.
+7. In sync mode, apply any already-approved destructive stale-host purge now that Engine is stopped.
+8. Merge staging into prod (`merge-staging-db.py` with `merge_rules.json`).
+9. Recompute popularity incrementally (`recompute-popularity.py --incremental`).
+10. Rebuild prepared Discovery (`rebuild-video-discovery-data.py`), which atomically rebuilds `video_tags` and the facet snapshot.
+11. Sync stable video index ids (`sync-video-index-ids.py`).
+12. Rebuild Search from prod (`rebuild-video-search-index.py`).
+13. Rebuild ANN index from prod (`build-ann-index.py`).
+14. Rebuild random index-id cache (`precompute-random-index-ids.py --refresh`).
+15. Refresh similarity cache for already-cached source videos (`precompute-similar-ann.py --refresh-existing`).
+16. Start API service back only when prepared Discovery is available.
+17. Release lock and finish.
 
 ## What Exactly Is Collected
 
@@ -96,12 +99,14 @@ After merge, prod contains merged changes according to `merge_rules.json`.
 ## Service Stop/Start Behavior
 
 Default behavior:
-- worker stops `peertube-browser` before merge and starts it after post-merge jobs.
+- worker stops the configured Engine service before destructive canonical mutation;
+- after a successful prepared Discovery rebuild, later ANN/random/similarity failures retain the existing restart-in-finally behavior;
+- if prepared Discovery is unavailable (including from a prior updater run), the worker leaves an Engine service that it stopped offline instead of serving stale prepared tags/facets;
 - systemd install uses `--systemctl-use-sudo` so stop/start runs as `sudo -n systemctl ...`
   without interactive auth prompts.
 
 Alternative:
-- `--skip-systemctl` disables stop/start control (for manual orchestration).
+- `--skip-systemctl` disables stop/start control only for externally orchestrated offline runs. If production canonical mutations are possible, the external caller must keep Engine stopped for the complete offline updater section, from before the first mutation until the updater command finishes.
 
 ## GPU/CPU Mode
 
@@ -235,4 +240,4 @@ systemctl list-timers --all peertube-updater.timer
 
 ## Random cache ownership
 
-The updater is the canonical production writer of `random-cache.db`. The random rebuild runs after Engine has been stopped, uses `precompute-random-index-ids.py --refresh`, builds/validates a temporary sibling database, and publishes it atomically. Engine runtime consumes the final artifact read-only and does not hot-reload replacements. The existing restart-in-finally behavior is required so a random-cache rebuild failure does not leave the API service stopped.
+The updater is the canonical production writer of `random-cache.db`. The random rebuild runs after Engine has been stopped and prepared Discovery has already succeeded, uses `precompute-random-index-ids.py --refresh`, builds/validates a temporary sibling database, and publishes it atomically. Engine runtime consumes the final artifact read-only and does not hot-reload replacements. A random-cache rebuild failure therefore retains the existing restart-in-finally behavior; only unavailable prepared Discovery blocks the updater's restart.

@@ -52,7 +52,7 @@ npm run test:live:thumbnails -- --report /tmp/peertube-thumbnail-smoke.json
 npm run test:live:thumbnails -- --required-hosts 1 --full-instance
 ```
 
-The command is opt-in and network-dependent. By default it walks the JoinPeerTube registry in stable order, accepts the first five hosts that persist real videos through the production crawler stages, limits each host to three channels and one video page per channel, and performs bounded `GET` checks for every persisted `thumbnail_url`. Failed stored URLs trigger `/api/v1/videos/:uuid` diagnostics against current thumbnail and preview fields.
+The command is opt-in and network-dependent. By default it walks the JoinPeerTube registry in stable order, accepts the first five hosts that persist real videos through the production crawler stages, limits each host to three channels and one video page per channel, and compares persisted thumbnail candidate state with fresh `/api/v1/videos/:uuid` REST detail metadata. It never GETs or HEADs the thumbnail image assets themselves; broken remote images are handled by the browser fallback chain.
 
 `--full-instance` removes channel and page caps and is intended only for manual exhaustive checks. `--keep-artifacts` preserves candidate SQLite databases; `--report <path>` writes the complete JSON result. Remote uptime and mutable third-party data can make this command slow or fail, so it is not part of `test:db` or required CI. Deterministic `test:db` remains the required crawler suite.
 
@@ -66,10 +66,7 @@ resume/progress behavior, but only for rows whose `instance_domain` matches the
 normalized hosts from that file. This is the intended manual-debug path when an
 operator wants to rerun just a small set of problematic PeerTube instances.
 
-Normal `npm run crawl:videos` now enriches thumbnail and preview media from
-`/api/v1/videos/:uuid` during ingestion. The list payload is still kept as a
-fallback when a host's detail endpoint fails, so the crawl remains resilient
-while preferring fresher stored media URLs.
+Normal `npm run crawl:videos` now owns card-thumbnail state from `/api/v1/videos/:uuid`. An actual REST `thumbnails[]` array is normalized largest-to-smallest, URL-deduplicated, and persisted as an ordered JSON array of `{url,width,height}` objects while candidate 0 mirrors into `thumbnail_url`/dimensions. Missing/null/non-array detail thumbnails leave candidate storage SQL `NULL`/unchanged. List/legacy fields may still provide the singular compatibility thumbnail for a new row when no authoritative array exists, but preview fields are never promoted into the card-thumbnail fallback set.
 
 Channel discovery refreshes `videos_count` from the current channel-list
 response even in `--new-channels` mode; existing channel metadata remains
@@ -133,3 +130,15 @@ npm run crawl:videos:metadata -- --db ../server/db/whitelist.db --update-metadat
 ```
 
 The metadata command validates schema read-only before requests/writes and never runs crawler schema migration on the target DB. `metadata_version` is a monotonic completion checkpoint rather than a freshness timestamp.
+
+
+### Thumbnail candidate maintenance
+
+`crawl:videos:thumbnails` is a data-only REST-detail refresh. Migrate the target DB first; the command validates `thumbnail_candidates_json` and related thumbnail columns read-only and never applies schema migration itself.
+
+```bash
+python3 ../server/db/jobs/migrate-whitelist.py --db ../server/db/whitelist.db
+npm run crawl:videos:thumbnails -- --db ../server/db/whitelist.db --resume --hosts-file /path/to/thumbnail-batch.txt
+```
+
+`--resume` selects only SQL-`NULL` candidate rows. Thumbnail maintenance skips rows with `invalid_reason`, so confirmed `not_found`/`gone` videos do not consume later detail requests. A successful modern array writes `[]` or an ordered candidate-object array and logs the candidate count plus primary URL; detail-request failures and legacy/non-array detail shapes remain SQL `NULL` for later retry. A 404/410 records the existing `not_found`/`gone` invalid state; other detail failures use the existing generic `error_count`/`last_error` recording path. Use explicit `--hosts-file` batches for production progression. `--max-instances` is only an optional cap inside the selected scope. `--only-healthy-hosts` further restricts thumbnail maintenance to instances with persisted `health_status = 'ok'`; error and unknown instances remain untouched for a later explicit run. Thumbnail maintenance does not probe image URLs.

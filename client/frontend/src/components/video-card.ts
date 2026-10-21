@@ -3,9 +3,9 @@
  */
 
 import type { VideoRow } from "../types/videos";
-import { iconThumbDown, iconThumbUp } from "./icons";
-import { escapeHtml, formatDebugInt, formatDebugNumber, formatDuration, formatStatValue, formatTimeAgo, normalizeStatValue } from "../utils/format";
-import { channelAvatarUrl, channelInitials, channelName, channelUrl, hasServerStats, publishedAtMs, thumbnailUrl, videoPageUrl } from "../utils/video-fields";
+import { iconPlayOutline, iconThumbUp } from "./icons";
+import { escapeHtml, formatCompactStatValue, formatDebugInt, formatDebugNumber, formatDuration, formatStatValue, formatTimeAgo, normalizeStatValue } from "../utils/format";
+import { channelAvatarUrl, channelInitials, channelName, channelUrl, hasServerStats, publishedAtMs, resolveInstanceDomain, thumbnailUrl, videoPageUrl } from "../utils/video-fields";
 
 export type VideoStats = {
   views: number | null;
@@ -28,14 +28,14 @@ export function renderFeedVideoCard(row: VideoRow, options: FeedVideoCardOptions
   const stats = options.stats ?? (hasServerStats(row) ? resolveServerStats(row) : null);
   const views = stats?.views ?? null;
   const likes = stats?.likes ?? null;
-  const dislikes = stats?.dislikes ?? null;
   const channelLabel = channelName(row) || "Unknown channel";
+  const instanceDomain = resolveInstanceDomain(row);
   const channelHref = channelUrl(row);
   const avatarUrl = channelAvatarUrl(row);
   const channelBadge = channelInitials(row);
   const publishedAt = publishedAtMs(row);
   const timeAgo = publishedAt ? formatTimeAgo(publishedAt) : null;
-  const timeSuffix = timeAgo ? ` · ${timeAgo}` : "";
+  const timeMarkup = timeAgo ? `<span class="video-meta-time"> · ${escapeHtml(timeAgo)}</span>` : "";
   const avatarMarkup = avatarUrl
     ? `<img src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" />`
     : `<span>${escapeHtml(channelBadge)}</span>`;
@@ -58,15 +58,13 @@ export function renderFeedVideoCard(row: VideoRow, options: FeedVideoCardOptions
             <div class="channel-meta">
               <div class="channel-avatar" aria-hidden="true">${avatarMarkup}</div>
               <div class="channel-text">
-                <a class="channel-link" href="${escapeHtml(channelHref)}" target="_blank" rel="noreferrer">
-                  ${escapeHtml(channelLabel)}
-                </a>
-                <div class="video-meta"><span data-stat="views">${formatStatValue(views)}</span> views${escapeHtml(timeSuffix)}</div>
+                <div class="channel-line">
+                  <a class="channel-link" href="${escapeHtml(channelHref)}" target="_blank" rel="noreferrer">
+                    ${escapeHtml(channelLabel)}
+                  </a>${instanceDomain ? `<span class="channel-instance"><span class="channel-instance-host">${escapeHtml(instanceDomain)}</span></span>` : ""}
+                </div>
+                <div class="video-meta"><span class="video-meta-views" data-stat="views">${iconPlayOutline()}${formatCompactStatValue(views)}</span><span class="video-card-likes" data-stat="likes">${iconThumbUp()}${formatCompactStatValue(likes)}</span>${timeMarkup}</div>
               </div>
-            </div>
-            <div class="video-stats">
-              <span class="stat likes">${iconThumbUp()}<span data-stat="likes">${formatStatValue(likes)}</span></span>
-              <span class="stat dislikes">${iconThumbDown()}<span data-stat="dislikes">${formatStatValue(dislikes)}</span></span>
             </div>
             ${debugMarkup}
           </div>

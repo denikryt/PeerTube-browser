@@ -12,7 +12,7 @@ program
   .option("--db <path>", "SQLite DB path", "data/crawl.db")
   .option(
     "--hosts-file <path>",
-    "Optional local file with included hosts (one per line)",
+    "Optional included-host file; thumbnail maintenance uses this as the production batch boundary",
     ""
   )
   .option(
@@ -50,7 +50,7 @@ program
   )
   .option(
     "--max-instances <number>",
-    "Limit number of instances to process (0 = no limit)",
+    "Limit instances inside the selected host scope (0 = no limit; thumbnail mode: safety cap only)",
     "0"
   )
   .option(
@@ -80,7 +80,7 @@ program
   )
   .option(
     "--refresh-thumbnails",
-    "Thumbnail refresh mode: revisit /api/v1/videos/:uuid and rewrite thumbnail_url from live PeerTube detail fields",
+    "Thumbnail refresh mode: refresh REST thumbnail candidate sets and compatibility thumbnail_url",
     false
   )
   .option(
@@ -95,7 +95,7 @@ program
   )
   .option(
     "--only-healthy-hosts",
-    "Metadata-v1 mode: process only instances whose stored health_status is ok",
+    "Metadata-v1 and thumbnail maintenance: process only instances whose stored health_status is ok",
     false
   )
   .option(
@@ -103,7 +103,7 @@ program
     "Minimum delay between request starts to one host in every mode",
     "200"
   )
-  .option("--resume", "Resume from existing progress tables", false)
+  .option("--resume", "Resume crawler progress; thumbnail mode selects only rows with thumbnail_candidates_json SQL NULL", false)
   .option("--errors", "Process only channels with recorded errors", false);
 
 program.parse(process.argv);

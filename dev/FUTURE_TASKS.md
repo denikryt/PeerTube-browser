@@ -151,7 +151,7 @@ Search v1 must not add description indexing, semantic/embedding search, external
 
 ### Reason
 
-The crawler now has an opt-in `test:live:thumbnails` command that selects usable hosts from JoinPeerTube, runs the production crawler stages against isolated temporary SQLite databases, validates every persisted thumbnail with a bounded real `GET`, and diagnoses failed stored URLs against current PeerTube detail media fields.
+The crawler has an opt-in `test:live:thumbnails` command that selects usable hosts from JoinPeerTube, runs the production crawler stages against isolated temporary SQLite databases, and validates persisted REST thumbnail-candidate normalization against fresh video-detail metadata. The smoke deliberately does not GET/HEAD candidate image assets; remote image failures belong to browser fallback behavior.
 
 ### Future Work
 

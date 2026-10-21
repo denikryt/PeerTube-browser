@@ -53,6 +53,8 @@ STABLE_VIDEO_FIELDS = (
     "instance_domain",
     "title",
     "thumbnail_url",
+    "thumbnail_urls",
+    "thumbnail_candidates",
     "preview_path",
     "channel_avatar_url",
     "channel_name",

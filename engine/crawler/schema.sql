@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS videos (
   video_url TEXT,
   duration INTEGER,
   thumbnail_url TEXT,
+  thumbnail_candidates_json TEXT,
   thumbnail_width INTEGER,
   thumbnail_height INTEGER,
   embed_path TEXT,

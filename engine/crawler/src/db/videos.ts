@@ -10,6 +10,7 @@ import Database from "better-sqlite3";
 import { openCrawlerDatabase } from "./connection.js";
 import { applyBaseSchema } from "./schema.js";
 import { CURRENT_VIDEO_METADATA_VERSION } from "../video-metadata.js";
+import type { ThumbnailCandidate } from "../video-media.js";
 import { deleteInstancesInChunks } from "./utils.js";
 import type {
   ExistingVideoRefresh,
@@ -31,6 +32,7 @@ export class VideoStore {
   private baseRefreshStmt: Database.Statement;
   private detailRefreshStmt: Database.Statement;
   private categoryIdRefreshStmt: Database.Statement;
+  private thumbnailCandidatesRefreshStmt: Database.Statement;
   private permanentLiveRefreshStmt: Database.Statement;
   private liveSaveReplayRefreshStmt: Database.Statement;
   private state = new Map<string, string>();
@@ -47,7 +49,7 @@ export class VideoStore {
         channel_id, channel_name, channel_url, account_name, account_url,
         title, description, tags_json, category, category_id, licence_id, licence,
         language, language_label, published_at, originally_published_at, updated_at,
-        video_url, duration, thumbnail_url, thumbnail_width, thumbnail_height,
+        video_url, duration, thumbnail_url, thumbnail_candidates_json, thumbnail_width, thumbnail_height,
         embed_path, views, likes, dislikes, comments_count, nsfw, sensitive_summary,
         is_live, permanent_live, live_save_replay, aspect_ratio, support,
         account_username, account_avatar_url, metadata_version, preview_path,
@@ -57,7 +59,7 @@ export class VideoStore {
         @channelId, @channelName, @channelUrl, @accountName, @accountUrl,
         @title, @description, @tagsJson, @category, @categoryId, @licenceId, @licence,
         @language, @languageLabel, @publishedAt, @originallyPublishedAt, @updatedAt,
-        @videoUrl, @duration, @thumbnailUrl, @thumbnailWidth, @thumbnailHeight,
+        @videoUrl, @duration, @thumbnailUrl, @thumbnailCandidatesJson, @thumbnailWidth, @thumbnailHeight,
         @embedPath, @views, @likes, @dislikes, @commentsCount, @nsfw, @sensitiveSummary,
         @isLive, @permanentLive, @liveSaveReplay, @aspectRatio, @support,
         @accountUsername, @accountAvatarUrl, @metadataVersion, @previewPath,
@@ -75,9 +77,6 @@ export class VideoStore {
         published_at = @publishedAt,
         video_url = @videoUrl,
         duration = @duration,
-        thumbnail_url = @thumbnailUrl,
-        thumbnail_width = @thumbnailWidth,
-        thumbnail_height = @thumbnailHeight,
         embed_path = @embedPath,
         views = COALESCE(@views, views),
         likes = COALESCE(@likes, likes),
@@ -110,6 +109,15 @@ export class VideoStore {
     `);
     this.categoryIdRefreshStmt = this.db.prepare(`
       UPDATE videos SET category_id = @categoryId
+      WHERE video_id = @videoId AND instance_domain = @instanceDomain
+    `);
+    this.thumbnailCandidatesRefreshStmt = this.db.prepare(`
+      UPDATE videos SET
+        thumbnail_candidates_json = @thumbnailCandidatesJson,
+        thumbnail_url = @thumbnailUrl,
+        thumbnail_width = @thumbnailWidth,
+        thumbnail_height = @thumbnailHeight,
+        last_checked_at = @lastCheckedAt
       WHERE video_id = @videoId AND instance_domain = @instanceDomain
     `);
     this.permanentLiveRefreshStmt = this.db.prepare(`
@@ -266,12 +274,15 @@ export class VideoStore {
    * The refresh job revisits live PeerTube video detail pages so stale feed
    * thumbnails can be replaced without re-running the full channel crawl.
    */
-  listVideosForThumbnailRefresh(): VideoThumbnailRow[] {
+  listVideosForThumbnailRefresh(resume = false): VideoThumbnailRow[] {
+    const pendingPredicate = resume ? "AND thumbnail_candidates_json IS NULL" : "";
     const rows = this.db
       .prepare(
         `SELECT video_id, video_uuid, instance_domain
          FROM videos
          WHERE video_uuid IS NOT NULL
+           AND invalid_reason IS NULL
+         ${pendingPredicate}
          ORDER BY instance_domain ASC, video_id ASC`
       )
       .all() as { video_id: string; video_uuid: string; instance_domain: string }[];
@@ -513,6 +524,7 @@ export class VideoStore {
       languageLabel: row.languageLabel ?? null,
       originallyPublishedAt: row.originallyPublishedAt ?? null,
       updatedAt: row.updatedAt ?? null,
+      thumbnailCandidatesJson: row.thumbnailCandidatesJson ?? null,
       thumbnailWidth: row.thumbnailWidth ?? null,
       thumbnailHeight: row.thumbnailHeight ?? null,
       sensitiveSummary: row.sensitiveSummary ?? null,
@@ -548,6 +560,14 @@ export class VideoStore {
     }
     if (refresh.activityPub) {
       this.applyActivityPubRefresh(row, refresh.activityPub);
+    }
+    if (refresh.thumbnail !== undefined) {
+      this.updateVideoThumbnailCandidates(
+        row.videoId,
+        row.instanceDomain,
+        refresh.thumbnail,
+        row.lastCheckedAt
+      );
     }
   }
 
@@ -616,26 +636,23 @@ export class VideoStore {
     );
   }
 
-  /**
-   * Handle update video thumbnail URL.
-   *
-   * Thumbnail refresh only updates the browser-visible image URL and the last
-   * checked timestamp. It intentionally leaves the rest of the row unchanged so
-   * backfill jobs do not rewrite unrelated crawl state.
-   */
-  updateVideoThumbnail(
+  /** Serialize one authoritative candidate set and mirror candidate zero atomically. */
+  updateVideoThumbnailCandidates(
     videoId: string,
     instanceDomain: string,
-    thumbnailUrl: string | null,
+    candidates: ThumbnailCandidate[],
     lastCheckedAt: number
   ) {
-    this.db
-      .prepare(
-        `UPDATE videos
-         SET thumbnail_url = ?, last_checked_at = ?
-         WHERE video_id = ? AND instance_domain = ?`
-      )
-      .run(thumbnailUrl, lastCheckedAt, videoId, instanceDomain);
+    const primary = candidates[0] ?? null;
+    this.thumbnailCandidatesRefreshStmt.run({
+      videoId,
+      instanceDomain,
+      thumbnailCandidatesJson: JSON.stringify(candidates),
+      thumbnailUrl: primary?.url ?? null,
+      thumbnailWidth: primary?.width ?? null,
+      thumbnailHeight: primary?.height ?? null,
+      lastCheckedAt
+    });
   }
 
   /**

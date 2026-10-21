@@ -43,7 +43,12 @@ describe("video card renderers", () => {
     expect(html).toContain("Example &lt;Video&gt;");
     expect(html).toContain("/video/example.org/uuid-1");
     expect(html).toContain("Example Channel");
-    expect(html).toContain("1,234");
+    expect(html).toContain('class="channel-instance"');
+    expect(html).toContain('class="channel-instance-host"');
+    expect(html).toContain("example.org");
+    expect(html).toContain('class="video-meta-views"');
+    expect(html).toContain("<svg");
+    expect(html).toContain("1.2K");
     expect(html).toContain("1:35");
     expect(html).toContain("video-debug");
     expect(html).toContain("exploit");

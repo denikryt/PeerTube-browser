@@ -4,7 +4,7 @@
 
 import Database from "better-sqlite3";
 import { VideoStore } from "./db/videos.js";
-import { assertMetadataMaintenanceSchema } from "./db/schema.js";
+import { assertMetadataMaintenanceSchema, assertThumbnailMaintenanceSchema } from "./db/schema.js";
 import type {
   ExistingVideoRefresh,
   VideoActivityPubMetadataPatch,
@@ -21,9 +21,9 @@ import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js"
 import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
 import { createProgressOrdinal, formatMetricLog } from "./log-format.js";
 import {
+  resolveLegacyThumbnailCompatibility,
   resolvePreferredPreviewPath,
-  resolvePreferredThumbnail,
-  resolvePreferredThumbnailUrl
+  resolveThumbnailCandidates
 } from "./video-media.js";
 import { normalizeVideoMetadata } from "./video-metadata.js";
 import {
@@ -59,7 +59,7 @@ export interface VideoCrawlOptions {
   refreshThumbnails: boolean;
   metadataOnly?: boolean;
   updateMetadata?: boolean;
-  /** Metadata-only DB-backed host scope that excludes error/unknown instances. */
+  /** DB-backed host scope that excludes error/unknown instances in supported maintenance modes. */
   onlyHealthyHosts?: boolean;
   hostDelayMs: number;
   /** In-process host scope used by the optional host-level scheduler. */
@@ -926,7 +926,15 @@ async function toVideoRow(
     channel.displayName;
   const incomingChannelUrl =
     toNullableString(sourceChannel?.url) ?? channel.channelUrl ?? null;
-  const thumbnail = resolvePreferredThumbnail(detail, video, host, mediaProtocol);
+  const thumbnailCandidates = detailResult
+    ? resolveThumbnailCandidates(detail?.thumbnails, host, mediaProtocol)
+    : null;
+  const thumbnailCompatibility = thumbnailCandidates === null
+    ? resolveLegacyThumbnailCompatibility(detail, video, host, mediaProtocol)
+    : thumbnailCandidates[0] ?? { url: null, width: null, height: null };
+  const thumbnailCandidatesJson = thumbnailCandidates === null
+    ? null
+    : JSON.stringify(thumbnailCandidates);
 
   const row: VideoUpsertRow = {
     videoId,
@@ -952,9 +960,10 @@ async function toVideoRow(
     updatedAt: normalized.updatedAt,
     videoUrl: candidateVideoUrl,
     duration: toNullableNumber(detail?.duration ?? video.duration),
-    thumbnailUrl: thumbnail.url,
-    thumbnailWidth: thumbnail.width,
-    thumbnailHeight: thumbnail.height,
+    thumbnailUrl: thumbnailCompatibility.url,
+    thumbnailCandidatesJson,
+    thumbnailWidth: thumbnailCompatibility.width,
+    thumbnailHeight: thumbnailCompatibility.height,
     embedPath: toNullableString(detail?.embedPath ?? detail?.embed_path ?? video.embedPath ?? video.embed_path),
     views: toNullableNumber(detail?.views ?? detail?.views_count ?? video.views ?? video.views_count),
     likes: toNullableNumber(detail?.likes ?? detail?.likes_count ?? video.likes ?? video.likes_count),
@@ -984,7 +993,10 @@ async function toVideoRow(
     refresh: {
       base: row,
       ...(detailPatch ? { detail: detailPatch } : {}),
-      ...(activityPubPatch ? { activityPub: activityPubPatch } : {})
+      ...(activityPubPatch ? { activityPub: activityPubPatch } : {}),
+      ...(detailResult && thumbnailCandidates !== null
+        ? { thumbnail: thumbnailCandidates }
+        : {})
     }
   };
 }
@@ -1339,22 +1351,39 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
  * feed thumbnails can be rewritten without replaying the full channel crawl.
  */
 async function refreshVideoThumbnails(options: VideoCrawlOptions) {
-  const store = new VideoStore({ dbPath: options.dbPath });
+  // Thumbnail maintenance must never become an implicit schema-migration path.
+  assertThumbnailMaintenanceSchema(options.dbPath);
+  const store = new VideoStore({ dbPath: options.dbPath, initializeSchema: false });
   const includedHosts = loadHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
-  const items = store.listVideosForThumbnailRefresh();
+  const items = store.listVideosForThumbnailRefresh(options.resume);
   const grouped = groupByInstance(items);
-  const hosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
+  const scopedHosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
+  // Apply the same persisted `health_status = ok` contract as metadata after
+  // explicit include/exclude scope. This avoids retrying known failed hosts
+  // while preserving the unfiltered full-refresh behavior unless requested.
+  const healthyHosts = options.onlyHealthyHosts ? store.listHealthyInstanceHosts() : null;
+  const healthyScopedHosts = healthyHosts
+    ? scopedHosts.filter((host) => healthyHosts.has(host.toLowerCase()))
+    : scopedHosts;
+  const hosts = options.maxInstances > 0
+    ? healthyScopedHosts.slice(0, options.maxInstances)
+    : healthyScopedHosts;
+  const scopedVideoCount = hosts.reduce((total, host) => total + (grouped.get(host)?.length ?? 0), 0);
   const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
+  const nextVideoOrdinal = createProgressOrdinal(scopedVideoCount);
+  // These counters are run-local. JavaScript updates them between awaits, so
+  // concurrent host workers expose one monotonic operator-visible summary.
+  const progress = { updated: 0, errors: 0 };
 
   console.log(
-    `[thumbnails] instances=${hosts.length} videos=${items.length} concurrency=${workerCount}`
+    `[thumbnails] instances=${hosts.length} videos=${scopedVideoCount} concurrency=${workerCount} resume=${options.resume} healthy_only=${Boolean(options.onlyHealthyHosts)}`
   );
 
   try {
     const queue = hosts.slice();
     const workers = Array.from({ length: workerCount }, () =>
-      thumbnailWorkerLoop(queue, grouped, store, options)
+      thumbnailWorkerLoop(queue, grouped, store, options, nextVideoOrdinal, progress)
     );
     await Promise.all(workers);
     console.log("[thumbnails] finished");
@@ -1373,7 +1402,9 @@ async function thumbnailWorkerLoop(
   queue: string[],
   grouped: Map<string, VideoThumbnailRow[]>,
   store: VideoStore,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  nextVideoOrdinal: () => string,
+  progress: { updated: number; errors: number }
 ) {
   while (true) {
     const host = queue.shift();
@@ -1381,6 +1412,10 @@ async function thumbnailWorkerLoop(
     const rows = grouped.get(host) ?? [];
     const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
     for (const row of rows) {
+      // Allocate before I/O to retain a stable crawl-wide position even when
+      // multiple hosts finish details in a different order.
+      const videoOrdinal = nextVideoOrdinal();
+      const subject = `${host}/${row.videoUuid}`;
       try {
         const { detail, protocol } = await fetchVideoDetail(
           host,
@@ -1389,13 +1424,74 @@ async function thumbnailWorkerLoop(
           "https:",
           requestLimiter
         );
-        const thumbnailUrl = resolvePreferredThumbnailUrl(detail, {}, host, protocol);
-        if (thumbnailUrl) {
-          store.updateVideoThumbnail(row.videoId, row.instanceDomain, thumbnailUrl, Date.now());
+        const candidates = resolveThumbnailCandidates(detail.thumbnails, host, protocol);
+        const checkedAt = Date.now();
+        if (candidates === null) {
+          // A successful legacy-shaped detail response is not authoritative for
+          // candidate state. Preserve every persisted thumbnail field so SQL NULL
+          // remains resumable and prior authoritative arrays cannot be downgraded.
+          console.warn(
+            formatMetricLog(
+              "thumbnails",
+              [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
+              "legacy",
+              subject
+            )
+          );
+        } else {
+          store.updateVideoThumbnailCandidates(
+            row.videoId,
+            row.instanceDomain,
+            candidates,
+            checkedAt
+          );
+          progress.updated += 1;
+          // Successful modern detail is visible in the operator log as well as
+          // SQLite so a long maintenance run has an auditable success signal.
+          if (candidates.length === 0) {
+            console.log(
+              formatMetricLog(
+                "thumbnails",
+                [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors], ["candidates", 0]],
+                "empty",
+                subject
+              )
+            );
+          } else {
+            console.log(
+              `${formatMetricLog(
+                "thumbnails",
+                [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors], ["candidates", candidates.length]],
+                "done",
+                subject
+              )} primary=${candidates[0].url}`
+            );
+          }
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        store.updateVideoError(row.videoId, row.instanceDomain, message);
+        const status = extractHttpStatus(message);
+        // A gone detail UUID is definitive and becomes excluded from future
+        // maintenance. Other errors remain retryable but are recorded so
+        // operators can distinguish unstable remotes from completed work.
+        if (status === 404 || status === 410) {
+          store.updateVideoInvalid(
+            row.videoId,
+            row.instanceDomain,
+            status === 404 ? "not_found" : "gone"
+          );
+        } else {
+          store.updateVideoError(row.videoId, row.instanceDomain, message);
+        }
+        progress.errors += 1;
+        console.warn(
+          `${formatMetricLog(
+            "thumbnails",
+            [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
+            status === 404 || status === 410 ? "invalid" : "error",
+            subject
+          )}: ${message}`
+        );
       }
     }
   }

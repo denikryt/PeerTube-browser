@@ -102,3 +102,15 @@ def test_host_pipeline_mode_is_exposed_and_rejects_error_only_mode(monkeypatch) 
     assert cli.parse_args(["--host-pipeline"]).host_pipeline is True
     with pytest.raises(SystemExit):
         cli.parse_args(["--resume-staging", "--retry-errors", "--host-pipeline"])
+
+
+def test_skip_systemctl_help_requires_external_offline_interval(monkeypatch, capsys) -> None:
+    """The escape hatch documents the caller's production consistency responsibility."""
+    monkeypatch.setattr(cli, "resolve_default_engine_service_name", lambda mode: "svc")
+    with pytest.raises(SystemExit):
+        cli.parse_args(["--help"])
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "--skip-systemctl" in help_text
+    assert "caller must keep Engine stopped" in help_text
+    assert "complete offline updater section" in help_text
+    assert "until the updater command finishes" in help_text

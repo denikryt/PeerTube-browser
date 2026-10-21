@@ -184,3 +184,21 @@ Metadata enrichment is non-destructive for existing rows: failed detail/Activity
 Channel-owner enrichment and the video's metadata completion checkpoint are committed in one SQLite transaction. An unproven/different incoming channel is not used to enrich another channel row.
 
 The existing `--tags` / `--update-tags` maintenance modes may change `tags_json`, which is an embedding input. When used on already-embedded production data they must be paired with the documented full embedding/artifact rebuild. `comments_count` maintenance remains safe and does not invalidate embeddings.
+
+## Thumbnail candidate persistence and maintenance
+
+### REST detail owns authoritative card-thumbnail candidates
+
+Decision:
+
+```text
+An actual `/api/v1/videos/:uuid` `thumbnails[]` array is the only authoritative multi-candidate source. SQLite stores the normalized ordered candidate objects (`url`, `width`, `height`) so the primary mirror and candidate provenance stay deterministic. Preview fields never enter card-thumbnail fallback semantics.
+```
+
+Compatibility state is explicit: SQL `NULL` means the modern candidate source is legacy/unknown/unavailable, while JSON arrays of `{url,width,height}` objects mean an authoritative modern candidate set. An actual empty array is authoritative `[]`. Existing rows with authoritative arrays cannot be downgraded by later legacy/list refreshes; ordinary `baseRefreshStmt` does not write thumbnail candidate or mirror fields.
+
+### Thumbnail backfill records failed detail health without probing images
+
+`crawl:videos:thumbnails` reuses the existing command name. It validates the target schema read-only, performs one video-detail request per selected non-invalid row, and never GETs/HEADs candidate images. A successful legacy/non-array detail shape preserves thumbnail state; only an actual REST `thumbnails` array replaces candidate state. A definitive detail `404`/`410` records the existing invalid reason, while other detail failures use the existing generic error recording path so later maintenance can avoid known-invalid videos.
+
+`--resume` selects SQL-`NULL` rows only. Explicit `--hosts-file` batches are the production maintenance-window boundary; `--max-instances` is only a cap inside that selected scope and is not a durable progression cursor.

@@ -17,7 +17,7 @@ def _conn() -> sqlite3.Connection:
     """Create a row-aware minimal canonical videos fixture."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    conn.execute(
+    conn.executescript(
         """
         CREATE TABLE videos (
           video_id TEXT NOT NULL,
@@ -26,7 +26,13 @@ def _conn() -> sqlite3.Connection:
           category TEXT,
           tags_json TEXT,
           PRIMARY KEY(video_id, instance_domain)
-        )
+        );
+        CREATE TABLE video_tags (
+          tag TEXT NOT NULL,
+          video_id TEXT NOT NULL,
+          instance_domain TEXT NOT NULL,
+          PRIMARY KEY(tag, video_id, instance_domain)
+        ) WITHOUT ROWID
         """
     )
     conn.executemany(
@@ -37,6 +43,16 @@ def _conn() -> sqlite3.Connection:
             ("blank-language", "other.example.org", "   ", "education", '["LINUX", "linux"]'),
             ("bad-tags", "other.example.org", "en", "Education", "not-json"),
             ("linuxmint", "video.example.org", "uk", "Education", '["linuxmint"]'),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO video_tags(tag,video_id,instance_domain) VALUES (?,?,?)",
+        [
+            ("linux", "uk-linux", "video.example.org"),
+            ("fediverse", "uk-linux", "video.example.org"),
+            ("music", "unknown", "video.example.org"),
+            ("linux", "blank-language", "other.example.org"),
+            ("linuxmint", "linuxmint", "video.example.org"),
         ],
     )
     return conn
@@ -102,6 +118,9 @@ def test_tag_filter_and_row_matcher_reject_non_array_json_shapes() -> None:
             ("malformed-tag", "shape.example", "en", "Other", '{bad'),
         ],
     )
+    conn.execute(
+        "INSERT INTO video_tags(tag,video_id,instance_domain) VALUES ('linux','array-tag','shape.example')"
+    )
     clause, params = build_video_filter_sql("v", VideoFilters(tag="linux"))
     sql_ids = [
         str(row["video_id"])
@@ -143,3 +162,33 @@ def test_instance_filter_preserves_case_and_whitespace_normalization() -> None:
     ]
     assert "mixed-host" in ids
     assert "bad-tags" not in ids
+
+
+def test_tag_filter_uses_trusted_prepared_schema_and_rejects_sql_namespace_input() -> None:
+    """Positive/negative: tag membership can target canonical attachment but rejects arbitrary schema names."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        ATTACH DATABASE ':memory:' AS canonical;
+        CREATE TABLE canonical.videos(video_id TEXT, instance_domain TEXT, language TEXT, category TEXT, tags_json TEXT);
+        CREATE TABLE canonical.video_tags(
+          tag TEXT NOT NULL, video_id TEXT NOT NULL, instance_domain TEXT NOT NULL,
+          PRIMARY KEY(tag, video_id, instance_domain)
+        ) WITHOUT ROWID;
+        INSERT INTO canonical.videos VALUES ('v1','example.org','en','Education','not-json');
+        INSERT INTO canonical.video_tags VALUES ('linux','v1','example.org');
+        """
+    )
+    clause, params = build_video_filter_sql("v", VideoFilters(tag="linux"), schema="canonical")
+    ids = [
+        row[0]
+        for row in conn.execute(
+            f"SELECT v.video_id FROM canonical.videos v WHERE 1=1 {clause}", params
+        )
+    ]
+    assert ids == ["v1"]
+    assert "json_each" not in clause
+
+    with pytest.raises(ValueError, match="Unsupported video filter schema"):
+        build_video_filter_sql("v", VideoFilters(tag="linux"), schema="main; DROP TABLE videos")

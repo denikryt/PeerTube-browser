@@ -20,9 +20,6 @@ def ensure_popularity_schema(conn: sqlite3.Connection) -> None:
     columns = {row[1] for row in conn.execute("PRAGMA table_info(videos)")}
     if "popularity" not in columns:
         conn.execute("ALTER TABLE videos ADD COLUMN popularity REAL NOT NULL DEFAULT 0")
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_videos_popularity ON videos (popularity DESC)"
-    )
 
 
 def main() -> None:

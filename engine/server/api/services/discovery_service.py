@@ -34,6 +34,8 @@ STABLE_VIDEO_FIELDS = (
     "instance_domain",
     "title",
     "thumbnail_url",
+    "thumbnail_urls",
+    "thumbnail_candidates",
     "preview_path",
     "channel_avatar_url",
     "channel_name",
@@ -136,7 +138,7 @@ def _decode_ordered_cursor(
         if field.endswith("_is_null"):
             if type(value) is not int or value not in {0, 1}:
                 raise ValueError("Invalid cursor")
-        elif field in {"published_sort", "effective_likes_sort", "views_sort", "rank_score"}:
+        elif field in {"published_sort", "effective_likes_sort", "views_sort", "rank_score", "popularity"}:
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError("Invalid cursor")
             if not math.isfinite(float(value)):

@@ -1,3 +1,5 @@
+import type { ThumbnailCandidate } from "../video-media.js";
+
 /**
  * Type definitions for crawler database stores.
  *
@@ -121,6 +123,7 @@ export interface VideoUpsertRow {
   videoUrl: string | null;
   duration: number | null;
   thumbnailUrl: string | null;
+  thumbnailCandidatesJson: string | null;
   thumbnailWidth?: number | null;
   thumbnailHeight?: number | null;
   embedPath: string | null;
@@ -178,6 +181,7 @@ export interface ExistingVideoRefresh {
   base: VideoUpsertRow;
   detail?: VideoDetailMetadataPatch;
   activityPub?: VideoActivityPubMetadataPatch;
+  thumbnail?: ThumbnailCandidate[];
 }
 
 export interface VideoMetadataWorkRow {
