@@ -24,6 +24,7 @@ def _args(tmp_path: Path, **overrides):
         index_path=str(tmp_path / "ann.index"),
         index_meta_path=str(tmp_path / "ann.index.json"),
         similarity_db=str(tmp_path / "similarity.db"),
+        random_cache_db=str(tmp_path / "random-cache.db"),
         merge_rules=str(rules),
         mode="dev",
         service_name="svc",
@@ -105,14 +106,26 @@ def test_normal_run_preserves_command_order_and_gpu_flags(monkeypatch, tmp_path)
         "recompute-popularity.py",
         "sync-video-index-ids.py",
         "build-ann-index.py",
+        "precompute-random-index-ids.py",
         "precompute-similar-ann.py",
         "systemctl",
     ]
     assert "--gpu" in seen[4]
     assert seen[5] == ["systemctl", "stop", "svc"]
     assert seen[-1] == ["systemctl", "start", "svc"]
+    random_cmd = next(cmd for cmd in seen if "precompute-random-index-ids.py" in cmd[1])
+    assert "--db" in random_cmd
+    assert str(tmp_path / "prod.db") in random_cmd
+    assert "--out" in random_cmd
+    assert str(tmp_path / "random-cache.db") in random_cmd
+    assert "--reset" in random_cmd
+    assert "--filtered" in random_cmd
+    assert "--max-per-author" in random_cmd
+    assert "100" in random_cmd
+    assert "--cpu" not in random_cmd
+    assert "--gpu" not in random_cmd
     precompute = seen[-2]
-    assert precompute.count(str(tmp_path / "ann.index")) == 2
+    assert precompute.count(str(tmp_path / "ann.index")) == 1
 
 
 def test_skip_systemctl_removes_stop_start_only(monkeypatch, tmp_path) -> None:
@@ -192,9 +205,17 @@ def test_cpu_mode_appends_cpu_to_heavy_jobs(monkeypatch, tmp_path) -> None:
         command_runner=lambda cmd, cwd: seen.append(list(cmd)),
         validate_files=False,
     )
+    heavy_scripts = {
+        "build-video-embeddings.py",
+        "build-ann-index.py",
+        "precompute-similar-ann.py",
+    }
     heavy = [
         cmd
         for cmd in seen
-        if any(name in " ".join(cmd) for name in ["embeddings", "build-ann", "precompute"])
+        if len(cmd) > 1 and Path(cmd[1]).name in heavy_scripts
     ]
     assert all("--cpu" in cmd for cmd in heavy)
+    random_cmd = next(cmd for cmd in seen if "precompute-random-index-ids.py" in cmd[1])
+    assert "--cpu" not in random_cmd
+    assert "--gpu" not in random_cmd

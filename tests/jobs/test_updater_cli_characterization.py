@@ -21,6 +21,7 @@ def test_parse_args_keeps_representative_defaults(monkeypatch) -> None:
     assert args.dry_run is False
     assert args.sync_join_whitelist is False
     assert Path(args.lock_file).name == "peertube-browser-staging-sync.lock"
+    assert args.random_cache_db.endswith("engine/server/db/random-cache.db")
 
 
 def test_service_name_falls_back_without_installer(monkeypatch, tmp_path: Path) -> None:
@@ -38,3 +39,11 @@ def test_dry_run_without_sync_remains_pipeline_error(monkeypatch) -> None:
     args = cli.parse_args(["--dry-run"])
     assert args.dry_run is True
     assert args.sync_join_whitelist is False
+
+
+def test_random_cache_db_override_is_respected(monkeypatch) -> None:
+    """Parser exposes the updater-owned random index-id cache output path."""
+
+    monkeypatch.setattr(cli, "resolve_default_engine_service_name", lambda mode: "svc")
+    args = cli.parse_args(["--random-cache-db", "/tmp/random.db"])
+    assert args.random_cache_db == "/tmp/random.db"

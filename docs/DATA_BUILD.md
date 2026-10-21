@@ -22,7 +22,7 @@ You can run the same build/update flow automatically with the updater worker:
 
 - Worker entrypoint: `engine/server/db/jobs/updater-worker.py`
 - Internal updater modules: `engine/server/db/jobs/updater/`
-- It runs: crawl to staging -> embeddings -> merge to prod -> popularity -> ANN rebuild -> similarity precompute.
+- It runs: crawl to staging -> embeddings -> merge to prod -> popularity -> index-id sync -> ANN rebuild -> random cache rebuild -> similarity precompute.
 - Systemd installation: `install-service.sh --with-updater-timer`
 - Timer runs daily (`OnUnitInactiveSec=1d`).
 
@@ -205,19 +205,7 @@ Useful flags:
 - `--train-sample` controls training set size.
 - `--batch-size` controls memory usage when adding vectors.
 
-## 6) Precompute similarity cache (optional)
-This speeds up similar video fetches for the video page.
-```bash
-python3 engine/server/db/jobs/precompute-similar-ann.py \
-  --db engine/server/db/whitelist.db \
-  --index engine/server/db/whitelist-video-embeddings.faiss \
-  --out engine/server/db/similarity-cache.db \
-  --top-k 20 \
-  --nprobe 16 \
-  --reset
-```
-
-## 7) Precompute random cache (optional)
+## 6) Precompute random cache (optional)
 This prepares a random stable-index-id pool for the random feed.
 ```bash
 python3 engine/server/db/jobs/precompute-random-index-ids.py \
@@ -227,6 +215,19 @@ python3 engine/server/db/jobs/precompute-random-index-ids.py \
   --filtered \
   --max-per-author 100 \
   --max-per-instance 0 \
+  --reset
+```
+
+
+## 7) Precompute similarity cache (optional)
+This speeds up similar video fetches for the video page.
+```bash
+python3 engine/server/db/jobs/precompute-similar-ann.py \
+  --db engine/server/db/whitelist.db \
+  --index engine/server/db/whitelist-video-embeddings.faiss \
+  --out engine/server/db/similarity-cache.db \
+  --top-k 20 \
+  --nprobe 16 \
   --reset
 ```
 

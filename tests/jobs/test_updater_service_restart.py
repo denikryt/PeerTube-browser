@@ -86,3 +86,13 @@ def test_fail_after_merge_before_similarity_restarts_service(monkeypatch, tmp_pa
         )
     assert any("build-ann-index.py" in part for cmd in seen for part in cmd)
     assert ["systemctl", "start", "svc"] in seen
+
+
+def test_random_cache_failure_restarts_service(monkeypatch, tmp_path) -> None:
+    """Random cache rebuild failures still restart the stopped Engine service."""
+
+    seen = _run_with_failure(
+        monkeypatch, tmp_path, _args(tmp_path), "precompute-random-index-ids.py"
+    )
+    assert ["systemctl", "stop", "svc"] in seen
+    assert ["systemctl", "start", "svc"] in seen

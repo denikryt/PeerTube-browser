@@ -30,17 +30,17 @@ Tests: `tests/jobs/test_updater_cli_characterization.py` and `python3 engine/ser
 
 Removal condition, if any: Only a dedicated operational CLI change plan may remove or repurpose a flag.
 
-### Stage order and command arguments remain stable
+### Stage order and command arguments remain stable unless artifact correctness requires migration
 
-Decision: Preserve crawler, embedding, merge, popularity, ANN, and similarity command order and current command arguments, including existing quirks.
+Decision: Preserve crawler, embedding, merge, popularity, and service-control behavior, while intentionally updating post-merge artifact refresh for the stable index-id migration.
 
-Reason: The updater produces production data artifacts; reordering stages or “fixing” arguments during a split can change data-build behavior.
+Reason: The updater produces production data artifacts. After ANN/random artifacts moved from `video_embeddings.rowid` to `video_index_ids.index_id`, keeping rowid-era command assumptions would rebuild incomplete or incompatible artifacts.
 
-Implementation action: Move orchestration to `updater/pipeline.py` and assert recorded fake-runner command arrays in tests. Preserve the current duplicate ANN index argument in the similarity precompute command as a compatibility quirk rather than silently fixing it.
+Implementation action: Keep orchestration in `updater/pipeline.py` and assert recorded fake-runner command arrays in tests. The post-merge order now runs `sync-video-index-ids.py` before artifact rebuilds, rebuilds `random-cache.db` through `precompute-random-index-ids.py`, and calls `precompute-similar-ann.py` with exactly one `--index <path>` value. Old rowid-era random/ANN artifact assumptions are not compatibility behavior.
 
 Tests: `tests/jobs/test_updater_pipeline_commands.py`.
 
-Removal condition, if any: Command argument cleanup requires a separate behavior-change plan with before/after data-build validation.
+Removal condition, if any: Future command argument changes require a dedicated operational behavior plan with before/after data-build validation.
 
 ### Systemd stop/start failure behavior remains stable
 
