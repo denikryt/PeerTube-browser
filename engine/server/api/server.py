@@ -86,6 +86,7 @@ from data.random_cache import connect_random_cache_db, populate_random_cache
 from data.ann_artifact import validate_faiss_artifact_metadata
 from db.bootstrap import (
     bootstrap_engine_random_cache_db,
+    bootstrap_engine_read_indexes,
     bootstrap_engine_runtime_db,
     bootstrap_engine_similarity_cache_db,
 )
@@ -237,6 +238,7 @@ def main() -> None:
 
     db = connect_db(db_path)
     bootstrap_engine_runtime_db(db)
+    bootstrap_engine_read_indexes(db)
     similarity_db = connect_similarity_db(similarity_db_path)
     bootstrap_engine_similarity_cache_db(similarity_db)
     random_cache_path.parent.mkdir(parents=True, exist_ok=True)

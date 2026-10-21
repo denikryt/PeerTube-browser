@@ -12,6 +12,7 @@ const aboutOverridePath = resolve(rootDir, "about.html");
 const aboutTemplatePath = resolve(rootDir, "about.template.html");
 
 const rewriteToVideos = new Set(["/videos", "/videos/"]);
+const rewriteToSearch = new Set(["/search", "/search/"]);
 const rewriteToAbout = new Set(["/about", "/about/", "/about.html"]);
 
 /**
@@ -106,6 +107,8 @@ export default defineConfig(({ command }) => {
           const urlPath = req.url.split("?")[0];
           if (rewriteToVideos.has(urlPath)) {
             req.url = "/videos.html";
+          } else if (rewriteToSearch.has(urlPath)) {
+            req.url = "/search.html";
           } else if (rewriteToAbout.has(urlPath)) {
             req.url = getAboutRequestPath();
           }
@@ -124,6 +127,8 @@ export default defineConfig(({ command }) => {
           const urlPath = req.url.split("?")[0];
           if (rewriteToVideos.has(urlPath)) {
             req.url = "/videos.html";
+          } else if (rewriteToSearch.has(urlPath)) {
+            req.url = "/search.html";
           } else if (rewriteToAbout.has(urlPath)) {
             req.url = getAboutRequestPath();
           }
@@ -136,6 +141,7 @@ export default defineConfig(({ command }) => {
         input: {
           index: resolve(rootDir, "index.html"),
           videos: resolve(rootDir, "videos.html"),
+          search: resolve(rootDir, "search.html"),
           video: resolve(rootDir, "video-page.html"),
           channels: resolve(rootDir, "channels.html"),
           about: aboutOverridePath,

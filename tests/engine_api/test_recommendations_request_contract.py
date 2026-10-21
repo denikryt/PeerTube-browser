@@ -19,7 +19,13 @@ def test_recommendations_likes_payload_error_rejects_too_many_likes() -> None:
 
     error = rec_service._recommendations_likes_payload_error("/recommendations", payload, max_items=2)
 
-    assert error == {"error": "Too many likes in request body", "max_allowed": 2, "received": 3}
+    assert error == {
+        "error": "Too many likes in request body",
+        "code": "too_many_likes",
+        "max_likes": 2,
+        "max_allowed": 2,
+        "received": 3,
+    }
 
 
 def test_recommendations_likes_payload_error_reports_invalid_entry_index_and_reason() -> None:

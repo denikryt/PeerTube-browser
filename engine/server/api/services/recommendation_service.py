@@ -138,6 +138,8 @@ def _recommendations_likes_payload_error(
         return None
     return {
         "error": "Too many likes in request body",
+        "code": "too_many_likes",
+        "max_likes": max_items,
         "max_allowed": max_items,
         "received": received,
     }

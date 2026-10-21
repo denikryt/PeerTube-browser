@@ -54,7 +54,9 @@ class CachedSimilarFromLikesSource:
 
         seed_batch_start = perf_counter()
         with server.db_lock:
-            seed_map = self.deps.fetch_seed_embeddings_for_likes(server.db, recent_likes)
+            seed_map = self.deps.fetch_seed_embeddings_for_likes(
+                server.db, recent_likes, include_embedding=False
+            )
         seed_batch_ms = int((perf_counter() - seed_batch_start) * 1000)
         resolved_seed_count = len(
             [key for key in seed_map.keys() if not key.startswith("uuid::")]

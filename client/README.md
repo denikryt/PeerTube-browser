@@ -60,3 +60,8 @@ CLIENT_PUBLISH_MODE=bridge ./venv/bin/python3 client/backend/server.py \
 `CLIENT_PUBLISH_MODE`:
 - `bridge` (default): publish to Engine bridge ingest endpoint.
 - `activitypub`: reserved for next milestone (currently returns not implemented).
+
+
+## Discovery API v1
+
+The Client backend exposes browser-facing discovery routes under `/api/v1/discovery/...` and `/api/v1/videos/...`. Recommendations are public `GET` requests; the Client backend reads local likes and calls Engine internally.

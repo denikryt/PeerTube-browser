@@ -4,13 +4,16 @@
 
 import "../../videos.css";
 import { fetchSimilarVideosPayload, parseSimilarQuery, resolveApiBase } from "../../api/client";
+import { fetchChannelSearchPayload, fetchVideoSearchPayload } from "../../data/search";
 import { clearLocalLikes, fetchUserProfileLikes, resetUserProfileLikes } from "../../api/client";
 import { renderFeedVideoCard, resolveServerStats } from "../../components/video-card";
+import { channelLabel, channelUrl } from "../../components/channel-row";
 import { renderProfileLikes } from "../../components/profile-modal";
 import { renderError } from "../../components/status";
-import { formatStatValue, normalizeStatValue } from "../../utils/format";
+import { escapeHtml, formatStatValue, normalizeStatValue } from "../../utils/format";
 import { hasServerStats, resolveInstanceDomain, resolveVideoId, resolveVideoKey } from "../../utils/video-fields";
 import { resolveFeedMode, setFeedMode } from "../../state/feed-mode";
+import type { ChannelRow } from "../../types/channels";
 import type { SimilarSeed, VideoRow, VideosPayload } from "../../types/videos";
 
 const cards = document.getElementById("video-cards")!;
@@ -25,6 +28,10 @@ const feedSentinel = document.getElementById("feed-sentinel");
 const profileModal = document.getElementById("profile-modal");
 const profileModalBody = document.getElementById("profile-modal-body") as HTMLDivElement | null;
 const profileModalClose = document.getElementById("profile-modal-close") as HTMLButtonElement | null;
+const searchForm = document.getElementById("search-form") as HTMLFormElement | null;
+const searchInput = document.getElementById("search-input") as HTMLInputElement | null;
+const clearSearchButton = document.getElementById("clear-search") as HTMLButtonElement | null;
+const appRoot = document.getElementById("app") as HTMLElement | null;
 
 if (!cards || !summaryCounts || !summaryMeta) {
   throw new Error("Missing videos elements");
@@ -44,8 +51,12 @@ const feedMode = resolveFeedMode(params);
 const useSimilar = Boolean(similarQuery.id);
 const apiBase = resolveApiBase(similarQuery);
 const apiParam = params.get("api");
+const isDedicatedSearchPage = appRoot?.dataset.searchPage === "true";
+let activeSearchQuery = searchForm && !similarQuery.id ? (params.get("q") ?? "").trim() : "";
+if (searchInput) searchInput.value = activeSearchQuery;
+if (clearSearchButton) clearSearchButton.hidden = !activeSearchQuery;
 
-document.title = "PeerTube - Browser";
+document.title = isDedicatedSearchPage ? "Search videos" : "PeerTube - Browser";
 
 const state = {
   rows: [] as VideoRow[],
@@ -54,7 +65,9 @@ const state = {
   mode: "random" as "random" | "similar" | "personalized",
   seed: null as SimilarSeed | null,
   visibleCount: CHUNK_SIZE,
-  loading: false
+  loading: false,
+  nextCursor: null as string | null,
+  searchMode: false
 };
 let feedObserver: IntersectionObserver | null = null;
 let fallbackListenersAttached = false;
@@ -69,6 +82,36 @@ const statsCache = new Map<string, LiveStats>();
 const statsLoading = new Set<string>();
 
 void loadVideos();
+
+if (searchForm) {
+  searchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const query = (searchInput?.value ?? "").trim();
+    activeSearchQuery = query;
+    if (clearSearchButton) clearSearchButton.hidden = !query;
+    const nextUrl = new URL(window.location.href);
+    if (query) {
+      nextUrl.searchParams.set("q", query);
+      nextUrl.searchParams.delete("cursor");
+    } else {
+      nextUrl.searchParams.delete("q");
+    }
+    window.history.replaceState({}, "", nextUrl.toString());
+    void loadVideos();
+  });
+}
+
+if (clearSearchButton) {
+  clearSearchButton.addEventListener("click", () => {
+    activeSearchQuery = "";
+    if (searchInput) searchInput.value = "";
+    clearSearchButton.hidden = true;
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("q");
+    window.history.replaceState({}, "", nextUrl.toString());
+    void loadVideos();
+  });
+}
 
 if (resetProfileButton) {
   resetProfileButton.addEventListener("click", async () => {
@@ -131,23 +174,35 @@ window.addEventListener("keydown", (event) => {
  * Handle load videos.
  */
 async function loadVideos() {
+  if (activeSearchQuery) {
+    await loadSearchResults(activeSearchQuery);
+    return;
+  }
+  state.searchMode = false;
   state.loading = true;
+  setCardsGridLayout();
   summaryCounts.textContent = "";
   summaryMeta.textContent = "";
   if (resetLink) resetLink.hidden = true;
+  if (isDedicatedSearchPage) {
+    state.loading = false;
+    renderSearchLanding();
+    return;
+  }
   cards.innerHTML = `<div class="loading">Loading...</div>`;
   setupInfiniteScroll();
 
   try {
     const payload = await fetchVideosPayload();
     state.loading = false;
-    const rows = Array.isArray(payload) ? payload : payload.rows ?? [];
+    const rows = Array.isArray(payload) ? payload : payload.rows ?? payload.items ?? [];
     state.rows = rows;
     state.generatedAt = Array.isArray(payload) ? null : payload.generatedAt ?? null;
     state.mode = useSimilar ? "similar" : feedMode === "random" ? "random" : "personalized";
     state.seed = Array.isArray(payload)
       ? null
       : ((payload as VideosPayload & { seed?: SimilarSeed }).seed ?? null);
+    state.nextCursor = Array.isArray(payload) ? null : (payload.pagination?.next_cursor ?? null);
     pickSample();
     renderCards(true);
     renderSummary();
@@ -161,23 +216,121 @@ async function loadVideos() {
   }
 }
 
+
+/** Load and render Search API v1 results without changing the existing feed mode. */
+async function loadSearchResults(query: string) {
+  state.searchMode = true;
+  state.loading = true;
+  state.nextCursor = null;
+  summaryCounts.textContent = `Search results for “${query}”`;
+  summaryMeta.textContent = "";
+  if (resetLink) resetLink.hidden = true;
+  if (feedObserver) {
+    feedObserver.disconnect();
+    feedObserver = null;
+  }
+  setCardsSearchLayout();
+  cards.innerHTML = `<div class="loading">Searching...</div>`;
+  try {
+    const [videoPayload, channelPayload] = await Promise.all([
+      fetchVideoSearchPayload({ q: query, limit: 20, apiBase }),
+      fetchChannelSearchPayload({ q: query, limit: 20, apiBase })
+    ]);
+    state.loading = false;
+    state.rows = videoPayload.items ?? [];
+    state.sample = state.rows.slice();
+    state.visibleCount = state.sample.length;
+    renderSearchResults(videoPayload.items ?? [], channelPayload.items ?? []);
+    queueStatsForRows(videoPayload.items ?? []);
+  } catch (error) {
+    state.loading = false;
+    const message = error instanceof Error ? error.message : "Search error";
+    cards.innerHTML = renderError(message);
+  }
+}
+
+/** Render the empty dedicated Search page state before the first query. */
+function renderSearchLanding() {
+  setCardsSearchLayout();
+  cards.innerHTML = `
+    <section class="search-landing" aria-label="Search videos">
+      <h2>Search videos</h2>
+      <p>Use the search box above to find videos by title, channel, tag, category, or instance.</p>
+    </section>
+  `;
+}
+
+/** Keep the host section in normal feed grid mode. */
+function setCardsGridLayout() {
+  cards.classList.add("cards-grid");
+  cards.classList.remove("search-results-host");
+}
+
+/** Keep search markup full width instead of nesting it as one feed-grid column. */
+function setCardsSearchLayout() {
+  cards.classList.remove("cards-grid");
+  cards.classList.add("search-results-host");
+}
+
+/** Render the two public search sections required by Search API v1. */
+function renderSearchResults(videoRows: VideoRow[], channelRows: ChannelRow[]) {
+  const videosMarkup = videoRows.length
+    ? `<div class="cards-grid">${videoRows.map((row) => renderFeedVideoCard(row, { apiParam, debugMode, stats: resolveCachedStats(row), videoKey: resolveVideoKey(row) })).join("")}</div>`
+    : `<div class="error">No videos found</div>`;
+  const channelsMarkup = channelRows.length
+    ? `<div class="channel-results">${channelRows.map(renderChannelSearchResult).join("")}</div>`
+    : `<div class="error">No channels found</div>`;
+  cards.innerHTML = `
+    <div class="search-results">
+      <section class="search-section" aria-label="Video search results">
+        <h2>Videos</h2>
+        ${videosMarkup}
+      </section>
+      <section class="search-section" aria-label="Channel search results">
+        <h2>Channels</h2>
+        ${channelsMarkup}
+      </section>
+    </div>
+  `;
+}
+
+/** Render compact channel search rows with the same channel identity fields. */
+function renderChannelSearchResult(row: ChannelRow) {
+  const url = channelUrl(row);
+  const label = channelLabel(row);
+  const avatar = row.avatar_url
+    ? `<img class="avatar" src="${escapeHtml(row.avatar_url)}" alt="" loading="lazy" />`
+    : `<div class="avatar-fallback">—</div>`;
+  return `
+    <article class="channel-result">
+      ${avatar}
+      <div class="channel-result-body">
+        <a class="channel-result-title" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>
+        <div class="channel-result-meta">${escapeHtml(row.instance_domain ?? "")} · ${numberFormat.format(row.videos_count ?? 0)} videos · ${numberFormat.format(row.followers_count ?? 0)} followers</div>
+      </div>
+    </article>
+  `;
+}
+
 /**
  * Handle fetch videos payload.
  */
-async function fetchVideosPayload() {
+async function fetchVideosPayload(cursor: string | null = null) {
   if (useSimilar) {
-    return fetchSimilarVideosPayload(similarQuery);
+    return fetchSimilarVideosPayload({ ...similarQuery, cursor });
   }
   if (feedMode === "random") {
     return fetchSimilarVideosPayload({
       ...similarQuery,
       apiBase,
-      random: "1"
+      random: "1",
+      cursor
     });
   }
   const query = {
     ...similarQuery,
-    apiBase
+    apiBase,
+    cursor
   };
   return fetchSimilarVideosPayload(query);
 }
@@ -228,6 +381,7 @@ function renderSummary() {
  * Handle render cards.
  */
 function renderCards(reset = false) {
+  setCardsGridLayout();
   const visibleRows = visibleSample();
   if (!visibleRows.length) {
     cards.innerHTML = `<div class="error">No videos found.</div>`;
@@ -260,11 +414,45 @@ function visibleSample() {
  */
 function loadNextChunk() {
   const nextCount = Math.min(state.sample.length, state.visibleCount + CHUNK_SIZE);
-  if (nextCount <= state.visibleCount) return false;
+  if (nextCount <= state.visibleCount) {
+    if (state.nextCursor && !state.loading) {
+      void loadMoreFromCursor();
+    }
+    return false;
+  }
   state.visibleCount = nextCount;
   renderCards();
   renderSummary();
   return true;
+}
+
+/**
+ * Handle loading the next v1 cursor page.
+ */
+async function loadMoreFromCursor() {
+  if (!state.nextCursor || state.loading) return false;
+  state.loading = true;
+  try {
+    const payload = await fetchVideosPayload(state.nextCursor);
+    const rows = Array.isArray(payload) ? payload : payload.rows ?? payload.items ?? [];
+    state.nextCursor = Array.isArray(payload) ? null : (payload.pagination?.next_cursor ?? null);
+    const existing = new Set(state.rows.map(resolveVideoKey).filter(Boolean));
+    const added = rows.filter((row) => {
+      const key = resolveVideoKey(row);
+      return !key || !existing.has(key);
+    });
+    state.rows = state.rows.concat(added);
+    state.sample = state.sample.concat(added);
+    state.visibleCount = Math.min(state.sample.length, state.visibleCount + CHUNK_SIZE);
+    renderCards();
+    renderSummary();
+    maybeFillViewport();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    state.loading = false;
+  }
 }
 
 /**

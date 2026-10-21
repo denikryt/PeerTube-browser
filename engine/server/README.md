@@ -30,3 +30,8 @@ This service does not own user write/profile endpoints.
 ## Runtime Framework
 
 `engine/server/api/server.py` remains the executable entrypoint and launches the FastAPI app from `engine/server/api/app.py` through uvicorn. FAISS/index startup prerequisites are unchanged. Framework compatibility decisions are documented in `docs/FRAMEWORK_COMPATIBILITY.md`.
+
+
+## Internal Discovery Providers
+
+Engine provides computation/data routes used by the Client backend. Fresh and popular discovery providers are internal routes under `/internal/discovery/...`, not browser-facing `/api/v1` routes.

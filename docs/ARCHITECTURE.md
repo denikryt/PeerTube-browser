@@ -58,3 +58,8 @@ This split does not change the component boundary: frontend project API calls st
 ## HTTP Adapter Ownership
 
 Stage 11 finalizes the HTTP framework migration: FastAPI app factories are the only active Client and Engine HTTP adapters. The `server.py` files remain stable executable launchers for compatibility, but they no longer own stdlib HTTP server or request-handler classes. Route behavior belongs to the FastAPI apps and the route/service modules listed above. HTTP response construction stays at the FastAPI adapter boundary, while services return plain data or framework-neutral route results.
+
+
+## Discovery API v1 Boundary
+
+The discovery read path is `Frontend -> Client backend /api/v1/... -> Engine provider routes`. The Client backend owns the browser-facing response envelope, cursor parsing, user-like lookup, and API error shape. Engine owns recommendation computation, video metadata lookup, and internal fresh/popular providers.

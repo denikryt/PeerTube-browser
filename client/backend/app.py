@@ -19,12 +19,20 @@ from lib.time_utils import now_ms
 from runtime import ClientRuntimeState
 from schemas import ProxyBytesResult, ServiceResult
 from services.bridge_publisher import publish_event
+from services.discovery_v1 import (
+    handle_ordered_feed,
+    handle_random,
+    handle_recommendations,
+    handle_similar as handle_v1_similar,
+    handle_video as handle_v1_video,
+)
 from services.engine_gateway import (
     proxy_engine_request,
     sanitize_get_query,
     sanitize_post_request,
     summarize_proxy_likes,
 )
+from services.search_v1 import handle_channel_search, handle_video_search
 from services.profile import (
     get_client_likes_metadata,
     get_profile_likes_metadata,
@@ -36,7 +44,8 @@ from services.user_actions import handle_user_action
 
 MAX_LIKES = 100
 MAX_CLIENT_LIKES = 200
-ENGINE_PROXY_TIMEOUT_SECONDS = 10
+MAX_ENGINE_RECOMMENDATION_LIKES = 5
+ENGINE_PROXY_TIMEOUT_SECONDS = 20
 ENGINE_PROXY_MAX_BODY_BYTES = 1_000_000
 ENGINE_PROXY_RETRY_COUNT = 1
 ENGINE_PROXY_RETRY_DELAY_SECONDS = 0.25
@@ -159,6 +168,85 @@ def create_app(state: ClientRuntimeState) -> FastAPI:
         result = publish_event(state.publish_mode, state.engine_ingest_base, body)
         return cors_json(200 if result.get("ok") else 502, result)
 
+    @app.get("/api/v1/discovery/random")
+    async def v1_discovery_random(request: Request) -> Any:
+        """Return Client-owned v1 random discovery feed."""
+        path = request.url.path
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        result = handle_random(state.engine_ingest_base, dict(parse_qs(request.url.query)))
+        return cors_json(result.status, result.body)
+
+    @app.get("/api/v1/discovery/fresh")
+    async def v1_discovery_fresh(request: Request) -> Any:
+        """Return Client-owned v1 fresh discovery feed."""
+        path = request.url.path
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        result = handle_ordered_feed(state.engine_ingest_base, dict(parse_qs(request.url.query)), "fresh")
+        return cors_json(result.status, result.body)
+
+    @app.get("/api/v1/discovery/popular")
+    async def v1_discovery_popular(request: Request) -> Any:
+        """Return Client-owned v1 popular discovery feed."""
+        path = request.url.path
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        result = handle_ordered_feed(state.engine_ingest_base, dict(parse_qs(request.url.query)), "popular")
+        return cors_json(result.status, result.body)
+
+    @app.get("/api/v1/discovery/recommendations")
+    async def v1_discovery_recommendations(request: Request) -> Any:
+        """Return Client-owned v1 personalized/guest recommendations feed."""
+        path = request.url.path
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        params = request.query_params
+        user_id = resolve_user_id(params.get("user_id") or params.get("userId"))
+        result = handle_recommendations(
+            state.users,
+            state.engine_ingest_base,
+            user_id,
+            dict(parse_qs(request.url.query)),
+        )
+        return cors_json(result.status, result.body)
+
+    @app.get("/api/v1/search/videos")
+    async def v1_search_videos(request: Request) -> Any:
+        """Return Client-owned v1 video search results."""
+        path = request.url.path
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        result = handle_video_search(state.engine_ingest_base, dict(parse_qs(request.url.query)))
+        return cors_json(result.status, result.body)
+
+    @app.get("/api/v1/search/channels")
+    async def v1_search_channels(request: Request) -> Any:
+        """Return Client-owned v1 channel search results."""
+        path = request.url.path
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        result = handle_channel_search(state.engine_ingest_base, dict(parse_qs(request.url.query)))
+        return cors_json(result.status, result.body)
+
+    @app.get("/api/v1/videos/{video_ref}")
+    async def v1_video(video_ref: str, request: Request) -> Any:
+        """Return Client-owned v1 video metadata."""
+        path = "/api/v1/videos/{id}"
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        result = handle_v1_video(state.engine_ingest_base, video_ref, dict(parse_qs(request.url.query)))
+        return cors_json(result.status, result.body)
+
+    @app.get("/api/v1/videos/{video_ref}/similar")
+    async def v1_video_similar(video_ref: str, request: Request) -> Any:
+        """Return Client-owned v1 similar video feed."""
+        path = "/api/v1/videos/{id}/similar"
+        if response := _rate_limit_or_none(state, request, path):
+            return response
+        result = handle_v1_similar(state.engine_ingest_base, video_ref, dict(parse_qs(request.url.query)))
+        return cors_json(result.status, result.body)
+
     @app.get("/api/video")
     @app.get("/api/channels")
     async def proxy_get(request: Request) -> Any:
@@ -194,8 +282,9 @@ def create_app(state: ClientRuntimeState) -> FastAPI:
             return cors_json(400, {"error": str(exc)})
         if not isinstance(body, dict):
             return cors_json(400, {"error": "Invalid JSON body"})
+        max_likes = MAX_ENGINE_RECOMMENDATION_LIKES if path == "/recommendations" else MAX_CLIENT_LIKES
         sanitized = sanitize_post_request(
-            path, dict(parse_qs(request.url.query)), body, MAX_CLIENT_LIKES
+            path, dict(parse_qs(request.url.query)), body, max_likes
         )
         if isinstance(sanitized, ServiceResult):
             return cors_json(sanitized.status, sanitized.body)

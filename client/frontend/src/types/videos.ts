@@ -65,9 +65,35 @@ export interface SimilarSeed {
   instance_domain?: string | null;
 }
 
+
+export interface DiscoveryPagination {
+  limit: number;
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface DiscoveryMeta {
+  source: string;
+  fallback?: boolean;
+  fallback_reason?: string | null;
+}
+
+export interface DiscoveryListPayload {
+  items: VideoRow[];
+  pagination: DiscoveryPagination;
+  meta: DiscoveryMeta;
+  generatedAt?: number;
+  total?: number;
+  rows?: VideoRow[];
+  seed?: SimilarSeed | null;
+}
+
 export interface VideosPayload {
   generatedAt?: number;
   total?: number;
   rows?: VideoRow[];
   seed?: SimilarSeed | null;
+  pagination?: DiscoveryPagination;
+  meta?: DiscoveryMeta;
+  items?: VideoRow[];
 }

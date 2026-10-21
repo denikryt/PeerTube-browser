@@ -105,6 +105,7 @@ def test_normal_run_preserves_command_order_and_gpu_flags(monkeypatch, tmp_path)
         "merge-staging-db.py",
         "recompute-popularity.py",
         "sync-video-index-ids.py",
+        "rebuild-video-search-index.py",
         "build-ann-index.py",
         "precompute-random-index-ids.py",
         "precompute-similar-ann.py",
@@ -113,6 +114,13 @@ def test_normal_run_preserves_command_order_and_gpu_flags(monkeypatch, tmp_path)
     assert "--gpu" in seen[4]
     assert seen[5] == ["systemctl", "stop", "svc"]
     assert seen[-1] == ["systemctl", "start", "svc"]
+    search_cmd = next(cmd for cmd in seen if "rebuild-video-search-index.py" in cmd[1])
+    sync_index = names.index("sync-video-index-ids.py")
+    search_index = names.index("rebuild-video-search-index.py")
+    ann_index = names.index("build-ann-index.py")
+    assert sync_index < search_index < ann_index
+    assert "--gpu" not in search_cmd
+    assert "--cpu" not in search_cmd
     random_cmd = next(cmd for cmd in seen if "precompute-random-index-ids.py" in cmd[1])
     assert "--db" in random_cmd
     assert str(tmp_path / "prod.db") in random_cmd

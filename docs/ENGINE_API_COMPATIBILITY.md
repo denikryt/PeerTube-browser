@@ -91,3 +91,8 @@ Implementation action: Engine route and handler helper modules return framework-
 Tests: `tests/framework/test_no_legacy_handler_helpers.py`, `tests/engine_api/*`, `tests/framework/*`, and `engine/server/api/tests/test_recommendations_likes_limit.py`.
 
 Removal condition, if any: Complete in Stage 12.
+
+
+## Internal Discovery Providers
+
+Engine may expose internal discovery provider routes such as `/internal/discovery/fresh` and `/internal/discovery/popular` for the Client backend. These are not browser-facing public API v1 routes; public discovery v1 lives in the Client backend.

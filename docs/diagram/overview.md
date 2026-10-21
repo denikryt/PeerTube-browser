@@ -344,3 +344,6 @@ docs/FRONTEND_COMPATIBILITY.md
 ```
 
 Use this file as the high-level system map. Use the focused documents for detailed behavior and compatibility rules.
+
+
+Discovery API v1 read path: `Frontend -> Client backend /api/v1/discovery... or /api/v1/videos... -> Engine internal/provider routes`.

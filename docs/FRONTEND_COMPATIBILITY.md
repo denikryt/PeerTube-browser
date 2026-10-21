@@ -103,3 +103,8 @@ Tests:
 
 Removal condition, if any:
 A later CI policy may decide to run frontend tests in a broader target.
+
+
+## Discovery API v1
+
+Production frontend feed and video metadata code should call the Client backend v1 discovery routes, not Engine routes directly. List payloads use `items`, `pagination`, and `meta`; data adapters may normalize these to existing `VideoRow[]` render paths.

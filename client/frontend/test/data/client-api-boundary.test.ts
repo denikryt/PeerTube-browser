@@ -11,6 +11,7 @@ const forbidden = [
   "/internal/events/ingest",
   "/internal/videos/resolve",
   "/internal/videos/metadata",
+  "/internal/search/videos",
   "ENGINE_API_BASE",
   "7072"
 ];
