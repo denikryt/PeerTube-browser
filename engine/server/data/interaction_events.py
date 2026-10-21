@@ -6,23 +6,9 @@ import json
 import sqlite3
 from typing import Any
 
-try:
-    from engine.server.db.migrations.apply import apply_interaction_event_migration
-except ModuleNotFoundError:  # pragma: no cover - script import fallback
-    from db.migrations.apply import apply_interaction_event_migration
-
 from data.time import now_ms
 
 ALLOWED_EVENT_TYPES = {"Like", "UndoLike", "Comment"}
-
-
-def ensure_interaction_event_schema(conn: sqlite3.Connection) -> None:
-    """Create raw/aggregated interaction event tables if missing.
-
-    This remains the runtime compatibility wrapper used by Engine startup and
-    tests while Stage 6 centralizes the same SQL as a migration resource.
-    """
-    apply_interaction_event_migration(conn)
 
 
 def ingest_interaction_event(conn: sqlite3.Connection, payload: dict[str, Any]) -> dict[str, Any]:

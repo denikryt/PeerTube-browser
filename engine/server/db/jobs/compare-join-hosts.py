@@ -20,7 +20,11 @@ if str(api_dir) not in sys.path:
     sys.path.insert(0, str(api_dir))
 
 from server_config import DEFAULT_DB_PATH
-from data.moderation import ensure_moderation_schema, list_active_denied_hosts
+try:
+    from engine.server.db.bootstrap import bootstrap_engine_moderation_db
+except ModuleNotFoundError:  # pragma: no cover - script import fallback.
+    from db.bootstrap import bootstrap_engine_moderation_db
+from data.moderation import list_active_denied_hosts
 from scripts.cli_format import CompactHelpFormatter
 
 DEFAULT_URL = (
@@ -103,7 +107,7 @@ def load_local_blocked_hosts(db_path: Path) -> set[str]:
     conn = sqlite3.connect(db_path.as_posix())
     conn.row_factory = sqlite3.Row
     try:
-        ensure_moderation_schema(conn)
+        bootstrap_engine_moderation_db(conn)
         return list_active_denied_hosts(conn)
     finally:
         conn.close()

@@ -5,7 +5,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ChannelStore, VideoStore, type VideoChannelRow, type VideoUpsertRow } from "../../src/db.js";
+import { ChannelStore } from "../../src/db/channels.js";
+import type { VideoChannelRow, VideoUpsertRow } from "../../src/db/types.js";
+import { VideoStore } from "../../src/db/videos.js";
 import { allRows, createTempDb, getRow } from "./helpers.js";
 
 const video: VideoUpsertRow = {

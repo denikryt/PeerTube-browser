@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This document defines which component owns each SQLite schema used by PeerTube Browser, which helper or migration creates the current shape, and which compatibility wrappers remain during refactoring.
+This document defines which component owns each SQLite schema used by PeerTube Browser, which migration/bootstrap entrypoint creates the current shape, and which schema contracts must remain stable during refactoring.
 
-Stage 6 does not introduce a historical migration framework or change production database shapes. It documents ownership, adds current-shape SQL resources, and keeps existing runtime helpers as compatibility wrappers.
+Stage 6 documented ownership and added current-shape SQL resources. The database bootstrap cleanup stage added explicit runtime bootstrap entrypoints above those migration resources. The follow-up legacy-wrapper cleanup removed transitional `ensure_*` schema wrappers after production callers moved to bootstrap functions.
 
 ## Client users DB
 
@@ -14,10 +14,10 @@ Owner:
 Client backend
 ```
 
-Current source:
+Current runtime bootstrap source:
 
 ```text
-client/backend/lib/users_store.py::ensure_user_schema
+client/backend/db/bootstrap.py::bootstrap_client_users_db
 ```
 
 Stage 6 migration source:
@@ -32,7 +32,7 @@ Runtime/job callers:
 ```text
 client/backend/server.py
 client/backend/repositories/users.py::UsersRepository.ensure_schema
-client/backend/lib/users_store.py::ensure_user_schema
+client/backend/db/bootstrap.py::bootstrap_client_users_db
 ```
 
 Tables/indexes:
@@ -43,17 +43,23 @@ likes
 likes_user_updated_idx
 ```
 
-Compatibility wrappers:
+Removed transitional wrappers:
 
 ```text
 client/backend/lib/users_store.py::ensure_user_schema
-client/backend/repositories/users.py::UsersRepository.ensure_schema
 ```
 
-Allowed Stage 6 changes:
+Current runtime bootstrap path:
 
 ```text
-Move the exact current users/likes SQL into checked-in migration resources and keep existing helper names.
+client/backend/repositories/users.py::UsersRepository.ensure_schema
+  -> client/backend/db/bootstrap.py::bootstrap_client_users_db
+```
+
+Current bootstrap rule:
+
+```text
+Use `bootstrap_client_users_db` for runtime setup. The transitional `ensure_user_schema` wrapper has been removed.
 ```
 
 Deferred changes:
@@ -66,7 +72,6 @@ Tests:
 
 ```text
 tests/db/test_client_user_migrations.py
-tests/db/test_existing_ensure_wrappers_match_migrations.py
 tests/repositories/test_client_users_store.py
 ```
 
@@ -87,7 +92,7 @@ engine/crawler/schema.sql
 Runtime/job callers:
 
 ```text
-engine/crawler/src/db.ts
+engine/crawler/src/db/* modules
 engine/crawler/src/*.ts
 engine/server/db/jobs/sync-whitelist.py
 ```
@@ -103,10 +108,10 @@ channel_crawl_progress
 video_crawl_progress
 ```
 
-Compatibility wrappers:
+Compatibility facade:
 
 ```text
-engine/crawler/src/db.ts
+engine/crawler/src/db/* modules own crawler DB access; legacy db.ts facade was removed in the crawler compatibility cleanup.
 ```
 
 Stage 7 database modules:
@@ -130,7 +135,7 @@ Document ownership and keep compatibility tests around the schema consumed by En
 Allowed Stage 7 changes:
 
 ```text
-Split the TypeScript crawler DB layer into narrow modules while keeping schema.sql, command behavior, and db.ts import compatibility stable.
+Split the TypeScript crawler DB layer into narrow modules while keeping schema.sql, command behavior, and direct db/* imports stable.
 ```
 
 Deferred changes:
@@ -187,13 +192,18 @@ video_embeddings
 popularity-related columns and read indexes
 ```
 
-Compatibility wrappers:
+Compatibility entrypoints:
+
+```text
+engine/server/db/jobs/migrate-whitelist.py
+engine/server/db/jobs/whitelist_migrations.py
+```
+
+Removed transitional wrappers:
 
 ```text
 engine/server/data/channels.py::ensure_channels_indexes
 engine/server/data/videos.py::ensure_video_indexes
-engine/server/db/jobs/migrate-whitelist.py
-engine/server/db/jobs/whitelist_migrations.py
 ```
 
 Allowed Stage 6 changes:
@@ -212,7 +222,6 @@ Tests:
 
 ```text
 tests/db/test_engine_runtime_migrations.py
-tests/db/test_existing_ensure_wrappers_match_migrations.py
 ```
 
 ## Engine runtime tables and indexes
@@ -223,13 +232,20 @@ Owner:
 Engine API runtime/data layer
 ```
 
-Current source:
+Current runtime bootstrap source:
 
 ```text
-engine/server/data/interaction_events.py::ensure_interaction_event_schema
-engine/server/data/moderation.py::ensure_moderation_schema
-engine/server/data/channels.py::ensure_channels_indexes
-engine/server/data/videos.py::ensure_video_indexes
+engine/server/db/bootstrap.py::bootstrap_engine_runtime_db
+engine/server/db/bootstrap.py::bootstrap_engine_moderation_db
+engine/server/db/bootstrap.py::bootstrap_engine_read_indexes
+```
+
+Current runtime bootstrap source:
+
+```text
+engine/server/db/bootstrap.py::bootstrap_engine_runtime_db
+engine/server/db/bootstrap.py::bootstrap_engine_moderation_db
+engine/server/db/bootstrap.py::bootstrap_engine_read_indexes
 ```
 
 Stage 6 migration source:
@@ -269,7 +285,7 @@ idx_videos_id_instance
 idx_video_embeddings_id_instance
 ```
 
-Compatibility wrappers:
+Removed transitional wrappers:
 
 ```text
 engine/server/data/interaction_events.py::ensure_interaction_event_schema
@@ -278,10 +294,10 @@ engine/server/data/channels.py::ensure_channels_indexes
 engine/server/data/videos.py::ensure_video_indexes
 ```
 
-Allowed Stage 6 changes:
+Current bootstrap rule:
 
 ```text
-Move current table/index SQL into migration resources and keep wrappers import-compatible.
+Use Engine bootstrap functions for runtime startup and jobs. Transitional wrapper imports have been removed.
 ```
 
 Deferred changes:
@@ -294,7 +310,6 @@ Tests:
 
 ```text
 tests/db/test_engine_runtime_migrations.py
-tests/db/test_existing_ensure_wrappers_match_migrations.py
 tests/repositories/test_engine_interaction_events.py
 engine/server/db/jobs/tests/test-interaction-events.py
 ```
@@ -312,6 +327,12 @@ Current source:
 ```text
 engine/server/data/similarity_cache.py::ensure_similarity_schema
 engine/server/db/jobs/precompute-similar-ann.py::ensure_schema
+```
+
+Current runtime bootstrap source:
+
+```text
+engine/server/db/bootstrap.py::bootstrap_engine_similarity_cache_db
 ```
 
 Stage 6 migration source:
@@ -337,7 +358,7 @@ similarity_items
 similarity_source_rank_idx
 ```
 
-Compatibility wrappers:
+Removed transitional wrappers:
 
 ```text
 engine/server/data/similarity_cache.py::ensure_similarity_schema
@@ -359,7 +380,6 @@ Tests:
 
 ```text
 tests/db/test_cache_migrations.py
-tests/db/test_existing_ensure_wrappers_match_migrations.py
 ```
 
 ## Engine random cache DB
@@ -376,6 +396,12 @@ Current source:
 engine/server/data/random_cache.py::ensure_random_cache_schema
 ```
 
+Current runtime bootstrap source:
+
+```text
+engine/server/db/bootstrap.py::bootstrap_engine_random_cache_db
+```
+
 Stage 6 migration source:
 
 ```text
@@ -388,38 +414,69 @@ Runtime/job callers:
 ```text
 engine/server/api/server.py
 engine/server/data/random_cache.py
-engine/server/db/jobs/precompute-random-rowids.py
+engine/server/db/jobs/precompute-random-index-ids.py
 ```
 
 Tables/indexes:
 
 ```text
-random_rowids
+random_index_ids
 ```
 
-Compatibility wrappers:
+Removed transitional wrappers:
 
 ```text
 engine/server/data/random_cache.py::ensure_random_cache_schema
 ```
 
-Allowed Stage 6 changes:
+Current behavior:
 
 ```text
-Centralize current table SQL and keep runtime population behavior unchanged.
+Random cache stores `random_index_ids.index_id`, not SQLite rowids.
+Old `random_rowids` artifacts are incompatible and must be rebuilt.
 ```
 
 Deferred changes:
 
 ```text
-Random-cache population policy, cache refresh behavior, and job orchestration.
+Random-cache cleanup policy and broader artifact lifecycle management.
 ```
 
 Tests:
 
 ```text
 tests/db/test_cache_migrations.py
-tests/db/test_existing_ensure_wrappers_match_migrations.py
+```
+
+## Engine stable ANN index identity
+
+Owner:
+
+```text
+Engine jobs and Engine runtime read paths
+```
+
+Current source:
+
+```text
+engine/server/db/migrations/main/0004_video_index_ids.sql
+engine/server/db/jobs/sync-video-index-ids.py
+engine/server/data/ann_artifact.py
+```
+
+Tables/indexes:
+
+```text
+video_index_ids
+```
+
+Current behavior:
+
+```text
+FAISS ids are `video_index_ids.index_id`.
+`sync-video-index-ids.py` must run after prod merge/purge and before ANN/random/similarity artifact builds.
+Inactive mappings are retained and excluded from new artifacts.
+`similarity_cache` stores video_id + instance_domain, not index ids.
 ```
 
 ## Engine derived artifacts
@@ -436,7 +493,7 @@ Current source:
 engine/server/db/jobs/build-video-embeddings.py
 engine/server/db/jobs/build-ann-index.py
 engine/server/db/jobs/precompute-similar-ann.py
-engine/server/db/jobs/precompute-random-rowids.py
+engine/server/db/jobs/precompute-random-index-ids.py
 engine/server/db/jobs/recompute-popularity.py
 ```
 
@@ -461,10 +518,10 @@ similarity-cache.db
 random-cache.db
 ```
 
-Compatibility wrappers:
+Operational compatibility:
 
 ```text
-Existing job entrypoints and helper functions remain unchanged in Stage 6.
+Existing job entrypoints and helper functions remain unchanged by schema ownership cleanup.
 ```
 
 Allowed Stage 6 changes:
@@ -486,97 +543,53 @@ tests/engine_data/test_schema_compatibility_snapshot.py
 tests/db/test_cache_migrations.py
 ```
 
-## Compatibility wrappers
+## Removed transitional schema wrappers
 
 ### Client users schema
 
-Decision: keep client/backend/lib/users_store.py::ensure_user_schema
+Decision: remove client/backend/lib/users_store.py::ensure_user_schema
 
-Reason: existing Client startup and repository code call this helper.
+Reason: production Client callers now use `bootstrap_client_users_db`, and migration tests cover the current users/likes schema directly.
 
-Implementation action: make it delegate to apply_client_user_migrations(conn).
+Implementation action: remove the wrapper function and keep `client/backend/db/bootstrap.py` as the runtime bootstrap entrypoint.
 
-Tests: test_client_user_migrations.py
+Tests: `tests/db/test_client_user_migrations.py`, `tests/db/test_database_bootstrap.py`, and `tests/db/test_no_direct_runtime_ensure_calls.py`.
 
-Removal condition: only after all callers use an explicit migration command in a later plan.
+### Engine interaction and moderation schemas
 
-### Engine interaction events schema
+Decision: remove engine/server/data/interaction_events.py::ensure_interaction_event_schema and engine/server/data/moderation.py::ensure_moderation_schema
 
-Decision: keep engine/server/data/interaction_events.py::ensure_interaction_event_schema
+Reason: Engine startup and jobs now call explicit bootstrap functions.
 
-Reason: Engine startup and legacy job tests call this helper directly.
+Implementation action: remove wrapper functions while keeping interaction ingest and moderation runtime helpers unchanged.
 
-Implementation action: delegate to main runtime migration for interaction tables.
-
-Tests: test_engine_runtime_migrations.py and legacy interaction events test.
-
-Removal condition: only after Engine startup uses explicit migration orchestration.
-
-### Engine moderation schema
-
-Decision: keep engine/server/data/moderation.py::ensure_moderation_schema
-
-Reason: Engine startup and moderation code call this helper directly.
-
-Implementation action: delegate to the current moderation migration resource while leaving similarity purge indexes in moderation code.
-
-Tests: test_engine_runtime_migrations.py.
-
-Removal condition: only after Engine startup uses explicit migration orchestration.
+Tests: `tests/db/test_engine_runtime_migrations.py`, `tests/db/test_database_bootstrap.py`, repository tests, Engine API tests, and legacy job interaction tests.
 
 ### Engine read indexes
 
-Decision: keep engine/server/data/channels.py::ensure_channels_indexes and engine/server/data/videos.py::ensure_video_indexes
+Decision: remove engine/server/data/channels.py::ensure_channels_indexes and engine/server/data/videos.py::ensure_video_indexes
 
-Reason: Engine startup uses these helpers and they preserve conditional no-op behavior for missing content tables.
+Reason: conditional read-index creation is now owned by `bootstrap_engine_read_indexes` and `apply_main_read_indexes`.
 
-Implementation action: delegate to apply_main_read_indexes(conn), which reads central SQL but only executes statements whose target tables exist.
+Implementation action: remove wrapper functions and keep read-index migration resources unchanged.
 
-Tests: test_engine_runtime_migrations.py.
-
-Removal condition: only after explicit migration orchestration can preserve conditional startup behavior.
+Tests: `tests/db/test_engine_runtime_migrations.py`, `tests/db/test_database_bootstrap.py`, and Engine data/API tests.
 
 ### Engine cache schemas
 
-Decision: keep engine/server/data/similarity_cache.py::ensure_similarity_schema and engine/server/data/random_cache.py::ensure_random_cache_schema
+Decision: remove engine/server/data/similarity_cache.py::ensure_similarity_schema and engine/server/data/random_cache.py::ensure_random_cache_schema
 
-Reason: Engine startup and cache jobs call these helpers directly.
+Reason: cache DB creation is now owned by explicit cache bootstrap functions.
 
-Implementation action: delegate to cache migration resource helpers.
+Implementation action: remove wrapper functions and keep cache migration resources unchanged.
 
-Tests: test_cache_migrations.py.
-
-Removal condition: only after cache DB creation is owned by explicit migration commands.
-
-### Crawler schema ownership
-
-Decision: keep crawler schema ownership in engine/crawler/schema.sql
-
-Reason: Stage 7 owns crawler DB split and crawler output behavior.
-
-Implementation action: document ownership and keep existing schema compatibility test.
-
-Tests: tests/engine_data/test_schema_compatibility_snapshot.py.
-
-Removal condition: none in Stage 6.
-
-### Whitelist migration behavior
-
-Decision: keep migrate-whitelist.py and whitelist_migrations.py as the compatibility path for old whitelist DBs.
-
-Reason: historical whitelist DB migration semantics already exist and are outside current-shape runtime wrapper centralization.
-
-Implementation action: document ownership and do not replace or reorder whitelist migration helpers in Stage 6.
-
-Tests: existing schema tests plus this documentation check.
-
-Removal condition: only after a dedicated historical migration plan.
+Tests: `tests/db/test_cache_migrations.py`, `tests/db/test_database_bootstrap.py`, and Engine data tests.
 
 ## Future ownership by stage
 
 ```text
 Stage 7
-  Split engine/crawler/src/db.ts and add TypeScript crawler repository tests.
+  Split engine/crawler/src/db/* modules and add TypeScript crawler repository tests.
 
 Stage 8
   Refactor frontend UI/API/state code without changing schema ownership.
@@ -588,4 +601,4 @@ Future migration-policy stage
   Introduce a full historical migration framework with schema_migrations only if deployment policy requires it.
 ```
 
-The deferred items above are not Stage 6 gaps. Stage 6 establishes ownership and current-shape migration resources while keeping compatibility wrappers for existing callers.
+The deferred items above are not Stage 6 gaps. Stage 6 established ownership and current-shape migration resources; later bootstrap cleanup moved production callers to explicit bootstrap entrypoints, and the legacy ensure-wrapper cleanup removed the transitional schema wrappers.

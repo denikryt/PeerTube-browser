@@ -23,7 +23,11 @@ if str(api_dir) not in sys.path:
 
 from scripts.cli_format import CompactHelpFormatter
 from server_config import DEFAULT_DB_PATH
-from data.moderation import ensure_moderation_schema, list_active_denied_hosts
+try:
+    from engine.server.db.bootstrap import bootstrap_engine_moderation_db
+except ModuleNotFoundError:  # pragma: no cover - script import fallback.
+    from db.bootstrap import bootstrap_engine_moderation_db
+from data.moderation import list_active_denied_hosts
 
 DEFAULT_URL = (
     "https://instances.joinpeertube.org/api/v1/instances/hosts?count=5000&healthy=true"
@@ -481,7 +485,7 @@ def main() -> None:
         )
         attached = True
         with conn:
-            ensure_moderation_schema(conn)
+            bootstrap_engine_moderation_db(conn)
             ensure_whitelist_schema(conn)
             ensure_content_schema(conn)
             ensure_schema_compatibility(conn)

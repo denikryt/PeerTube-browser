@@ -38,7 +38,7 @@ Decision: recommendation request validation keeps current body-size, likes-count
 
 Reason: Client backend and Stage 0 tests depend on these request-contract failures remaining stable during route splitting.
 
-Implementation action: `engine/server/api/services/recommendation_service.py` reuses the existing helper behavior moved from `handlers/similar.py`; Stage 4 does not introduce schema-model validation.
+Implementation action: `engine/server/api/services/recommendation_service.py` owns the helper behavior directly; Stage 4 does not introduce schema-model validation.
 
 Tests: `tests/engine_api/test_recommendations_request_contract.py`, `tests/engine_api/test_similar_route_characterization.py`, and `tests/engine_api/test_engine_route_dispatch_characterization.py`.
 
@@ -74,11 +74,11 @@ Decision: The Stage 4 transitional stdlib Engine handler was removed in Stage 11
 
 Reason: After Stage 10 introduced FastAPI adapters, keeping a second handler dispatch path would create duplicate ownership and drift risk.
 
-Implementation action: `engine/server/api/handlers/similar.py` remains only as a helper re-export shim for historical helper imports. CORS, rate-limit, unknown-route, and path-id behavior are covered by FastAPI route tests.
+Implementation action: The transitional `engine/server/api/handlers/similar.py` helper re-export shim has been removed. CORS, rate-limit, unknown-route, and path-id behavior remain covered by FastAPI route tests and direct `services/recommendation_service.py` imports.
 
 Tests: `tests/engine_api/test_engine_route_dispatch_characterization.py`, `tests/engine_api/test_similar_route_characterization.py`, and `tests/framework/test_engine_fastapi_contract.py`.
 
-Removal condition, if any: The helper re-export shim can be removed after downstream imports use `engine/server/api/services/recommendation_service.py` directly.
+Removal condition, if any: Already removed. New helper imports must use `engine/server/api/services/recommendation_service.py` directly.
 
 ### Handler-shaped response helper removed
 

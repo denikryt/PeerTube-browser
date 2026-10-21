@@ -324,6 +324,16 @@ def run_pipeline(
                     cwd=paths.repo_root,
                     runner=command_runner,
                 )
+                _run_cmd(
+                    [
+                        args.python_bin,
+                        (paths.script_dir / "sync-video-index-ids.py").as_posix(),
+                        "--db",
+                        paths.prod_db.as_posix(),
+                    ],
+                    cwd=paths.repo_root,
+                    runner=command_runner,
+                )
                 if args.fail_during_ann_build:
                     raise RuntimeError("Injected failure: ANN build stage")
                 ann_cmd = [

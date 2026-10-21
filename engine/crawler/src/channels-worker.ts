@@ -2,7 +2,8 @@
  * Module `engine/crawler/src/channels-worker.ts`: provide runtime functionality.
  */
 
-import { ChannelStore, type ChannelProgressRow, type ChannelUpsertRow } from "./db.js";
+import { ChannelStore } from "./db/channels.js";
+import type { ChannelProgressRow, ChannelUpsertRow } from "./db/types.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile } from "./host-filters.js";
 

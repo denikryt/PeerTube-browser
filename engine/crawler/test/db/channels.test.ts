@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ChannelStore } from "../../src/db.js";
+import { ChannelStore } from "../../src/db/channels.js";
 import { allRows, createTempDb, getRow } from "./helpers.js";
 
 const channel = {

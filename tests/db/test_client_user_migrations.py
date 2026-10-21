@@ -8,8 +8,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "client" / "backend"))
 
-from lib.users_store import ensure_user_schema  # noqa: E402
-
 from client.backend.db.migrate import apply_client_user_migrations  # noqa: E402
 
 
@@ -84,14 +82,3 @@ def test_client_user_migration_is_idempotent() -> None:
     apply_client_user_migrations(conn)
 
     assert _schema_signature(conn) == before
-
-
-def test_client_ensure_user_schema_matches_migration_schema() -> None:
-    """The legacy ensure wrapper must produce the same schema as migration resources."""
-    migration_conn = _connect()
-    wrapper_conn = _connect()
-
-    apply_client_user_migrations(migration_conn)
-    ensure_user_schema(wrapper_conn)
-
-    assert _schema_signature(wrapper_conn) == _schema_signature(migration_conn)

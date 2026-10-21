@@ -54,19 +54,43 @@ def connect_source_db(path: Path) -> sqlite3.Connection:
     return conn
 
 
-def iter_embedding_rows_by_rowids(
-    conn: sqlite3.Connection, rowids: list[int], batch_size: int = 512
+def validate_faiss_metadata(index_path: Path) -> None:
+    """Reject rowid-based ANN artifacts before similarity precompute uses them."""
+    meta_path = index_path.with_name(index_path.name + ".json")
+    if not meta_path.exists():
+        raise RuntimeError(f"Missing FAISS metadata {meta_path}; rebuild the ANN index.")
+    import json
+
+    metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+    if metadata.get("schema_version") != 2 or metadata.get("id_source") != "video_index_ids.index_id":
+        raise RuntimeError("Incompatible FAISS metadata; rebuild with stable index ids.")
+
+
+def iter_embedding_rows_by_index_ids(
+    conn: sqlite3.Connection, index_ids: list[int], batch_size: int = 512
 ):
-    """Handle iter embedding rows by rowids."""
-    if not rowids:
+    """Yield active source embeddings by stable index ids."""
+    if not index_ids:
         return
-    for start in range(0, len(rowids), batch_size):
-        chunk = rowids[start : start + batch_size]
+    for start in range(0, len(index_ids), batch_size):
+        chunk = index_ids[start : start + batch_size]
         placeholders = ",".join("?" for _ in chunk)
         query = f"""
-            SELECT rowid, video_id, instance_domain, embedding, embedding_dim
-            FROM video_embeddings
-            WHERE rowid IN ({placeholders})
+            SELECT
+              vii.index_id,
+              e.video_id,
+              e.instance_domain,
+              e.embedding,
+              e.embedding_dim
+            FROM video_index_ids vii
+            JOIN video_embeddings e
+              ON e.video_id = vii.video_id
+             AND e.instance_domain = vii.instance_domain
+            JOIN videos v
+              ON v.video_id = vii.video_id
+             AND v.instance_domain = vii.instance_domain
+            WHERE vii.is_active = 1
+              AND vii.index_id IN ({placeholders})
         """
         for row in conn.execute(query, chunk):
             yield row
@@ -164,74 +188,94 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 
 def fetch_similarity_targets(
-    conn: sqlite3.Connection, rowids: list[int]
+    conn: sqlite3.Connection, index_ids: list[int]
 ) -> dict[int, dict[str, Any]]:
-    """Fetch minimal similarity target identity by embedding rowid."""
-    if not rowids:
+    """Fetch minimal similarity target identity by stable index id."""
+    if not index_ids:
         return {}
-    placeholders = ", ".join("?" for _ in rowids)
+    placeholders = ", ".join("?" for _ in index_ids)
     rows = conn.execute(
         f"""
         SELECT
-          rowid,
-          video_id,
-          instance_domain
-        FROM video_embeddings
-        WHERE rowid IN ({placeholders})
+          vii.index_id,
+          vii.video_id,
+          vii.instance_domain
+        FROM video_index_ids vii
+        JOIN video_embeddings e
+          ON e.video_id = vii.video_id
+         AND e.instance_domain = vii.instance_domain
+        JOIN videos v
+          ON v.video_id = vii.video_id
+         AND v.instance_domain = vii.instance_domain
+        WHERE vii.is_active = 1
+          AND vii.index_id IN ({placeholders})
         """,
-        rowids,
+        index_ids,
     ).fetchall()
-    return {row["rowid"]: dict(row) for row in rows}
+    return {int(row["index_id"]): dict(row) for row in rows}
 
 
 def fetch_similarity_targets_chunked(
     conn: sqlite3.Connection,
-    rowids: list[int],
+    index_ids: list[int],
     chunk_size: int = 5000,
 ) -> dict[int, dict[str, Any]]:
-    """Fetch many rowid->target mappings in chunks to stay under SQLite variable limits."""
-    if not rowids:
+    """Fetch many index-id target mappings in chunks to stay under SQLite variable limits."""
+    if not index_ids:
         return {}
     if chunk_size <= 0:
         chunk_size = 5000
     merged: dict[int, dict[str, Any]] = {}
-    for start in range(0, len(rowids), chunk_size):
-        chunk = rowids[start : start + chunk_size]
+    for start in range(0, len(index_ids), chunk_size):
+        chunk = index_ids[start : start + chunk_size]
         merged.update(fetch_similarity_targets(conn, chunk))
     return merged
 
 
-def select_pending_rowids(
+def select_pending_index_ids(
     src_db: sqlite3.Connection,
     out_db_path: Path,
     *,
     incremental: bool,
     refresh_existing: bool,
 ) -> list[int]:
-    """Select source embedding rowids for partial similarity recompute modes."""
+    """Select source stable index ids for partial similarity recompute modes."""
     out_uri = f"file:{out_db_path.as_posix()}?mode=ro"
     src_db.execute("ATTACH DATABASE ? AS out_cache", (out_uri,))
     try:
         if incremental:
             query = """
-                SELECT e.rowid
-                FROM video_embeddings e
+                SELECT vii.index_id
+                FROM video_index_ids vii
+                JOIN video_embeddings e
+                  ON e.video_id = vii.video_id
+                 AND e.instance_domain = vii.instance_domain
+                JOIN videos v
+                  ON v.video_id = vii.video_id
+                 AND v.instance_domain = vii.instance_domain
                 LEFT JOIN out_cache.similarity_sources s
                   ON s.video_id = e.video_id
                  AND s.instance_domain = e.instance_domain
-                WHERE s.video_id IS NULL
+                WHERE vii.is_active = 1 AND s.video_id IS NULL
             """
         elif refresh_existing:
             query = """
-                SELECT e.rowid
-                FROM video_embeddings e
+                SELECT vii.index_id
+                FROM video_index_ids vii
+                JOIN video_embeddings e
+                  ON e.video_id = vii.video_id
+                 AND e.instance_domain = vii.instance_domain
+                JOIN videos v
+                  ON v.video_id = vii.video_id
+                 AND v.instance_domain = vii.instance_domain
                 INNER JOIN out_cache.similarity_sources s
                   ON s.video_id = e.video_id
                  AND s.instance_domain = e.instance_domain
+                WHERE vii.is_active = 1
             """
         else:
             return []
-        return [int(row["rowid"]) for row in src_db.execute(query)]
+        return [int(row["index_id"]) for row in src_db.execute(query)]
     finally:
         src_db.execute("DETACH DATABASE out_cache")
 
@@ -454,6 +498,7 @@ def main() -> None:
             raise RuntimeError("No embeddings found in database.")
         dim_value = int(dim_row[0])
 
+        validate_faiss_metadata(Path(args.index))
         index = faiss.read_index(str(args.index), faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY)
         # Keep a reference so FAISS GPU resources live for the full run.
         gpu_resources = None
@@ -472,23 +517,28 @@ def main() -> None:
             )
 
         if args.incremental or args.refresh_existing:
-            # Partial modes materialize source rowids before writes to keep the
+            # Partial modes materialize source index ids before writes to keep the
             # source DB scan isolated from output-cache mutations.
-            pending_rowids = select_pending_rowids(
+            pending_index_ids = select_pending_index_ids(
                 src_db,
                 out_db_path,
                 incremental=args.incremental,
                 refresh_existing=args.refresh_existing,
             )
-            row_iter = iter_embedding_rows_by_rowids(src_db, pending_rowids)
-            total_sources = len(pending_rowids)
+            row_iter = iter_embedding_rows_by_index_ids(src_db, pending_index_ids)
+            total_sources = len(pending_index_ids)
         else:
-            total_row = src_db.execute("SELECT COUNT(*) AS total FROM video_embeddings").fetchone()
+            total_row = src_db.execute("SELECT COUNT(*) AS total FROM video_index_ids WHERE is_active = 1").fetchone()
             total_sources = int(total_row["total"] if total_row else 0)
             row_iter = src_db.execute(
                 """
-                SELECT rowid, video_id, instance_domain, embedding, embedding_dim
-                FROM video_embeddings
+                SELECT vii.index_id, e.video_id, e.instance_domain, e.embedding, e.embedding_dim
+                FROM video_index_ids vii
+                JOIN video_embeddings e
+                  ON e.video_id = vii.video_id AND e.instance_domain = vii.instance_domain
+                JOIN videos v
+                  ON v.video_id = vii.video_id AND v.instance_domain = vii.instance_domain
+                WHERE vii.is_active = 1
                 """
             )
         logging.info("total sources=%d", total_sources)
@@ -508,23 +558,23 @@ def main() -> None:
                     continue
 
                 scores_batch, ids_batch = index.search(query_batch, args.top_k + 1)
-                batch_rowids = sorted(
+                batch_index_ids = sorted(
                     {
-                        int(rowid)
+                        int(index_id)
                         for ids_row in ids_batch
-                        for rowid in ids_row
-                        if int(rowid) > 0
+                        for index_id in ids_row
+                        if int(index_id) > 0
                     }
                 )
-                targets_by_rowid = fetch_similarity_targets_chunked(src_db, batch_rowids)
+                targets_by_index_id = fetch_similarity_targets_chunked(src_db, batch_index_ids)
 
                 for row, scores_row, ids_row in zip(valid_rows, scores_batch, ids_batch):
                     items: list[dict[str, Any]] = []
-                    for score, rowid in zip(scores_row, ids_row):
-                        rowid_int = int(rowid)
-                        if rowid_int == row["rowid"] or rowid_int <= 0:
+                    for score, index_id in zip(scores_row, ids_row):
+                        index_id_int = int(index_id)
+                        if index_id_int == row["index_id"] or index_id_int <= 0:
                             continue
-                        target = targets_by_rowid.get(rowid_int)
+                        target = targets_by_index_id.get(index_id_int)
                         if not target:
                             continue
                         items.append(

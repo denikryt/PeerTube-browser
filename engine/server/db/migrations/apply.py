@@ -56,10 +56,17 @@ def apply_main_read_indexes(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def apply_video_index_ids_migration(conn: sqlite3.Connection) -> None:
+    """Apply the stable ANN index identity mapping schema."""
+    conn.executescript((MAIN_DIR / "0004_video_index_ids.sql").read_text(encoding="utf-8"))
+    conn.commit()
+
+
 def apply_main_runtime_migrations(conn: sqlite3.Connection) -> None:
-    """Apply Engine runtime schemas and conditional read indexes."""
+    """Apply Engine runtime schemas, stable index ids, and conditional read indexes."""
     apply_interaction_event_migration(conn)
     apply_moderation_migration(conn)
+    apply_video_index_ids_migration(conn)
     apply_main_read_indexes(conn)
 
 

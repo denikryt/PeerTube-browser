@@ -131,11 +131,11 @@ Decision: The transitional Engine stdlib route handler and server classes are re
 
 Reason: Engine route ownership now lives in FastAPI app registration and Stage 4 route modules; retaining the old adapter would leave duplicate dispatch paths.
 
-Implementation action: Keep Engine startup, DB/cache/index wiring, FAISS prerequisite behavior, `create_app(state)`, and `uvicorn.run(...)` in `engine/server/api/server.py`; keep `handlers/similar.py` only as a helper re-export shim.
+Implementation action: Keep Engine startup, DB/cache/index wiring, FAISS prerequisite behavior, `create_app(state)`, and `uvicorn.run(...)` in `engine/server/api/server.py`. The transitional `handlers/similar.py` helper re-export shim has been removed.
 
 Tests: `tests/engine_api/*`, `tests/framework/test_engine_fastapi_contract.py`, `tests/framework/test_entrypoint_compatibility.py`, and `engine/server/api/tests/test_recommendations_likes_limit.py`.
 
-Removal condition, if any: The `handlers/similar.py` helper re-export shim can be removed after downstream imports use `engine/server/api/services/recommendation_service.py` directly.
+Removal condition, if any: Already removed. New helper imports must use `engine/server/api/services/recommendation_service.py` directly.
 
 ## Legacy handler tests migrated
 

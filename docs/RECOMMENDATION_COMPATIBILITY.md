@@ -4,22 +4,22 @@
 
 This document records compatibility decisions made while clarifying the recommendation pipeline internals. These decisions preserve current Engine/Frontend behavior while ownership of configuration and internal boundary types becomes easier to understand.
 
-## `server_config.py` re-exports recommendation config
+## `server_config.py` recommendation config re-export removed
 
 Decision:
-`engine/server/api/recommendations/config.py` owns `RECOMMENDATION_PIPELINE`, `DEFAULT_POPULAR_POOL_SIZE`, `DEFAULT_FRESH_POOL_SIZE`, and recommendation config validation. `engine/server/api/server_config.py` still re-exports those names.
+`engine/server/api/recommendations/config.py` owns `RECOMMENDATION_PIPELINE`, `DEFAULT_POPULAR_POOL_SIZE`, `DEFAULT_FRESH_POOL_SIZE`, and recommendation config validation. The transitional `engine/server/api/server_config.py` re-export has been removed.
 
 Reason:
-Existing startup code, tests, and operational assumptions import recommendation defaults from `server_config.py`. Moving ownership without re-exports would be a breaking import change unrelated to recommendation behavior.
+All Engine startup code and tests import recommendation-domain settings directly from `engine/server/api/recommendations/config.py`. This makes recommendation config ownership unambiguous without changing runtime values or recommendation behavior.
 
 Implementation action:
-Keep compatibility imports in `server_config.py` and compute `BATCH_SIZE` from the moved pipeline exactly as before.
+Do not import recommendation-domain settings from `server_config.py`. Keep non-recommendation Engine runtime defaults in `server_config.py`; import recommendation defaults directly from `recommendations/config.py`.
 
 Tests:
-`tests/recommendations/test_config_validation.py` compares the legacy `server_config.RECOMMENDATION_PIPELINE` import to the new recommendation-domain import.
+`tests/recommendations/test_config_validation.py` validates the recommendation-domain config directly. `tests/compatibility/test_removed_shims.py` prevents the removed `server_config.py` recommendation re-export from returning.
 
 Removal condition, if any:
-The re-export can be removed only after all imports and docs use `recommendations/config.py` directly and a dedicated compatibility-removal plan covers startup and deployment impact.
+Already removed. If a new caller needs recommendation defaults, use `engine/server/api/recommendations/config.py` directly.
 
 ## Validation uses raw config for runtime execution
 

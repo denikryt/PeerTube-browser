@@ -70,25 +70,25 @@ def resolve_seed(
             raise ValueError("Invalid vector parameter")
         norm = np.linalg.norm(parsed)
         if not np.isfinite(norm) or norm == 0:
-            return {"vector": None, "exclude_rowid": None, "meta": {"vector": "zero"}, "random": True}
+            return {"vector": None, "exclude_index_id": None, "meta": {"vector": "zero"}, "random": True}
         normalized = normalize_vector(parsed)
         if embeddings_dim and normalized.shape[0] != embeddings_dim:
             raise ValueError("Vector dimension does not match embeddings")
         return {
             "vector": normalized,
-            "exclude_rowid": None,
+            "exclude_index_id": None,
             "meta": {"vector": True},
             "random": False,
         }
 
     seed = fetch_seed_embedding(conn, video_id, host, uuid)
     if not seed:
-        return {"vector": None, "exclude_rowid": None, "meta": None}
+        return {"vector": None, "exclude_index_id": None, "meta": None}
     return {
         "vector": seed["embedding"],
-        "exclude_rowid": seed["rowid"],
+        "exclude_index_id": seed["index_id"],
         "embedding": seed["embedding"],
-        "rowid": seed["rowid"],
+        "index_id": seed["index_id"],
         "channel_id": seed.get("channel_id"),
         "instance_domain": seed["instance_domain"],
         "meta": {
@@ -120,7 +120,7 @@ def _fetch_seed_by_uuid(
     """Handle fetch seed by uuid."""
     sql = """
         SELECT
-          e.rowid AS rowid,
+          vii.index_id AS index_id,
           v.video_id,
           v.video_uuid,
           v.channel_id,
@@ -129,6 +129,8 @@ def _fetch_seed_by_uuid(
           e.embedding,
           e.embedding_dim
         FROM video_embeddings e
+        JOIN video_index_ids vii
+          ON vii.video_id = e.video_id AND vii.instance_domain = e.instance_domain AND vii.is_active = 1
         JOIN videos v
           ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
         WHERE v.video_uuid = ?
@@ -148,7 +150,7 @@ def _fetch_seed_by_id(
     """Handle fetch seed by id."""
     sql = """
         SELECT
-          e.rowid AS rowid,
+          vii.index_id AS index_id,
           v.video_id,
           v.video_uuid,
           v.channel_id,
@@ -157,6 +159,8 @@ def _fetch_seed_by_id(
           e.embedding,
           e.embedding_dim
         FROM video_embeddings e
+        JOIN video_index_ids vii
+          ON vii.video_id = e.video_id AND vii.instance_domain = e.instance_domain AND vii.is_active = 1
         JOIN videos v
           ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
         WHERE v.video_id = ?
@@ -178,7 +182,7 @@ def _seed_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if embedding.size == 0 or embedding.shape[0] != row["embedding_dim"]:
         return None
     return {
-        "rowid": int(row["rowid"]),
+        "index_id": int(row["index_id"]),
         "video_id": row["video_id"],
         "video_uuid": row["video_uuid"],
         "channel_id": row["channel_id"],
@@ -214,7 +218,7 @@ def fetch_seed_embeddings_for_likes(
         rows += conn.execute(
             f"""
             SELECT
-              e.rowid AS rowid,
+              vii.index_id AS index_id,
               v.video_id,
               v.video_uuid,
               v.channel_id,
@@ -223,6 +227,8 @@ def fetch_seed_embeddings_for_likes(
               e.embedding,
               e.embedding_dim
             FROM video_embeddings e
+            JOIN video_index_ids vii
+              ON vii.video_id = e.video_id AND vii.instance_domain = e.instance_domain AND vii.is_active = 1
             JOIN videos v
               ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
             WHERE (v.video_uuid, v.instance_domain) IN ({placeholders})
@@ -238,7 +244,7 @@ def fetch_seed_embeddings_for_likes(
         rows += conn.execute(
             f"""
             SELECT
-              e.rowid AS rowid,
+              vii.index_id AS index_id,
               v.video_id,
               v.video_uuid,
               v.channel_id,
@@ -247,6 +253,8 @@ def fetch_seed_embeddings_for_likes(
               e.embedding,
               e.embedding_dim
             FROM video_embeddings e
+            JOIN video_index_ids vii
+              ON vii.video_id = e.video_id AND vii.instance_domain = e.instance_domain AND vii.is_active = 1
             JOIN videos v
               ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
             WHERE (v.video_id, v.instance_domain) IN ({placeholders})
@@ -290,6 +298,8 @@ def fetch_embeddings_by_ids(
               e.embedding,
               e.embedding_dim
             FROM video_embeddings e
+            JOIN video_index_ids vii
+              ON vii.video_id = e.video_id AND vii.instance_domain = e.instance_domain AND vii.is_active = 1
             JOIN videos v
               ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
             WHERE {conditions}

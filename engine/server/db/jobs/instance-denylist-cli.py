@@ -18,9 +18,12 @@ if str(api_dir) not in sys.path:
     sys.path.insert(0, str(api_dir))
 
 from server_config import DEFAULT_DB_PATH, DEFAULT_SIMILARITY_DB_PATH
+try:
+    from engine.server.db.bootstrap import bootstrap_engine_moderation_db
+except ModuleNotFoundError:  # pragma: no cover - script import fallback.
+    from db.bootstrap import bootstrap_engine_moderation_db
 from data.moderation import (
     collect_similarity_host_stats,
-    ensure_moderation_schema,
     ensure_similarity_purge_indexes,
     normalize_host,
     now_ms,
@@ -313,7 +316,7 @@ def main() -> None:
 
     if args.command == "list":
         with connect(db_path) as conn:
-            ensure_moderation_schema(conn)
+            bootstrap_engine_moderation_db(conn)
             where = "WHERE is_active = 1" if args.active_only else ""
             rows = conn.execute(
                 f"""
@@ -348,7 +351,7 @@ def main() -> None:
     )
     with connect(db_path) as conn:
         with conn:
-            ensure_moderation_schema(conn)
+            bootstrap_engine_moderation_db(conn)
             if args.command == "block":
                 upsert_block(conn, host, args.reason, args.note)
             elif args.command == "unblock":

@@ -21,7 +21,6 @@ if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
 
 from server_config import (
-    BATCH_SIZE,
     DEFAULT_NPROBE,
     DEFAULT_NORMALIZE_QUERIES,
     DEFAULT_RANDOM_CACHE_SIZE,
@@ -29,7 +28,6 @@ from server_config import (
     DEFAULT_RANDOM_CACHE_MAX_PER_AUTHOR,
     DEFAULT_RANDOM_CACHE_MAX_PER_INSTANCE,
     DEFAULT_RANDOM_CACHE_REFRESH,
-    DEFAULT_FRESH_POOL_SIZE,
     DEFAULT_POPULARITY_LIKE_WEIGHT,
     DEFAULT_SIMILAR_PER_LIKE,
     DEFAULT_SIMILARITY_CACHE_REFRESH,
@@ -48,7 +46,6 @@ from server_config import (
     MAX_LIKES,
     MAX_LIKES_FOR_RECS,
     RECOMMENDATIONS_DEBUG_ENABLED,
-    RECOMMENDATION_PIPELINE,
     RELATED_VIDEOS_PERSONALIZATION,
     VIDEO_ERROR_THRESHOLD,
     DEFAULT_USE_CLIENT_LIKES,
@@ -59,6 +56,18 @@ from server_config import (
     ENGINE_INGEST_MODE,
     DEFAULT_RECOMMENDATIONS_LOG_PROFILE,
 )
+try:
+    from recommendations.config import (
+        BATCH_SIZE,
+        DEFAULT_FRESH_POOL_SIZE,
+        RECOMMENDATION_PIPELINE,
+    )
+except ModuleNotFoundError:  # pragma: no cover - package import fallback.
+    from engine.server.api.recommendations.config import (
+        BATCH_SIZE,
+        DEFAULT_FRESH_POOL_SIZE,
+        RECOMMENDATION_PIPELINE,
+    )
 from logging_profiles import configure_engine_logging
 from data.db import connect_db, connect_similarity_db
 from data.embeddings import (
@@ -73,12 +82,13 @@ from data.random_videos import (
     fetch_popular_videos,
 )
 from data.similarity_candidates import get_similar_candidates
-from data.similarity_cache import ensure_similarity_schema
-from data.interaction_events import ensure_interaction_event_schema
 from data.random_cache import connect_random_cache_db, populate_random_cache
-from data.channels import ensure_channels_indexes
-from data.videos import ensure_video_indexes
-from data.moderation import ensure_moderation_schema
+from data.ann_artifact import validate_faiss_artifact_metadata
+from db.bootstrap import (
+    bootstrap_engine_random_cache_db,
+    bootstrap_engine_runtime_db,
+    bootstrap_engine_similarity_cache_db,
+)
 from recommendations import RecommendationStrategy
 from recommendations.keys import like_key
 from recommendations.builder import (
@@ -226,14 +236,12 @@ def main() -> None:
     random_cache_path = (repo_root / DEFAULT_RANDOM_CACHE_DB_PATH).resolve()
 
     db = connect_db(db_path)
-    ensure_moderation_schema(db)
-    ensure_interaction_event_schema(db)
-    ensure_channels_indexes(db)
-    ensure_video_indexes(db)
+    bootstrap_engine_runtime_db(db)
     similarity_db = connect_similarity_db(similarity_db_path)
-    ensure_similarity_schema(similarity_db)
+    bootstrap_engine_similarity_cache_db(similarity_db)
     random_cache_path.parent.mkdir(parents=True, exist_ok=True)
     random_cache_db = connect_random_cache_db(random_cache_path)
+    bootstrap_engine_random_cache_db(random_cache_db)
     populate_random_cache(
         db,
         random_cache_db,
@@ -249,6 +257,7 @@ def main() -> None:
     dim_value = int(embeddings_dim[0])
 
     logging.info("loading FAISS index=%s", index_path)
+    validate_faiss_artifact_metadata(index_path)
     index = faiss.read_index(str(index_path), faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY)
     set_nprobe(index, DEFAULT_NPROBE)
 

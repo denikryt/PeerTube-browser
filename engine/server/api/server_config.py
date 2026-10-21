@@ -15,26 +15,6 @@ def _resolve_log_profile_env(name: str, default: str) -> str:
     return raw if raw in {"verbose", "focused"} else default
 
 
-# Recommendation-domain defaults live in recommendations.config. This module
-# re-exports them so existing startup code and tests can keep importing from
-# server_config while Stage 5 moves ownership into the recommendation package.
-try:
-    from recommendations.config import (
-        BATCH_SIZE,
-        DEFAULT_FRESH_POOL_SIZE,
-        DEFAULT_POPULAR_POOL_SIZE,
-        RECOMMENDATION_PIPELINE,
-        validate_recommendation_config,
-    )
-except ModuleNotFoundError:  # pragma: no cover - package import fallback.
-    from engine.server.api.recommendations.config import (
-        BATCH_SIZE,
-        DEFAULT_FRESH_POOL_SIZE,
-        DEFAULT_POPULAR_POOL_SIZE,
-        RECOMMENDATION_PIPELINE,
-        validate_recommendation_config,
-    )
-
 # Related videos personalization configuration (watch page).
 # enabled: toggles re-ranking within the existing similar-videos pool.
 # alpha: weight for the base similarity score (video-to-video).
@@ -57,7 +37,7 @@ DEFAULT_NPROBE = 24
 DEFAULT_USE_SIMILARITY_CACHE = True
 # Whether to L2-normalize query vectors before ANN search.
 DEFAULT_NORMALIZE_QUERIES = False
-# Precomputed random rowids stored for fast random feed responses.
+# Precomputed random stable index ids stored for fast random feed responses.
 DEFAULT_RANDOM_CACHE_SIZE = 500000
 # When enabled, random cache is built with per-instance/author caps.
 DEFAULT_RANDOM_CACHE_FILTERED_MODE = True

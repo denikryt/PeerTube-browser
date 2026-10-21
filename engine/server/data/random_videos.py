@@ -5,8 +5,8 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from data.metadata import fetch_metadata
-from data.random_cache import fetch_random_rowids
+from data.metadata import fetch_metadata_by_index_ids
+from data.random_cache import fetch_random_index_ids
 
 
 def fetch_random_rows(
@@ -306,18 +306,18 @@ def fetch_popular_videos(
 def fetch_random_rows_from_cache(
     server: Any, limit: int, error_threshold: int | None = None
 ) -> list[dict[str, Any]]:
-    """Return random videos using the precomputed rowid cache."""
+    """Return random videos using the precomputed stable index-id cache."""
     if server.random_cache_db is None or limit <= 0:
         return []
     with server.random_cache_lock:
-        rowids = fetch_random_rowids(server.random_cache_db, limit)
-    if not rowids:
+        index_ids = fetch_random_index_ids(server.random_cache_db, limit)
+    if not index_ids:
         return []
     with server.db_lock:
-        metadata = fetch_metadata(server.db, rowids, error_threshold=error_threshold)
+        metadata = fetch_metadata_by_index_ids(server.db, index_ids, error_threshold=error_threshold)
     rows: list[dict[str, Any]] = []
-    for rowid in rowids:
-        meta = metadata.get(rowid)
+    for index_id in index_ids:
+        meta = metadata.get(index_id)
         if not meta:
             continue
         rows.append(meta)

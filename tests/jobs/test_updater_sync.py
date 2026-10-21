@@ -61,7 +61,7 @@ def test_purge_hosts_aggregates_results(monkeypatch, tmp_path) -> None:
     sim = tmp_path / "sim.db"
     sqlite3.connect(prod).close()
     sqlite3.connect(sim).close()
-    monkeypatch.setattr(sync, "ensure_moderation_schema", lambda conn: None)
+    monkeypatch.setattr(sync, "bootstrap_engine_moderation_db", lambda conn: None)
     monkeypatch.setattr(sync, "purge_host_data", lambda conn, host, dry_run: {"videos": 1})
     monkeypatch.setattr(sync, "purge_similarity_for_host", lambda conn, host, dry_run: {"rows": 2})
     assert sync.purge_hosts(prod_db=prod, similarity_db=sim, hosts={"a", "b"}, dry_run=True) == {

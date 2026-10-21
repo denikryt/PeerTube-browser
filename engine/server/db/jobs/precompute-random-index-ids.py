@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Provide precompute-random-rowids runtime helpers."""
+"""Precompute random cache entries backed by stable video index ids."""
 
 import argparse
 import logging
@@ -10,6 +10,10 @@ from pathlib import Path
 script_dir = Path(__file__).resolve().parent
 sys.path.append(str(script_dir.parents[1]))
 
+try:
+    from engine.server.db.bootstrap import bootstrap_engine_random_cache_db
+except ModuleNotFoundError:  # pragma: no cover - script import fallback.
+    from db.bootstrap import bootstrap_engine_random_cache_db
 from data.random_cache import connect_random_cache_db, populate_random_cache
 
 
@@ -24,7 +28,7 @@ def connect_source_db(path: Path) -> sqlite3.Connection:
 
 def main() -> None:
     """Handle main."""
-    parser = argparse.ArgumentParser(description="Precompute random rowid cache.")
+    parser = argparse.ArgumentParser(description="Precompute random index-id cache.")
     repo_root = script_dir.parents[3]
     api_dir = repo_root / "engine" / "server" / "api"
     if str(api_dir) not in sys.path:
@@ -35,7 +39,7 @@ def main() -> None:
     default_out = script_dir.parent / "random-cache.db"
     parser.add_argument("--db", default=str(default_db), help="Path to crawl database.")
     parser.add_argument("--out", default=str(default_out), help="Output cache database.")
-    parser.add_argument("--size", type=int, default=5000, help="Rowids to sample.")
+    parser.add_argument("--size", type=int, default=5000, help="Index ids to sample.")
     parser.add_argument("--reset", action="store_true", help="Clear existing cache.")
     parser.add_argument(
         "--refresh",
@@ -67,8 +71,9 @@ def main() -> None:
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_db = connect_random_cache_db(out_path)
+    bootstrap_engine_random_cache_db(out_db)
     if args.reset:
-        out_db.execute("DELETE FROM random_rowids")
+        out_db.execute("DELETE FROM random_index_ids")
         out_db.commit()
     count = populate_random_cache(
         src_db,

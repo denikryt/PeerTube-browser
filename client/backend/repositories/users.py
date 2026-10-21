@@ -4,6 +4,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from db.bootstrap import bootstrap_client_users_db
 from lib import users_store
 
 
@@ -15,8 +16,8 @@ class UsersRepository:
         self.conn = conn
 
     def ensure_schema(self) -> None:
-        """Create the current Client users schema if it is missing."""
-        users_store.ensure_user_schema(self.conn)
+        """Apply the current Client users schema through explicit bootstrap."""
+        bootstrap_client_users_db(self.conn)
 
     def get_or_create_user(self, user_id: str) -> None:
         """Ensure a local Client user row exists for the given user id."""

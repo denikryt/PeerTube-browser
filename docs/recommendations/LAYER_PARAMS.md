@@ -2,7 +2,7 @@
 
 This document explains which parameters influence candidate volume and final
 output per layer. Config source: `engine/server/api/recommendations/config.py` (`RECOMMENDATION_PIPELINE`).
-`engine/server/api/server_config.py` remains a compatibility re-export; Stage 5 does not add external YAML/JSON config loading.
+`engine/server/api/recommendations/config.py` is the direct config source; external YAML/JSON config loading remains deferred.
 
 Profiles:
 - `home` / `upnext` — primary modes.

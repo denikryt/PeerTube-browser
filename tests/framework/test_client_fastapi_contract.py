@@ -9,15 +9,16 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[2]
-for module_name in ("app", "runtime", "http_adapters"):
-    sys.modules.pop(module_name, None)
+for module_name in list(sys.modules):
+    if module_name in {"app", "runtime", "http_adapters", "services", "repositories"} or module_name.startswith(("services.", "repositories.")):
+        sys.modules.pop(module_name, None)
 sys.path.insert(0, str(ROOT / "client" / "backend"))
 
 import app as client_app  # noqa: E402
 import services.user_actions as user_actions  # noqa: E402
 from app import create_app  # noqa: E402
 from lib.http_utils import RateLimiter  # noqa: E402
-from lib.users_store import ensure_user_schema  # noqa: E402
+from client.backend.db.bootstrap import bootstrap_client_users_db  # noqa: E402
 from repositories.users import UsersRepository  # noqa: E402
 from runtime import ClientRuntimeState  # noqa: E402
 
@@ -36,7 +37,7 @@ def make_client() -> tuple[TestClient, sqlite3.Connection, ClientRuntimeState]:
     """Create a Client FastAPI TestClient with temporary profile storage."""
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    ensure_user_schema(conn)
+    bootstrap_client_users_db(conn)
     state = ClientRuntimeState(
         user_db=conn,
         users=UsersRepository(conn),

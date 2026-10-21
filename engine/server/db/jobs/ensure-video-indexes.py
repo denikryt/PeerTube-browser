@@ -10,7 +10,10 @@ script_dir = Path(__file__).resolve().parent
 sys.path.append(str(script_dir.parents[1]))
 
 from data.db import connect_db
-from data.videos import ensure_video_indexes
+try:
+    from engine.server.db.bootstrap import bootstrap_engine_read_indexes
+except ModuleNotFoundError:  # pragma: no cover - script import fallback.
+    from db.bootstrap import bootstrap_engine_read_indexes
 
 
 def main() -> None:
@@ -32,7 +35,7 @@ def main() -> None:
 
     db_path = Path(args.db)
     db = connect_db(db_path)
-    ensure_video_indexes(db)
+    bootstrap_engine_read_indexes(db)
     logging.info("video indexes ensured for %s", db_path)
     db.close()
 

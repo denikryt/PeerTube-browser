@@ -5,11 +5,6 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-try:
-    from engine.server.db.migrations.apply import apply_similarity_cache_migrations
-except ModuleNotFoundError:  # pragma: no cover - script import fallback
-    from db.migrations.apply import apply_similarity_cache_migrations
-
 
 SIMILARITY_ITEM_COLUMNS = [
     "source_video_id",
@@ -19,15 +14,6 @@ SIMILARITY_ITEM_COLUMNS = [
     "score",
     "rank",
 ]
-
-
-def ensure_similarity_schema(conn: sqlite3.Connection) -> None:
-    """Create similarity cache tables if missing.
-
-    Existing runtime and precompute callers keep this helper while Stage 6
-    centralizes the current table/index SQL as migration resources.
-    """
-    apply_similarity_cache_migrations(conn)
 
 
 def fetch_cached_similarities(

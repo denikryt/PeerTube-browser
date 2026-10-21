@@ -15,7 +15,7 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 from data.embeddings import normalize_vector
-from data.metadata import fetch_metadata
+from data.metadata import fetch_metadata_by_index_ids
 
 
 def compute_similar_items(server: Any, seed: dict[str, Any], limit: int) -> list[dict[str, Any]]:
@@ -35,16 +35,16 @@ def compute_similar_items(server: Any, seed: dict[str, Any], limit: int) -> list
     )
     with server.index_lock:
         scores, ids = server.index.search(vector.reshape(1, -1), search_limit)
-    rowids = [int(item) for item in ids[0] if int(item) > 0]
+    index_ids = [int(item) for item in ids[0] if int(item) > 0]
     logging.info(
-        "[similar-server] ann_rowids=%d search_limit=%d",
-        len(rowids),
+        "[similar-server] ann_index_ids=%d search_limit=%d",
+        len(index_ids),
         search_limit,
     )
     with server.db_lock:
-        metadata = fetch_metadata(
+        metadata = fetch_metadata_by_index_ids(
             server.db,
-            rowids,
+            index_ids,
             error_threshold=getattr(server, "video_error_threshold", None),
         )
     logging.info("[similar-server] ann_metadata=%d", len(metadata))
@@ -57,11 +57,11 @@ def compute_similar_items(server: Any, seed: dict[str, Any], limit: int) -> list
     author_limit = server.similarity_max_per_author
     author_counts: dict[str, int] = {}
     items: list[dict[str, Any]] = []
-    for score, rowid in zip(scores[0], ids[0]):
-        rowid_int = int(rowid)
-        if rowid_int == seed["rowid"]:
+    for score, index_id in zip(scores[0], ids[0]):
+        index_id_int = int(index_id)
+        if index_id_int == seed["index_id"]:
             continue
-        meta = metadata.get(rowid_int)
+        meta = metadata.get(index_id_int)
         if not meta:
             continue
         author_key = _author_key(meta.get("channel_id"), meta.get("instance_domain"))
@@ -89,9 +89,9 @@ def search_index(
     index: faiss.Index,
     vector: np.ndarray,
     limit: int,
-    exclude_rowid: int | None,
+    exclude_index_id: int | None,
 ) -> tuple[list[int], list[float]]:
-    """Search the ANN index and optionally exclude a rowid."""
+    """Search the ANN index and optionally exclude a stable index id."""
     if vector.ndim != 1:
         raise ValueError("Query vector must be 1D")
     k = max(limit + 5, limit)
@@ -100,14 +100,14 @@ def search_index(
     ids_list = ids[0].tolist()
     filtered_ids: list[int] = []
     filtered_scores: list[float] = []
-    for score, rowid in zip(scores_list, ids_list):
-        if rowid < 0:
+    for score, index_id in zip(scores_list, ids_list):
+        if index_id < 0:
             continue
-        if exclude_rowid is not None and rowid == exclude_rowid:
+        if exclude_index_id is not None and index_id == exclude_index_id:
             continue
-        if rowid in filtered_ids:
+        if index_id in filtered_ids:
             continue
-        filtered_ids.append(rowid)
+        filtered_ids.append(index_id)
         filtered_scores.append(float(score))
         if len(filtered_ids) >= limit:
             break

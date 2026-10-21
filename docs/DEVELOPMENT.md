@@ -80,7 +80,7 @@ make test-installers-dry-run
 
 ## Crawler DB module tests
 
-Stage 7 splits the crawler SQLite layer under `engine/crawler/src/db/` while keeping `engine/crawler/src/db.ts` as the compatibility facade. Run the crawler DB tests after installing crawler Node dependencies:
+The crawler SQLite layer lives under `engine/crawler/src/db/`. Crawler code should import stores and row types from the direct `db/*` modules, not from a `db.ts` facade. Run the crawler DB tests after installing crawler Node dependencies:
 
 ```bash
 cd engine/crawler
@@ -112,7 +112,7 @@ Keep behavior-preserving cleanup separate from behavior changes. If a refactor d
 
 ## Recommendation Internals
 
-Recommendation defaults now live in `engine/server/api/recommendations/config.py`. `engine/server/api/server_config.py` remains a compatibility re-export for Engine startup code and existing imports.
+Recommendation defaults live in `engine/server/api/recommendations/config.py`. Engine startup code and tests import recommendation-domain settings directly from that module; `server_config.py` is for non-recommendation runtime defaults.
 
 Stage 5 adds Python-level config validation and internal dataclasses for route/service boundaries. It does not introduce external YAML/JSON config files, Pydantic/OpenAPI schemas, or recommendation behavior changes.
 
@@ -162,3 +162,7 @@ python3 engine/server/api/server.py --help
 ```
 
 The Engine command still has the existing FAISS prerequisite in environments without FAISS installed. Do not add stdlib HTTP handler fixtures or fake handler-shaped response helpers for new tests; use FastAPI `TestClient` or framework-neutral route/service result assertions.
+
+## Database bootstrap
+
+Runtime code should create current SQLite schemas through explicit bootstrap entrypoints instead of direct `ensure_*` helper calls. Client code uses `bootstrap_client_users_db`; Engine startup and jobs use `engine/server/db/bootstrap.py`. The old wrappers remain for one transitional stage and must not be used by new production code.

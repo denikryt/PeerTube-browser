@@ -4,13 +4,13 @@
 
 import { setTimeout as sleep } from "node:timers/promises";
 import Database from "better-sqlite3";
-import {
-  VideoStore,
-  type VideoChannelRow,
-  type VideoProgressRow,
-  type VideoTagRow,
-  type VideoUpsertRow
-} from "./db.js";
+import { VideoStore } from "./db/videos.js";
+import type {
+  VideoChannelRow,
+  VideoProgressRow,
+  VideoTagRow,
+  VideoUpsertRow
+} from "./db/types.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile } from "./host-filters.js";
 
