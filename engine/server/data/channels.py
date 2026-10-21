@@ -5,6 +5,11 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+try:
+    from engine.server.db.migrations.apply import apply_main_read_indexes
+except ModuleNotFoundError:  # pragma: no cover - script import fallback
+    from db.migrations.apply import apply_main_read_indexes
+
 
 SORT_EXPRESSIONS = {
     "name": "LOWER(COALESCE(channel_name, ''))",
@@ -19,24 +24,12 @@ ALLOWED_SORT_DIRS = {"asc", "desc"}
 
 
 def ensure_channels_indexes(conn: sqlite3.Connection) -> None:
-    """Create indexes used by /api/channels filtering and ordering."""
-    table_exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'channels' LIMIT 1"
-    ).fetchone()
-    if not table_exists:
-        return
-    conn.executescript(
-        """
-        CREATE INDEX IF NOT EXISTS idx_channels_followers_videos_name
-          ON channels (followers_count DESC, videos_count DESC, channel_name ASC);
-        CREATE INDEX IF NOT EXISTS idx_channels_videos
-          ON channels (videos_count DESC);
-        CREATE INDEX IF NOT EXISTS idx_channels_name
-          ON channels (channel_name);
-        CREATE INDEX IF NOT EXISTS idx_channels_instance
-          ON channels (instance_domain);
-        """
-    )
+    """Create indexes used by /api/channels filtering and ordering.
+
+    Missing content tables remain a no-op through `apply_main_read_indexes`,
+    preserving the legacy startup behavior for partial test databases.
+    """
+    apply_main_read_indexes(conn)
 
 
 def fetch_channels(

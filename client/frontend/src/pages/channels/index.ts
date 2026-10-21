@@ -4,12 +4,14 @@
 
 import "../../channels.css";
 import { fetchChannelsPayload } from "../../data/channels";
+import { renderChannelTableRow } from "../../components/channel-row";
+import { escapeHtml } from "../../utils/format";
 import type { ChannelRow } from "../../types/channels";
 
-const body = document.getElementById("channels-body");
-const summaryCounts = document.getElementById("summary-counts");
-const summaryMeta = document.getElementById("summary-meta");
-const pageStatus = document.getElementById("page-status");
+const body = document.getElementById("channels-body")!;
+const summaryCounts = document.getElementById("summary-counts")!;
+const summaryMeta = document.getElementById("summary-meta")!;
+const pageStatus = document.getElementById("page-status")!;
 const pagePrev = document.getElementById("page-prev");
 const pageNext = document.getElementById("page-next");
 const pageSizeSelect = document.getElementById("page-size") as HTMLSelectElement | null;
@@ -257,34 +259,7 @@ function renderTable() {
   }
 
   body.innerHTML = state.rows
-    .map((row) => {
-      const url = channelUrl(row);
-      const label = channelLabel(row);
-      const followers = row.followers_count ?? 0;
-      const videos = row.videos_count ?? 0;
-      const checked = row.health_checked_at ? dateFormat.format(new Date(row.health_checked_at)) : "—";
-      const errorTag = row.last_error
-        ? `<span class="pill">${row.last_error_source === "videos_count" ? "count error" : "error"}</span>`
-        : "";
-      const avatar = row.avatar_url
-        ? `<img class="avatar" src="${escapeHtml(row.avatar_url)}" alt="" loading="lazy" />`
-        : `<div class="avatar-fallback">—</div>`;
-      return `
-        <tr>
-          <td class="avatar-cell">${avatar}</td>
-          <td>
-            <div class="channel-cell">
-              <a class="channel-name" href="${url}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>
-              <div class="channel-meta">${escapeHtml(row.instance_domain ?? "")} ${errorTag}</div>
-            </div>
-          </td>
-          <td>${escapeHtml(row.instance_domain ?? "—")}</td>
-          <td class="num">${numberFormat.format(videos)}</td>
-          <td class="num">${numberFormat.format(followers)}</td>
-          <td class="num">${checked}</td>
-        </tr>
-      `;
-    })
+    .map((row) => renderChannelTableRow(row, { dateFormat, numberFormat }))
     .join("");
 }
 
@@ -310,42 +285,3 @@ function updateSortIndicators() {
   });
 }
 
-/**
- * Handle channel label.
- */
-function channelLabel(row: ChannelRow) {
-  return row.display_name ?? row.channel_name ?? row.channel_id ?? "unknown";
-}
-
-/**
- * Handle channel url.
- */
-function channelUrl(row: ChannelRow) {
-  if (row.channel_url) return row.channel_url;
-  if (row.channel_name && row.instance_domain) {
-    return `https://${row.instance_domain}/video-channels/${encodeURIComponent(row.channel_name)}`;
-  }
-  return "#";
-}
-
-/**
- * Handle escape html.
- */
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case "\"":
-        return "&quot;";
-      case "'":
-        return "&#39;";
-      default:
-        return char;
-    }
-  });
-}

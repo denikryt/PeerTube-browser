@@ -18,7 +18,22 @@ similarity-based recommendations.
 6) Client renders the feed and video pages.
 
 ## Data build
-See `DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset and ANN index.
+See `docs/DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset and ANN index.
+
+
+## Documentation
+- `docs/ARCHITECTURE.md`: component boundaries and runtime flow.
+- `docs/DEVELOPMENT.md`: local navigation and verification commands.
+- `docs/TESTING.md`: regression and smoke test guidance.
+- `docs/DATA_BUILD.md`: crawler and dataset build flow.
+- `docs/DEPLOYMENT.md`: service installation and runtime deployment.
+- `docs/ROADMAP.md`: product direction, not a task tracker.
+- `docs/SCHEMA_OWNERSHIP.md`: SQLite schema ownership and compatibility wrappers.
+- `docs/UPDATER_COMPATIBILITY.md`: updater split compatibility decisions.
+- `docs/FRAMEWORK_COMPATIBILITY.md`: FastAPI migration compatibility decisions.
+
+## Development checks
+Use `make test-fast` for the fast regression baseline before refactoring. `make test` is an alias for the same command. See `docs/DEVELOPMENT.md` and `docs/TESTING.md` for setup, dependency-heavy checks, and smoke tests.
 
 ## Components
 - `engine/`: read/analytics workspace.

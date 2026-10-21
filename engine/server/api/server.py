@@ -8,11 +8,10 @@ import logging
 import argparse
 import os
 import sqlite3
+import uvicorn
 import sys
 import signal
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import threading
 from uuid import uuid4
 
 script_dir = Path(__file__).resolve().parent
@@ -90,7 +89,8 @@ from recommendations.builder import (
 from recommendations.related_personalization import (
     RelatedPersonalizationDeps,
 )
-from handlers.similar import SimilarHandler
+from app import create_app
+from runtime import EngineRuntimeState
 from http_utils import RateLimiter
 from request_context import fetch_recent_likes_request
 from scripts.cli_format import CompactHelpFormatter
@@ -182,71 +182,6 @@ def set_nprobe(index: faiss.Index, nprobe: int) -> None:
         type(index).__name__,
         type(ivf_index).__name__ if ivf_index is not None else None,
     )
-
-
-class SimilarServer(ThreadingHTTPServer):
-    """Threaded HTTP server with shared DB and index handles."""
-    def __init__(
-        self,
-        server_address: tuple[str, int],
-        handler_class: type[BaseHTTPRequestHandler],
-        db: sqlite3.Connection,
-        similarity_db: sqlite3.Connection | None,
-        random_cache_db: sqlite3.Connection | None,
-        index: faiss.Index,
-        embeddings_dim: int,
-        embeddings_count: int,
-        default_limit: int,
-        normalize_queries: bool,
-        refresh_similarity_cache: bool,
-        similarity_require_full_cache: bool,
-        similarity_allow_ann_on_cache_miss: bool,
-        similarity_search_limit: int,
-        similarity_max_per_author: int,
-        similarity_exclude_source_author: bool,
-        recommendation_strategy: RecommendationStrategy,
-        related_personalization_deps: RelatedPersonalizationDeps | None,
-        related_personalization_enabled: bool,
-        video_error_threshold: int,
-        recommendations_debug_enabled: bool,
-        use_client_likes: bool,
-        rate_limiter: RateLimiter | None,
-        popularity_like_weight: float,
-        enable_instance_ignore: bool,
-        enable_channel_blocklist: bool,
-        engine_ingest_mode: str,
-    ) -> None:
-        """Initialize the instance."""
-        super().__init__(server_address, handler_class)
-        self.db = db
-        self.index = index
-        self.embeddings_dim = embeddings_dim
-        self.embeddings_count = embeddings_count
-        self.default_limit = default_limit
-        self.normalize_queries = normalize_queries
-        self.similarity_db = similarity_db
-        self.random_cache_db = random_cache_db
-        self.refresh_similarity_cache = refresh_similarity_cache
-        self.similarity_require_full_cache = similarity_require_full_cache
-        self.similarity_allow_ann_on_cache_miss = similarity_allow_ann_on_cache_miss
-        self.similarity_search_limit = similarity_search_limit
-        self.similarity_max_per_author = similarity_max_per_author
-        self.similarity_exclude_source_author = similarity_exclude_source_author
-        self.recommendation_strategy = recommendation_strategy
-        self.related_personalization_deps = related_personalization_deps
-        self.related_personalization_enabled = related_personalization_enabled
-        self.video_error_threshold = video_error_threshold
-        self.recommendations_debug_enabled = recommendations_debug_enabled
-        self.use_client_likes = use_client_likes
-        self.rate_limiter = rate_limiter
-        self.popularity_like_weight = popularity_like_weight
-        self.enable_instance_ignore = enable_instance_ignore
-        self.enable_channel_blocklist = enable_channel_blocklist
-        self.engine_ingest_mode = engine_ingest_mode
-        self.index_lock = threading.Lock()
-        self.db_lock = threading.Lock()
-        self.similarity_db_lock = threading.Lock()
-        self.random_cache_lock = threading.Lock()
 
 
 def main() -> None:
@@ -360,35 +295,34 @@ def main() -> None:
     rate_limiter = RateLimiter(
         DEFAULT_RATE_LIMIT_MAX_REQUESTS, DEFAULT_RATE_LIMIT_WINDOW_SECONDS
     )
-    server = SimilarServer(
-        (host, port),
-        SimilarHandler,
-        db,
-        similarity_db,
-        random_cache_db,
-        index,
-        dim_value,
-        embeddings_count,
-        BATCH_SIZE,
-        DEFAULT_NORMALIZE_QUERIES,
-        DEFAULT_SIMILARITY_CACHE_REFRESH,
-        DEFAULT_SIMILARITY_REQUIRE_FULL_CACHE,
-        DEFAULT_SIMILARITY_ALLOW_ANN_ON_CACHE_MISS,
-        SIMILARITY_SEARCH_LIMIT,
-        SIMILARITY_MAX_PER_AUTHOR,
-        SIMILARITY_EXCLUDE_SOURCE_AUTHOR,
-        recommendation_strategy,
-        related_personalization_deps,
-        bool(personalization_config.get("enabled")),
-        VIDEO_ERROR_THRESHOLD,
-        RECOMMENDATIONS_DEBUG_ENABLED,
-        DEFAULT_USE_CLIENT_LIKES,
-        rate_limiter,
-        DEFAULT_POPULARITY_LIKE_WEIGHT,
-        DEFAULT_ENABLE_INSTANCE_IGNORE,
-        DEFAULT_ENABLE_CHANNEL_BLOCKLIST,
-        ENGINE_INGEST_MODE,
+    runtime_state = EngineRuntimeState(
+        db=db,
+        similarity_db=similarity_db,
+        random_cache_db=random_cache_db,
+        index=index,
+        embeddings_dim=dim_value,
+        embeddings_count=embeddings_count,
+        default_limit=BATCH_SIZE,
+        normalize_queries=DEFAULT_NORMALIZE_QUERIES,
+        refresh_similarity_cache=DEFAULT_SIMILARITY_CACHE_REFRESH,
+        similarity_require_full_cache=DEFAULT_SIMILARITY_REQUIRE_FULL_CACHE,
+        similarity_allow_ann_on_cache_miss=DEFAULT_SIMILARITY_ALLOW_ANN_ON_CACHE_MISS,
+        similarity_search_limit=SIMILARITY_SEARCH_LIMIT,
+        similarity_max_per_author=SIMILARITY_MAX_PER_AUTHOR,
+        similarity_exclude_source_author=SIMILARITY_EXCLUDE_SOURCE_AUTHOR,
+        recommendation_strategy=recommendation_strategy,
+        related_personalization_deps=related_personalization_deps,
+        related_personalization_enabled=bool(personalization_config.get("enabled")),
+        video_error_threshold=VIDEO_ERROR_THRESHOLD,
+        recommendations_debug_enabled=RECOMMENDATIONS_DEBUG_ENABLED,
+        use_client_likes=DEFAULT_USE_CLIENT_LIKES,
+        rate_limiter=rate_limiter,
+        popularity_like_weight=DEFAULT_POPULARITY_LIKE_WEIGHT,
+        enable_instance_ignore=DEFAULT_ENABLE_INSTANCE_IGNORE,
+        enable_channel_blocklist=DEFAULT_ENABLE_CHANNEL_BLOCKLIST,
+        engine_ingest_mode=ENGINE_INGEST_MODE,
     )
+    app = create_app(runtime_state)
 
     logging.info("[similar-server] listening on http://%s:%d", host, port)
     logging.info(
@@ -408,7 +342,7 @@ def main() -> None:
     logging.info("[similar-server] db=%s index=%s total=%d", db_path, index_path, embeddings_count)
     logging.info("[similar-server] strategy=%s", recommendation_strategy.name)
     try:
-        server.serve_forever()
+        uvicorn.run(app, host=host, port=port, log_level="info", access_log=False)
     except KeyboardInterrupt:
         if stop_reason == "unknown":
             stop_reason = "keyboard_interrupt"
@@ -421,7 +355,6 @@ def main() -> None:
     finally:
         signal.signal(signal.SIGINT, previous_sigint)
         signal.signal(signal.SIGTERM, previous_sigterm)
-        server.server_close()
         db.close()
         if similarity_db is not None:
             similarity_db.close()

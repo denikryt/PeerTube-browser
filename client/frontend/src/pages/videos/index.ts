@@ -3,14 +3,19 @@
  */
 
 import "../../videos.css";
-import { fetchSimilarVideosPayload, parseSimilarQuery, resolveApiBase } from "../../data/videos";
-import { clearLocalLikes } from "../../data/local-likes";
-import { fetchUserProfileLikes, resetUserProfileLikes } from "../../data/user-profile";
+import { fetchSimilarVideosPayload, parseSimilarQuery, resolveApiBase } from "../../api/client";
+import { clearLocalLikes, fetchUserProfileLikes, resetUserProfileLikes } from "../../api/client";
+import { renderFeedVideoCard, resolveServerStats } from "../../components/video-card";
+import { renderProfileLikes } from "../../components/profile-modal";
+import { renderError } from "../../components/status";
+import { formatStatValue, normalizeStatValue } from "../../utils/format";
+import { hasServerStats, resolveInstanceDomain, resolveVideoId, resolveVideoKey } from "../../utils/video-fields";
+import { resolveFeedMode, setFeedMode } from "../../state/feed-mode";
 import type { SimilarSeed, VideoRow, VideosPayload } from "../../types/videos";
 
-const cards = document.getElementById("video-cards");
-const summaryCounts = document.getElementById("summary-counts");
-const summaryMeta = document.getElementById("summary-meta");
+const cards = document.getElementById("video-cards")!;
+const summaryCounts = document.getElementById("summary-counts")!;
+const summaryMeta = document.getElementById("summary-meta")!;
 const resetLink = document.getElementById("reset-feed") as HTMLAnchorElement | null;
 const resetProfileButton = document.getElementById("reset-profile") as HTMLButtonElement | null;
 const showProfileButton = document.getElementById("show-profile") as HTMLButtonElement | null;
@@ -152,7 +157,7 @@ async function loadVideos() {
     const message = error instanceof Error ? error.message : "Load error";
     summaryCounts.textContent = "";
     summaryMeta.textContent = "";
-    cards.innerHTML = `<div class="error">${escapeHtml(message)}</div>`;
+    cards.innerHTML = renderError(message);
   }
 }
 
@@ -230,7 +235,7 @@ function renderCards(reset = false) {
   }
 
   if (reset) {
-    cards.innerHTML = visibleRows.map((row) => renderCard(row)).join("");
+    cards.innerHTML = visibleRows.map((row) => renderFeedVideoCard(row, { apiParam, debugMode, stats: resolveCachedStats(row), videoKey: resolveVideoKey(row) })).join("");
     queueStatsForRows(visibleRows);
     return;
   }
@@ -238,7 +243,7 @@ function renderCards(reset = false) {
   const existingCount = cards.querySelectorAll(".video-card").length;
   if (existingCount >= visibleRows.length) return;
   const newRows = visibleRows.slice(existingCount);
-  const markup = newRows.map((row) => renderCard(row)).join("");
+  const markup = newRows.map((row) => renderFeedVideoCard(row, { apiParam, debugMode, stats: resolveCachedStats(row), videoKey: resolveVideoKey(row) })).join("");
   cards.insertAdjacentHTML("beforeend", markup);
   queueStatsForRows(newRows);
 }
@@ -321,342 +326,6 @@ function setupInfiniteScroll() {
 }
 
 /**
- * Handle render card.
- */
-function renderCard(row: VideoRow) {
-  const title = row.title ?? "Untitled video";
-  const thumb = thumbnailUrl(row);
-  const duration = formatDuration(row.duration ?? null);
-  const stats = resolveCachedStats(row);
-  const views = stats?.views ?? null;
-  const likes = stats?.likes ?? null;
-  const dislikes = stats?.dislikes ?? null;
-  const channelLabel = channelName(row);
-  const channelHref = channelUrl(row);
-  const avatarUrl = channelAvatarUrl(row);
-  const channelBadge = channelInitials(row);
-  const publishedAt = publishedAtMs(row);
-  const timeAgo = publishedAt ? formatTimeAgo(publishedAt) : null;
-  const timeSuffix = timeAgo ? ` · ${timeAgo}` : "";
-  const avatarMarkup = avatarUrl
-    ? `<img src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" />`
-    : `<span>${escapeHtml(channelBadge)}</span>`;
-  const thumbMarkup = thumb
-    ? `<img src="${escapeHtml(thumb)}" alt="${escapeHtml(title)}" loading="lazy" />`
-    : `<div class="thumb-fallback">No preview</div>`;
-  const videoKey = resolveVideoKey(row);
-  const keyAttribute = videoKey ? ` data-video-key="${escapeHtml(videoKey)}"` : "";
-  const debugMarkup = renderDebugMetrics(row);
-
-  return `
-    <article class="video-card"${keyAttribute}>
-      <a class="video-link" href="${escapeHtml(videoPageUrl(row))}">
-        <div class="video-thumb">
-          ${thumbMarkup}
-          <span class="duration">${duration}</span>
-        </div>
-        <div class="video-body">
-          <h3 class="video-title">${escapeHtml(title)}</h3>
-          <div class="video-footer">
-            <div class="channel-meta">
-              <div class="channel-avatar" aria-hidden="true">${avatarMarkup}</div>
-              <div class="channel-text">
-                <a class="channel-link" href="${escapeHtml(channelHref)}" target="_blank" rel="noreferrer">
-                  ${escapeHtml(channelLabel)}
-                </a>
-                <div class="video-meta"><span data-stat="views">${formatStatValue(views)}</span> views${escapeHtml(timeSuffix)}</div>
-              </div>
-            </div>
-            <div class="video-stats">
-              <span class="stat likes">${iconThumbUp()}<span data-stat="likes">${formatStatValue(likes)}</span></span>
-              <span class="stat dislikes">${iconThumbDown()}<span data-stat="dislikes">${formatStatValue(dislikes)}</span></span>
-            </div>
-            ${debugMarkup}
-          </div>
-        </div>
-      </a>
-    </article>
-  `;
-}
-
-/**
- * Handle video page url.
- */
-function videoPageUrl(row: VideoRow) {
-  const params = new URLSearchParams();
-  const host = row.instance_domain ?? row.instanceDomain ?? "";
-  const id = row.video_id ?? row.video_uuid ?? row.videoUuid ?? "";
-  if (id) params.set("id", id);
-  if (host) params.set("host", host);
-  if (row.title) params.set("title", row.title);
-  const channelLabel =
-    row.channel_display_name ??
-    row.channelDisplayName ??
-    row.channel_name ??
-    row.channelName ??
-    "";
-  if (channelLabel) params.set("channel", channelLabel);
-  const channelHref = channelUrl(row);
-  if (channelHref && channelHref !== "#") params.set("channelUrl", channelHref);
-  const embed = embedUrl(row);
-  if (embed) params.set("embed", embed);
-  const original = videoUrl(row);
-  if (original && original !== "#") params.set("url", original);
-  if (apiParam) params.set("api", apiParam);
-  return `/video-page.html?${params.toString()}`;
-}
-
-/**
- * Handle video url.
- */
-function videoUrl(row: VideoRow) {
-  if (row.video_url) return row.video_url;
-  if (row.videoUrl) return row.videoUrl;
-  const uuid = row.video_uuid ?? row.videoUuid;
-  const host = row.instance_domain ?? row.instanceDomain;
-  if (uuid && host) {
-    return `https://${host}/videos/watch/${encodeURIComponent(uuid)}`;
-  }
-  return "#";
-}
-
-/**
- * Handle thumbnail url.
- */
-function thumbnailUrl(row: VideoRow) {
-  return row.thumbnail_url ?? row.thumbnailUrl ?? row.preview_path ?? row.previewPath ?? null;
-}
-
-/**
- * Handle channel name.
- */
-function channelName(row: VideoRow) {
-  return (
-    row.channel_display_name ??
-    row.channelDisplayName ??
-    row.channel_name ??
-    row.channelName ??
-    "Unknown channel"
-  );
-}
-
-/**
- * Handle channel initials.
- */
-function channelInitials(row: VideoRow) {
-  const label = channelName(row).trim();
-  if (!label) return "•";
-  const cleaned = label.replace(/[_\-]+/g, " ").replace(/\s+/g, " ").trim();
-  const parts = cleaned.split(" ").filter(Boolean);
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-}
-
-/**
- * Handle channel avatar url.
- */
-function channelAvatarUrl(row: VideoRow) {
-  return (
-    row.channel_avatar_url ??
-    row.channelAvatarUrl ??
-    row.account_avatar_url ??
-    row.accountAvatarUrl ??
-    row.avatar_url ??
-    row.avatarUrl ??
-    null
-  );
-}
-
-/**
- * Handle channel url.
- */
-function channelUrl(row: VideoRow) {
-  if (row.channel_url) return row.channel_url;
-  if (row.channelUrl) return row.channelUrl;
-  const name = row.channel_name ?? row.channelName;
-  const host = row.instance_domain ?? row.instanceDomain;
-  if (name && host) {
-    return `https://${host}/video-channels/${encodeURIComponent(name)}`;
-  }
-  return "#";
-}
-
-/**
- * Handle embed url.
- */
-function embedUrl(row: VideoRow) {
-  const raw = row.embed_path ?? row.embedPath ?? "";
-  if (raw.startsWith("http")) return raw;
-  const host = row.instance_domain ?? row.instanceDomain;
-  if (raw && host) {
-    return `https://${host}${raw}`;
-  }
-  const uuid = row.video_uuid ?? row.videoUuid;
-  if (uuid && host) {
-    return `https://${host}/videos/embed/${encodeURIComponent(uuid)}`;
-  }
-  return "";
-}
-
-/**
- * Handle published at ms.
- */
-function publishedAtMs(row: VideoRow) {
-  const raw = row.published_at ?? row.publishedAt ?? null;
-  if (!raw || !Number.isFinite(raw)) return null;
-  const value = Number(raw);
-  if (value < 1e12) return value * 1000;
-  return value;
-}
-
-/**
- * Handle format time ago.
- */
-function formatTimeAgo(timestampMs: number) {
-  const now = Date.now();
-  const diffMs = Math.max(0, now - timestampMs);
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  const month = 30 * day;
-  const year = 365 * day;
-
-  if (diffMs < minute) return "just now";
-  if (diffMs < hour) return `${Math.floor(diffMs / minute)} minutes ago`;
-  if (diffMs < day) return `${Math.floor(diffMs / hour)} hours ago`;
-  if (diffMs < month) return `${Math.floor(diffMs / day)} days ago`;
-  if (diffMs < year) return `${Math.floor(diffMs / month)} months ago`;
-  return `${Math.floor(diffMs / year)} years ago`;
-}
-
-/**
- * Handle format duration.
- */
-function formatDuration(value: number | null) {
-  if (!value || !Number.isFinite(value)) return "0:00";
-  const total = Math.max(0, Math.round(value));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-function shuffle<T>(items: T[]) {
-  for (let i = items.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [items[i], items[j]] = [items[j], items[i]];
-  }
-  return items;
-}
-
-/**
- * Handle icon thumb up.
- */
-function iconThumbUp() {
-  return `
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M7 11v9M7 20h7.3a2 2 0 0 0 1.95-1.55l1.7-7A2 2 0 0 0 16 9H12V5a2 2 0 0 0-2-2l-3 6" />
-      <rect x="3" y="11" width="4" height="9" rx="1.2" />
-    </svg>
-  `;
-}
-
-/**
- * Handle icon eye.
- */
-function iconEye() {
-  return `
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M2 12s3.8-6 10-6 10 6 10 6-3.8 6-10 6-10-6-10-6z" />
-      <circle cx="12" cy="12" r="3.2" />
-    </svg>
-  `;
-}
-
-/**
- * Handle icon thumb down.
- */
-function iconThumbDown() {
-  return `
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M7 13V4M7 4h7.3a2 2 0 0 1 1.95 1.55l1.7 7A2 2 0 0 1 16 15h-4v4a2 2 0 0 1-2 2l-3-6" />
-      <rect x="3" y="4" width="4" height="9" rx="1.2" />
-    </svg>
-  `;
-}
-
-/**
- * Handle render debug metrics.
- */
-function renderDebugMetrics(row: VideoRow) {
-  if (!debugMode) return "";
-  const debug = row.debug ?? null;
-  if (!debug) {
-    return `<div class="video-debug empty">Debug not available</div>`;
-  }
-  const score = formatDebugNumber(debug.score);
-  const similarity = formatDebugNumber(debug.similarity_score);
-  const freshness = formatDebugNumber(debug.freshness_score);
-  const popularity = formatDebugNumber(debug.popularity_score);
-  const layer = debug.layer ?? "--";
-  const rankBefore = formatDebugInt(debug.rank_before);
-  const rankAfter = formatDebugInt(debug.rank_after);
-  return `
-    <div class="video-debug">
-      <div><span class="label">score</span> ${score}</div>
-      <div><span class="label">sim</span> ${similarity}</div>
-      <div><span class="label">fresh</span> ${freshness}</div>
-      <div><span class="label">pop</span> ${popularity}</div>
-      <div><span class="label">layer</span> ${escapeHtml(layer)}</div>
-      <div><span class="label">rank</span> ${rankBefore} → ${rankAfter}</div>
-    </div>
-  `;
-}
-
-/**
- * Handle format debug number.
- */
-function formatDebugNumber(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return "--";
-  return Number(value).toFixed(3);
-}
-
-/**
- * Handle format debug int.
- */
-function formatDebugInt(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return "--";
-  return String(Math.trunc(value));
-}
-
-/**
- * Handle escape html.
- */
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case "\"":
-        return "&quot;";
-      case "'":
-        return "&#39;";
-      default:
-        return char;
-    }
-  });
-}
-
-/**
  * Handle resolve cached stats.
  */
 function resolveCachedStats(row: VideoRow) {
@@ -665,77 +334,6 @@ function resolveCachedStats(row: VideoRow) {
   if (statsCache.has(key)) return statsCache.get(key) ?? null;
   if (hasServerStats(row)) return resolveServerStats(row);
   return null;
-}
-
-/**
- * Handle resolve video key.
- */
-function resolveVideoKey(row: VideoRow) {
-  const host = resolveInstanceDomain(row);
-  const id = resolveVideoId(row);
-  if (!host || !id) return null;
-  return `${host}::${id}`;
-}
-
-/**
- * Handle resolve instance domain.
- */
-function resolveInstanceDomain(row: VideoRow) {
-  return row.instance_domain ?? row.instanceDomain ?? "";
-}
-
-/**
- * Handle resolve video id.
- */
-function resolveVideoId(row: VideoRow) {
-  const value = row.video_uuid ?? row.videoUuid ?? row.video_id ?? "";
-  return value ? String(value) : "";
-}
-
-/**
- * Handle format stat value.
- */
-function formatStatValue(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return "--";
-  return numberFormat.format(value);
-}
-
-/**
- * Handle normalize stat value.
- */
-function normalizeStatValue(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
-
-/**
- * Check whether has server stats.
- */
-function hasServerStats(row: VideoRow) {
-  const hasViews =
-    Object.prototype.hasOwnProperty.call(row, "views") ||
-    Object.prototype.hasOwnProperty.call(row, "viewsCount") ||
-    Object.prototype.hasOwnProperty.call(row, "views_count");
-  const hasLikes =
-    Object.prototype.hasOwnProperty.call(row, "likes") ||
-    Object.prototype.hasOwnProperty.call(row, "likesCount") ||
-    Object.prototype.hasOwnProperty.call(row, "likes_count");
-  return hasViews && hasLikes;
-}
-
-/**
- * Handle resolve server stats.
- */
-function resolveServerStats(row: VideoRow) {
-  return {
-    views: normalizeStatValue(row.views ?? row.viewsCount ?? row.views_count),
-    likes: normalizeStatValue(row.likes ?? row.likesCount ?? row.likes_count),
-    dislikes: normalizeStatValue(row.dislikes ?? row.dislikesCount ?? row.dislikes_count)
-  };
 }
 
 /**
@@ -885,7 +483,7 @@ function applyStatsToDom(key: string, stats: LiveStats) {
  */
 function openProfileModal(likes: VideoRow[]) {
   if (!profileModal || !profileModalBody) return;
-  profileModalBody.innerHTML = renderLikes(likes);
+  profileModalBody.innerHTML = renderProfileLikes(likes, apiParam);
   profileModal.removeAttribute("hidden");
   profileModalBody.focus();
 }
@@ -898,54 +496,12 @@ function closeProfileModal() {
   profileModal.setAttribute("hidden", "true");
 }
 
-/**
- * Handle render likes.
- */
-function renderLikes(likes: VideoRow[]) {
-  if (!likes.length) {
-    return `<div class="empty">No likes yet.</div>`;
-  }
-  return likes
-    .map((row) => {
-      const title = row.title ?? "Untitled";
-      const thumb = thumbnailUrl(row);
-      const link = videoPageUrl(row);
-      const channel = channelName(row);
-      const host = row.instance_domain ?? row.instanceDomain ?? "";
-      const meta = host ? `${channel} · ${host}` : channel;
-      const thumbMarkup = thumb
-        ? `<img src="${escapeHtml(thumb)}" alt="${escapeHtml(title)}" loading="lazy" />`
-        : `<div class="thumb-fallback">No preview</div>`;
-      return `
-        <a class="like-card" href="${escapeHtml(link)}">
-          <div class="like-thumb">${thumbMarkup}</div>
-          <h3 class="like-title">${escapeHtml(title)}</h3>
-          <div class="like-meta">${escapeHtml(meta)}</div>
-        </a>
-      `;
-    })
-    .join("");
-}
 
-/**
- * Handle resolve feed mode.
- */
-function resolveFeedMode(searchParams: URLSearchParams) {
-  const raw = searchParams.get("mode");
-  return raw === "random" ? "random" : "recommendations";
-}
-
-/**
- * Handle set feed mode.
- */
-function setFeedMode(mode: "random" | "recommendations") {
-  const next = new URLSearchParams(window.location.search);
-  if (mode === "random") {
-    next.set("mode", "random");
-  } else {
-    next.delete("mode");
+/** Shuffle items with the current Fisher-Yates behavior used by random feed mode. */
+function shuffle<T>(items: T[]) {
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
   }
-  next.delete("id");
-  next.delete("uuid");
-  window.location.search = next.toString();
+  return items;
 }

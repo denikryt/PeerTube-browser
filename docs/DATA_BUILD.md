@@ -21,13 +21,15 @@ All paths below are relative to the repository root.
 You can run the same build/update flow automatically with the updater worker:
 
 - Worker entrypoint: `engine/server/db/jobs/updater-worker.py`
+- Internal updater modules: `engine/server/db/jobs/updater/`
 - It runs: crawl to staging -> embeddings -> merge to prod -> popularity -> ANN rebuild -> similarity precompute.
 - Systemd installation: `install-service.sh --with-updater-timer`
 - Timer runs daily (`OnUnitInactiveSec=1d`).
 
 Detailed behavior, flags, lock/resume logic, and systemd notes are documented in:
 
-- `engine/server/db/jobs/UPDATER_WORKER.md`
+- `engine/server/db/jobs/docs/UPDATER_WORKER.md`
+- `docs/UPDATER_COMPATIBILITY.md`
 
 ## 1) Crawl data
 
@@ -37,6 +39,15 @@ cd engine/crawler
 npm install
 npm run build
 ```
+
+Crawler DB module tests are available after installing crawler dependencies:
+
+```bash
+cd engine/crawler
+npm run test:db
+```
+
+These tests verify the TypeScript crawler stores with temporary SQLite files. They do not run PeerTube network crawls.
 
 ### Instance discovery
 Default source is the JoinPeerTube whitelist JSON.
@@ -145,6 +156,8 @@ If the whitelist DB schema is outdated, migrate it:
 ```bash
 python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whitelist.db
 ```
+
+Schema ownership and compatibility wrappers are documented in `docs/SCHEMA_OWNERSHIP.md`. Stage 6 does not change the data-build commands.
 
 ## 3) Build embeddings
 Embeddings use SentenceTransformers. The text payload is built from:

@@ -14,7 +14,8 @@
     "crawl:videos": "node dist/videos-cli.js",
     "crawl:videos:tags": "node dist/videos-cli.js --tags",
     "crawl:videos:comments": "node dist/videos-cli.js --comments",
-    "build-ann-index": "python3 ../server/db/jobs/build-ann-index.py"
+    "build-ann-index": "python3 ../server/db/jobs/build-ann-index.py",
+    "test:db": "node node_modules/typescript/bin/tsc -p tsconfig.test.json && node --test dist-test/test/db/*.test.js"
   },
   "dependencies": {
     "commander": "^11.1.0",
