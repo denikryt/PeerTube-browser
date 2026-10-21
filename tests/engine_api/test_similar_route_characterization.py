@@ -1,6 +1,7 @@
 """Characterize Engine similar/recommendation route behavior through FastAPI."""
 
 from __future__ import annotations
+from tests.parent_health_schema import ensure_parent_health_schema
 
 import importlib
 import sqlite3
@@ -103,6 +104,10 @@ def test_request_context_is_cleared_after_recommendation_error(monkeypatch) -> N
     conn.execute("CREATE TABLE videos (video_id TEXT, video_uuid TEXT, instance_domain TEXT)")
     conn.execute("INSERT INTO videos VALUES ('123', 'uuid-123', 'example.org')")
     conn.commit()
+
+    conn.execute("ALTER TABLE videos ADD COLUMN invalid_reason TEXT")
+    conn.execute("ALTER TABLE videos ADD COLUMN channel_id TEXT")
+    ensure_parent_health_schema(conn)
 
     def fail_after_context(_server, _params):
         """Raise after Client likes have been put into request context."""

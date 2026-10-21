@@ -77,11 +77,17 @@ def test_finite_recommended_compatibility_is_narrow_and_search_channels_stay_unf
     assert 'buildSearchUrl("/api/v1/search/videos", options, true)' in search
 
 
-def test_cards_render_optional_metadata_without_unknown_placeholders() -> None:
+def test_cards_keep_instance_provenance_and_compact_metadata() -> None:
     """Positive/negative: canonical metadata is shown only when actually present."""
     card = _text("components/VideoCard.vue")
-    assert "instanceLabel" in card and "languageLabel" in card and "categoryLabel" in card
-    assert 'normalized !== "_unknown"' in card
+    # The committed 668a055 layout supersedes the old taxonomy chips; the
+    # frontend contract tests enforce the same provenance/stats boundary.
+    assert "resolveInstanceDomain(props.row)" in card
+    assert 'v-if="instanceDomain"' in card
+    assert 'class="channel-instance-host"' in card
+    assert 'class="video-meta-views"' in card
+    assert 'class="video-card-likes"' in card
+    assert 'class="video-card-taxonomy"' not in card
     assert "Unknown language" not in card
     assert "Unknown category" not in card
 

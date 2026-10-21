@@ -1,7 +1,9 @@
 """Canonical runtime metadata projection regression tests."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
+import pytest
 import sys
 from pathlib import Path
 
@@ -39,8 +41,9 @@ def _db() -> sqlite3.Connection:
         );
         """
     )
+    ensure_parent_health_schema(conn)
     apply_video_index_ids_migration(conn)
-    conn.execute("INSERT INTO channels VALUES ('c1', 'example.org', 'Channel', '/a.jpg')")
+    conn.execute("INSERT INTO channels (channel_id,instance_domain,display_name,avatar_url) VALUES ('c1', 'example.org', 'Channel', '/a.jpg')")
     conn.execute(
         """
         INSERT INTO videos VALUES (
@@ -54,7 +57,58 @@ def _db() -> sqlite3.Connection:
     conn.execute(
         "INSERT INTO video_index_ids(index_id, video_id, instance_domain, is_active, created_at, updated_at) VALUES (7,'v1','example.org',1,1,1)"
     )
+    # Availability is part of the canonical schema consumed by every resolver.
+    conn.execute('ALTER TABLE videos ADD COLUMN invalid_reason TEXT')
     return conn
+
+
+@pytest.mark.parametrize("reason", [None, "not_found", "gone", "legacy_unknown", ""])
+@pytest.mark.parametrize("errors", [0, 10, 100])
+def test_all_metadata_identity_paths_enforce_canonical_availability(reason, errors):
+    """All resolver identities exclude canonical invalidity but ignore diagnostic errors."""
+    conn = _db()
+    conn.execute("UPDATE videos SET invalid_reason=?,error_count=?", (reason, errors))
+    expected = reason is None
+    rowid = conn.execute("SELECT rowid FROM video_embeddings").fetchone()[0]
+    assert bool(fetch_metadata(conn, [rowid])) == expected
+    assert bool(fetch_metadata_by_index_ids(conn, [7])) == expected
+    assert (
+        bool(
+            fetch_metadata_by_ids(
+                conn, [{"video_id": "v1", "instance_domain": "example.org"}]
+            )
+        )
+        == expected
+    )
+    conn.close()
+
+
+@pytest.mark.parametrize("reason,errors", [("gone", 0), ("", 0), (None, 10)])
+def test_metadata_batch_gates_cover_first_middle_and_last_identities(reason, errors):
+    """Batch OR clauses reject invalid rows regardless of position, not diagnostics."""
+    conn = _db()
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(videos)")]
+    for video_id in ["first", "middle", "last"]:
+        expressions = [
+            "?" if c in {"video_id", "invalid_reason", "error_count"} else c for c in columns
+        ]
+        conn.execute(
+            f"INSERT INTO videos SELECT {','.join(expressions)} FROM videos WHERE video_id='v1'",
+            (video_id, errors, reason),
+        )
+        conn.execute(
+            "INSERT INTO video_embeddings VALUES(?,?,3,?)", (video_id, "example.org", "test")
+        )
+    entries = [
+        {"video_id": v, "instance_domain": "example.org"} for v in ["first", "v1", "middle", "last"]
+    ]
+    result = fetch_metadata_by_ids(conn, entries)
+    expected_ids = ["v1::example.org"]
+    if reason is None:
+        # A high diagnostic counter does not invalidate any batch member.
+        expected_ids = [f"{video_id}::example.org" for video_id in ("first", "v1", "middle", "last")]
+    assert list(result) == expected_ids
+    conn.close()
 
 
 def _assert_new_fields(row: dict[str, object]) -> None:
@@ -189,3 +243,29 @@ def test_thumbnail_decoder_fails_soft_on_corruption_but_not_inside_authoritative
     assert invalid_array["thumbnail_urls"] == []
     assert invalid_array["thumbnail_candidates"] == []
     assert invalid_array["thumbnail_url"] is None
+
+
+@pytest.mark.parametrize("invalid", [False, True])
+def test_stale_random_cache_ids_resolve_through_canonical_metadata(invalid):
+    """A stale cached stable ID underfills safely; the same live ID remains usable."""
+    import threading
+    from types import SimpleNamespace
+    from data.random_videos import fetch_random_rows_from_cache
+
+    conn = _db()
+    if invalid:
+        conn.execute("UPDATE videos SET invalid_reason='' WHERE video_id='v1'")
+    cache = sqlite3.connect(":memory:")
+    cache.row_factory = sqlite3.Row
+    cache.execute("CREATE TABLE random_index_ids(position INTEGER PRIMARY KEY,index_id INTEGER)")
+    cache.execute("INSERT INTO random_index_ids VALUES(1,7)")
+    server = SimpleNamespace(
+        db=conn,
+        db_lock=threading.RLock(),
+        random_cache_db=cache,
+        random_cache_lock=threading.RLock(),
+    )
+    result = fetch_random_rows_from_cache(server, 1)
+    assert [row["video_id"] for row in result] == ([] if invalid else ["v1"])
+    conn.close()
+    cache.close()

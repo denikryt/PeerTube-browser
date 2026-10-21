@@ -1,7 +1,7 @@
 """Apply Client backend current-shape SQLite migrations.
 
 This module owns the checked-in SQL resource application for the Client users
-DB. It intentionally does not create a migration history table in Stage 6
+DB. It intentionally does not create a migration history table as part of the schema-ownership cleanup
 because existing startup paths rely on idempotent current-shape schema helpers.
 """
 from __future__ import annotations

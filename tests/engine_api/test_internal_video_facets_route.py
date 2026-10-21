@@ -1,6 +1,7 @@
 """Engine prepared video-facet contract tests."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 from engine.server.data.prepared_discovery import rebuild_prepared_discovery
 
 
@@ -18,6 +19,7 @@ def _install_schema(conn) -> None:
         CREATE TABLE channel_moderation (channel_id TEXT, instance_domain TEXT, status TEXT, PRIMARY KEY(channel_id, instance_domain));
         """
     )
+    ensure_parent_health_schema(conn)
     conn.executemany(
         """
         INSERT INTO videos(video_id,instance_domain,channel_id,language,language_label,category,category_id,tags_json,invalid_reason,error_count)

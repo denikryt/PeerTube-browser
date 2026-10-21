@@ -15,11 +15,14 @@ export const DEFAULT_JOINPEERTUBE_WHITELIST_URL =
 export interface InstanceRegistryFetchOptions {
   timeoutMs: number;
   maxRetries: number;
+  /** Admit only a structurally zero-entry registry list, never unusable entries. */
+  allowEmptyList?: boolean;
 }
 
 /** Extract normalized hosts from supported JoinPeerTube list/object payloads. */
-export function parseInstanceRegistryHosts(payload: unknown): string[] {
+export function parseInstanceRegistryHosts(payload: unknown, allowEmptyList = false): string[] {
   const entries = extractRegistryEntries(payload);
+  if (entries.length === 0 && allowEmptyList) return [];
   const seen = new Set<string>();
   const hosts: string[] = [];
 
@@ -44,7 +47,7 @@ export async function fetchInstanceRegistryHosts(
   options: InstanceRegistryFetchOptions
 ): Promise<string[]> {
   const payload = await fetchJsonWithRetry<unknown>(url, options);
-  return parseInstanceRegistryHosts(payload);
+  return parseInstanceRegistryHosts(payload, options.allowEmptyList === true);
 }
 
 /** Accept the two registry envelope shapes already supported by the crawler. */

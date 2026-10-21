@@ -1,7 +1,7 @@
 """Runtime state for the FastAPI Engine API adapter.
 
 The state mirrors the attributes that the stdlib the transitional stdlib server exposed to
-route modules. Keeping the attribute names stable lets Stage 10 change the HTTP
+route modules. Keeping the attribute names stable lets FastAPI migration change the HTTP
 framework without changing Engine route, service, recommendation, or data code.
 """
 from __future__ import annotations
@@ -34,7 +34,6 @@ class EngineRuntimeState:
     recommendation_strategy: Any
     related_personalization_deps: Any
     related_personalization_enabled: bool
-    video_error_threshold: int
     recommendations_debug_enabled: bool
     use_client_likes: bool
     rate_limiter: RateLimiter | None

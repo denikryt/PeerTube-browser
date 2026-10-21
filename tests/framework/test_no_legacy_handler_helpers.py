@@ -12,7 +12,7 @@ SCAN_ROOTS = (
     ROOT / "tests" / "framework",
 )
 
-# Keep these tokens assembled so the source grep used by Stage 12 does not
+# Keep these tokens assembled so the source grep used by FastAPI response-helper cleanup does not
 # report this guard as an offender while the test still checks exact strings.
 FORBIDDEN_TOKENS = (
     "Response" + "HandlerProtocol",

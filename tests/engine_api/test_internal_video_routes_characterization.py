@@ -1,6 +1,7 @@
 """Characterize Engine internal video route adapters through FastAPI."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
 import threading
 
@@ -46,7 +47,8 @@ def _connect_internal_video_db() -> sqlite3.Connection:
         );
         """
     )
-    conn.execute("INSERT INTO channels VALUES ('c1', 'example.org', 'Channel', '/avatar.png')")
+    ensure_parent_health_schema(conn)
+    conn.execute("INSERT INTO channels (channel_id,instance_domain,display_name,avatar_url) VALUES ('c1', 'example.org', 'Channel', '/avatar.png')")
     conn.execute(
         """
         INSERT INTO videos VALUES (
@@ -69,13 +71,15 @@ def _connect_internal_video_db() -> sqlite3.Connection:
         """
     )
     conn.commit()
+    # Minimal canonical fixtures include the availability contract.
+    conn.execute("ALTER TABLE videos ADD COLUMN invalid_reason TEXT")
     return conn
 
 
 def _client_with_internal_video_db() -> tuple[TestClient, sqlite3.Connection]:
     """Build a FastAPI client backed by the internal-video fixture DB."""
     conn = _connect_internal_video_db()
-    state = make_engine_state(db=conn, db_lock=threading.RLock(), video_error_threshold=2)
+    state = make_engine_state(db=conn, db_lock=threading.RLock())
     return TestClient(create_app(state)), conn
 
 

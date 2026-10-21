@@ -1,7 +1,9 @@
 """Characterize recommendation request parsing without importing FAISS-backed server."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sys
+import pytest
 from pathlib import Path
 
 
@@ -72,6 +74,7 @@ def test_finite_recommendation_final_filter_accepts_match_and_rejects_mismatch()
         CREATE TABLE channel_moderation(channel_id TEXT, instance_domain TEXT, status TEXT, PRIMARY KEY(channel_id,instance_domain));
         """
     )
+    ensure_parent_health_schema(conn)
     server = SimpleNamespace(
         db=conn,
         db_lock=threading.RLock(),
@@ -108,6 +111,7 @@ def test_finite_recommendation_filter_can_underfill_to_empty() -> None:
         CREATE TABLE channel_moderation(channel_id TEXT, instance_domain TEXT, status TEXT, PRIMARY KEY(channel_id,instance_domain));
         """
     )
+    ensure_parent_health_schema(conn)
     server = SimpleNamespace(db=conn, db_lock=threading.RLock(), enable_instance_ignore=True, enable_channel_blocklist=True, embeddings_count=1)
     result = rec_service.build_rows_response(
         server,
@@ -139,6 +143,7 @@ def test_finite_recommendation_random_fallback_uses_same_strict_filter(monkeypat
         CREATE TABLE channel_moderation(channel_id TEXT, instance_domain TEXT, status TEXT, PRIMARY KEY(channel_id,instance_domain));
         """
     )
+    ensure_parent_health_schema(conn)
 
     class EmptyStrategy:
         def generate_recommendations(self, *_args, **_kwargs):
@@ -205,13 +210,16 @@ def test_index_id_metadata_row_filters_without_requerying_metadata_boundary(monk
         CREATE TABLE channel_moderation(channel_id TEXT, instance_domain TEXT, status TEXT, PRIMARY KEY(channel_id,instance_domain));
         """
     )
+    ensure_parent_health_schema(conn)
+    ensure_parent_health_schema(conn)
     apply_video_index_ids_migration(conn)
-    conn.execute("INSERT INTO channels VALUES ('c','example.org','Channel',NULL)")
+    conn.execute("INSERT INTO channels (channel_id,instance_domain,display_name,avatar_url) VALUES ('c','example.org','Channel',NULL)")
     conn.execute(
         """INSERT INTO videos VALUES ('v','u',1,'example.org','c','c',NULL,NULL,NULL,'Title',NULL,'["linux"]','Education','0013','uk','Ukrainian',1,NULL,1,NULL,'[{"url":"https://cdn.example/recommendation.jpg","width":null,"height":null}]',NULL,1,1,0,0,0,NULL,1,0)"""
     )
     conn.execute("INSERT INTO video_embeddings VALUES ('v','example.org',3,'test')")
     conn.execute("INSERT INTO video_index_ids(index_id,video_id,instance_domain,is_active,created_at,updated_at) VALUES (9,'v','example.org',1,1,1)")
+    conn.execute("ALTER TABLE videos ADD COLUMN invalid_reason TEXT")
     row = fetch_metadata_by_index_ids(conn, [9])[9]
     assert (row["language"], row["category"], row["category_id"], row["tags_json"], row["instance_domain"]) == (
         "uk", "Education", "0013", '["linux"]', "example.org"
@@ -248,3 +256,103 @@ def test_index_id_metadata_row_filters_without_requerying_metadata_boundary(monk
     )
     assert mismatch.payload["rows"] == []
     conn.close()
+
+
+@pytest.mark.parametrize("include_live", [False, True])
+def test_invalid_client_likes_cannot_change_profile_or_embedding_inputs(include_live):
+    """Admission precedes real mixer profile/limits and generic embedding consumption."""
+    import sqlite3
+    import threading
+    import numpy as np
+    from types import SimpleNamespace
+    from data.embeddings import fetch_embeddings_by_ids
+    from recommendations.mixer import MixerDeps, MixingRecommendationStrategy
+    from recommendations.keys import like_key
+    from request_context import fetch_recent_likes_request
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE videos(video_id TEXT,video_uuid TEXT,instance_domain TEXT,
+            invalid_reason TEXT,error_count INTEGER,channel_id TEXT);
+        CREATE TABLE video_embeddings(video_id TEXT,instance_domain TEXT,embedding BLOB,embedding_dim INTEGER);
+    """)
+    ensure_parent_health_schema(conn)
+    entries = [
+        ("first", "gone", 0),
+        ("middle", "", 0),
+        ("unknown", "legacy", 0),
+        ("live", None, 10),
+    ]
+    for identity, reason, errors in entries:
+        conn.execute(
+            "INSERT INTO videos(video_id,video_uuid,instance_domain,invalid_reason,error_count) VALUES(?,?,?, ?,?)",
+            (identity, f"u-{identity}", "example.org", reason, errors),
+        )
+        conn.execute(
+            "INSERT INTO video_embeddings VALUES(?,?,?,2)",
+            (identity, "example.org", np.array([1, 0], dtype=np.float32).tobytes()),
+        )
+    observed = []
+
+    class SeedConsumer:
+        """Small candidate harness consumes actual request-local likes and embedding store."""
+
+        def __init__(self, name):
+            """Name the output to make real mixer profile selection observable."""
+            self.name = name
+
+        def get_candidates(self, server, user_id, limit, refresh_cache=False, config=None):
+            """Expose admitted inputs and emit a distinct deterministic profile result."""
+            likes = fetch_recent_likes_request(user_id, 100)
+            embeddings = fetch_embeddings_by_ids(server.db, likes)
+            observed.append((self.name, likes, set(embeddings)))
+            return [
+                {
+                    "video_id": self.name,
+                    "instance_domain": "output.example",
+                    "similarity_score": 1.0,
+                }
+            ]
+
+    config = {
+        "profiles": {
+            "guest_home": {"generators": {"guest": {"enabled": True}}},
+            "home": {"generators": {"personal": {"enabled": True, "requires_likes": True}}},
+        }
+    }
+    strategy = MixingRecommendationStrategy(
+        {name: SeedConsumer(name) for name in ["guest", "personal"]},
+        config,
+        MixerDeps(like_key, fetch_recent_likes_request, 100),
+    )
+    server = SimpleNamespace(
+        db=conn,
+        db_lock=threading.RLock(),
+        recommendation_strategy=strategy,
+        use_client_likes=True,
+        default_limit=10,
+        refresh_similarity_cache=False,
+        recommendations_debug_enabled=False,
+        enable_instance_ignore=False,
+        enable_channel_blocklist=False,
+        embeddings_count=4,
+    )
+    requested = entries if include_live else entries[:-1]
+    body = {"likes": [{"uuid": f"u-{v}", "host": "example.org"} for v, _, _ in requested]}
+    # Duplicate live inputs must not change identity/order reconstruction.
+    if include_live:
+        body["likes"].append({"uuid": "u-live", "host": "example.org"})
+    try:
+        result = rec_service.handle_similar_request(server, "/recommendations", "POST", {}, body)
+        assert result.status == 200
+        assert [r["video_id"] for r in result.payload["rows"]] == (
+            ["personal"] if include_live else ["guest"]
+        )
+        assert len(observed) == 1
+        _, admitted, embeddings = observed[0]
+        assert [r["video_id"] for r in admitted] == (["live"] if include_live else [])
+        assert embeddings == ({"live::example.org"} if include_live else set())
+        assert fetch_recent_likes_request("local-user", 100) == []
+    finally:
+        conn.close()

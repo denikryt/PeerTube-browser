@@ -104,6 +104,11 @@ def main() -> None:
             float(args.like_weight),
             now_ms_value=now_ms_value,
         )
+        # Zero-view videos keep a zero score across incremental runs. Avoid an
+        # identical UPDATE for each such row: at corpus scale those writes grow
+        # the WAL despite leaving the persisted value unchanged.
+        if args.incremental and row["popularity"] is not None and score == row["popularity"]:
+            continue
         updates.append((score, row["video_id"], row["instance_domain"]))
         processed += 1
         if args.verbose:

@@ -4,9 +4,11 @@
 
 import Database from "better-sqlite3";
 import { VideoStore } from "./db/videos.js";
+import { ChannelStore } from "./db/channels.js";
 import { assertMetadataMaintenanceSchema, assertThumbnailMaintenanceSchema } from "./db/schema.js";
 import type {
   ExistingVideoRefresh,
+  NewVideoInsertRow,
   VideoActivityPubMetadataPatch,
   VideoChannelRow,
   VideoDetailMetadataPatch,
@@ -18,14 +20,18 @@ import type {
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
 import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
-import { loadHostsFromFile, scopeHosts } from "./host-filters.js";
+import { loadHostsFromFile, loadIncludedHostsFromFile, scopeHosts } from "./host-filters.js";
 import { createProgressOrdinal, formatMetricLog } from "./log-format.js";
 import {
+  projectDetailThumbnailCandidates,
   resolveLegacyThumbnailCompatibility,
   resolvePreferredPreviewPath,
-  resolveThumbnailCandidates
+  resolveThumbnailCandidates,
+  type ThumbnailCandidate
 } from "./video-media.js";
 import { normalizeVideoMetadata } from "./video-metadata.js";
+import { fetchVideoDetailResult } from "./video-detail.js";
+import { assertWorkActive, stopWork, type WorkCancellation } from "./work-cancellation.js";
 import {
   fetchActivityPubLiveMetadata,
   type ActivityPubLiveMetadata
@@ -64,6 +70,8 @@ export interface VideoCrawlOptions {
   hostDelayMs: number;
   /** In-process host scope used by the optional host-level scheduler. */
   hosts?: readonly string[];
+  /** Shared run-wide cancellation from the host scheduler, if present. */
+  cancellation?: WorkCancellation;
 }
 
 interface Page<T> {
@@ -169,10 +177,15 @@ interface PeerTubeVideoDetail extends PeerTubeVideo {
   support?: string;
 }
 
-interface VideoDetailFetchResult {
-  detail: PeerTubeVideoDetail;
-  protocol: string;
-}
+type VideoProjectionSource =
+  | {
+      kind: "available";
+      detail: PeerTubeVideoDetail;
+      protocol: string;
+      thumbnailCandidates: ThumbnailCandidate[] | null;
+    }
+  | { kind: "degraded"; protocol: string }
+  | { kind: "absent"; protocol: string };
 
 interface ChannelMeta {
   channelSlug: string | null;
@@ -209,19 +222,34 @@ export async function crawlVideos(options: VideoCrawlOptions) {
     return;
   }
   const store = new VideoStore({ dbPath: options.dbPath });
-  const includedHosts = options.hosts
-    ? new Set(options.hosts.map((host) => host.toLowerCase()))
-    : loadHostsFromFile(options.hostsFile);
+  const includedHosts = loadIncludedHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const existingDb = openExistingDb(options);
   const hostsAll = store.listInstances();
-  const filteredHosts = scopeHosts(hostsAll, includedHosts, excludedHosts);
-  const hosts =
-    options.maxInstances > 0
-      ? filteredHosts.slice(0, options.maxInstances)
-      : filteredHosts;
+  const filteredHosts = scopeHosts(hostsAll, includedHosts, excludedHosts, options.hosts);
+  const selected = options.maxInstances > 0
+    ? filteredHosts.slice(0, options.maxInstances)
+    : filteredHosts;
+  // The store query repeats the gate per channel, but the work queue and its
+  // progress reset must themselves be restricted to eligible host owners.
+  const parentStore = new ChannelStore({ dbPath: options.dbPath });
+  let hosts: string[];
+  try {
+    const repairScope = options.errorsOnly
+      ? parentStore.listHostsWithVideoRepair(selected)
+      : selected;
+    if (options.errorsOnly) parentStore.assertParentEnumerationPrepared(repairScope);
+    hosts = parentStore.listFreshHealthyHosts(repairScope, true);
+  } finally {
+    parentStore.close();
+  }
   // Counts are resolved by the preceding count stage. Selecting only positive
   // rows avoids one request per known-empty or still-unknown channel.
+  if (hosts.length === 0) {
+    existingDb?.close();
+    store.close();
+    return;
+  }
   const channelsAll = store.listChannelsWithVideos(1, hosts);
   const channels =
     options.maxChannels > 0
@@ -241,7 +269,7 @@ export async function crawlVideos(options: VideoCrawlOptions) {
   // cannot reset or increment one another's counters.
   const newVideos: NewVideoCounter = { total: 0 };
 
-  const progressScope = options.hosts ? [...hosts] : undefined;
+  const progressScope = [...hosts];
   store.prepareVideoProgress(channels, options.resume, progressScope);
   const statuses = (options.errorsOnly
     ? ["error"]
@@ -257,6 +285,7 @@ export async function crawlVideos(options: VideoCrawlOptions) {
   );
 
   try {
+    const cancellation: WorkCancellation = options.cancellation ?? { stopped: false };
     const queue = instances.slice();
     const workers = Array.from({ length: workerCount }, () =>
       workerLoop(
@@ -267,10 +296,11 @@ export async function crawlVideos(options: VideoCrawlOptions) {
         existingDb,
         options,
         nextChannelOrdinal,
-        newVideos
+        newVideos,
+        cancellation
       )
     );
-    await Promise.all(workers);
+    await drainVideoWorkers(workers, () => { queue.length = 0; }, cancellation);
 
     console.log(formatMetricLog("videos", [["new_total", newVideos.total]], "finished"));
   } finally {
@@ -284,25 +314,28 @@ export async function crawlVideos(options: VideoCrawlOptions) {
  */
 async function crawlVideoComments(options: VideoCrawlOptions) {
   const store = new VideoStore({ dbPath: options.dbPath });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = loadIncludedHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForComments(options.resume);
   const grouped = groupByInstance(items);
-  const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
+  const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts, options.hosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
 
   console.log(
     `[comments] instances=${instances.length} videos=${items.length} concurrency=${workerCount} resume=${options.resume}`
   );
 
+  const cancellation: WorkCancellation = options.cancellation ?? { stopped: false };
   const queue = instances.slice();
   const workers = Array.from({ length: workerCount }, () =>
-    commentsWorkerLoop(queue, grouped, store, options)
+    commentsWorkerLoop(queue, grouped, store, options, cancellation)
   );
-  await Promise.all(workers);
-
-  console.log("[comments] finished");
-  store.close();
+  try {
+    await drainVideoWorkers(workers, () => { queue.length = 0; }, cancellation);
+    console.log("[comments] finished");
+  } finally {
+    store.close();
+  }
 }
 
 /**
@@ -310,25 +343,28 @@ async function crawlVideoComments(options: VideoCrawlOptions) {
  */
 async function crawlVideoTags(options: VideoCrawlOptions, mode: "missing" | "present") {
   const store = new VideoStore({ dbPath: options.dbPath });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = loadIncludedHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForTags(mode);
   const grouped = groupByInstance(items);
-  const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
+  const instances = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts, options.hosts);
   const workerCount = Math.min(options.concurrency, Math.max(1, instances.length));
 
   console.log(
     `[tags] instances=${instances.length} videos=${items.length} concurrency=${workerCount}`
   );
 
+  const cancellation: WorkCancellation = options.cancellation ?? { stopped: false };
   const queue = instances.slice();
   const workers = Array.from({ length: workerCount }, () =>
-    tagWorkerLoop(queue, grouped, store, options)
+    tagWorkerLoop(queue, grouped, store, options, cancellation)
   );
-  await Promise.all(workers);
-
-  console.log("[tags] finished");
-  store.close();
+  try {
+    await drainVideoWorkers(workers, () => { queue.length = 0; }, cancellation);
+    console.log("[tags] finished");
+  } finally {
+    store.close();
+  }
 }
 
 /**
@@ -342,9 +378,10 @@ async function workerLoop(
   existingDb: Database.Database | null,
   options: VideoCrawlOptions,
   nextChannelOrdinal: () => string,
-  newVideos: NewVideoCounter
+  newVideos: NewVideoCounter,
+  cancellation: WorkCancellation
 ) {
-  while (true) {
+  while (!cancellation.stopped) {
     const host = queue.pop();
     if (!host) return;
     const items = grouped.get(host);
@@ -357,7 +394,8 @@ async function workerLoop(
       existingDb,
       options,
       nextChannelOrdinal,
-      newVideos
+      newVideos,
+      cancellation
     );
   }
 }
@@ -373,10 +411,15 @@ async function processInstance(
   existingDb: Database.Database | null,
   options: VideoCrawlOptions,
   nextChannelOrdinal: () => string,
-  newVideos: NewVideoCounter
+  newVideos: NewVideoCounter,
+  cancellation: WorkCancellation
 ) {
   const normalizedHost = host.toLowerCase();
-  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
+  const requestLimiter = createRequestLimiter(
+    options.hostConcurrency, options.hostDelayMs,
+    () => assertWorkActive(cancellation),
+    (error) => { if (isNoNetworkError(error)) stopWork(cancellation, error); }
+  );
   console.log(formatMetricLog("videos", [["channels", items.length]], "start", normalizedHost));
 
   await mapWithConcurrency(items, CHANNEL_CONCURRENCY, async (item) => {
@@ -393,9 +436,10 @@ async function processInstance(
       options,
       requestLimiter,
       channelOrdinal,
-      newVideos
+      newVideos,
+      cancellation
     );
-  });
+  }, cancellation);
 
   console.log(`[videos] done ${normalizedHost}`);
 }
@@ -407,14 +451,15 @@ async function commentsWorkerLoop(
   queue: string[],
   grouped: Map<string, VideoTagRow[]>,
   store: VideoStore,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  cancellation: WorkCancellation
 ) {
-  while (true) {
+  while (!cancellation.stopped) {
     const host = queue.pop();
     if (!host) return;
     const items = grouped.get(host);
     if (!items) continue;
-    await processCommentsInstance(host, items, store, options);
+    await processCommentsInstance(host, items, store, options, cancellation);
   }
 }
 
@@ -425,14 +470,15 @@ async function tagWorkerLoop(
   queue: string[],
   grouped: Map<string, VideoTagRow[]>,
   store: VideoStore,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  cancellation: WorkCancellation
 ) {
-  while (true) {
+  while (!cancellation.stopped) {
     const host = queue.pop();
     if (!host) return;
     const items = grouped.get(host);
     if (!items) continue;
-    await processTagInstance(host, items, store, options);
+    await processTagInstance(host, items, store, options, cancellation);
   }
 }
 
@@ -443,35 +489,47 @@ async function processTagInstance(
   host: string,
   items: VideoTagRow[],
   store: VideoStore,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  cancellation: WorkCancellation
 ) {
   const normalizedHost = host.toLowerCase();
-  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
+  const requestLimiter = createRequestLimiter(
+    options.hostConcurrency, options.hostDelayMs,
+    () => assertWorkActive(cancellation),
+    (error) => { if (isNoNetworkError(error)) stopWork(cancellation, error); }
+  );
   console.log(formatMetricLog("tags", [["videos", items.length]], "start", normalizedHost));
   for (const item of items) {
-    try {
-      const tagsJson = await fetchVideoTags(normalizedHost, item.videoUuid, options, requestLimiter);
-      if (tagsJson !== null) {
-        store.updateVideoTags(item.videoId, normalizedHost, tagsJson);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const status = extractHttpStatus(message);
-      const code = extractErrorCode(error);
-      if (status === 404) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "not_found");
-      } else if (isNoNetworkError(error)) {
-        throw error;
-      } else if (isCertExpired(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "cert_expired");
-      } else if (isTlsError(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "tls_error");
-      } else if (isTimeoutError(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "timeout");
-      } else {
-        store.updateVideoError(item.videoId, normalizedHost, message);
-        console.warn(`[tags] error ${normalizedHost}/${item.videoUuid}: ${message}`);
-      }
+    if (cancellation.stopped) return;
+    const result = await fetchVideoDetailResult<PeerTubeVideoDetail>(
+      normalizedHost, item.videoUuid, options, "https:", requestLimiter
+    );
+    // Only a validated primary detail permits a projection write.
+    switch (result.kind) {
+      case "available":
+        try {
+          const tagsJson = toTagsJson(result.detail.tags);
+          if (tagsJson !== null) {
+            store.updateVideoTags(item.videoId, normalizedHost, tagsJson);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          store.updateVideoError(item.videoId, normalizedHost, message);
+          console.warn(`[tags] projection error ${normalizedHost}/${item.videoUuid}: ${message}`);
+        }
+        break;
+      case "not_found":
+      case "gone":
+        store.updateVideoError(item.videoId, normalizedHost, result.kind);
+        break;
+      case "unknown":
+        if (isNoNetworkError(result.error.cause)) {
+          // Preserve process-level outage abort without changing availability.
+          throw result.error.cause;
+        }
+        store.updateVideoError(item.videoId, normalizedHost, result.error.message);
+        console.warn(`[tags] error ${normalizedHost}/${item.videoUuid}: ${result.error.message}`);
+        break;
     }
   }
 
@@ -485,35 +543,49 @@ async function processCommentsInstance(
   host: string,
   items: VideoTagRow[],
   store: VideoStore,
-  options: VideoCrawlOptions
+  options: VideoCrawlOptions,
+  cancellation: WorkCancellation
 ) {
   const normalizedHost = host.toLowerCase();
-  const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
+  const requestLimiter = createRequestLimiter(
+    options.hostConcurrency, options.hostDelayMs,
+    () => assertWorkActive(cancellation),
+    (error) => { if (isNoNetworkError(error)) stopWork(cancellation, error); }
+  );
   console.log(formatMetricLog("comments", [["videos", items.length]], "start", normalizedHost));
   for (const item of items) {
-    try {
-      const commentsCount = await fetchVideoComments(normalizedHost, item.videoUuid, options, requestLimiter);
-      if (commentsCount !== null) {
-        store.updateVideoComments(item.videoId, normalizedHost, commentsCount);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const status = extractHttpStatus(message);
-      const code = extractErrorCode(error);
-      if (status === 404) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "not_found");
-      } else if (isNoNetworkError(error)) {
-        throw error;
-      } else if (isCertExpired(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "cert_expired");
-      } else if (isTlsError(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "tls_error");
-      } else if (isTimeoutError(code, message)) {
-        store.updateVideoInvalid(item.videoId, normalizedHost, "timeout");
-      } else {
-        store.updateVideoError(item.videoId, normalizedHost, message);
-        console.warn(`[comments] error ${normalizedHost}/${item.videoUuid}: ${message}`);
-      }
+    if (cancellation.stopped) return;
+    const result = await fetchVideoDetailResult<PeerTubeVideoDetail>(
+      normalizedHost, item.videoUuid, options, "https:", requestLimiter
+    );
+    // Only a validated primary detail permits a projection write.
+    switch (result.kind) {
+      case "available":
+        try {
+          const commentsCount = toCommentsCount(
+            result.detail.comments ?? result.detail.commentsCount ?? result.detail.comments_count
+          );
+          if (commentsCount !== null) {
+            store.updateVideoComments(item.videoId, normalizedHost, commentsCount);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          store.updateVideoError(item.videoId, normalizedHost, message);
+          console.warn(`[comments] projection error ${normalizedHost}/${item.videoUuid}: ${message}`);
+        }
+        break;
+      case "not_found":
+      case "gone":
+        store.updateVideoError(item.videoId, normalizedHost, result.kind);
+        break;
+      case "unknown":
+        if (isNoNetworkError(result.error.cause)) {
+          // Preserve process-level outage abort without changing availability.
+          throw result.error.cause;
+        }
+        store.updateVideoError(item.videoId, normalizedHost, result.error.message);
+        console.warn(`[comments] error ${normalizedHost}/${item.videoUuid}: ${result.error.message}`);
+        break;
     }
   }
 
@@ -532,8 +604,10 @@ async function processChannel(
   options: VideoCrawlOptions,
   requestLimiter: RequestLimiter,
   channelOrdinal: string,
-  newVideos: NewVideoCounter
+  newVideos: NewVideoCounter,
+  cancellation: WorkCancellation
 ) {
+  assertWorkActive(cancellation);
   const channelSlug = item.channelName ?? meta?.channelSlug ?? null;
   if (!channelSlug) {
     store.updateVideoProgress(host, item.channelId, "error", item.lastStart, "missing channel slug");
@@ -572,8 +646,10 @@ async function processChannel(
       store,
       existingDb,
       options,
-      requestLimiter
+      requestLimiter,
+      cancellation
     );
+    assertWorkActive(cancellation);
     store.updateVideoProgress(host, item.channelId, "done", 0, null);
     newVideos.total += localCount;
     console.log(
@@ -585,6 +661,9 @@ async function processChannel(
       )
     );
   } catch (error) {
+    // A process-wide outage aborts new work instead of poisoning this host's
+    // progress with a spurious remote failure.
+    if (isNoNetworkError(error) || cancellation.stopped) throw error;
     const message = formatCrawlError(error);
     store.updateVideoProgress(host, item.channelId, "error", startAt, message);
     console.warn(
@@ -613,7 +692,8 @@ async function crawlChannelVideos(
   store: VideoStore,
   existingDb: Database.Database | null,
   options: VideoCrawlOptions,
-  requestLimiter: RequestLimiter
+  requestLimiter: RequestLimiter,
+  cancellation: WorkCancellation
 ) {
   let start = startAt;
   let protocol = "https:";
@@ -623,6 +703,8 @@ async function crawlChannelVideos(
   let pagesFetched = 0;
 
   while (true) {
+    // Cross-host outage must stop page-zero and later page requests alike.
+    assertWorkActive(cancellation);
     const { page, protocol: usedProtocol } = await fetchPage(
       host,
       channel.channelSlug,
@@ -669,7 +751,8 @@ async function crawlChannelVideos(
         existingIds,
         externalExistingIds,
         options,
-        requestLimiter
+        requestLimiter,
+        cancellation
       );
       localCount += rows.newRows.length;
       store.insertNewVideos(rows.newRows);
@@ -719,6 +802,7 @@ async function crawlChannelVideos(
     start = nextStart;
   }
 
+  assertWorkActive(cancellation);
   return { localCount, totalCount };
 }
 
@@ -741,9 +825,14 @@ async function buildVideoRows(
   existingIds: Set<string>,
   externalExistingIds: Set<string>,
   options: VideoCrawlOptions,
-  requestLimiter: RequestLimiter
-): Promise<{ newRows: VideoUpsertRow[]; existingRows: ExistingVideoRefresh[] }> {
-  const built = new Array<{ value: BuiltVideoPersistence; existing: boolean } | null>(videos.length).fill(null);
+  requestLimiter: RequestLimiter,
+  cancellation: WorkCancellation
+): Promise<{ newRows: NewVideoInsertRow[]; existingRows: ExistingVideoRefresh[] }> {
+  const built = new Array<{
+    value: BuiltVideoPersistence;
+    existing: boolean;
+    initialInvalidity: NewVideoInsertRow["initialInvalidity"];
+  } | null>(videos.length).fill(null);
 
   await mapWithConcurrency(
     videos.map((video, index) => ({ video, index })),
@@ -756,35 +845,74 @@ async function buildVideoRows(
         return;
       }
 
-      const detailResult = await fetchVideoDetailBestEffort(
-        host,
-        video,
-        options,
-        protocol,
-        requestLimiter
-      );
+      let projection: VideoProjectionSource = { kind: "degraded", protocol };
+      let observationAt = checkedAt;
+      let initialInvalidity: NewVideoInsertRow["initialInvalidity"] = {
+        reason: null,
+        observedAt: null
+      };
+
+      const requestedUuid = toNullableString(video.uuid);
+      if (requestedUuid) {
+        const result = await fetchVideoDetailResult<PeerTubeVideoDetail>(
+          host,
+          requestedUuid,
+          options,
+          protocol,
+          requestLimiter
+        );
+        observationAt = result.checkedAt;
+        switch (result.kind) {
+          case "available":
+            projection = {
+              kind: "available",
+              detail: result.detail,
+              protocol: result.protocol,
+              thumbnailCandidates: projectDetailThumbnailCandidates(
+                result.detail,
+                host,
+                result.protocol
+              )
+            };
+            break;
+          case "not_found":
+          case "gone":
+            projection = { kind: "absent", protocol };
+            if (!existsLocally) {
+              initialInvalidity = {
+                reason: result.kind === "not_found" ? "not_found" : "gone",
+                observedAt: result.checkedAt
+              };
+            }
+            break;
+          case "unknown":
+            console.warn(`[videos] detail fallback ${host}/${requestedUuid}: ${result.error.message}`);
+            break;
+        }
+      }
+
       const value = await toVideoRow(
         video,
         host,
-        protocol,
         channel,
-        checkedAt,
-        detailResult,
+        observationAt,
+        projection,
         options,
         requestLimiter
       );
-      if (value) built[index] = { value, existing: existsLocally };
-    }
+      if (value) built[index] = { value, existing: existsLocally, initialInvalidity };
+    },
+    cancellation
   );
 
-  const newRows: VideoUpsertRow[] = [];
+  const newRows: NewVideoInsertRow[] = [];
   const existingRows: ExistingVideoRefresh[] = [];
   for (const item of built) {
     if (!item) continue;
     if (item.existing) {
       existingRows.push(item.value.refresh);
     } else {
-      newRows.push(item.value.row);
+      newRows.push({ row: item.value.row, initialInvalidity: item.initialInvalidity });
     }
   }
   return { newRows, existingRows };
@@ -817,7 +945,8 @@ async function fetchPage(
     }));
     return { page, protocol };
   } catch (error) {
-    if (!shouldTryAlternateProtocol(error)) throw error;
+    // Confirmed local outage has no remote protocol alternative.
+    if (isNoNetworkError(error) || !shouldTryAlternateProtocol(error)) throw error;
     const fallbackProtocol = protocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildChannelVideosUrl(
       host,
@@ -858,7 +987,6 @@ function buildChannelVideosUrl(
 async function toVideoRow(
   video: PeerTubeVideo,
   host: string,
-  protocol: string,
   channel: {
     channelId: string | null;
     channelSlug: string;
@@ -866,15 +994,15 @@ async function toVideoRow(
     channelUrl: string | null;
   },
   checkedAt: number,
-  detailResult: VideoDetailFetchResult | null,
+  projection: VideoProjectionSource,
   options: VideoCrawlOptions,
   requestLimiter: RequestLimiter
 ): Promise<BuiltVideoPersistence | null> {
   const videoId = toStringId(video.uuid ?? video.id);
   if (!videoId) return null;
 
-  const detail = detailResult?.detail ?? null;
-  const mediaProtocol = detailResult?.protocol ?? protocol;
+  const detail = projection.kind === "available" ? projection.detail : null;
+  const mediaProtocol = projection.protocol;
   const detailRecord = detail as Record<string, unknown> | null;
   const listRecord = video as Record<string, unknown>;
 
@@ -888,6 +1016,7 @@ async function toVideoRow(
   const candidateVideoUrl = toNullableString(detail?.url ?? video.url);
   let activityPub: ActivityPubLiveMetadata | null = null;
   if (
+    projection.kind !== "absent" &&
     normalized.isLive === 1 &&
     (normalized.permanentLive === null || normalized.liveSaveReplay === null) &&
     candidateVideoUrl
@@ -910,8 +1039,8 @@ async function toVideoRow(
         protocol: mediaProtocol
       });
     } catch (error) {
-      // Public AP parity is best-effort. REST metadata remains usable and a
-      // version-0 live row can be retried later by metadata maintenance.
+      // Best-effort AP enrichment must not hide a proven process-wide outage.
+      if (isNoNetworkError(error)) throw error;
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[videos] ActivityPub live metadata fallback ${host}/${videoId}: ${message}`);
     }
@@ -926,8 +1055,8 @@ async function toVideoRow(
     channel.displayName;
   const incomingChannelUrl =
     toNullableString(sourceChannel?.url) ?? channel.channelUrl ?? null;
-  const thumbnailCandidates = detailResult
-    ? resolveThumbnailCandidates(detail?.thumbnails, host, mediaProtocol)
+  const thumbnailCandidates = projection.kind === "available"
+    ? projection.thumbnailCandidates
     : null;
   const thumbnailCompatibility = thumbnailCandidates === null
     ? resolveLegacyThumbnailCompatibility(detail, video, host, mediaProtocol)
@@ -994,9 +1123,7 @@ async function toVideoRow(
       base: row,
       ...(detailPatch ? { detail: detailPatch } : {}),
       ...(activityPubPatch ? { activityPub: activityPubPatch } : {}),
-      ...(detailResult && thumbnailCandidates !== null
-        ? { thumbnail: thumbnailCandidates }
-        : {})
+      ...(thumbnailCandidates !== null ? { thumbnail: thumbnailCandidates } : {})
     }
   };
 }
@@ -1055,17 +1182,39 @@ function groupByInstance<T extends { instanceDomain: string }>(items: T[]): Map<
   return grouped;
 }
 
+/** Stop scheduling on a fatal worker failure, then drain all in-flight I/O
+ * before the owning function is allowed to close its SQLite connection.
+ */
+async function drainVideoWorkers(
+  workers: Promise<void>[], stop: () => void, cancellation: WorkCancellation,
+): Promise<void> {
+  const settled = await Promise.allSettled(workers.map(worker => worker.catch(error => {
+    // Publish cancellation before the sibling is resumed after its await.
+    if (!cancellation.stopped) {
+      stopWork(cancellation, error);
+    }
+    stop();
+    throw error;
+  })));
+  const rejected = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (rejected) throw cancellation.reason;
+}
+
+/** Bound a nested per-host queue by the invocation-wide failure signal.
+ * A sibling failure cannot authorize a new channel or detail identity.
+ */
 async function mapWithConcurrency<T>(
   items: T[],
   concurrency: number,
-  mapper: (item: T) => Promise<void>
+  mapper: (item: T) => Promise<void>,
+  cancellation: WorkCancellation
 ) {
   if (items.length === 0) return;
   const limit = Math.max(1, concurrency);
   let index = 0;
 
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (true) {
+    while (!cancellation.stopped) {
       const current = index;
       index += 1;
       if (current >= items.length) return;
@@ -1073,7 +1222,7 @@ async function mapWithConcurrency<T>(
     }
   });
 
-  await Promise.all(workers);
+  await drainVideoWorkers(workers, () => { index = items.length; }, cancellation);
 }
 
 /**
@@ -1141,65 +1290,6 @@ function toStringId(value: unknown): string | null {
 }
 
 /**
- * Handle fetch video detail.
- */
-async function fetchVideoDetail(
-  host: string,
-  videoUuid: string,
-  options: VideoCrawlOptions,
-  protocol: string,
-  requestLimiter: RequestLimiter
-): Promise<VideoDetailFetchResult> {
-  const primaryUrl = buildVideoDetailUrl(host, videoUuid, protocol);
-  try {
-    return {
-      detail: await requestLimiter.run(() => fetchJsonWithRetry<PeerTubeVideoDetail>(primaryUrl, {
-        timeoutMs: options.timeoutMs,
-        maxRetries: options.maxRetries
-      })),
-      protocol
-    };
-  } catch (error) {
-    if (!shouldTryAlternateProtocol(error)) throw error;
-    const fallbackProtocol = protocol === "https:" ? "http:" : "https:";
-    const alternateUrl = buildVideoDetailUrl(host, videoUuid, fallbackProtocol);
-    return {
-      detail: await requestLimiter.run(() => fetchJsonWithRetry<PeerTubeVideoDetail>(alternateUrl, {
-        timeoutMs: options.timeoutMs,
-        maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
-      })),
-      protocol: fallbackProtocol
-    };
-  }
-}
-
-/**
- * Attempt per-video detail enrichment without turning a detail-endpoint
- * failure into a dropped list row. Existing-row persistence preserves
- * last-known-good enrichment fields when this request fails.
- */
-async function fetchVideoDetailBestEffort(
-  host: string,
-  video: PeerTubeVideo,
-  options: VideoCrawlOptions,
-  protocol: string,
-  requestLimiter: RequestLimiter
-): Promise<VideoDetailFetchResult | null> {
-  if (!video.uuid) return null;
-  try {
-    return await fetchVideoDetail(host, video.uuid, options, protocol, requestLimiter);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    // Detail enrichment is best-effort during the main crawl. Falling back to
-    // the list payload keeps ingestion moving while the absence of a detail
-    // patch prevents destructive refresh of last-known-good enrichment.
-    console.warn(`[videos] detail fallback ${host}/${video.uuid}: ${message}`);
-    return null;
-  }
-}
-
-/**
  * Backfill metadata-v1 fields in an already-migrated crawler/whitelist DB.
  *
  * Schema validation is deliberately read-only and happens before any network
@@ -1209,11 +1299,11 @@ async function fetchVideoDetailBestEffort(
 async function crawlVideoMetadata(options: VideoCrawlOptions) {
   assertMetadataMaintenanceSchema(options.dbPath);
   const store = new VideoStore({ dbPath: options.dbPath, initializeSchema: false });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = loadIncludedHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForMetadata(Boolean(options.updateMetadata));
   const grouped = groupByInstance(items);
-  const allHosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
+  const allHosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts, options.hosts);
   // Health is a persisted host-level observation, so apply it after explicit
   // include/exclude filters without probing every failed video again.
   const healthyHosts = options.onlyHealthyHosts ? store.listHealthyInstanceHosts() : null;
@@ -1236,31 +1326,52 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
   );
 
   try {
+    const cancellation: WorkCancellation = options.cancellation ?? { stopped: false };
     const queue = hosts.slice();
     const workers = Array.from({ length: workerCount }, async () => {
-      while (true) {
+      while (!cancellation.stopped) {
         const host = queue.shift();
         if (!host) return;
-        const limiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
+        const limiter = createRequestLimiter(
+          options.hostConcurrency, options.hostDelayMs,
+    () => assertWorkActive(cancellation),
+    (error) => { if (isNoNetworkError(error)) stopWork(cancellation, error); }
+        );
         for (const item of grouped.get(host) ?? []) {
+          if (cancellation.stopped) return;
           // Allocate before awaiting I/O so concurrent host workers expose one
           // stable crawl-wide ordinal instead of ambiguous host-local counters.
           const videoOrdinal = nextVideoOrdinal();
           const subject = `${item.instanceDomain}/${item.videoId}`;
+          const detailResult = await fetchVideoDetailResult<PeerTubeVideoDetail>(
+            host, item.videoUuid, options, "https:", limiter
+          );
+          if (detailResult.kind !== "available") {
+            // Maintenance owns diagnostics, never the existing row's availability.
+            const diagnostic = detailResult.kind === "unknown"
+              ? detailResult.error.message : detailResult.kind;
+            store.updateVideoError(item.videoId, item.instanceDomain, diagnostic);
+            errors += 1;
+            console.warn(formatMetricLog(
+              "metadata", [["video", videoOrdinal], ["updated", updated], ["errors", errors]],
+              detailResult.kind === "unknown" ? "error" : "invalid", subject
+            ));
+            continue;
+          }
+          const detail = detailResult.detail;
           try {
-            const detailResult = await fetchVideoDetail(
-              host,
-              item.videoUuid,
-              options,
-              "https:",
-              limiter
-            );
-            const detail = detailResult.detail;
             const channelRef = detail.channel;
+            // Metadata maintenance intentionally preserves its pre-existing
+            // modern-array-only thumbnail ownership. Legacy/empty repair is
+            // owned by normal crawl and dedicated thumbnail maintenance.
+            const thumbnailCandidates = resolveThumbnailCandidates(
+              detail.thumbnails,
+              host,
+              detailResult.protocol
+            );
             const built = await toVideoRow(
               detail,
               host,
-              detailResult.protocol,
               {
                 channelId: toStringId(channelRef?.id),
                 channelSlug: toNullableString(channelRef?.name) ?? "",
@@ -1269,8 +1380,13 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
                 ),
                 channelUrl: toNullableString(channelRef?.url)
               },
-              Date.now(),
-              detailResult,
+              detailResult.checkedAt,
+              {
+                kind: "available",
+                detail,
+                protocol: detailResult.protocol,
+                thumbnailCandidates
+              },
               options,
               limiter
             );
@@ -1309,34 +1425,20 @@ async function crawlVideoMetadata(options: VideoCrawlOptions) {
               )
             );
           } catch (error) {
+            // A projection/DB failure must not reinterpret a validated video detail.
+            if (isNoNetworkError(error)) throw error;
             const message = error instanceof Error ? error.message : String(error);
-            const status = extractHttpStatus(message);
-            // A successful PeerTube detail response that says the resource is
-            // gone is definitive for this stored UUID. Transient transport,
-            // rate-limit, and server failures deliberately remain resumable.
-            if (status === 404 || status === 410) {
-              store.updateVideoInvalid(
-                item.videoId,
-                item.instanceDomain,
-                status === 404 ? "not_found" : "gone"
-              );
-            } else {
-              store.updateVideoError(item.videoId, item.instanceDomain, message);
-            }
+            store.updateVideoError(item.videoId, item.instanceDomain, message);
             errors += 1;
-            console.warn(
-              formatMetricLog(
-                "metadata",
-                [["video", videoOrdinal], ["updated", updated], ["errors", errors]],
-                status === 404 || status === 410 ? "invalid" : "error",
-                subject
-              )
-            );
+            console.warn(formatMetricLog(
+              "metadata", [["video", videoOrdinal], ["updated", updated], ["errors", errors]],
+              "error", subject
+            ));
           }
         }
       }
     });
-    await Promise.all(workers);
+    await drainVideoWorkers(workers, () => { queue.length = 0; }, cancellation);
     console.log("[metadata] finished");
   } finally {
     store.close();
@@ -1354,11 +1456,11 @@ async function refreshVideoThumbnails(options: VideoCrawlOptions) {
   // Thumbnail maintenance must never become an implicit schema-migration path.
   assertThumbnailMaintenanceSchema(options.dbPath);
   const store = new VideoStore({ dbPath: options.dbPath, initializeSchema: false });
-  const includedHosts = loadHostsFromFile(options.hostsFile);
+  const includedHosts = loadIncludedHostsFromFile(options.hostsFile);
   const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
   const items = store.listVideosForThumbnailRefresh(options.resume);
   const grouped = groupByInstance(items);
-  const scopedHosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts);
+  const scopedHosts = scopeHosts(Array.from(grouped.keys()), includedHosts, excludedHosts, options.hosts);
   // Apply the same persisted `health_status = ok` contract as metadata after
   // explicit include/exclude scope. This avoids retrying known failed hosts
   // while preserving the unfiltered full-refresh behavior unless requested.
@@ -1381,11 +1483,12 @@ async function refreshVideoThumbnails(options: VideoCrawlOptions) {
   );
 
   try {
+    const cancellation: WorkCancellation = options.cancellation ?? { stopped: false };
     const queue = hosts.slice();
     const workers = Array.from({ length: workerCount }, () =>
-      thumbnailWorkerLoop(queue, grouped, store, options, nextVideoOrdinal, progress)
+      thumbnailWorkerLoop(queue, grouped, store, options, nextVideoOrdinal, progress, cancellation)
     );
-    await Promise.all(workers);
+    await drainVideoWorkers(workers, () => { queue.length = 0; }, cancellation);
     console.log("[thumbnails] finished");
   } finally {
     store.close();
@@ -1404,142 +1507,122 @@ async function thumbnailWorkerLoop(
   store: VideoStore,
   options: VideoCrawlOptions,
   nextVideoOrdinal: () => string,
-  progress: { updated: number; errors: number }
+  progress: { updated: number; errors: number },
+  cancellation: WorkCancellation
 ) {
-  while (true) {
+  while (!cancellation.stopped) {
     const host = queue.shift();
     if (!host) return;
     const rows = grouped.get(host) ?? [];
-    const requestLimiter = createRequestLimiter(options.hostConcurrency, options.hostDelayMs);
+    const requestLimiter = createRequestLimiter(
+      options.hostConcurrency, options.hostDelayMs,
+    () => assertWorkActive(cancellation),
+    (error) => { if (isNoNetworkError(error)) stopWork(cancellation, error); }
+    );
     for (const row of rows) {
+      if (cancellation.stopped) return;
       // Allocate before I/O to retain a stable crawl-wide position even when
       // multiple hosts finish details in a different order.
       const videoOrdinal = nextVideoOrdinal();
       const subject = `${host}/${row.videoUuid}`;
-      try {
-        const { detail, protocol } = await fetchVideoDetail(
-          host,
-          row.videoUuid,
-          options,
-          "https:",
-          requestLimiter
-        );
-        const candidates = resolveThumbnailCandidates(detail.thumbnails, host, protocol);
-        const checkedAt = Date.now();
-        if (candidates === null) {
-          // A successful legacy-shaped detail response is not authoritative for
-          // candidate state. Preserve every persisted thumbnail field so SQL NULL
-          // remains resumable and prior authoritative arrays cannot be downgraded.
+      const result = await fetchVideoDetailResult<PeerTubeVideoDetail>(
+        host,
+        row.videoUuid,
+        options,
+        "https:",
+        requestLimiter
+      );
+      switch (result.kind) {
+        case "available": {
+          try {
+            const candidates = projectDetailThumbnailCandidates(
+              result.detail,
+              host,
+              result.protocol
+            );
+            if (candidates === null) {
+              const message = "video detail has no recognized thumbnail representation";
+              store.updateVideoError(row.videoId, row.instanceDomain, message);
+              progress.errors += 1;
+              console.warn(
+                `${formatMetricLog(
+                  "thumbnails",
+                  [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
+                  "incomplete",
+                  subject
+                )}: ${message}`
+              );
+              break;
+            }
+
+            store.updateVideoThumbnailCandidates(
+              row.videoId,
+              row.instanceDomain,
+              candidates,
+              result.checkedAt
+            );
+            progress.updated += 1;
+            console.log(
+              formatMetricLog(
+                "thumbnails",
+                [
+                  ["video", videoOrdinal],
+                  ["updated", progress.updated],
+                  ["errors", progress.errors],
+                  ["candidates", candidates.length]
+                ],
+                candidates.length === 0 ? "empty" : "",
+                subject
+              )
+            );
+            break;
+          } catch (error) {
+            // Projection and SQLite errors are diagnostics, never video absence.
+            if (isNoNetworkError(error)) throw error;
+            const message = error instanceof Error ? error.message : String(error);
+            store.updateVideoError(row.videoId, row.instanceDomain, message);
+            progress.errors += 1;
+            console.warn(`${formatMetricLog(
+              "thumbnails",
+              [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
+              "error", subject
+            )}: ${message}`);
+          }
+          break;
+        }
+        case "not_found":
+        case "gone":
+          // Thumbnail errors retain diagnostics without acquiring canonical ownership.
+          store.updateVideoError(
+            row.videoId,
+            row.instanceDomain,
+            result.kind === "not_found" ? "not_found" : "gone"
+          );
+          progress.errors += 1;
           console.warn(
             formatMetricLog(
               "thumbnails",
               [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
-              "legacy",
+              "invalid",
               subject
             )
           );
-        } else {
-          store.updateVideoThumbnailCandidates(
-            row.videoId,
-            row.instanceDomain,
-            candidates,
-            checkedAt
+          break;
+        case "unknown":
+          store.updateVideoError(row.videoId, row.instanceDomain, result.error.message);
+          progress.errors += 1;
+          console.warn(
+            `${formatMetricLog(
+              "thumbnails",
+              [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
+              "error",
+              subject
+            )}: ${result.error.message}`
           );
-          progress.updated += 1;
-          // Successful modern detail is visible in the operator log as well as
-          // SQLite so a long maintenance run has an auditable success signal.
-          if (candidates.length === 0) {
-            console.log(
-              formatMetricLog(
-                "thumbnails",
-                [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors], ["candidates", 0]],
-                "empty",
-                subject
-              )
-            );
-          } else {
-            console.log(
-              `${formatMetricLog(
-                "thumbnails",
-                [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors], ["candidates", candidates.length]],
-                "done",
-                subject
-              )} primary=${candidates[0].url}`
-            );
-          }
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const status = extractHttpStatus(message);
-        // A gone detail UUID is definitive and becomes excluded from future
-        // maintenance. Other errors remain retryable but are recorded so
-        // operators can distinguish unstable remotes from completed work.
-        if (status === 404 || status === 410) {
-          store.updateVideoInvalid(
-            row.videoId,
-            row.instanceDomain,
-            status === 404 ? "not_found" : "gone"
-          );
-        } else {
-          store.updateVideoError(row.videoId, row.instanceDomain, message);
-        }
-        progress.errors += 1;
-        console.warn(
-          `${formatMetricLog(
-            "thumbnails",
-            [["video", videoOrdinal], ["updated", progress.updated], ["errors", progress.errors]],
-            status === 404 || status === 410 ? "invalid" : "error",
-            subject
-          )}: ${message}`
-        );
+          break;
       }
     }
   }
-}
-
-/**
- * Handle fetch video tags.
- */
-async function fetchVideoTags(
-  host: string,
-  videoUuid: string,
-  options: VideoCrawlOptions,
-  requestLimiter: RequestLimiter
-): Promise<string | null> {
-  const { detail } = await fetchVideoDetail(
-    host,
-    videoUuid,
-    options,
-    "https:",
-    requestLimiter
-  );
-  return toTagsJson(detail.tags);
-}
-
-/**
- * Handle fetch video comments.
- */
-async function fetchVideoComments(
-  host: string,
-  videoUuid: string,
-  options: VideoCrawlOptions,
-  requestLimiter: RequestLimiter
-): Promise<number | null> {
-  const { detail } = await fetchVideoDetail(
-    host,
-    videoUuid,
-    options,
-    "https:",
-    requestLimiter
-  );
-  return toCommentsCount(detail.comments ?? detail.commentsCount ?? detail.comments_count);
-}
-
-/**
- * Handle build video detail url.
- */
-function buildVideoDetailUrl(host: string, videoUuid: string, protocol: string) {
-  return `${protocol}//${host}/api/v1/videos/${encodeURIComponent(videoUuid)}`;
 }
 
 /**
@@ -1574,57 +1657,4 @@ function queryExternalExistingVideoIds(
     )
     .all(instanceDomain, ...ids) as { video_id: string }[];
   return new Set(rows.map((row) => row.video_id));
-}
-
-/**
- * Handle extract http status.
- */
-function extractHttpStatus(message: string): number | null {
-  const match = message.match(/HTTP (\d{3})/);
-  if (!match) return null;
-  return Number(match[1]);
-}
-
-/**
- * Handle extract error code.
- */
-function extractErrorCode(error: unknown): string | null {
-  if (!error || typeof error !== "object") return null;
-  const err = error as { code?: string; cause?: { code?: string } };
-  return err.cause?.code ?? err.code ?? null;
-}
-
-/**
- * Check whether is cert expired.
- */
-function isCertExpired(code: string | null, message: string): boolean {
-  if (typeof code === "string" && code.toUpperCase() === "CERT_HAS_EXPIRED") return true;
-  return message.toLowerCase().includes("certificate has expired");
-}
-
-/**
- * Check whether is tls error.
- */
-function isTlsError(code: string | null, message: string): boolean {
-  if (typeof code === "string") {
-    const upper = code.toUpperCase();
-    if (upper.includes("CERT") || upper.includes("SSL") || upper.includes("TLS")) {
-      return true;
-    }
-  }
-  const lowered = message.toLowerCase();
-  return lowered.includes("certificate") || lowered.includes("ssl") || lowered.includes("tls");
-}
-
-/**
- * Check whether is timeout error.
- */
-function isTimeoutError(code: string | null, message: string): boolean {
-  if (typeof code === "string") {
-    const upper = code.toUpperCase();
-    if (upper.includes("TIMEOUT")) {
-      return true;
-    }
-  }
-  return message.toLowerCase().includes("timeout");
 }

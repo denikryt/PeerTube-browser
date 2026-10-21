@@ -21,6 +21,7 @@ from data.embeddings import normalize_vector, resolve_seed
 from data.metadata import fetch_metadata_by_index_ids
 from data.random_videos import fetch_random_rows, fetch_random_rows_from_cache
 from data.serving_moderation import apply_serving_moderation_filters
+from data.parent_health_visibility import build_parent_visibility_sql
 from data.video_filters import VideoFilters, matches_video_filters
 from data.similarity_candidates import SimilarityCandidatesPolicy, get_similar_candidates
 from data.time import now_ms
@@ -169,6 +170,7 @@ def _resolve_client_likes(server: Any, likes: list[dict[str, str]]) -> list[dict
         seen.add(key)
         unique.append(entry)
 
+    # Availability applies to every identity before it enters request-local likes.
     conditions = " OR ".join(["(video_uuid = ? AND instance_domain = ?)"] * len(unique))
     params: list[Any] = []
     for entry in unique:
@@ -178,8 +180,9 @@ def _resolve_client_likes(server: Any, likes: list[dict[str, str]]) -> list[dict
         rows = server.db.execute(
             f"""
             SELECT video_id, video_uuid, instance_domain
-            FROM videos
-            WHERE {conditions}
+            FROM videos AS v
+            WHERE v.invalid_reason IS NULL AND {build_parent_visibility_sql("v")}
+              AND ({conditions})
             """,
             params,
         ).fetchall()
@@ -245,14 +248,13 @@ def _extract_video_id_from_similar_path(path: str) -> str | None:
 
 def fetch_random_rows_from_server(server: Any, limit: int) -> list[dict[str, Any]]:
     """Fetch random rows through the current cache-first fallback contract."""
-    rows = fetch_random_rows_from_cache(server, limit, error_threshold=server.video_error_threshold)
+    rows = fetch_random_rows_from_cache(server, limit)
     if rows:
         return rows
     with server.db_lock:
         return fetch_random_rows(
             server.db,
             limit,
-            error_threshold=server.video_error_threshold,
         )
 
 
@@ -465,7 +467,6 @@ def handle_vector_search(
         metadata = fetch_metadata_by_index_ids(
             server.db,
             index_ids,
-            error_threshold=server.video_error_threshold,
         )
     meta_ms = int((perf_counter() - meta_start) * 1000)
     logging.info(

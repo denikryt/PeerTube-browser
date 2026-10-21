@@ -7,11 +7,12 @@ while making parser construction testable through an optional argv parameter.
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
-from .paths import JOBS_DIR, REPO_ROOT, SERVER_DIR
+from .paths import JOBS_DIR, REPO_ROOT, SERVER_DIR, from_args, validate_updater_output_paths
 
 if str(SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(SERVER_DIR))
@@ -81,15 +82,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
         formatter_class=CompactHelpFormatter,
     )
+    availability_group = parser.add_mutually_exclusive_group()
+    availability_group.add_argument(
+        "--check-existing-video-availability",
+        action="store_true",
+        help="Report-only sweep of existing production videos before embeddings/merge.",
+    )
+    availability_group.add_argument(
+        "--apply-existing-video-availability",
+        action="store_true",
+        help="Sweep existing videos, then publish canonical availability while Engine is offline.",
+    )
     parser.add_argument("--prod-db", default=str(default_prod), help="Path to prod DB.")
     parser.add_argument("--staging-db", default=str(default_stage), help="Path to staging DB.")
     parser.add_argument(
         "--resume-staging",
         action="store_true",
         help=(
-            "Reuse existing staging DB and crawler progress tables instead of "
-            "recreating staging from scratch."
+            "Reuse staging rows but restart parent enumeration at page zero "
+            "with fresh health checks (except explicit count/video --retry-errors)."
         ),
+    )
+    parser.add_argument(
+        "--resume-crawl", action="store_true",
+        help="Continue saved crawler work in staging; replay unfinished channel hosts from page zero.",
     )
     parser.add_argument("--index-path", default=str(default_index), help="Path to ANN index file.")
     parser.add_argument(
@@ -209,7 +225,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--retry-errors",
         action="store_true",
         help=(
-            "Retry only failed channel, video, and video-count records already "
+            "Retry only failed video and video-count records already "
             "stored in a resumed staging DB, then stop before embeddings and merge."
         ),
     )
@@ -281,6 +297,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.set_defaults(use_gpu=True)
     args = parser.parse_args(argv)
+    if args.resume_crawl:
+        args.resume_staging = True
+        if (args.retry_errors or args.host_pipeline or args.sync_join_whitelist
+            or args.check_existing_video_availability or args.apply_existing_video_availability
+            or args.max_channels):
+            parser.error("--resume-crawl requires ordinary unbounded crawler mode")
     if args.retry_errors and not args.resume_staging:
         parser.error("--retry-errors requires --resume-staging so recorded failures are preserved.")
     if args.retry_errors and args.host_pipeline:
@@ -293,6 +315,45 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         # Resolve the operator-supplied file against the updater invocation cwd
         # before pipeline stages switch cwd to engine/crawler for Node CLIs.
         args.hosts_file = str(Path(args.hosts_file).resolve())
+    try:
+        validate_availability_sweep_mode(args)
+        # Logging and service-name discovery happen outside run_pipeline, so
+        # CLI authorization must reject every writable alias before returning.
+        validate_updater_output_paths(from_args(args))
+    except (ValueError, OSError, RuntimeError) as exc:
+        parser.error(str(exc))
     if not args.service_name:
         args.service_name = resolve_default_engine_service_name(args.mode)
     return args
+
+
+def validate_availability_sweep_mode(args) -> set[str] | None:
+    """Validate opt-in boundaries before paths, locks, DB writes or HTTP.
+
+    Return the normalized inclusion snapshot; explicit empty input is never all.
+    """
+    report = getattr(args, "check_existing_video_availability", False)
+    apply = getattr(args, "apply_existing_video_availability", False)
+    if type(report) is not bool or type(apply) is not bool or (report and apply):
+        raise ValueError("Availability report/apply flags must be mutually exclusive booleans")
+    if not (report or apply):
+        return None
+    # Retry is deliberately a staging count/video repair with no publication;
+    # normal host pipeline and strict sync own independent fresh parent probes.
+    if getattr(args, "retry_errors", False):
+        raise ValueError("Availability report/apply cannot combine with --retry-errors")
+    from .staging import load_scoped_hosts_file, require_sqlite_json_each
+
+    hosts = None
+    if getattr(args, "hosts_file", None) is not None:
+        if not args.hosts_file.strip():
+            raise ValueError("Availability --hosts-file must name a readable nonempty host file")
+        hosts = load_scoped_hosts_file(Path(args.hosts_file))
+        if not hosts:
+            raise ValueError(
+                "Availability --hosts-file must contain a nonempty normalized host set"
+            )
+    require_sqlite_json_each()
+    if apply and sqlite3.sqlite_version_info < (3, 33, 0):
+        raise RuntimeError("Availability publication requires SQLite >= 3.33.0 (UPDATE FROM)")
+    return hosts

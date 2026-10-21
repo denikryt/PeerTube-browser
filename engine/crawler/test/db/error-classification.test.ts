@@ -33,3 +33,75 @@ test("error policy retries only transient failures and limits protocol fallback"
   assert.equal(shouldTryAlternateProtocol(timeout), true);
   assert.equal(shouldTryAlternateProtocol(wrongProtocol), true);
 });
+
+test("structural HTTP status is authoritative while message parsing remains a fallback", () => {
+  const structural = Object.assign(new Error("remote text says HTTP 404"), { status: 503 });
+  const structuralResult = classifyCrawlError(structural);
+  assert.deepEqual(structuralResult, {
+    kind: "http_503",
+    retryable: true,
+    tryAlternateProtocol: false,
+    httpStatus: 503
+  });
+
+  const structuralWithTransportText = Object.assign(new Error("timeout while reading HTTP response"), {
+    status: 503
+  });
+  assert.deepEqual(classifyCrawlError(structuralWithTransportText), {
+    kind: "http_503",
+    retryable: true,
+    tryAlternateProtocol: false,
+    httpStatus: 503
+  });
+
+  const messageOnlyTimeout = new Error("timeout after text mentioning HTTP 503");
+  assert.deepEqual(classifyCrawlError(messageOnlyTimeout), {
+    kind: "timeout",
+    retryable: true,
+    tryAlternateProtocol: true,
+    httpStatus: null
+  });
+
+  const fallback = classifyCrawlError(new Error("HTTP 410 for https://example.test"));
+  assert.equal(fallback.httpStatus, 410);
+  assert.equal(fallback.kind, "http_410");
+
+  const malformedStructural = Object.assign(new Error("HTTP 429 for https://example.test"), {
+    status: 42
+  });
+  assert.equal(classifyCrawlError(malformedStructural).httpStatus, 429);
+});
+
+test("JSON decoder syntax errors cannot synthesize HTTP absence from diagnostic text", () => {
+  for (const status of [404, 410]) {
+    const decoded = new SyntaxError(`Unexpected token while decoding HTTP ${status}`);
+    assert.deepEqual(classifyCrawlError(decoded), {
+      kind: "invalid_json",
+      retryable: false,
+      tryAlternateProtocol: false,
+      httpStatus: null
+    });
+  }
+
+  const actualHttp = Object.assign(new Error("HTTP 404 for https://example.test"), { status: 404 });
+  assert.equal(classifyCrawlError(actualHttp).httpStatus, 404);
+});
+
+test("structured curl connect refusal is retryable without reclassifying other curl failures", () => {
+  const refused = Object.assign(new Error("curl: connection refused"), { curlExitCode: 7 });
+  assert.deepEqual(classifyCrawlError(refused), {
+    kind: "network",
+    retryable: true,
+    tryAlternateProtocol: true,
+    httpStatus: null
+  });
+  assert.equal(formatCrawlError(refused), "[network] curl: connection refused");
+
+  const unrelated = Object.assign(new Error("curl: unexpected failure"), { curlExitCode: 23 });
+  assert.equal(classifyCrawlError(unrelated).retryable, false);
+  assert.equal(classifyCrawlError(unrelated).kind, "unknown");
+
+  // An actual HTTP response remains authoritative over a transport diagnostic.
+  const response = Object.assign(new Error("HTTP 404"), { status: 404, curlExitCode: 7 });
+  assert.equal(classifyCrawlError(response).kind, "http_404");
+});

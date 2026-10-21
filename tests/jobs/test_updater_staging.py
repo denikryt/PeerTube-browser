@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
+import pytest
+from engine.server.db.jobs.updater import staging
 from pathlib import Path
 
 from engine.server.db.jobs.updater.staging import (
@@ -50,6 +52,22 @@ def _create_current_identity_db(path) -> None:
             """
         )
         conn.commit()
+
+
+def _stamp_current_updater_stage(conn: sqlite3.Connection) -> None:
+    """Stamp the exact writer semantics and corpus kind required by updater staging."""
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO crawl_state VALUES(?, ?)",
+        (staging.AVAILABILITY_SEMANTICS_KEY, staging.AVAILABILITY_SEMANTICS_VALUE),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO crawl_state VALUES(?, ?)",
+        (staging.VIDEO_CORPUS_ROLE_KEY, staging.UPDATER_STAGING_ROLE),
+    )
 
 
 def test_remove_db_with_sidecars_removes_all_files(tmp_path) -> None:
@@ -450,6 +468,8 @@ def test_merge_invalidates_prepared_snapshot_when_any_video_rule_changes_rows(mo
         lambda: SimpleNamespace(prod_db=str(prod), staging_db=str(stage), rules=str(rules)),
     )
 
+    with sqlite3.connect(stage) as marker_conn:
+        _stamp_current_updater_stage(marker_conn)
     mod.main()
 
     with sqlite3.connect(prod) as conn:
@@ -479,6 +499,8 @@ def test_merge_noop_video_rule_keeps_prepared_snapshot(monkeypatch, tmp_path) ->
         lambda: SimpleNamespace(prod_db=str(prod), staging_db=str(stage), rules=str(rules)),
     )
 
+    with sqlite3.connect(stage) as marker_conn:
+        _stamp_current_updater_stage(marker_conn)
     mod.main()
 
     with sqlite3.connect(prod) as conn:
@@ -519,9 +541,159 @@ def test_merge_failure_rolls_back_video_change_and_snapshot_invalidation(monkeyp
         lambda: SimpleNamespace(prod_db=str(prod), staging_db=str(stage), rules=str(rules)),
     )
 
+    with sqlite3.connect(stage) as marker_conn:
+        _stamp_current_updater_stage(marker_conn)
     with __import__("pytest").raises(sqlite3.IntegrityError, match="no channel"):
         mod.main()
 
     with sqlite3.connect(prod) as conn:
         assert conn.execute("SELECT video_id FROM videos ORDER BY video_id").fetchall() == [("old",)]
         assert conn.execute("SELECT COUNT(*) FROM video_facets_snapshot").fetchone()[0] == 1
+
+
+@pytest.mark.parametrize(
+    "semantics,role,accepted",
+    [
+        (None, None, False),
+        ("canonical_absence_v1", "updater_staging_delta", False),
+        ("canonical_absence_atomic_ingest_v2 ", "updater_staging_delta", False),
+        ("canonical_absence_atomic_ingest_v2", None, False),
+        ("canonical_absence_atomic_ingest_v2", "future_role", False),
+        ("canonical_absence_atomic_ingest_v2", "updater_staging_delta", True),
+    ],
+)
+def test_video_availability_path_validator_accepts_only_exact_pair_without_mutation(
+    tmp_path, semantics, role, accepted
+):
+    """Resume requires exact writer provenance plus updater corpus kind without mutation."""
+    path = tmp_path / "stage ? space.db"
+    with sqlite3.connect(path) as conn:
+        if semantics is not None or role is not None:
+            conn.execute("CREATE TABLE crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+        if semantics is not None:
+            conn.execute(
+                "INSERT INTO crawl_state VALUES(?,?)", (staging.AVAILABILITY_SEMANTICS_KEY, semantics)
+            )
+        if role is not None:
+            conn.execute(
+                "INSERT INTO crawl_state VALUES(?,?)", (staging.VIDEO_CORPUS_ROLE_KEY, role)
+            )
+    before = path.read_bytes()
+    if accepted:
+        staging.assert_video_availability_staging_semantics(path)
+    else:
+        with pytest.raises(RuntimeError, match="recreate"):
+            staging.assert_video_availability_staging_semantics(path)
+    assert path.read_bytes() == before
+
+
+def test_fresh_staging_stamps_marker_and_seed_preserves_it(tmp_path):
+    """Fresh init replaces legacy DB/sidecars; normal seeding preserves the marker."""
+    root = Path(__file__).resolve().parents[2]
+    path, prod = tmp_path / "stage.db", tmp_path / "prod.db"
+    for suffix in ["", "-wal", "-shm"]:
+        Path(str(path) + suffix).write_bytes(b"legacy")
+    schema = root / "engine/crawler/schema.sql"
+    init_staging_db(path, schema)
+    staging.assert_video_availability_staging_semantics(path)
+    with sqlite3.connect(prod) as conn:
+        conn.executescript(schema.read_text())
+        conn.execute("INSERT INTO instances(host) VALUES('example.org')")
+    seed_staging_from_prod(prod, path)
+    staging.assert_video_availability_staging_semantics(path)
+    with sqlite3.connect(path) as conn:
+        assert conn.execute(
+            "SELECT value FROM crawl_state WHERE key='video_availability_semantics'"
+        ).fetchone() == ("canonical_absence_atomic_ingest_v2",)
+        assert conn.execute(
+            "SELECT value FROM crawl_state WHERE key='video_corpus_role'"
+        ).fetchone() == ("updater_staging_delta",)
+        with pytest.raises(ValueError):
+            staging.assert_video_availability_staging_semantics_conn(conn, "untrusted; DROP TABLE videos")
+
+
+@pytest.mark.parametrize(
+    "marked,legacy",
+    [(False, "missing-table"), (False, "missing-key"), (False, "wrong-value"), (True, "marked")],
+)
+@pytest.mark.parametrize("replace_path", [False, True])
+def test_merge_authorizes_exact_attached_generation(
+    monkeypatch, tmp_path, marked, legacy, replace_path
+):
+    """Path replacement cannot authorize legacy A or revoke already attached marked A."""
+    from types import SimpleNamespace
+
+    mod = _load_merge_job()
+    prod, stage, replacement = [tmp_path / n for n in ["prod.db", "stage.db", "replacement.db"]]
+    for path, marker, video_id in [
+        (prod, False, "old"),
+        (stage, marked, "attached-a"),
+        (replacement, not marked, "replacement-b"),
+    ]:
+        with sqlite3.connect(path) as conn:
+            conn.execute("CREATE TABLE videos(video_id TEXT PRIMARY KEY,title TEXT)")
+            conn.execute("INSERT INTO videos VALUES(?,?)", (video_id, video_id))
+            if path != stage or marked or legacy != "missing-table":
+                conn.execute("CREATE TABLE crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+            if path == stage and not marked and legacy == "wrong-value":
+                conn.execute(
+                    "INSERT INTO crawl_state VALUES('video_availability_semantics','legacy_transient_invalidity')"
+                )
+            if marker:
+                _stamp_current_updater_stage(conn)
+    rules = tmp_path / "rules.json"
+    _write_merge_rules(rules, [{"name": "videos", "strategy": "INSERT_ONLY", "keys": ["video_id"]}])
+    monkeypatch.setattr(
+        mod,
+        "parse_args",
+        lambda: SimpleNamespace(prod_db=str(prod), staging_db=str(stage), rules=str(rules)),
+    )
+    real_validate = mod.validate_merge_schema
+
+    def validate(conn, rules):
+        """Replace pathname after ATTACH while schema/merge continue on attached A."""
+        result = real_validate(conn, rules)
+        if replace_path:
+            replacement.replace(stage)
+        return result
+
+    monkeypatch.setattr(mod, "validate_merge_schema", validate)
+    if marked:
+        mod.main()
+    else:
+        with pytest.raises(RuntimeError, match="recreate"):
+            mod.main()
+    with sqlite3.connect(prod) as conn:
+        assert conn.execute("SELECT video_id FROM videos ORDER BY video_id").fetchall() == (
+            [("attached-a",), ("old",)] if marked else [("old",)]
+        )
+
+
+def test_merge_rejects_roleless_current_writer_source_before_production_dml(monkeypatch, tmp_path) -> None:
+    """A standalone-shaped v2 DB is not an updater delta even when schemas match."""
+    from types import SimpleNamespace
+
+    mod = _load_merge_job()
+    prod, stage = tmp_path / "prod-roleless.db", tmp_path / "stage-roleless.db"
+    rules = tmp_path / "rules-roleless.json"
+    for path, video_id in [(prod, "old"), (stage, "candidate")]:
+        with sqlite3.connect(path) as conn:
+            conn.execute("CREATE TABLE videos(video_id TEXT PRIMARY KEY,title TEXT)")
+            conn.execute("INSERT INTO videos VALUES(?,?)", (video_id, video_id))
+    with sqlite3.connect(stage) as conn:
+        conn.execute("CREATE TABLE crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+        conn.execute(
+            "INSERT INTO crawl_state VALUES(?,?)",
+            (staging.AVAILABILITY_SEMANTICS_KEY, staging.AVAILABILITY_SEMANTICS_VALUE),
+        )
+    _write_merge_rules(rules, [{"name": "videos", "strategy": "INSERT_ONLY", "keys": ["video_id"]}])
+    monkeypatch.setattr(
+        mod,
+        "parse_args",
+        lambda: SimpleNamespace(prod_db=str(prod), staging_db=str(stage), rules=str(rules)),
+    )
+
+    with pytest.raises(RuntimeError, match="recreate"):
+        mod.main()
+    with sqlite3.connect(prod) as conn:
+        assert conn.execute("SELECT video_id FROM videos ORDER BY video_id").fetchall() == [("old",)]

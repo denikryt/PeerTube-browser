@@ -2,7 +2,7 @@
  * Runtime schema helpers for the TypeScript crawler database.
  *
  * The helpers apply the current schema.sql file and preserve the compatibility
- * migrations that used to live in db.ts. Stage 7 moves ownership only; it must
+ * migrations that used to live in db.ts. crawler database split moves ownership only; it must
  * not change table, column, index, or compatibility migration behavior.
  */
 

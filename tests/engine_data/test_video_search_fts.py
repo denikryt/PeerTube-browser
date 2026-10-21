@@ -1,8 +1,11 @@
 """Behavior tests for the SQLite FTS5 lightweight video search index."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
+import pytest
 
+from data.serving_moderation import ServingVisibility
 from engine.server.data.video_search import rebuild_video_search_index, search_videos
 
 
@@ -67,6 +70,7 @@ def _db() -> sqlite3.Connection:
         CREATE TABLE channel_moderation (channel_id TEXT, instance_domain TEXT, status TEXT, PRIMARY KEY(channel_id, instance_domain));
         """
     )
+    ensure_parent_health_schema(conn)
     conn.execute(
         "INSERT INTO channels(channel_id, channel_name, display_name, instance_domain, followers_count) VALUES (?, ?, ?, ?, ?)",
         ("c1", "linuxchannel", "Linux Lab", "a.example", 10),
@@ -103,6 +107,22 @@ def test_rebuild_creates_tables_and_searches_indexed_fields() -> None:
             assert "thumbnail_candidates_json" not in rows[0]
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize("reason", [None, "not_found", "gone", "unknown", ""])
+def test_search_source_uses_exact_availability_independent_of_error_count(reason):
+    """High diagnostic counts never hide canonically available search rows."""
+    conn = _db()
+    conn.execute("UPDATE videos SET invalid_reason=?,error_count=10 WHERE video_id='v1'", (reason,))
+    rebuild_video_search_index(conn)
+    assert bool(conn.execute("SELECT 1 FROM video_search_docs WHERE video_id='v1'").fetchone()) == (
+        reason is None
+    )
+    rows, _ = search_videos(
+        conn, query="Linux", limit=10, offset=0, visibility=ServingVisibility()
+    )
+    assert [row["video_id"] for row in rows] == (["v1"] if reason is None else [])
+    conn.close()
 
 
 def test_description_only_terms_are_not_indexed_and_rebuild_is_idempotent() -> None:
@@ -163,3 +183,21 @@ def test_search_filter_no_match_is_empty_not_error() -> None:
         assert search_videos(conn, query="linux", limit=5, offset=0, filters=VideoFilters(language="uk")) == ([], None)
     finally:
         conn.close()
+
+
+def test_stale_search_tokens_cannot_bypass_runtime_availability():
+    """Before rebuild, canonical invalidity still removes a document from live Search."""
+    conn = _db()
+    rebuild_video_search_index(conn)
+    rows, _ = search_videos(conn, query="Linux", limit=10, offset=0)
+    assert [r["video_id"] for r in rows] == ["v1"]
+    conn.execute("UPDATE videos SET invalid_reason='' WHERE video_id='v1'")
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM video_search_fts WHERE video_search_fts MATCH 'Linux'"
+        ).fetchone()[0]
+        == 1
+    )
+    rows, _ = search_videos(conn, query="Linux", limit=10, offset=0)
+    assert rows == []
+    conn.close()

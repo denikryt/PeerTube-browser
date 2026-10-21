@@ -40,21 +40,26 @@ export class NoNetworkError extends Error {
  * Check whether is no network error.
  */
 export function isNoNetworkError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  if (error instanceof NoNetworkError) return true;
-  const err = error as { code?: string; cause?: { code?: string } };
-  const code = err.cause?.code ?? err.code;
-  if (typeof code !== "string" || code.length === 0) return false;
-  const upper = code.toUpperCase();
-  return (
-    upper === "ENETUNREACH" ||
-    upper === "EHOSTUNREACH" ||
-    upper === "ENOTFOUND" ||
-    upper === "EAI_AGAIN" ||
-    upper === "ECONNREFUSED" ||
-    upper === "ETIMEDOUT" ||
-    upper === "ETIMEOUT"
+  // Only a positively identified process-wide outage is fatal. An ordinary
+  // target's DNS/connection/timeout failure does not prove the local network
+  // is down, and must stay available for per-host classification and retry.
+  return error instanceof NoNetworkError || (
+    typeof error === "object" && error !== null &&
+    "code" in error && error.code === "NO_NETWORK"
   );
+}
+
+/** Recognize native-fetch transport codes eligible for the existing curl fallback.
+ * This is independent of the fatal process-wide network-outage signal.
+ */
+function shouldTryCurl(error: unknown): boolean {
+  if (isNoNetworkError(error) || !error || typeof error !== "object") return false;
+  const value = error as { code?: unknown; cause?: { code?: unknown } };
+  const code = value.cause?.code ?? value.code;
+  return typeof code === "string" && [
+    "ENETUNREACH", "EHOSTUNREACH", "ENOTFOUND", "EAI_AGAIN",
+    "ECONNREFUSED", "ETIMEDOUT", "ETIMEOUT"
+  ].includes(code.toUpperCase());
 }
 
 export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): Promise<T> {
@@ -82,7 +87,7 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
           }
         });
       } catch (error) {
-        if (!isNoNetworkError(error)) {
+        if (!shouldTryCurl(error)) {
           throw error;
         }
         response = await fetchViaCurl(url, options);
@@ -91,17 +96,30 @@ export async function fetchJsonWithRetry<T>(url: string, options: HttpOptions): 
       if (!response.ok) {
         const statusError = new Error(`HTTP ${response.status} for ${url}`) as Error & {
           retryAfterMs?: number | null;
+          status?: number;
         };
+        // Preserve the numeric Response status as structured data so callers
+        // never have to infer protocol semantics from human-readable text.
+        statusError.status = response.status;
         statusError.retryAfterMs = parseRetryAfter(response.headers.get("retry-after"));
         throw statusError;
       }
 
-      return (await response.json()) as T;
-    } catch (error) {
-      if (isNoNetworkError(error)) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new NoNetworkError(message);
+      try {
+        return (await response.json()) as T;
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          // Keep decoder diagnostics local and fixed. Some runtimes include
+          // remote response text in SyntaxError.message, while legacy video
+          // maintenance still has a temporary message-based HTTP fallback.
+          throw new SyntaxError("invalid JSON response", { cause: error });
+        }
+        throw error;
       }
+    } catch (error) {
+      // Preserve the original local-outage evidence without retry, fallback or
+      // conversion to a remote-health observation.
+      if (isNoNetworkError(error)) throw error;
       const classification = classifyCrawlError(error);
       if (!classification.retryable || attempt > options.maxRetries) {
         throw error;
@@ -155,10 +173,16 @@ async function fetchViaCurl(url: string, options: HttpOptions): Promise<Response
     }
     return new Response(body, { status });
   } catch (error) {
-    const err = error as { stderr?: string; message?: string };
+    const err = error as { code?: unknown; stderr?: string; message?: string };
     const stderr = typeof err.stderr === "string" ? err.stderr.trim() : "";
     const message = stderr || err.message || "curl failed";
-    throw new Error(`curl: ${message}`);
+    const curlError = new Error(`curl: ${message}`) as Error & { curlExitCode?: number };
+    // execFile carries curl's numeric exit status. Preserve it separately from
+    // diagnostic text so the shared retry policy can recognize a refused connect.
+    if (typeof err.code === "number" && Number.isInteger(err.code) && err.code > 0) {
+      curlError.curlExitCode = err.code;
+    }
+    throw curlError;
   }
 }
 

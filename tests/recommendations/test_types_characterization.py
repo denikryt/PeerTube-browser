@@ -64,7 +64,7 @@ def test_recommendation_result_can_preserve_existing_embedding_total() -> None:
 
 
 def test_debug_metadata_remains_dictionary_based_and_publicly_compatible() -> None:
-    """Stage 5 leaves debug source dictionaries adaptable to current public keys."""
+    """recommendation pipeline cleanup leaves debug source dictionaries adaptable to current public keys."""
     rows = attach_debug_info(
         [{"video_id": "v1"}],
         [

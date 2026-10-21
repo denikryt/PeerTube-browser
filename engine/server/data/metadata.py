@@ -7,6 +7,7 @@ from typing import Any
 
 from recommendations.keys import like_key
 from data.video_thumbnails import apply_thumbnail_api_fields
+from data.parent_health_visibility import build_parent_visibility_sql
 
 
 # These fetchers are three identity lookups over one canonical runtime row shape.
@@ -63,7 +64,6 @@ def _metadata_row(row: sqlite3.Row, *, lookup_field: str | None = None) -> dict[
 def fetch_metadata(
     conn: sqlite3.Connection,
     rowids: list[int],
-    error_threshold: int | None = None,
 ) -> dict[int, dict[str, Any]]:
     """Fetch video metadata for embedding rowids."""
     if not rowids:
@@ -71,11 +71,7 @@ def fetch_metadata(
     result: dict[int, dict[str, Any]] = {}
     for batch in _chunk(rowids, 900):
         placeholders = ",".join(["?"] * len(batch))
-        error_clause = ""
         params: list[Any] = list(batch)
-        if error_threshold is not None and error_threshold > 0:
-            error_clause = "AND (v.error_count IS NULL OR v.error_count < ?)"
-            params.append(error_threshold)
         query = conn.execute(
             f"""
             SELECT
@@ -87,7 +83,8 @@ def fetch_metadata(
             LEFT JOIN channels c
               ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
             WHERE e.rowid IN ({placeholders})
-              {error_clause}
+              AND v.invalid_reason IS NULL
+              AND {build_parent_visibility_sql("v")}
             """,
             params,
         )
@@ -99,7 +96,6 @@ def fetch_metadata(
 def fetch_metadata_by_index_ids(
     conn: sqlite3.Connection,
     index_ids: list[int],
-    error_threshold: int | None = None,
 ) -> dict[int, dict[str, Any]]:
     """Fetch video metadata for stable `video_index_ids.index_id` values.
 
@@ -112,11 +108,7 @@ def fetch_metadata_by_index_ids(
     result: dict[int, dict[str, Any]] = {}
     for batch in _chunk(index_ids, 900):
         placeholders = ",".join(["?"] * len(batch))
-        error_clause = ""
         params: list[Any] = list(batch)
-        if error_threshold is not None and error_threshold > 0:
-            error_clause = "AND (v.error_count IS NULL OR v.error_count < ?)"
-            params.append(error_threshold)
         rows = conn.execute(
             f"""
             SELECT
@@ -131,7 +123,8 @@ def fetch_metadata_by_index_ids(
               ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
             WHERE vii.index_id IN ({placeholders})
               AND vii.is_active = 1
-              {error_clause}
+              AND v.invalid_reason IS NULL
+              AND {build_parent_visibility_sql("v")}
             """,
             params,
         ).fetchall()
@@ -148,13 +141,13 @@ def _chunk(values: list[Any], size: int) -> list[list[Any]]:
 def fetch_metadata_by_ids(
     conn: sqlite3.Connection,
     entries: list[dict[str, Any]],
-    error_threshold: int | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Fetch video metadata for (video_id, instance_domain) pairs."""
     if not entries:
         return {}
     result: dict[str, dict[str, Any]] = {}
     for batch in _chunk(entries, 450):
+        # Group the complete identity set before intersecting either gate.
         conditions = " OR ".join(
             ["(v.video_id = ? AND v.instance_domain = ?)"] * len(batch)
         )
@@ -162,10 +155,6 @@ def fetch_metadata_by_ids(
         for entry in batch:
             params.append(entry.get("video_id"))
             params.append(entry.get("instance_domain") or "")
-        error_clause = ""
-        if error_threshold is not None and error_threshold > 0:
-            error_clause = "AND (v.error_count IS NULL OR v.error_count < ?)"
-            params.append(error_threshold)
         rows = conn.execute(
             f"""
             SELECT
@@ -175,8 +164,9 @@ def fetch_metadata_by_ids(
               ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
             LEFT JOIN channels c
               ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
-            WHERE {conditions}
-              {error_clause}
+            WHERE ({conditions})
+              AND v.invalid_reason IS NULL
+              AND {build_parent_visibility_sql("v")}
             """,
             params,
         ).fetchall()

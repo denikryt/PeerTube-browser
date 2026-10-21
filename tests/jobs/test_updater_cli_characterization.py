@@ -3,10 +3,22 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
 from engine.server.db.jobs.updater import cli
+
+
+def test_real_updater_executable_preserves_imports_and_current_flags():
+    """The installed executable must load its complete facade before parsing help."""
+    script = Path(__file__).resolve().parents[2] / "engine/server/db/jobs/updater-worker.py"
+    result = subprocess.run([sys.executable, str(script), "--help"],
+                            capture_output=True, text=True, check=False, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert "--apply-existing-video-availability" in result.stdout
+    assert "--retry-errors" in result.stdout
 
 
 def test_parse_args_keeps_representative_defaults(monkeypatch) -> None:
@@ -102,6 +114,18 @@ def test_host_pipeline_mode_is_exposed_and_rejects_error_only_mode(monkeypatch) 
     assert cli.parse_args(["--host-pipeline"]).host_pipeline is True
     with pytest.raises(SystemExit):
         cli.parse_args(["--resume-staging", "--retry-errors", "--host-pipeline"])
+
+
+def test_resume_crawl_reuses_staging_and_rejects_incompatible_modes(monkeypatch) -> None:
+    """One resume flag retains staging without changing bounded-crawl semantics."""
+    monkeypatch.setattr(cli, "resolve_default_engine_service_name", lambda mode: "svc")
+    args = cli.parse_args(["--resume-crawl"])
+    assert args.resume_crawl is True
+    assert args.resume_staging is True
+    for extra in (["--host-pipeline"], ["--max-channels", "1"],
+                  ["--retry-errors"], ["--check-existing-video-availability"]):
+        with pytest.raises(SystemExit):
+            cli.parse_args(["--resume-crawl", *extra])
 
 
 def test_skip_systemctl_help_requires_external_offline_interval(monkeypatch, capsys) -> None:

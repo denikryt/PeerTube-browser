@@ -21,11 +21,16 @@ export function loadHostsFromFile(filePath: string | null | undefined): Set<stri
   return hosts;
 }
 
+/** Read an optional include constraint; an explicit empty file selects no hosts. */
+export function loadIncludedHostsFromFile(filePath: string | null | undefined): Set<string> | null {
+  return filePath ? loadHostsFromFile(filePath) : null;
+}
+
 /**
  * Handle apply include hosts filter.
  */
-export function includeHosts(hosts: string[], included: Set<string>): string[] {
-  if (included.size === 0) return hosts;
+export function includeHosts(hosts: string[], included: Set<string> | null): string[] {
+  if (included === null) return hosts;
   return hosts.filter((host) => included.has(host.toLowerCase()));
 }
 
@@ -42,10 +47,13 @@ export function filterHosts(hosts: string[], excluded: Set<string>): string[] {
  */
 export function scopeHosts(
   hosts: string[],
-  included: Set<string>,
-  excluded: Set<string>
+  included: Set<string> | null,
+  excluded: Set<string>,
+  selected?: readonly string[]
 ): string[] {
-  return filterHosts(includeHosts(hosts, included), excluded);
+  // An internal host restriction can only narrow an operator include file.
+  const selectedHosts = selected === undefined ? null : new Set(selected.map(host => host.toLowerCase()));
+  return filterHosts(includeHosts(includeHosts(hosts, included), selectedHosts), excluded);
 }
 
 /**

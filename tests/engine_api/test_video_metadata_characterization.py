@@ -1,6 +1,7 @@
 """Characterize Engine video metadata lookup and dynamic merge behavior."""
 from __future__ import annotations
 
+from tests.parent_health_schema import ensure_parent_health_schema
 import sqlite3
 import sys
 import threading
@@ -15,6 +16,8 @@ sys.path.insert(0, str(ROOT / "engine" / "server" / "api"))
 sys.path.insert(0, str(ROOT / "engine" / "server"))
 
 from handlers import video as video_handler  # noqa: E402
+from data.serving_moderation import ServingVisibility  # noqa: E402
+from services.peertube_video_detail import VideoDetailResult  # noqa: E402
 
 
 def _connect() -> sqlite3.Connection:
@@ -23,6 +26,8 @@ def _connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.executescript(
         """
+        CREATE TABLE instance_denylist (host TEXT PRIMARY KEY, is_active INTEGER NOT NULL DEFAULT 1);
+        CREATE TABLE channel_moderation (channel_id TEXT, instance_domain TEXT, status TEXT, PRIMARY KEY(channel_id,instance_domain));
         CREATE TABLE channels (
           channel_id TEXT, instance_domain TEXT, channel_name TEXT, display_name TEXT,
           followers_count INTEGER, avatar_url TEXT, PRIMARY KEY(channel_id, instance_domain)
@@ -40,7 +45,8 @@ def _connect() -> sqlite3.Connection:
         );
         """
     )
-    conn.execute("INSERT INTO channels VALUES ('c1', 'example.org', 'slug', 'DB Channel', 10, '/avatar-db.png')")
+    ensure_parent_health_schema(conn)
+    conn.execute("INSERT INTO channels (channel_id,instance_domain,channel_name,display_name,followers_count,avatar_url) VALUES ('c1', 'example.org', 'slug', 'DB Channel', 10, '/avatar-db.png')")
     conn.execute("INSERT INTO instances(host) VALUES ('example.org')")
     conn.execute(
         """
@@ -65,39 +71,41 @@ def _connect() -> sqlite3.Connection:
         """
     )
     conn.commit()
+    # Minimal canonical fixtures include the availability contract.
+    conn.execute("ALTER TABLE videos ADD COLUMN invalid_reason TEXT")
     return conn
 
 
-def test_fetch_video_row_resolves_by_id_or_uuid_and_host_and_filters_error_threshold() -> None:
-    """Lookup helper must preserve current id/uuid/host and error threshold behavior."""
+def test_fetch_video_row_resolves_by_id_or_uuid_and_host_without_diagnostic_gate() -> None:
+    """Lookup respects canonical identity/host without diagnostic-error admission."""
     conn = _connect()
 
-    by_id = video_handler.fetch_video_row(conn, "123", "example.org", error_threshold=2)
-    by_uuid = video_handler.fetch_video_row(conn, "uuid-123", "example.org", error_threshold=2)
-    wrong_host = video_handler.fetch_video_row(conn, "123", "other.org", error_threshold=2)
-    over_threshold = video_handler.fetch_video_row(conn, "bad", "example.org", error_threshold=2)
+    by_id = video_handler.fetch_video_row(conn, "123", "example.org", visibility=ServingVisibility())
+    by_uuid = video_handler.fetch_video_row(conn, "uuid-123", "example.org", visibility=ServingVisibility())
+    wrong_host = video_handler.fetch_video_row(conn, "123", "other.org", visibility=ServingVisibility())
+    over_threshold = video_handler.fetch_video_row(conn, "bad", "example.org", visibility=ServingVisibility())
 
     assert by_id["title"] == "DB Title"
     assert by_uuid["video_id"] == "123"
     assert wrong_host is None
-    assert over_threshold is None
+    assert over_threshold["video_id"] == "bad"
 
 
 def test_dynamic_video_metadata_overrides_db_fields_and_uses_db_fallbacks(monkeypatch) -> None:
     """Video response should merge live instance metadata over DB fallback fields."""
     conn = _connect()
-    server = SimpleNamespace(db=conn, db_lock=threading.RLock(), video_error_threshold=2)
+    server = SimpleNamespace(db=conn, db_lock=threading.RLock())
     monkeypatch.setattr(
         video_handler,
-        "fetch_instance_video_dynamic",
-        lambda _host, _video_id: {
+        "fetch_peertube_video_detail",
+        lambda _host, _video_id: VideoDetailResult("available", detail={
             "title": "Dynamic Title",
             "views": 99,
             "likes": 7,
             "channel_display": "Dynamic Channel",
             "tags_json": '["dynamic"]',
             "nsfw": 1,
-        },
+        }),
     )
 
     result = video_handler.handle_video_request(server, {"id": ["123"], "host": ["example.org"]})
@@ -123,7 +131,7 @@ def test_dynamic_video_metadata_overrides_db_fields_and_uses_db_fallbacks(monkey
 
 def test_missing_video_id_and_missing_row_return_current_errors() -> None:
     """Video handler error shapes are part of the current Client-facing contract."""
-    server = SimpleNamespace(db=_connect(), db_lock=threading.RLock(), video_error_threshold=2)
+    server = SimpleNamespace(db=_connect(), db_lock=threading.RLock())
 
     missing_id = video_handler.handle_video_request(server, {})
     assert missing_id.status == 400
@@ -134,19 +142,18 @@ def test_missing_video_id_and_missing_row_return_current_errors() -> None:
     assert missing_row.payload == {"error": "Video not found"}
 
 
-def test_dynamic_refresh_persists_runtime_counters_but_not_prepared_discovery_sources(monkeypatch) -> None:
-    """Live refresh may persist counters, but tags/category remain crawler-owned inputs."""
+def test_dynamic_refresh_uses_overlay_without_persisting_canonical_sources(monkeypatch) -> None:
+    """Live reads cannot change counters, metadata or diagnostics in SQLite."""
     conn = _connect()
     server = SimpleNamespace(
         db=conn,
         db_lock=threading.RLock(),
-        video_error_threshold=2,
         popularity_like_weight=2.0,
     )
     monkeypatch.setattr(
         video_handler,
-        "fetch_instance_video_dynamic",
-        lambda _host, _video_id: {
+        "fetch_peertube_video_detail",
+        lambda _host, _video_id: VideoDetailResult("available", detail={
             "title": "Dynamic Title",
             "views": 99,
             "likes": 7,
@@ -155,7 +162,7 @@ def test_dynamic_refresh_persists_runtime_counters_but_not_prepared_discovery_so
             "tags_json": '["dynamic"]',
             "category": "Dynamic Category",
             "nsfw": 1,
-        },
+        }),
     )
 
     result = video_handler.handle_video_request(
@@ -167,8 +174,9 @@ def test_dynamic_refresh_persists_runtime_counters_but_not_prepared_discovery_so
     ).fetchone()
 
     assert result.status == 200
-    assert (row["views"], row["likes"], row["dislikes"], row["nsfw"]) == (99, 7, 2, 1)
-    assert row["last_checked_at"] > 1000
+    assert (row["views"], row["likes"], row["dislikes"], row["nsfw"]) == (10, 1, 0, 0)
+    assert row["last_checked_at"] == 1000
+    assert result.payload["views"] == 99
     assert row["tags_json"] == '["db"]'
     assert row["category"] == "DB Category"
 
@@ -176,11 +184,11 @@ def test_dynamic_refresh_persists_runtime_counters_but_not_prepared_discovery_so
 def test_dynamic_refresh_still_uses_live_metadata_in_response(monkeypatch) -> None:
     """Not persisting prepared inputs must not make the live detail response stale."""
     conn = _connect()
-    server = SimpleNamespace(db=conn, db_lock=threading.RLock(), video_error_threshold=2)
+    server = SimpleNamespace(db=conn, db_lock=threading.RLock())
     monkeypatch.setattr(
         video_handler,
-        "fetch_instance_video_dynamic",
-        lambda _host, _video_id: {"title": "Live title", "views": 88, "likes": 4},
+        "fetch_peertube_video_detail",
+        lambda _host, _video_id: VideoDetailResult("available", detail={"title": "Live title", "views": 88, "likes": 4}),
     )
 
     result = video_handler.handle_video_request(
@@ -194,16 +202,16 @@ def test_dynamic_refresh_still_uses_live_metadata_in_response(monkeypatch) -> No
 def test_live_detail_cannot_override_persisted_thumbnail_candidate_state(monkeypatch) -> None:
     """Negative: request-time PeerTube metadata never replaces persisted thumbnail state."""
     conn = _connect()
-    server = SimpleNamespace(db=conn, db_lock=threading.RLock(), video_error_threshold=2)
+    server = SimpleNamespace(db=conn, db_lock=threading.RLock())
     monkeypatch.setattr(
         video_handler,
-        "fetch_instance_video_dynamic",
-        lambda _host, _video_id: {
+        "fetch_peertube_video_detail",
+        lambda _host, _video_id: VideoDetailResult("available", detail={
             "title": "Live title",
             "thumbnail_url": "https://live.example/other.jpg",
             "thumbnail_urls": ["https://live.example/other.jpg"],
             "preview_path": "/live-preview.jpg",
-        },
+        }),
     )
 
     result = video_handler.handle_video_request(

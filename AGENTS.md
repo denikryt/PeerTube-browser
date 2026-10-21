@@ -89,15 +89,46 @@ Required coverage must match this project, not generic bridge/sync systems.
 - Code should be easy to scan, easy to trace, and easy to change safely.
 - If code is hard to test through scenario, service, or repository tests, simplify the design.
 
-## Documentation Maintenance
+## Documentation
 
-- Documentation is required maintenance, not optional cleanup.
-- For every code, route, data model, gateway contract, deployment, behavior, crawler, job, or recommendation change, check whether documentation is affected.
-- Read the purpose paragraph of each potentially relevant document before editing it.
-- Update only documentation whose stated responsibility covers the changed concept.
-- Do not dump unrelated details into nearby documentation files.
-- Preserve the established formatting style of the document family being edited.
-- If no documentation update is needed, understand and be able to explain why the change is outside the existing documentation boundaries.
+Documentation helps a reader navigate the project, use it, run it, and understand how it works.
+
+### Writing Rules
+
+- Write briefly, factually, and only about important information.
+- Every paragraph must help the reader perform a concrete task or understand a required contract; otherwise omit it.
+- Describe only the current project state.
+- Do not restate in prose what the code already expresses.
+- Do not add narrative writing, speculation, invented behavior, history, plans, or filler.
+- Keep documentation aligned with the actual responsibilities of Frontend, Client, Engine, Crawler, and Updater.
+- Do not assign one component's behavior or responsibility to another component.
+- Do not spread the same information across multiple documents.
+- Every subject has one owning document. Other documents may link to it but must not repeat it.
+- Do not add information to a nearby document when that document does not own the subject.
+- Remove obsolete documentation instead of keeping competing descriptions.
+
+### Documentation Structure
+
+```text
+README.md
+docs/
+├── ARCHITECTURE.md
+├── ARCHITECTURE_DIAGRAM.md
+├── PROJECT_MAP.md
+├── RUNNING.md
+├── HOW_IT_WORKS.md
+└── UPDATER.md
+```
+
+### Document Responsibilities
+
+- `README.md` contains only a short description of the project.
+- `docs/ARCHITECTURE.md` describes the project architecture.
+- `docs/ARCHITECTURE_DIAGRAM.md` contains the architecture diagrams.
+- `docs/PROJECT_MAP.md` contains the project map.
+- `docs/RUNNING.md` explains how to run the project.
+- `docs/HOW_IT_WORKS.md` explains the project's internal structure and behavior.
+- `docs/UPDATER.md` contains all Updater documentation.
 
 ## Planning Clarification Workflow
 

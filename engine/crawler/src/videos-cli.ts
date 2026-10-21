@@ -3,12 +3,14 @@
  */
 
 import { Command } from "commander";
+import { runAvailabilitySweep } from "./video-availability-worker.js";
 import { crawlVideos } from "./videos-worker.js";
 import { isNoNetworkError } from "./http.js";
 
 const program = new Command();
 
 program
+  .option("--check-availability", "Report-only check of updater staging work", false)
   .option("--db <path>", "SQLite DB path", "data/crawl.db")
   .option(
     "--hosts-file <path>",
@@ -65,17 +67,17 @@ program
   )
   .option(
     "--tags",
-    "Tags-only mode: fetch per-video tags via /api/v1/videos/:uuid for videos with tags_json NULL or []",
+    "Tags maintenance: refresh stored tags from available video detail; select tags_json NULL or []",
     false
   )
   .option(
     "--update-tags",
-    "Tags-only mode: refresh tags via /api/v1/videos/:uuid for videos with existing tags_json",
+    "Tags maintenance: refresh already-populated tags from available video detail",
     false
   )
   .option(
     "--comments",
-    "Comments-only mode: fetch per-video comments via /api/v1/videos/:uuid",
+    "Comments maintenance: refresh comments_count from available video detail",
     false
   )
   .option(
@@ -85,12 +87,12 @@ program
   )
   .option(
     "--metadata",
-    "Metadata-v1 backfill mode for rows below the current metadata version",
+    "Metadata projection backfill for rows below the current metadata version",
     false
   )
   .option(
     "--update-metadata",
-    "Metadata-v1 maintenance mode that explicitly revisits completed rows",
+    "Metadata projection maintenance: explicitly revisit completed rows without updating availability",
     false
   )
   .option(
@@ -111,32 +113,56 @@ program.parse(process.argv);
 const options = program.opts();
 
 try {
-  await crawlVideos({
-    dbPath: options.db,
-    hostsFile: options.hostsFile || null,
-    excludeHostsFile: options.excludeHostsFile || null,
-    existingDbPath: options.existingDb || null,
-    concurrency: Number(options.concurrency),
-    hostConcurrency: Number(options.hostConcurrency),
-    timeoutMs: Number(options.timeout),
-    maxRetries: Number(options.maxRetries),
-    newOnly: Boolean(options.newVideos),
-    stopAfterFullPages: Number(options.stopAfterFullPages),
-    sort: String(options.sort),
-    maxInstances: Number(options.maxInstances),
-    maxChannels: Number(options.maxChannels),
-    maxVideosPages: Number(options.maxVideosPages),
-    tagsOnly: Boolean(options.tags),
-    updateTags: Boolean(options.updateTags),
-    commentsOnly: Boolean(options.comments),
-    refreshThumbnails: Boolean(options.refreshThumbnails),
-    metadataOnly: Boolean(options.metadata),
-    updateMetadata: Boolean(options.updateMetadata),
-    onlyHealthyHosts: Boolean(options.onlyHealthyHosts),
-    hostDelayMs: Number(options.hostDelay),
-    resume: Boolean(options.resume),
-    errorsOnly: Boolean(options.errors)
-  });
+  if (options.checkAvailability) {
+    const allowed = new Set([
+      'db', 'checkAvailability', 'concurrency', 'hostConcurrency',
+      'hostDelay', 'timeout', 'maxRetries'
+    ]);
+    const zeroLimits = new Set([
+      'maxInstances', 'maxChannels', 'maxVideosPages', 'stopAfterFullPages'
+    ]);
+    // Inspect explicitly supplied options, not defaults shared with ordinary crawling.
+    for (const key of Object.keys(options)) {
+      if (program.getOptionValueSource(key) !== 'cli' || allowed.has(key)) continue;
+      if (zeroLimits.has(key) && Number(options[key]) === 0) continue;
+      throw new Error(`--check-availability cannot combine with ${key}`);
+    }
+    await runAvailabilitySweep({
+      dbPath: options.db,
+      concurrency: Number(options.concurrency),
+      hostConcurrency: Number(options.hostConcurrency),
+      hostDelayMs: Number(options.hostDelay),
+      timeoutMs: Number(options.timeout),
+      maxRetries: Number(options.maxRetries)
+    });
+  } else {
+    await crawlVideos({
+      dbPath: options.db,
+      hostsFile: options.hostsFile || null,
+      excludeHostsFile: options.excludeHostsFile || null,
+      existingDbPath: options.existingDb || null,
+      concurrency: Number(options.concurrency),
+      hostConcurrency: Number(options.hostConcurrency),
+      timeoutMs: Number(options.timeout),
+      maxRetries: Number(options.maxRetries),
+      newOnly: Boolean(options.newVideos),
+      stopAfterFullPages: Number(options.stopAfterFullPages),
+      sort: String(options.sort),
+      maxInstances: Number(options.maxInstances),
+      maxChannels: Number(options.maxChannels),
+      maxVideosPages: Number(options.maxVideosPages),
+      tagsOnly: Boolean(options.tags),
+      updateTags: Boolean(options.updateTags),
+      commentsOnly: Boolean(options.comments),
+      refreshThumbnails: Boolean(options.refreshThumbnails),
+      metadataOnly: Boolean(options.metadata),
+      updateMetadata: Boolean(options.updateMetadata),
+      onlyHealthyHosts: Boolean(options.onlyHealthyHosts),
+      hostDelayMs: Number(options.hostDelay),
+      resume: Boolean(options.resume),
+      errorsOnly: Boolean(options.errors)
+    });
+  }
 } catch (error) {
   if (isNoNetworkError(error)) {
     console.error("[videos] no network detected; stopping without progress updates");

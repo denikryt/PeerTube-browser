@@ -14,8 +14,10 @@ import time
 from typing import Any
 
 from .video_filters import UNKNOWN_LANGUAGE
+from .parent_health_visibility import build_parent_visibility_sql
 
-PREPARED_DISCOVERY_SCHEMA_VERSION = 1
+# Version 2 changes source eligibility: every non-NULL reason is excluded.
+PREPARED_DISCOVERY_SCHEMA_VERSION = 2
 TAG_LIMIT = 100
 INSTANCE_LIMIT = 100
 
@@ -160,7 +162,7 @@ def fetch_prepared_video_facets(conn: sqlite3.Connection) -> dict[str, Any]:
 
 def _build_facets_payload(conn: sqlite3.Connection) -> tuple[dict[str, Any], int]:
     """Compute canonical metadata statistics using only the stable invalid-row exclusion."""
-    eligible = "COALESCE(v.invalid_reason, '') = ''"
+    eligible = f"v.invalid_reason IS NULL AND {build_parent_visibility_sql('v')}"
     language_rows = conn.execute(
         f"""
         SELECT
@@ -237,7 +239,7 @@ def _build_facets_payload(conn: sqlite3.Connection) -> tuple[dict[str, Any], int
 
     source_video_count = int(
         conn.execute(
-            "SELECT COUNT(*) FROM videos AS v WHERE COALESCE(v.invalid_reason, '') = ''"
+            f"SELECT COUNT(*) FROM videos AS v WHERE {eligible}"
         ).fetchone()[0]
     )
     unknown = sum(

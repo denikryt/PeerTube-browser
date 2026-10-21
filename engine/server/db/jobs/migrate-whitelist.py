@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sqlite3
 import sys
@@ -17,8 +18,15 @@ if str(server_dir) not in sys.path:
 if str(engine_dir) not in sys.path:
     sys.path.insert(0, str(engine_dir))
 
+if str(script_dir) not in sys.path:
+    sys.path.insert(0, str(script_dir))
+
 from scripts.cli_format import CompactHelpFormatter
-from server.db.jobs.whitelist_migrations import migrate_whitelist_schema
+from data.prepared_discovery import invalidate_prepared_discovery
+from whitelist_migrations import (
+    migrate_whitelist_schema,
+    normalize_video_availability_semantics,
+)
 
 DEFAULT_WHITELIST_DB_PATH = Path("engine/server/db/whitelist.db")
 TABLE_NAME = "instances"
@@ -85,6 +93,14 @@ def main() -> None:
     try:
         with conn:
             migrate_whitelist_schema(conn, TABLE_NAME)
+        # Schema helpers may executescript()/commit; the semantic cutover owns
+        # a separate transaction so cleanup and readiness cannot split.
+        conn.execute('BEGIN IMMEDIATE')
+        with conn:
+            report = normalize_video_availability_semantics(conn)
+            if report['rows_changed']:
+                invalidate_prepared_discovery(conn)
+        logging.info('Availability normalization: %s', json.dumps(report, ensure_ascii=True))
     finally:
         conn.close()
 

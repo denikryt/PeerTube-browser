@@ -42,7 +42,6 @@ from server_config import (
     MAX_LIKES_FOR_RECS,
     RECOMMENDATIONS_DEBUG_ENABLED,
     RELATED_VIDEOS_PERSONALIZATION,
-    VIDEO_ERROR_THRESHOLD,
     DEFAULT_USE_CLIENT_LIKES,
     DEFAULT_RATE_LIMIT_MAX_REQUESTS,
     DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
@@ -252,7 +251,6 @@ def main() -> None:
         max_likes_for_recs=MAX_LIKES_FOR_RECS,
         similar_per_like=SIMILAR_PER_LIKE,
         default_similar_from_likes_source=DEFAULT_USE_SIMILARITY_CACHE,
-        video_error_threshold=VIDEO_ERROR_THRESHOLD,
         fresh_pool_size=DEFAULT_FRESH_POOL_SIZE,
     )
     recommendation_strategy = build_recommendation_strategy(
@@ -291,7 +289,6 @@ def main() -> None:
         recommendation_strategy=recommendation_strategy,
         related_personalization_deps=related_personalization_deps,
         related_personalization_enabled=bool(personalization_config.get("enabled")),
-        video_error_threshold=VIDEO_ERROR_THRESHOLD,
         recommendations_debug_enabled=RECOMMENDATIONS_DEBUG_ENABLED,
         use_client_likes=DEFAULT_USE_CLIENT_LIKES,
         rate_limiter=rate_limiter,

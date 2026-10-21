@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { ChannelStore } from "../../src/db/channels.js";
 
 export interface TempDb {
   dir: string;
@@ -64,5 +65,30 @@ export function execSql(dbPath: string, sql: string, ...params: unknown[]) {
     db.prepare(sql).run(...params);
   } finally {
     db.close();
+  }
+}
+
+/** Confirm a completed, fresh parent enumeration for test-only seeded rows.
+ *
+ * Positive child-work fixtures must model the same persisted boundary as the
+ * crawler: first page-zero initialization, then instance health, persisted
+ * terminal enumeration, and individual channel health. This deliberately does
+ * not bypass the production eligibility queries or modify their SQL.
+ */
+export function confirmFreshParents(dbPath: string, hosts: string[]) {
+  const store = new ChannelStore({ dbPath });
+  try {
+    store.initializeParentEnumeration(hosts);
+    for (const host of hosts) {
+      store.markInstanceHealthOk(host);
+      store.updateChannelProgress(host, "done", 0);
+      for (const channel of store.listChannelsForInstance(host)) {
+        if (channel.channel_name !== null) {
+          store.updateChannelHealthOk(channel.channel_id, host);
+        }
+      }
+    }
+  } finally {
+    store.close();
   }
 }

@@ -13,8 +13,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[2]
-for module_name in ("app", "runtime", "http_adapters"):
-    sys.modules.pop(module_name, None)
+# Client tests use an unrelated top-level `services` package; reset the alias
+# before importing Engine routes to test their actual production dependencies.
+for module_name in list(sys.modules):
+    if module_name in {"app", "runtime", "http_adapters", "services"} or module_name.startswith("services."):
+        sys.modules.pop(module_name, None)
 sys.path.insert(0, str(ROOT / "engine" / "server" / "api"))
 sys.path.insert(0, str(ROOT / "engine" / "server"))
 
@@ -23,6 +26,11 @@ fake_ann.search_index = lambda *_args, **_kwargs: ([], [])
 sys.modules.setdefault("data.ann", fake_ann)
 
 from app import create_app  # noqa: E402
+# pytest collects Client and Engine tests in one interpreter. Their `services`
+# modules have distinct names except for the package root; keep both lookup
+# paths available after Engine routes have been imported.
+import services  # noqa: E402
+services.__path__.append(str(ROOT / "client" / "backend" / "services"))
 from engine.server.db.bootstrap import bootstrap_engine_runtime_db  # noqa: E402
 from runtime import EngineRuntimeState  # noqa: E402
 
@@ -73,7 +81,6 @@ def make_engine_state(**overrides: Any) -> EngineRuntimeState:
         recommendation_strategy=SimpleNamespace(name="test"),
         related_personalization_deps=None,
         related_personalization_enabled=False,
-        video_error_threshold=3,
         recommendations_debug_enabled=False,
         use_client_likes=True,
         rate_limiter=None,

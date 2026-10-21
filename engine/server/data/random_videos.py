@@ -12,6 +12,7 @@ from typing import Any, Sequence
 from data.metadata import fetch_metadata_by_index_ids
 from data.random_cache import fetch_random_index_ids
 from data.serving_moderation import ServingVisibility, build_serving_visibility_sql
+from data.parent_health_visibility import build_parent_visibility_sql
 from data.video_filters import VideoFilters, build_video_filter_sql
 from data.video_thumbnails import apply_thumbnail_api_fields
 
@@ -154,7 +155,7 @@ def fetch_fresh_page(
 ) -> list[dict[str, Any]]:
     """Return one ordered Fresh provider window after filtering and visibility."""
     filter_sql, filter_params = build_video_filter_sql("v", filters)
-    visibility_sql, visibility_params = build_serving_visibility_sql("v", visibility)
+    visibility_sql = build_serving_visibility_sql("v", visibility)
     seek_sql, seek_params = _build_seek_predicate(FRESH_ORDER, after)
     rows = conn.execute(
         f"""
@@ -175,7 +176,7 @@ def fetch_fresh_page(
         ORDER BY {_order_sql(FRESH_ORDER)}
         LIMIT ?
         """,
-        [*visibility_params, *filter_params, *seek_params, max(limit_plus_one, 1)],
+        [*filter_params, *seek_params, max(limit_plus_one, 1)],
     ).fetchall()
     return [
         {**_row_dict(row), "_cursor": _cursor_values(row, FRESH_ORDER)}
@@ -193,7 +194,7 @@ def fetch_popular_page(
 ) -> list[dict[str, Any]]:
     """Return one Trending window ordered only by persisted canonical popularity."""
     filter_sql, filter_params = build_video_filter_sql("v", filters)
-    visibility_sql, visibility_params = build_serving_visibility_sql("v", visibility)
+    visibility_sql = build_serving_visibility_sql("v", visibility)
     seek_sql, seek_params = _build_seek_predicate(POPULAR_ORDER, after)
     rows = conn.execute(
         f"""
@@ -212,7 +213,7 @@ def fetch_popular_page(
         ORDER BY {_order_sql(POPULAR_ORDER)}
         LIMIT ?
         """,
-        [*visibility_params, *filter_params, *seek_params, max(limit_plus_one, 1)],
+        [*filter_params, *seek_params, max(limit_plus_one, 1)],
     ).fetchall()
     return [
         {**_row_dict(row), "_cursor": _cursor_values(row, POPULAR_ORDER)}
@@ -233,7 +234,7 @@ def fetch_random_provider_range(
     if limit <= 0:
         return []
     filter_sql, filter_params = build_video_filter_sql("v", filters, schema="canonical")
-    visibility_sql, visibility_params = build_serving_visibility_sql(
+    visibility_sql = build_serving_visibility_sql(
         "v", visibility, schema="canonical"
     )
     range_sql = "r.position >= ?"
@@ -261,20 +262,13 @@ def fetch_random_provider_range(
         ORDER BY r.position ASC
         LIMIT ?
         """,
-        [*range_params, *visibility_params, *filter_params, limit],
+        [*range_params, *filter_params, limit],
     ).fetchall()
     return [{**_row_dict(row), "_position": int(row["position"])} for row in rows]
 
 
-def fetch_random_rows(
-    conn: sqlite3.Connection, limit: int, error_threshold: int | None = None
-) -> list[dict[str, Any]]:
-    """Return random video rows for the legacy recommendation fallback."""
-    error_clause = ""
-    params: list[Any] = [limit]
-    if error_threshold is not None and error_threshold > 0:
-        error_clause = "WHERE (v.error_count IS NULL OR v.error_count < ?)"
-        params = [error_threshold, limit]
+def fetch_random_rows(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]:
+    """Return canonically available random video rows for legacy recommendations."""
     query = conn.execute(
         f"""
         SELECT {_VIDEO_SELECT}
@@ -283,24 +277,17 @@ def fetch_random_rows(
           ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
         LEFT JOIN channels c
           ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
-        {error_clause}
+        WHERE v.invalid_reason IS NULL AND {build_parent_visibility_sql("v")}
         ORDER BY RANDOM()
         LIMIT ?
         """,
-        params,
+        [limit],
     )
     return [_row_dict(row) for row in query]
 
 
-def fetch_recent_videos(
-    conn: sqlite3.Connection, limit: int, error_threshold: int | None = None
-) -> list[dict[str, Any]]:
-    """Return most recently published videos for legacy recommendation sources."""
-    error_clause = ""
-    params: list[Any] = [limit]
-    if error_threshold is not None and error_threshold > 0:
-        error_clause = "WHERE (v.error_count IS NULL OR v.error_count < ?)"
-        params = [error_threshold, limit]
+def fetch_recent_videos(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]:
+    """Return recently published, canonically available legacy candidates."""
     rows = conn.execute(
         f"""
         SELECT {_VIDEO_SELECT}
@@ -309,31 +296,24 @@ def fetch_recent_videos(
           ON v.video_id = e.video_id AND v.instance_domain = e.instance_domain
         LEFT JOIN channels c
           ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
-        {error_clause}
+        WHERE v.invalid_reason IS NULL AND {build_parent_visibility_sql("v")}
         ORDER BY v.published_at DESC, v.video_id DESC
         LIMIT ?
         """,
-        params,
+        [limit],
     ).fetchall()
     return [_row_dict(row) for row in rows]
 
 
-def fetch_popular_videos(
-    conn: sqlite3.Connection, limit: int, error_threshold: int | None = None
-) -> list[dict[str, Any]]:
-    """Return most popular legacy candidates while preserving the historical top-N cut."""
-    error_clause = ""
-    params: list[Any] = [limit, limit]
-    if error_threshold is not None and error_threshold > 0:
-        error_clause = "WHERE (v.error_count IS NULL OR v.error_count < ?)"
-        params = [error_threshold, limit, limit]
+def fetch_popular_videos(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]:
+    """Return canonical top-N by stored popularity, retaining embedding underfill."""
     rows = conn.execute(
         f"""
         SELECT {_VIDEO_SELECT}
         FROM (
           SELECT v.video_id, v.instance_domain
           FROM videos v
-          {error_clause}
+          WHERE v.invalid_reason IS NULL AND {build_parent_visibility_sql("v")}
           ORDER BY
             v.popularity DESC,
             v.likes DESC,
@@ -358,13 +338,13 @@ def fetch_popular_videos(
           v.video_id DESC
         LIMIT ?
         """,
-        params,
+        [limit, limit],
     ).fetchall()
     return [_row_dict(row) for row in rows]
 
 
 def fetch_random_rows_from_cache(
-    server: Any, limit: int, error_threshold: int | None = None
+    server: Any, limit: int
 ) -> list[dict[str, Any]]:
     """Return finite random recommendation fallback rows from the persisted cache."""
     if server.random_cache_db is None or limit <= 0:
@@ -374,7 +354,7 @@ def fetch_random_rows_from_cache(
     if not index_ids:
         return []
     with server.db_lock:
-        metadata = fetch_metadata_by_index_ids(server.db, index_ids, error_threshold=error_threshold)
+        metadata = fetch_metadata_by_index_ids(server.db, index_ids)
     rows: list[dict[str, Any]] = []
     for index_id in index_ids:
         meta = metadata.get(index_id)

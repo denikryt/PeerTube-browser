@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from engine.server.db.jobs.updater import pipeline
+from engine.server.db.jobs.updater import staging
 
 
 def _args(tmp_path: Path, **overrides):
@@ -73,9 +74,14 @@ def _patch_lightweight(
 
     monkeypatch.setattr(pipeline, "assert_production_schema_compatible", lambda prod_db, schema_path: None)
     monkeypatch.setattr(pipeline, "load_denied_hosts", lambda prod_db: set(denied))
+    # The fake command runner never writes discovery rows to SQLite. Supply
+    # the post-discovery host selection as an explicit boundary fixture.
+    monkeypatch.setattr(pipeline, "list_staging_hosts", lambda staging_db: {"target.example", "other.example"})
+    monkeypatch.setattr(pipeline, "assert_retry_parent_provenance", lambda staging_db, scope: None)
     monkeypatch.setattr(pipeline, "fetch_join_hosts", lambda url: set(join))
     monkeypatch.setattr(pipeline, "list_prod_hosts", lambda prod_db: set(prod))
     monkeypatch.setattr(pipeline, "purge_hosts", lambda **kwargs: {})
+    monkeypatch.setattr(pipeline, "reset_video_availability_work", lambda staging_db: None)
     monkeypatch.setattr(pipeline, "init_staging_db", lambda staging_db, schema_path: None)
     monkeypatch.setattr(pipeline, "seed_staging_from_prod", lambda prod_db, staging_db: None)
     monkeypatch.setattr(pipeline, "purge_hosts_from_staging", lambda staging_db, hosts: {})
@@ -98,6 +104,22 @@ def _patch_lightweight(
         )
 
 
+def _stamp_current_stage(path: Path) -> None:
+    """Create exact current updater staging lifecycle evidence for resume tests."""
+    import sqlite3
+
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+        conn.execute(
+            "INSERT OR REPLACE INTO crawl_state VALUES(?,?)",
+            (staging.AVAILABILITY_SEMANTICS_KEY, staging.AVAILABILITY_SEMANTICS_VALUE),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO crawl_state VALUES(?,?)",
+            (staging.VIDEO_CORPUS_ROLE_KEY, staging.UPDATER_STAGING_ROLE),
+        )
+
+
 def test_normal_run_counts_unknown_channels_before_crawling_video_metadata(monkeypatch, tmp_path) -> None:
     """Normal updates resolve missing counts before selecting channels with videos."""
 
@@ -109,9 +131,14 @@ def test_normal_run_counts_unknown_channels_before_crawling_video_metadata(monke
         validate_files=False,
     )
     names = [Path(cmd[1] if cmd[0] in {"node", "python"} else cmd[0]).name for cmd in seen]
+    # Normal runs initialize page-zero provenance once, probe instances, then
+    # enumerate and resolve channel health before scheduling child requests.
     assert names == [
         "instances-cli.js",
-        "channels-cli.js",
+        "channels-cli.js",  # initialization-only; no network
+        "instances-health-cli.js",
+        "channels-cli.js",  # enumeration on already initialized scope
+        "channels-cli.js",  # unresolved channel health
         "channels-videos-count-cli.js",
         "videos-cli.js",
         "build-video-embeddings.py",
@@ -126,10 +153,17 @@ def test_normal_run_counts_unknown_channels_before_crawling_video_metadata(monke
         "precompute-similar-ann.py",
         "systemctl",
     ]
-    assert "--gpu" in seen[4]
-    assert "--force" in seen[4]
-    assert seen[5] == ["systemctl", "stop", "svc"]
+    assert "--initialize-only" in seen[1]
+    assert "--already-initialized" in seen[3]
+    assert "--check-health" in seen[4]
+    assert all("--initialize-only" not in cmd for cmd in seen[2:])
+    embeddings_cmd = next(cmd for cmd in seen if "build-video-embeddings.py" in cmd[1])
+    assert "--gpu" in embeddings_cmd and "--force" in embeddings_cmd
+    assert seen[names.index("systemctl")] == ["systemctl", "stop", "svc"]
     assert seen[-1] == ["systemctl", "start", "svc"]
+    merge_cmd = next(cmd for cmd in seen if "merge-staging-db.py" in cmd[1])
+    assert "--parent-health-hosts-file" in merge_cmd
+    assert "--parent-health-hosts-file" not in seen[names.index("videos-cli.js")]
     search_cmd = next(cmd for cmd in seen if "rebuild-video-search-index.py" in cmd[1])
     assert "ensure-video-indexes.py" not in names
     prepared_index = names.index("rebuild-video-discovery-data.py")
@@ -218,17 +252,27 @@ def test_sync_join_dry_run_returns_before_commands(monkeypatch, tmp_path) -> Non
 
 
 def test_denied_hosts_add_exclude_file(monkeypatch, tmp_path) -> None:
-    """Denylisted hosts add exclude-hosts-file to crawler commands."""
+    """Network crawler commands receiving exclusions cannot broaden the frozen host set."""
 
     _patch_lightweight(monkeypatch, denied={"bad.ex"})
-    seen: list[list[str]] = []
-    pipeline.run_pipeline(
-        _args(tmp_path),
-        command_runner=lambda cmd, cwd: seen.append(list(cmd)),
-        validate_files=False,
-    )
-    crawler_cmds = [cmd for cmd in seen if cmd[0] == "node"]
-    assert all("--exclude-hosts-file" in cmd for cmd in crawler_cmds)
+    observed: list[tuple[str, str, str | None]] = []
+
+    def record(cmd, cwd):
+        """Capture owned scope contents before updater deletes temporary files."""
+        if cmd[0] != "node":
+            return
+        name = Path(cmd[1]).name
+        scope = Path(cmd[cmd.index("--hosts-file") + 1]).read_text() if "--hosts-file" in cmd else None
+        observed.append((name, "--exclude-hosts-file" in cmd, scope))
+
+    pipeline.run_pipeline(_args(tmp_path), command_runner=record, validate_files=False)
+    assert observed
+    # Registry discovery receives a deny file; later child workers are
+    # constrained by the frozen admitted scope, and never include bad.ex.
+    assert observed[0][:2] == ("instances-cli.js", True)
+    assert all(scope is not None and "bad.ex" not in scope for _, _, scope in observed[1:])
+    assert all(excluded for name, excluded, _ in observed
+               if name in {"channels-videos-count-cli.js", "videos-cli.js"})
 
 
 def test_sync_new_hosts_add_whitelist_file(monkeypatch, tmp_path) -> None:
@@ -271,19 +315,29 @@ def test_cpu_mode_appends_cpu_to_heavy_jobs(monkeypatch, tmp_path) -> None:
 
 
 def test_hosts_file_scopes_all_crawler_stages(monkeypatch, tmp_path) -> None:
-    """Updater passes host-scope files through every crawler stage command."""
+    """Every command reads the frozen operator selection, never the mutable source."""
 
     _patch_lightweight(monkeypatch)
-    seen: list[list[str]] = []
+    observed = []
+    operator = tmp_path / "hosts.txt"
+    operator.write_text("target.example\n", encoding="utf-8")
+
+    def record(cmd, cwd):
+        if cmd[0] != "node":
+            return
+        assert "--hosts-file" in cmd
+        frozen = Path(cmd[cmd.index("--hosts-file") + 1])
+        assert frozen != operator
+        observed.append((Path(cmd[1]).name, frozen.read_text(encoding="utf-8")))
+        operator.write_text("outside.example\n", encoding="utf-8")
+
     pipeline.run_pipeline(
-        _args(tmp_path, hosts_file="/tmp/hosts.txt"),
-        command_runner=lambda cmd, cwd: seen.append(list(cmd)),
+        _args(tmp_path, hosts_file=str(operator)),
+        command_runner=record,
         validate_files=False,
     )
-    crawler_cmds = [cmd for cmd in seen if cmd[0] == "node"]
-    assert len(crawler_cmds) == 4
-    assert all("--hosts-file" in cmd for cmd in crawler_cmds)
-    assert all("/tmp/hosts.txt" in cmd for cmd in crawler_cmds)
+    assert len(observed) == 7
+    assert all(body == "target.example\n" for _, body in observed)
 
 
 def test_host_concurrency_is_forwarded_to_per_host_crawler_stages(monkeypatch, tmp_path) -> None:
@@ -296,9 +350,13 @@ def test_host_concurrency_is_forwarded_to_per_host_crawler_stages(monkeypatch, t
         command_runner=lambda cmd, cwd: seen.append(list(cmd)),
         validate_files=False,
     )
-    crawler_cmds = [cmd for cmd in seen if cmd[0] == "node" and Path(cmd[1]).name != "instances-cli.js"]
-    assert crawler_cmds
-    assert all(cmd[cmd.index("--host-concurrency") + 1] == "1" for cmd in crawler_cmds)
+    # Initialization has no HTTP, while the instance probe has its own
+    # concurrency control; per-host concurrency belongs to child fetches.
+    local = [cmd for cmd in seen if cmd[0] == "node" and "--host-concurrency" in cmd]
+    assert {Path(cmd[1]).name for cmd in local} >= {
+        "channels-cli.js", "channels-videos-count-cli.js", "videos-cli.js"
+    }
+    assert all(cmd[cmd.index("--host-concurrency") + 1] == "1" for cmd in local)
 
 
 def test_host_delay_is_forwarded_to_every_per_host_crawler_stage(monkeypatch, tmp_path) -> None:
@@ -311,9 +369,10 @@ def test_host_delay_is_forwarded_to_every_per_host_crawler_stage(monkeypatch, tm
         command_runner=lambda cmd, cwd: seen.append(list(cmd)),
         validate_files=False,
     )
-    crawler_cmds = [cmd for cmd in seen if cmd[0] == "node"]
-    assert crawler_cmds
-    assert all(cmd[cmd.index("--host-delay") + 1] == "750" for cmd in crawler_cmds)
+    # Initialization-only does no network I/O and has no pacing argument.
+    network = [cmd for cmd in seen if cmd[0] == "node" and "--initialize-only" not in cmd]
+    assert network
+    assert all(cmd[cmd.index("--host-delay") + 1] == "750" for cmd in network)
 
 
 def test_retry_errors_runs_only_error_capable_crawler_stages(monkeypatch, tmp_path) -> None:
@@ -321,7 +380,8 @@ def test_retry_errors_runs_only_error_capable_crawler_stages(monkeypatch, tmp_pa
 
     _patch_lightweight(monkeypatch)
     seen: list[list[str]] = []
-    (tmp_path / "staging.db").touch()
+    # Resume fixtures represent a current availability-semantics generation.
+    _stamp_current_stage(tmp_path / "staging.db")
     pipeline.run_pipeline(
         _args(tmp_path, retry_errors=True, resume_staging=True),
         command_runner=lambda cmd, cwd: seen.append(list(cmd)),
@@ -329,11 +389,11 @@ def test_retry_errors_runs_only_error_capable_crawler_stages(monkeypatch, tmp_pa
     )
     crawler_cmds = [cmd for cmd in seen if cmd[0] == "node"]
     assert [Path(cmd[1]).name for cmd in crawler_cmds] == [
-        "channels-cli.js",
         "channels-videos-count-cli.js",
         "videos-cli.js",
     ]
     assert all("--errors" in cmd for cmd in crawler_cmds)
+    assert all("--initialize-only" not in cmd and "--check-health" not in cmd for cmd in crawler_cmds)
     assert seen == crawler_cmds
 
 
@@ -380,7 +440,8 @@ def test_resume_staging_force_rebuilds_embeddings_before_merge(monkeypatch, tmp_
     """A resumed staging DB never contributes pre-existing recipe embeddings to prod."""
 
     _patch_lightweight(monkeypatch)
-    (tmp_path / "staging.db").touch()
+    # Resume fixtures represent a current availability-semantics generation.
+    _stamp_current_stage(tmp_path / "staging.db")
     seen: list[list[str]] = []
     pipeline.run_pipeline(
         _args(tmp_path, resume_staging=True),
@@ -444,3 +505,243 @@ def test_sync_stale_host_delete_happens_only_after_engine_stop(monkeypatch, tmp_
     assert events.index("purge-dry") < events.index("stop")
     assert events.index("stop") < events.index("purge-live")
     assert events.index("purge-live") < events.index("start")
+
+
+@pytest.mark.parametrize("retry", [False, True])
+@pytest.mark.parametrize(
+    "semantics,role,accepted",
+    [
+        (None, None, False),
+        ("legacy_transient_invalidity", "updater_staging_delta", False),
+        ("canonical_absence_v1", "updater_staging_delta", False),
+        ("canonical_absence_atomic_ingest_v2", None, False),
+        ("canonical_absence_atomic_ingest_v2", "future_role", False),
+        ("canonical_absence_atomic_ingest_v2", "updater_staging_delta", True),
+    ],
+)
+def test_resume_marker_preflight_precedes_network_and_commands(
+    monkeypatch, tmp_path, retry, semantics, role, accepted
+):
+    """Resume/retry requires exact writer semantics and updater corpus kind before side effects."""
+    import sqlite3
+
+    args = _args(tmp_path, retry_errors=retry, sync_join_whitelist=True)
+    _patch_lightweight(monkeypatch)
+    with sqlite3.connect(args.staging_db) as conn:
+        conn.execute("CREATE TABLE crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+        if semantics is not None:
+            conn.execute(
+                "INSERT INTO crawl_state VALUES(?,?)", (staging.AVAILABILITY_SEMANTICS_KEY, semantics)
+            )
+        if role is not None:
+            conn.execute(
+                "INSERT INTO crawl_state VALUES(?,?)", (staging.VIDEO_CORPUS_ROLE_KEY, role)
+            )
+    reached = []
+
+    def network(url):
+        """Record reaching the outer network boundary after marker admission."""
+        reached.append("network")
+        raise RuntimeError("network boundary reached")
+
+    monkeypatch.setattr(pipeline, "fetch_join_hosts", network)
+    seen = []
+    if accepted:
+        with pytest.raises(RuntimeError, match="network boundary reached"):
+            pipeline.run_pipeline(
+                args, command_runner=lambda cmd, cwd=None: seen.append(cmd), validate_files=False
+            )
+        assert reached == ["network"]
+    else:
+        with pytest.raises(RuntimeError, match="recreate"):
+            pipeline.run_pipeline(
+                args, command_runner=lambda cmd, cwd=None: seen.append(cmd), validate_files=False
+            )
+        assert reached == []
+    assert seen == []
+
+
+@pytest.mark.parametrize("skip_systemctl", [False, True])
+def test_first_run_owns_fresh_staging_and_explicit_service_lifecycle(
+    monkeypatch, tmp_path, skip_systemctl
+):
+    """First no-resume run stamps staging itself; outer-offline mode issues no systemctl."""
+    from engine.server.db.jobs.updater.staging import (
+        init_staging_db,
+        assert_video_availability_staging_semantics,
+    )
+
+    args = _args(tmp_path, resume_staging=False, skip_systemctl=skip_systemctl)
+    _patch_lightweight(monkeypatch)
+    (Path(args.crawler_dir) / "schema.sql").write_text("CREATE TABLE instances(host TEXT);")
+    monkeypatch.setattr(pipeline, "init_staging_db", init_staging_db)
+    seen = []
+
+    def command(cmd, cwd):
+        """Check actual staging evidence before the first external command."""
+        assert_video_availability_staging_semantics(Path(args.staging_db))
+        seen.append(list(cmd))
+
+    pipeline.run_pipeline(args, command_runner=command, validate_files=False)
+    lifecycle = [cmd[1] for cmd in seen if cmd[0] == "systemctl"]
+    assert lifecycle == ([] if skip_systemctl else ["stop", "start"])
+    if not skip_systemctl:
+        stop = next(i for i, cmd in enumerate(seen) if cmd[0] == "systemctl" and cmd[1] == "stop")
+        merge = next(
+            i for i, cmd in enumerate(seen) if any("merge-staging-db.py" in part for part in cmd)
+        )
+        start = next(i for i, cmd in enumerate(seen) if cmd[0] == "systemctl" and cmd[1] == "start")
+        assert stop < merge < start
+
+
+@pytest.mark.parametrize("failed_scope", ["ptb-parent-run-", "ptb-ingest-run-"])
+def test_frozen_child_scope_transport_failure_does_not_start_child_work(
+    monkeypatch, tmp_path, failed_scope
+) -> None:
+    """Missing frozen transport must abort rather than widen the selected host set."""
+    _patch_lightweight(monkeypatch)
+    original = pipeline.write_hosts_file
+
+    def fail_selected_scope(hosts, prefix, *, allow_empty=False):
+        """Fail one filesystem boundary while retaining real other snapshots."""
+        if prefix == failed_scope:
+            return None
+        return original(hosts, prefix, allow_empty=allow_empty)
+
+    monkeypatch.setattr(pipeline, "write_hosts_file", fail_selected_scope)
+    commands: list[list[str]] = []
+    with pytest.raises(RuntimeError, match="Failed to freeze"):
+        pipeline.run_pipeline(
+            _args(tmp_path),
+            command_runner=lambda cmd, cwd: commands.append(list(cmd)),
+            validate_files=False,
+        )
+    assert any("instances-cli.js" in cmd[1] for cmd in commands)
+    assert not any(
+        any(name in cmd[1] for name in (
+            "channels-videos-count-cli.js", "videos-cli.js", "merge-staging-db.py"
+        ))
+        for cmd in commands
+    )
+
+
+def test_resume_crawl_keeps_initialized_parent_work_and_frozen_scope(monkeypatch, tmp_path) -> None:
+    """A stopped listing resumes without rediscovery or clearing saved parent observations."""
+    _patch_lightweight(monkeypatch)
+    args = _args(tmp_path, skip_systemctl=True)
+    _stamp_current_stage(Path(args.staging_db))
+    first: list[list[str]] = []
+
+    def interrupt_listing(cmd, cwd):
+        """Stop after the real orchestration has initialized and saved its scope."""
+        first.append(list(cmd))
+        if cmd[1].endswith("channels-cli.js") and "--already-initialized" in cmd:
+            raise RuntimeError("interrupted listing")
+
+    with pytest.raises(RuntimeError, match="interrupted listing"):
+        pipeline.run_pipeline(args, command_runner=interrupt_listing, validate_files=False)
+    assert any("--initialize-only" in cmd for cmd in first)
+
+    resumed = _args(tmp_path, resume_crawl=True, skip_systemctl=True)
+    seen: list[list[str]] = []
+    pipeline.run_pipeline(
+        resumed, command_runner=lambda cmd, cwd: seen.append(list(cmd)), validate_files=False
+    )
+    crawler = [cmd for cmd in seen if cmd[0] == "node"]
+    assert not any("instances-cli.js" in cmd[1] or "--initialize-only" in cmd for cmd in crawler)
+    probe = next(cmd for cmd in crawler if "instances-health-cli.js" in cmd[1])
+    assert "--skip-observed" in probe
+    listing = next(cmd for cmd in crawler if "channels-cli.js" in cmd[1] and "--check-health" not in cmd)
+    assert "--already-initialized" in listing
+
+
+def test_resume_crawl_rejects_changed_scope_before_network(monkeypatch, tmp_path) -> None:
+    """Resuming with different host selection cannot silently broaden publication."""
+    _patch_lightweight(monkeypatch)
+    args = _args(tmp_path, skip_systemctl=True)
+    _stamp_current_stage(Path(args.staging_db))
+
+    def interrupt_listing(cmd, cwd):
+        """Leave a real saved crawl marker after initialization."""
+        if cmd[1].endswith("channels-cli.js") and "--already-initialized" in cmd:
+            raise RuntimeError("interrupted listing")
+
+    with pytest.raises(RuntimeError, match="interrupted listing"):
+        pipeline.run_pipeline(args, command_runner=interrupt_listing, validate_files=False)
+    seen: list[list[str]] = []
+    with pytest.raises(RuntimeError, match="scope|options"):
+        pipeline.run_pipeline(
+            _args(tmp_path, resume_crawl=True, max_instances=1),
+            command_runner=lambda cmd, cwd: seen.append(list(cmd)), validate_files=False
+        )
+    assert seen == []
+
+
+def test_resume_crawl_before_parent_checkpoint_restarts_discovery(monkeypatch, tmp_path) -> None:
+    """An interruption during discovery still has a safe page-zero recovery path."""
+    _patch_lightweight(monkeypatch)
+    args = _args(tmp_path, resume_crawl=True, skip_systemctl=True)
+    _stamp_current_stage(Path(args.staging_db))
+    seen: list[list[str]] = []
+
+    def interrupt_probe(cmd, cwd):
+        """Observe real stage ordering then stop before downstream jobs."""
+        seen.append(list(cmd))
+        if cmd[1].endswith("instances-health-cli.js"):
+            raise RuntimeError("probe stopped")
+
+    with pytest.raises(RuntimeError, match="probe stopped"):
+        pipeline.run_pipeline(args, command_runner=interrupt_probe, validate_files=False)
+    assert "instances-cli.js" in seen[0][1]
+    assert "--initialize-only" in seen[1]
+    assert "--skip-observed" not in seen[2]
+
+
+def test_completed_crawler_checkpoint_cannot_resume_after_publication(monkeypatch, tmp_path) -> None:
+    """Crawler resume does not silently replay an Updater that reached merge."""
+    _patch_lightweight(monkeypatch)
+    args = _args(tmp_path, skip_systemctl=True)
+    _stamp_current_stage(Path(args.staging_db))
+    pipeline.run_pipeline(args, command_runner=lambda cmd, cwd: None, validate_files=False)
+    seen: list[list[str]] = []
+    with pytest.raises(RuntimeError, match="already completed"):
+        pipeline.run_pipeline(
+            _args(tmp_path, resume_crawl=True, skip_systemctl=True),
+            command_runner=lambda cmd, cwd: seen.append(list(cmd)), validate_files=False
+        )
+    assert seen == []
+
+
+def test_empty_crawler_scope_is_completed_before_downstream_work(monkeypatch, tmp_path) -> None:
+    """An empty selected scope cannot leave a reusable pre-publication checkpoint."""
+    _patch_lightweight(monkeypatch)
+    monkeypatch.setattr(pipeline, "list_staging_hosts", lambda staging_db: set())
+    args = _args(tmp_path, skip_systemctl=True)
+    _stamp_current_stage(Path(args.staging_db))
+    pipeline.run_pipeline(args, command_runner=lambda cmd, cwd: None, validate_files=False)
+    from engine.server.db.jobs.updater.staging import load_crawler_run
+
+    checkpoint = load_crawler_run(Path(args.staging_db))
+    assert checkpoint is not None
+    assert checkpoint["ingest_hosts"] == []
+    assert checkpoint["complete"] is True
+
+
+def test_new_crawl_invalidates_previous_checkpoint_before_discovery(monkeypatch, tmp_path) -> None:
+    """A stop in a new discovery cannot revive the prior run's completed hosts."""
+    _patch_lightweight(monkeypatch)
+    args = _args(tmp_path, skip_systemctl=True)
+    stage_path = Path(args.staging_db)
+    _stamp_current_stage(stage_path)
+    from engine.server.db.jobs.updater.staging import load_crawler_run, save_crawler_run
+
+    save_crawler_run(stage_path, {"version": 1, "ingest_hosts": ["old.example"], "complete": False})
+
+    def interrupt_discovery(cmd, cwd):
+        """Stop before the new scope has been initialized."""
+        if cmd[1].endswith("instances-cli.js"):
+            raise RuntimeError("discovery stopped")
+
+    with pytest.raises(RuntimeError, match="discovery stopped"):
+        pipeline.run_pipeline(args, command_runner=interrupt_discovery, validate_files=False)
+    assert load_crawler_run(stage_path) is None

@@ -18,7 +18,7 @@ import {
   DEFAULT_JOINPEERTUBE_WHITELIST_URL,
   fetchInstanceRegistryHosts
 } from "./instance-registry.js";
-import { resolveThumbnailCandidates, type PeerTubeVideoMediaLike } from "./video-media.js";
+import { projectDetailThumbnailCandidates, type PeerTubeVideoMediaLike } from "./video-media.js";
 
 export interface LiveThumbnailSmokeOptions {
   registryUrl: string;
@@ -351,7 +351,7 @@ async function validateRows(
       clearTimeout(timeout);
     }
 
-    const expectedCandidates = resolveThumbnailCandidates(detail.thumbnails, row.instance_domain, "https:");
+    const expectedCandidates = projectDetailThumbnailCandidates(detail, row.instance_domain, "https:");
     if (expectedCandidates === null) {
       const valid = row.thumbnail_candidates_json === null;
       return {
@@ -359,7 +359,7 @@ async function validateRows(
         expectedUrls: null,
         persistedUrls: null,
         valid,
-        error: valid ? null : "legacy detail must preserve SQL NULL candidate state"
+        error: valid ? null : "detail without authoritative thumbnail representation must preserve SQL NULL candidate state"
       };
     }
 

@@ -2,7 +2,7 @@
  * Video crawl persistence for the TypeScript crawler.
  *
  * VideoStore owns video rows, video progress, tags/comments updates, and
- * invalid/error recording. PeerTube request behavior remains in videos-worker.ts.
+ * initial invalidity and maintenance diagnostics. PeerTube request behavior remains in videos-worker.ts.
  */
 
 import Database from "better-sqlite3";
@@ -14,6 +14,7 @@ import type { ThumbnailCandidate } from "../video-media.js";
 import { deleteInstancesInChunks } from "./utils.js";
 import type {
   ExistingVideoRefresh,
+  NewVideoInsertRow,
   VideoActivityPubMetadataPatch,
   VideoChannelRow,
   VideoCrawlStatus,
@@ -25,6 +26,11 @@ import type {
   VideoTagRow,
   VideoUpsertRow
 } from "./types.js";
+
+export const VIDEO_AVAILABILITY_SEMANTICS_KEY = "video_availability_semantics";
+export const VIDEO_AVAILABILITY_SEMANTICS_VALUE = "canonical_absence_atomic_ingest_v2";
+export const VIDEO_CORPUS_ROLE_KEY = "video_corpus_role";
+export const UPDATER_STAGING_ROLE = "updater_staging_delta";
 
 export class VideoStore {
   private db: Database.Database;
@@ -53,7 +59,8 @@ export class VideoStore {
         embed_path, views, likes, dislikes, comments_count, nsfw, sensitive_summary,
         is_live, permanent_live, live_save_replay, aspect_ratio, support,
         account_username, account_avatar_url, metadata_version, preview_path,
-        last_checked_at, last_error, last_error_at, error_count
+        last_checked_at, last_error, last_error_at, error_count,
+        invalid_reason, invalid_at
       ) VALUES (
         @videoId, @videoUuid, @videoNumericId, @instanceDomain,
         @channelId, @channelName, @channelUrl, @accountName, @accountUrl,
@@ -63,7 +70,8 @@ export class VideoStore {
         @embedPath, @views, @likes, @dislikes, @commentsCount, @nsfw, @sensitiveSummary,
         @isLive, @permanentLive, @liveSaveReplay, @aspectRatio, @support,
         @accountUsername, @accountAvatarUrl, @metadataVersion, @previewPath,
-        @lastCheckedAt, NULL, NULL, 0
+        @lastCheckedAt, @lastError, @lastErrorAt, @errorCount,
+        @invalidReason, @invalidAt
       )
     `);
     this.baseRefreshStmt = this.db.prepare(`
@@ -196,16 +204,25 @@ export class VideoStore {
    */
   listChannelsWithVideos(minVideos: number, instances: string[]): VideoChannelRow[] {
     if (instances.length === 0) return [];
-    const placeholders = instances.map(() => "?").join(", ");
+    // Child video work needs positive fresh parent health and a completed
+    // page-zero listing; the explicit JSON1 scope scales beyond bind limits.
     const rows = this.db
       .prepare(
         `SELECT channel_id, channel_name, display_name, channel_url, instance_domain, videos_count
-         FROM channels
+         FROM channels c
          WHERE videos_count >= ?
            AND channel_name IS NOT NULL
-           AND instance_domain IN (${placeholders})`
+           AND c.health_status='ok' AND c.health_checked_at IS NOT NULL
+           AND c.instance_domain IN (SELECT value FROM json_each(?))
+           AND EXISTS (SELECT 1 FROM instances i
+             JOIN channel_crawl_progress p ON p.instance_domain=i.host
+             JOIN crawl_state state ON state.key='parent_enumeration_v1:' || i.host
+             WHERE i.host=c.instance_domain
+               AND i.health_status='ok' AND i.health_checked_at IS NOT NULL
+               AND p.status='done' AND p.last_start=0
+               AND state.value='page_zero_complete_v1')`
       )
-      .all(minVideos, ...instances) as VideoChannelRow[];
+      .all(minVideos, JSON.stringify(instances)) as VideoChannelRow[];
     return rows;
   }
 
@@ -373,17 +390,28 @@ export class VideoStore {
     if (scopedInstances && scopedInstances.length === 0) return [];
     const placeholders = statuses.map(() => "?").join(", ");
     const instanceFilter = scopedInstances
-      ? `AND instance_domain IN (${scopedInstances.map(() => "?").join(", ")})`
+      ? "AND p.instance_domain IN (SELECT value FROM json_each(?))"
       : "";
+    // Revalidate parent eligibility at the final authoritative read: resumed
+    // video progress can retain channels now marked unhealthy or missing.
     const rows = this.db
       .prepare(
-        `SELECT instance_domain, channel_id, channel_name, status, last_start, last_error
-         FROM video_crawl_progress
-         WHERE status IN (${placeholders})
+        `SELECT p.instance_domain, p.channel_id, p.channel_name,
+                p.status, p.last_start, p.last_error
+         FROM video_crawl_progress p
+         JOIN channels c ON c.channel_id=p.channel_id AND c.instance_domain=p.instance_domain
+         JOIN instances i ON i.host=p.instance_domain
+         JOIN channel_crawl_progress cp ON cp.instance_domain=p.instance_domain
+         JOIN crawl_state state ON state.key='parent_enumeration_v1:' || p.instance_domain
+         WHERE p.status IN (${placeholders})
+           AND c.health_status='ok' AND c.health_checked_at IS NOT NULL
+           AND i.health_status='ok' AND i.health_checked_at IS NOT NULL
+           AND cp.status='done' AND cp.last_start=0
+           AND state.value='page_zero_complete_v1'
          ${instanceFilter}
-         ORDER BY instance_domain ASC, channel_id ASC`
+         ORDER BY p.instance_domain ASC, p.channel_id ASC`
       )
-      .all(...statuses, ...(scopedInstances ?? [])) as {
+      .all(...statuses, ...(scopedInstances ? [JSON.stringify(scopedInstances)] : [])) as {
       instance_domain: string;
       channel_id: string;
       channel_name: string | null;
@@ -425,15 +453,83 @@ export class VideoStore {
       );
   }
 
-  /** Insert newly discovered videos without rewriting an existing row on conflict. */
-  insertNewVideos(rows: VideoUpsertRow[]) {
+  /**
+   * Insert newly discovered identities with their first canonical availability.
+   * Writer-generation authorization and first-row persistence share one
+   * transaction so a committed current-writer row can never lack its evidence.
+   */
+  insertNewVideos(rows: NewVideoInsertRow[]) {
     if (rows.length === 0) return;
-    const transaction = this.db.transaction((items: VideoUpsertRow[]) => {
-      for (const row of items) {
-        this.insertStmt.run(this.bindRow(row));
+    const transaction = this.db.transaction((items: NewVideoInsertRow[]) => {
+      const acquiredWriterEvidence = this.authorizeNewVideoWriter();
+      let insertedRows = 0;
+      for (const item of items) {
+        insertedRows += Number(this.insertStmt.run(this.bindNewVideoInsert(item)).changes);
+      }
+      if (acquiredWriterEvidence && insertedRows === 0) {
+        throw new Error("first video insert batch did not create any rows");
       }
     });
     transaction(rows);
+  }
+
+  /**
+   * Validate the corpus before new identities are minted and acquire current
+   * standalone writer evidence only for an empty roleless corpus.
+   */
+  private authorizeNewVideoWriter(): boolean {
+    const state = this.readPersistedCrawlState();
+    const role = state.get(VIDEO_CORPUS_ROLE_KEY) ?? null;
+    const semantics = state.get(VIDEO_AVAILABILITY_SEMANTICS_KEY) ?? null;
+
+    // Corpus kind is permanent workflow identity. The shared writer may
+    // preserve updater staging but must never invent or reinterpret another role.
+    if (role !== null && role !== UPDATER_STAGING_ROLE) {
+      throw new Error(`unsupported video corpus role: ${role}`);
+    }
+    if (role === UPDATER_STAGING_ROLE) {
+      if (semantics !== VIDEO_AVAILABILITY_SEMANTICS_VALUE) {
+        throw new Error("updater staging video corpus has incompatible writer semantics");
+      }
+      return false;
+    }
+
+    if (semantics === VIDEO_AVAILABILITY_SEMANTICS_VALUE) return false;
+
+    const videoCount = (
+      this.db.prepare("SELECT COUNT(*) AS count FROM videos").get() as { count: number }
+    ).count;
+    if (semantics === null && videoCount === 0) {
+      // The first standalone batch is the only boundary that can truthfully
+      // acquire writer provenance. DDL + marker + rows all roll back together.
+      this.db.exec(
+        "CREATE TABLE IF NOT EXISTS crawl_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+      );
+      this.db
+        .prepare("INSERT INTO crawl_state(key, value) VALUES (?, ?)")
+        .run(VIDEO_AVAILABILITY_SEMANTICS_KEY, VIDEO_AVAILABILITY_SEMANTICS_VALUE);
+      return true;
+    }
+
+    if (videoCount > 0) {
+      // TODO(peertube-browser-video-availability-generation-cutover): Remove legacy corpus
+      // rejection after pre-v2 corpora are unsupported.
+      throw new Error("video corpus predates current atomic initial-tombstone writer semantics");
+    }
+    throw new Error("video corpus has incompatible writer semantics");
+  }
+
+  /** Read persisted lifecycle evidence without creating or repairing it. */
+  private readPersistedCrawlState(): Map<string, string> {
+    const table = this.db
+      .prepare("SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name='crawl_state'")
+      .get() as { present: number } | undefined;
+    if (!table) return new Map();
+    const rows = this.db.prepare("SELECT key, value FROM crawl_state").all() as {
+      key: string;
+      value: string;
+    }[];
+    return new Map(rows.map((row) => [row.key, row.value]));
   }
 
   /**
@@ -536,6 +632,35 @@ export class VideoStore {
       accountUsername: row.accountUsername ?? null,
       accountAvatarUrl: row.accountAvatarUrl ?? null,
       metadataVersion: row.metadataVersion ?? 0
+    };
+  }
+
+  /** Bind one insert-only invalidity state without inventing timestamps. */
+  private bindNewVideoInsert(item: NewVideoInsertRow) {
+    const { initialInvalidity } = item;
+    if (initialInvalidity.reason === null) {
+      if (initialInvalidity.observedAt !== null) {
+        throw new Error("live initial video state cannot carry an invalidity timestamp");
+      }
+      return {
+        ...this.bindRow(item.row),
+        invalidReason: null,
+        invalidAt: null,
+        lastError: null,
+        lastErrorAt: null,
+        errorCount: 0
+      };
+    }
+    if (!Number.isFinite(initialInvalidity.observedAt)) {
+      throw new Error("initial video invalidity requires a finite observation timestamp");
+    }
+    return {
+      ...this.bindRow(item.row),
+      invalidReason: initialInvalidity.reason,
+      invalidAt: initialInvalidity.observedAt,
+      lastError: initialInvalidity.reason,
+      lastErrorAt: initialInvalidity.observedAt,
+      errorCount: 1
     };
   }
 
@@ -679,19 +804,6 @@ export class VideoStore {
          WHERE video_id = ? AND instance_domain = ?`
       )
       .run(commentsCount, videoId, instanceDomain);
-  }
-
-  /**
-   * Handle update video invalid.
-   */
-  updateVideoInvalid(videoId: string, instanceDomain: string, reason: string) {
-    this.db
-      .prepare(
-        `UPDATE videos
-         SET invalid_reason = ?, invalid_at = ?, last_error = ?, last_error_at = ?, error_count = error_count + 1
-         WHERE video_id = ? AND instance_domain = ?`
-      )
-      .run(reason, Date.now(), reason, Date.now(), videoId, instanceDomain);
   }
 
   /**

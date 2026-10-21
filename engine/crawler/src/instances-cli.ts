@@ -3,6 +3,7 @@
  */
 
 import { Command } from "commander";
+import { loadHostsFromFile } from "./host-filters.js";
 import { crawl } from "./crawler.js";
 import { isNoNetworkError } from "./http.js";
 import { DEFAULT_JOINPEERTUBE_WHITELIST_URL } from "./instance-registry.js";
@@ -43,6 +44,7 @@ program
   )
   .option("--expand-beyond-whitelist", "Discover instances beyond the whitelist", false)
   .option("--graph", "Collect instance relationships (followers/following)", false)
+  .option("--allow-empty-scoped-whitelist", "Allow empty registry overlap for a resumed explicit scope", false)
   .option("--resume", "Resume from existing DB", false);
 
 program.parse(process.argv);
@@ -50,7 +52,13 @@ program.parse(process.argv);
 const options = program.opts();
 
 try {
+  if (options.allowEmptyScopedWhitelist &&
+      (!options.resume || options.graph || options.expandBeyondWhitelist ||
+       loadHostsFromFile(options.hostsFile).size === 0)) {
+    throw new Error("--allow-empty-scoped-whitelist requires nonempty hosts scope, resume and no graph/expand");
+  }
   await crawl({
+    allowEmptyScopedWhitelist: Boolean(options.allowEmptyScopedWhitelist),
     whitelistUrl: options.whitelistUrl,
     whitelistFile: options.whitelistFile || null,
     hostsFile: options.hostsFile || null,

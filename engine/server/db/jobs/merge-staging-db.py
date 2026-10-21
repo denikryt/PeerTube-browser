@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -18,6 +19,13 @@ if str(server_dir) not in sys.path:
 
 from scripts.cli_format import CompactHelpFormatter
 from data.prepared_discovery import invalidate_prepared_discovery
+try:
+    from engine.server.db.jobs.updater.staging import assert_video_availability_staging_semantics_conn
+    from engine.server.db.jobs.updater.availability_publish import apply_existing_video_availability_conn
+except ModuleNotFoundError:  # Direct script execution has only server/jobs roots.
+    sys.path.insert(0, str(script_dir))
+    from updater.staging import assert_video_availability_staging_semantics_conn
+    from updater.availability_publish import apply_existing_video_availability_conn
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,6 +54,14 @@ def parse_args() -> argparse.Namespace:
         "--rules",
         default=str((script_dir / "merge_rules.json").resolve()),
         help="Path to merge rules JSON.",
+    )
+    parser.add_argument(
+        "--parent-health-hosts-file",
+        help="Frozen normalized host scope for this invocation; absent or empty publishes no parent health.",
+    )
+    parser.add_argument(
+        "--availability-sweep-report-json",
+        help="Completed same-run availability summary; apply with staging merge in one transaction.",
     )
     return parser.parse_args()
 
@@ -148,6 +164,124 @@ def build_upsert_sql(
     )
 
 
+_PARENT_HEALTH_COLUMNS = ("health_status", "health_checked_at", "health_error")
+_PARENT_HEALTH_HOST_PATTERN = re.compile(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\Z")
+
+
+def read_parent_health_scope(path: str | None) -> str:
+    """Freeze explicit crawler-normalized host identities into one JSON1 argument.
+
+    Absent and explicitly empty scopes both mean zero publication, never all
+    staging rows. A malformed file is not silently widened or normalized.
+    """
+    if path is None:
+        return "[]"
+    hosts: set[str] = set()
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        host = line.strip()
+        if not host or host.startswith("#"):
+            continue
+        if (
+            not _PARENT_HEALTH_HOST_PATTERN.fullmatch(host)
+            or ".." in host
+            or ".-" in host
+            or "-." in host
+        ):
+            raise ValueError(f"Invalid normalized parent-health host: {host!r}")
+        hosts.add(host)
+    return json.dumps(sorted(hosts), separators=(",", ":"))
+
+
+def validate_parent_health(conn: sqlite3.Connection, scope_json: str, tables: set[str]) -> None:
+    """Reject invalid selected staging observations before the first production DML."""
+    if scope_json == "[]":
+        # There is no selected run observation to validate.
+        return
+    for table, host_column in (("instances", "host"), ("channels", "instance_domain")):
+        if table not in tables:
+            continue
+        # Seeding copied production health into other staging hosts; those rows
+        # are not run observations and must not participate in validation.
+        rows = conn.execute(
+            f"SELECT health_status,health_checked_at,health_error "
+            f"FROM stage.{table} WHERE {host_column} IN (SELECT value FROM json_each(?))",
+            (scope_json,),
+        )
+        for status, checked_at, error in rows:
+            if status is None and checked_at is None and error is None:
+                continue
+            if (
+                status not in {"ok", "error"}
+                or type(checked_at) is not int
+                or checked_at <= 0
+                or (status == "ok" and error is not None)
+                or (status == "error" and (
+                    not isinstance(error, str)
+                    or not error.strip()
+                    or len(error) > 4096
+                ))
+            ):
+                raise ValueError(f"Invalid selected {table} health observation")
+
+
+def publish_parent_health(conn: sqlite3.Connection, scope_json: str, tables: set[str]) -> None:
+    """Publish scoped verified observations without modifying parent metadata.
+
+    Both parent metadata INSERTs must already have run. This single health
+    publication path covers new and preexisting production rows and shares the
+    enclosing transaction with Prepared Discovery invalidation.
+    """
+    if scope_json == "[]":
+        return
+    changed_visibility = False
+    for table, host_column, pk_predicate in (
+        ("instances", "host", "p.host = s.host"),
+        ("channels", "instance_domain", "p.channel_id = s.channel_id AND p.instance_domain = s.instance_domain"),
+    ):
+        if table not in tables:
+            continue
+        changed_visibility = changed_visibility or conn.execute(
+            f"SELECT 1 FROM main.{table} AS p "
+            f"JOIN stage.{table} AS s ON {pk_predicate} "
+            f"WHERE s.{host_column} IN (SELECT value FROM json_each(?)) "
+            f"AND s.health_status IS NOT NULL "
+            f"AND COALESCE(p.health_status = 'error', 0) != (s.health_status = 'error') "
+            f"LIMIT 1",
+            (scope_json,),
+        ).fetchone() is not None
+    # Compare *before* either UPDATE; a newly inserted parent starts at NULL.
+    if changed_visibility:
+        invalidate_prepared_discovery(conn)
+    for table, host_column, pk_predicate in (
+        ("instances", "host", "p.host = s.host"),
+        ("channels", "instance_domain", "p.channel_id = s.channel_id AND p.instance_domain = s.instance_domain"),
+    ):
+        if table not in tables:
+            continue
+        conn.execute(
+            f"UPDATE main.{table} AS p SET "
+            f"health_status = s.health_status, "
+            f"health_checked_at = s.health_checked_at, "
+            f"health_error = s.health_error "
+            f"FROM stage.{table} AS s "
+            f"WHERE {pk_predicate} AND s.health_status IS NOT NULL "
+            f"AND s.{host_column} IN (SELECT value FROM json_each(?))",
+            (scope_json,),
+        )
+
+
+def health_neutral_parent_select(table: str, merge_columns: list[str]) -> str:
+    """Import parent metadata but never a seeded health trio into new rows."""
+    expressions = [
+        "NULL" if column in _PARENT_HEALTH_COLUMNS else column
+        for column in merge_columns
+    ]
+    return (
+        f"INSERT OR IGNORE INTO main.{table} ({', '.join(merge_columns)}) "
+        f"SELECT {', '.join(expressions)} FROM stage.{table}"
+    )
+
+
 def main() -> None:
     """Handle main."""
     args = parse_args()
@@ -165,6 +299,13 @@ def main() -> None:
         raise FileNotFoundError(f"Rules file not found: {rules_path}")
 
     rules = load_rules(rules_path)
+    scope_json = read_parent_health_scope(getattr(args, "parent_health_hosts_file", None))
+    # This is a small immutable report, never a path that could be swapped
+    # after the updater has selected and checked the completed work set.
+    report_json = getattr(args, "availability_sweep_report_json", None)
+    sweep_report = json.loads(report_json) if report_json is not None else None
+    if report_json is not None and not isinstance(sweep_report, dict):
+        raise ValueError("Availability report must be a JSON object")
     conn = sqlite3.connect(prod_db.as_posix())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -176,7 +317,24 @@ def main() -> None:
         # transaction. A later rule must never discover incompatible staging
         # columns after earlier tables have already been merged.
         prepared_rules = validate_merge_schema(conn, rules)
+        parent_tables = {r["table"] for r in prepared_rules} & {"instances", "channels"}
+        last_parent = next(
+            (r["table"] for r in reversed(prepared_rules) if r["table"] in parent_tables),
+            None,
+        )
+        # UPDATE FROM and JSON1 are part of the required merger runtime.
+        # Fail before any production DML rather than hiding missing capabilities.
+        if sqlite3.sqlite_version_info < (3, 33, 0):
+            raise RuntimeError("SQLite >= 3.33 is required for parent-health UPDATE FROM")
+        # The direct merger checks JSON1 on its own connection, not merely via
+        # the updater caller; no production DML is allowed without the capability.
+        if [tuple(row) for row in conn.execute("SELECT value FROM json_each(?)", ('["probe"]',))] != [
+            ("probe",)
+        ]:
+            raise RuntimeError("SQLite json_each/JSON1 is required for parent publication")
         conn.execute("BEGIN IMMEDIATE")
+        assert_video_availability_staging_semantics_conn(conn, "stage")
+        validate_parent_health(conn, scope_json, parent_tables)
         for prepared in prepared_rules:
             rule = prepared["rule"]
             table = prepared["table"]
@@ -187,8 +345,10 @@ def main() -> None:
             cols = ", ".join(merge_columns)
             if strategy == "INSERT_ONLY":
                 sql = (
-                    f"INSERT OR IGNORE INTO main.{table} ({cols}) "
-                    f"SELECT {cols} FROM stage.{table}"
+                    health_neutral_parent_select(table, merge_columns)
+                    if table in {"instances", "channels"}
+                    else f"INSERT OR IGNORE INTO main.{table} ({cols}) "
+                         f"SELECT {cols} FROM stage.{table}"
                 )
             elif strategy == "INSERT_OR_REPLACE":
                 sql = (
@@ -215,6 +375,10 @@ def main() -> None:
 
             conn.execute(sql)
             affected = int(conn.execute("SELECT changes()").fetchone()[0])
+            if table == last_parent:
+                # Publish only after the final parent metadata INSERT, including
+                # when a constrained merge-rule fixture contains one parent.
+                publish_parent_health(conn, scope_json, parent_tables)
             if table == "videos" and affected > 0:
                 # Keep invalidation in the merge transaction: failed merges
                 # restore both canonical videos and the previous readiness marker.
@@ -229,7 +393,17 @@ def main() -> None:
                 affected,
             )
 
+        # Apply completed existing-video evidence after all INSERT_ONLY tables;
+        # a late identity or report failure rolls back merge and parent health.
+        summary = (
+            apply_existing_video_availability_conn(
+                conn, sweep_report=sweep_report, evidence_schema="stage"
+            ) if sweep_report is not None else None
+        )
         conn.commit()
+        if summary is not None:
+            logging.info("video_availability_publication %s", json.dumps(
+                summary.__dict__, sort_keys=True))
     except Exception:
         conn.rollback()
         raise

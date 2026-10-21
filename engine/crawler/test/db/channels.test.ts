@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ChannelStore } from "../../src/db/channels.js";
-import { allRows, createTempDb, getRow } from "./helpers.js";
+import { allRows, createTempDb, confirmFreshParents, getRow } from "./helpers.js";
 
 const channel = {
   channelId: "c1",
@@ -178,6 +178,7 @@ test("ChannelStore count resume selects only unfinished rows and isolates record
       { ...channel, channelId: "failed", channelName: "failed", videosCount: null }
     ]);
     store.updateChannelVideosCountError("failed", "example.org", "[timeout] prior failure");
+    confirmFreshParents(temp.dbPath, ["example.org"]);
 
     assert.deepEqual(
       store.listChannelsForVideoCount("example.org", true, false).map((row) => row.channel_id),

@@ -12,8 +12,18 @@ export interface RequestLimiter {
  * pools from multiplying the operator's requested per-host pressure. Reserving
  * request start times centrally makes the host delay apply to every crawl mode,
  * including concurrent channel pages and per-video detail enrichment.
+ * A caller-owned guard runs after any queued wait or host delay, immediately
+ * before actual I/O. This prevents an already queued identity from starting
+ * after an unrelated host reports a fatal run-wide error. An optional operation
+ * error hook runs before releasing a slot, so queued requests cannot overtake
+ * publication of an explicit local outage.
  */
-export function createRequestLimiter(concurrency: number, delayMs = 0): RequestLimiter {
+export function createRequestLimiter(
+  concurrency: number,
+  delayMs = 0,
+  assertBeforeStart?: () => void,
+  onOperationError?: (error: unknown) => void,
+): RequestLimiter {
   const limit = Math.max(1, Math.floor(concurrency));
   const minimumDelayMs = Math.max(0, Math.floor(delayMs));
   let active = 0;
@@ -44,15 +54,25 @@ export function createRequestLimiter(concurrency: number, delayMs = 0): RequestL
     async run<T>(operation: () => Promise<T>): Promise<T> {
       await acquire();
       try {
-        // JavaScript runs this reservation synchronously until the first await,
-        // so concurrent holders cannot reserve the same per-host start slot.
-        const now = Date.now();
-        const startAt = Math.max(now, nextStartAt);
-        nextStartAt = startAt + minimumDelayMs;
-        if (startAt > now) {
-          await new Promise<void>((resolve) => setTimeout(resolve, startAt - now));
+        // Timers can become overdue together while the event loop is blocked.
+        // Recheck the last actual start after every wakeup so missed slots never
+        // become a catch-up burst. The monotonic clock ignores wall-clock jumps.
+        while (nextStartAt > performance.now()) {
+          await new Promise<void>((resolve) =>
+            setTimeout(resolve, Math.max(1, nextStartAt - performance.now())));
         }
-        return await operation();
+        assertBeforeStart?.();
+        // No await separates admission from the operation, so sibling holders
+        // observe this start before they can enter their own operation.
+        nextStartAt = performance.now() + minimumDelayMs;
+        try {
+          return await operation();
+        } catch (error) {
+          // Publish a fatal signal before releasing the occupied FIFO slot.
+          // Otherwise a waiting request could start before its owner catches it.
+          onOperationError?.(error);
+          throw error;
+        }
       } finally {
         release();
       }

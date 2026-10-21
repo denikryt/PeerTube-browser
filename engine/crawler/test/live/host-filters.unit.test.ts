@@ -27,3 +27,14 @@ test("normalizeHostToken accepts urls and path-like values from host lists", () 
   assert.equal(normalizeHostToken("example.test/channel"), "example.test");
   assert.equal(normalizeHostToken("  beta.example  "), "beta.example");
 });
+
+test("omitted include is unrestricted while explicit empty include selects zero",()=>{
+ assert.deepEqual(includeHosts(['a.example','b.example'],null),['a.example','b.example']);
+ assert.deepEqual(includeHosts(['a.example','b.example'],new Set()),[]);
+});
+
+test("internal host selection intersects operator includes and exclusions",()=>{
+ assert.deepEqual(scopeHosts(['a.example','b.example'],new Set(['b.example']),new Set(),['a.example']),[]);
+ assert.deepEqual(scopeHosts(['a.example','b.example'],null,new Set(),[]),[]);
+ assert.deepEqual(scopeHosts(['a.example','b.example'],new Set(['a.example']),new Set(),['a.example']),['a.example']);
+});

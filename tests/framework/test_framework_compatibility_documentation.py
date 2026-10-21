@@ -1,4 +1,4 @@
-"""Documentation checks for Stage 10 framework compatibility decisions."""
+"""Documentation checks for the current FastAPI runtime contracts."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,22 +6,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_framework_compatibility_document_records_required_decisions() -> None:
-    """Framework compatibility decisions must be explicit and test-linked."""
-    text = (ROOT / "docs" / "FRAMEWORK_COMPATIBILITY.md").read_text()
+def test_internals_document_records_current_http_runtime_contracts() -> None:
+    """The internals document must preserve the active HTTP behavior."""
+    text = (ROOT / "docs" / "HOW_IT_WORKS.md").read_text()
     required = [
-        "server.py entrypoint paths remain stable",
-        "CORS and OPTIONS behavior is preserved",
-        "Rate-limit keys are preserved",
-        "Request-size and invalid JSON errors are preserved",
-        "Client read proxy byte/status/content-type preservation is preserved",
-        "/videos/{id}/similar path-id injection is preserved",
-        "/internal/events/ingest mode gate is preserved",
-        "FAISS startup prerequisite is unchanged",
-        "Pydantic/OpenAPI schema redesign is deferred",
+        "preserves allowed upstream status, body, and content type",
+        "return `204` for preflight requests",
+        "`client_ip:path`",
+        "invalid JSON and request-size errors",
+        "`ENGINE_INGEST_MODE=bridge`",
+        "compatible FAISS index",
     ]
     for phrase in required:
         assert phrase in text
-    assert text.count("Decision:") >= len(required)
-    assert "Implementation action:" in text
-    assert "Tests:" in text

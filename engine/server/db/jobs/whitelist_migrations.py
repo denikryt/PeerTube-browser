@@ -5,6 +5,38 @@ from __future__ import annotations
 import sqlite3
 
 
+def normalize_video_availability_semantics(conn: sqlite3.Connection) -> dict[str, object]:
+    """Clear only known historical transient invalidity in canonical main videos.
+
+    The caller owns commit/rollback and any derived readiness invalidation.
+    Unknown values (including empty strings) and diagnostic history are preserved.
+    """
+    transient = ("timeout", "tls_error", "cert_expired")
+    canonical = ("not_found", "gone")
+    counts = dict(
+        conn.execute(
+            "SELECT invalid_reason, COUNT(*) FROM main.videos "
+            "WHERE invalid_reason IS NOT NULL GROUP BY invalid_reason"
+        ).fetchall()
+    )
+    # Paired cleanup is intentionally exact, with no inferred timestamp repair.
+    changed = conn.execute(
+        "UPDATE main.videos SET invalid_reason=NULL, invalid_at=NULL "
+        "WHERE invalid_reason IN (?, ?, ?)",
+        transient,
+    ).rowcount
+    return {
+        "transient_counts": {reason: counts.get(reason, 0) for reason in transient},
+        "canonical_counts": {reason: counts.get(reason, 0) for reason in canonical},
+        "unknown_counts": {
+            reason: count
+            for reason, count in counts.items()
+            if reason not in (*transient, *canonical)
+        },
+        "rows_changed": changed,
+    }
+
+
 VIDEO_METADATA_V1_COLUMNS: tuple[tuple[str, str], ...] = (
     ("metadata_version", "INTEGER NOT NULL DEFAULT 0"),
     ("language", "TEXT"),

@@ -6,7 +6,7 @@ from __future__ import annotations
 #
 # This module centralizes:
 # - selection of "similar from likes" source (ANN vs cache-optimized + fallback),
-# - construction of generator deps with error-threshold filtering,
+# - construction of generator deps with canonical availability and moderation,
 # - creation of the mixing strategy with configured generator ordering/ratios.
 #
 # It does not run queries directly; it only composes dependencies and returns a
@@ -67,7 +67,6 @@ class RecommendationBuilderSettings:
     max_likes_for_recs: int
     similar_per_like: int
     default_similar_from_likes_source: bool
-    video_error_threshold: int
     fresh_pool_size: int
 
 
@@ -86,7 +85,7 @@ def build_recommendation_strategy(
     Output:
     - MixingRecommendationStrategy configured with exploit/explore/fresh generators.
     """
-    # Stage 5 validates the checked-in/raw dictionary before strategy wiring,
+    # recommendation pipeline cleanup validates the checked-in/raw dictionary before strategy wiring,
     # but still passes that raw dictionary into the mixer to preserve existing
     # fallback and lookup semantics during execution.
     validate_recommendation_config(config)
@@ -94,25 +93,25 @@ def build_recommendation_strategy(
     def fetch_random_rows_filtered(conn: Any, limit: int) -> list[dict[str, Any]]:
         """Handle fetch random rows filtered."""
         return deps.fetch_random_rows(
-            conn, limit, error_threshold=settings.video_error_threshold
+            conn, limit
         )
 
     def fetch_random_rows_from_cache_filtered(server: Any, limit: int) -> list[dict[str, Any]]:
         """Handle fetch random rows from cache filtered."""
         return deps.fetch_random_rows_from_cache(
-            server, limit, error_threshold=settings.video_error_threshold
+            server, limit
         )
 
     def fetch_recent_videos_filtered(conn: Any, limit: int) -> list[dict[str, Any]]:
         """Handle fetch recent videos filtered."""
         return deps.fetch_recent_videos(
-            conn, limit, error_threshold=settings.video_error_threshold
+            conn, limit
         )
 
     def fetch_popular_videos_filtered(conn: Any, limit: int) -> list[dict[str, Any]]:
         """Handle fetch popular videos filtered."""
         return deps.fetch_popular_videos(
-            conn, limit, error_threshold=settings.video_error_threshold
+            conn, limit
         )
 
     ann_deps = AnnSimilarFromLikesDeps(

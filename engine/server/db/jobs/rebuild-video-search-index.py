@@ -31,7 +31,7 @@ def _count_table_rows(conn, table_name: str) -> int | None:
 def _count_source_videos(conn) -> int | None:
     """Count eligible source videos so operators can distinguish empty DBs from job failures."""
     try:
-        row = conn.execute("SELECT COUNT(*) FROM videos WHERE COALESCE(invalid_reason, '') = ''").fetchone()
+        row = conn.execute("SELECT COUNT(*) FROM videos WHERE invalid_reason IS NULL").fetchone()
     except sqlite3.Error:
         return None
     return int(row[0]) if row is not None else None

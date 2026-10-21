@@ -10,13 +10,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from data.moderation import ModerationFilterStats, filter_rows_by_moderation
+from data.parent_health_visibility import build_parent_visibility_sql, filter_rows_by_parent_health
 
 
 @dataclass(frozen=True)
 class ServingVisibility:
     """SQL-visible serving policy evaluated before pagination or aggregation."""
 
-    error_threshold: int | None = None
     apply_instance_filter: bool = True
     apply_channel_filter: bool = True
 
@@ -24,7 +24,6 @@ class ServingVisibility:
 def serving_visibility_from_server(server: Any) -> ServingVisibility:
     """Freeze Engine runtime moderation settings into one query policy object."""
     return ServingVisibility(
-        error_threshold=getattr(server, "video_error_threshold", None),
         apply_instance_filter=bool(getattr(server, "enable_instance_ignore", True)),
         apply_channel_filter=bool(getattr(server, "enable_channel_blocklist", True)),
     )
@@ -35,7 +34,7 @@ def build_serving_visibility_sql(
     flags: ServingVisibility,
     *,
     schema: str = "main",
-) -> tuple[str, list[object]]:
+) -> str:
     """Build canonical visibility predicates for one trusted video-table alias.
 
     ``schema`` is deliberately limited to the two namespaces used by runtime
@@ -45,11 +44,8 @@ def build_serving_visibility_sql(
     if schema not in {"main", "canonical"}:
         raise ValueError("Unsupported serving visibility schema")
 
-    clauses = [f"COALESCE({alias}.invalid_reason, '') = ''"]
-    params: list[object] = []
-    if flags.error_threshold is not None and flags.error_threshold > 0:
-        clauses.append(f"({alias}.error_count IS NULL OR {alias}.error_count < ?)")
-        params.append(flags.error_threshold)
+    # Parent failures are independent of runtime moderation configuration.
+    clauses = [f"{alias}.invalid_reason IS NULL", build_parent_visibility_sql(alias, schema=schema)]
     if flags.apply_instance_filter:
         clauses.append(
             f"""NOT EXISTS (
@@ -67,7 +63,7 @@ def build_serving_visibility_sql(
                 AND lower(trim(blocked.instance_domain)) = lower(trim({alias}.instance_domain))
             )"""
         )
-    return " AND ".join(f"({clause})" for clause in clauses), params
+    return " AND ".join(f"({clause})" for clause in clauses)
 
 
 def apply_serving_moderation_filters(
@@ -81,13 +77,15 @@ def apply_serving_moderation_filters(
     apply_instance_filter = visibility.apply_instance_filter
     apply_channel_filter = visibility.apply_channel_filter
 
-    filtered_rows: list[dict[str, Any]] = rows
-    filtered_stats: ModerationFilterStats | None = None
-    if apply_instance_filter or apply_channel_filter:
-        with server.db_lock:
+    # Cached recommendation rows may have been materialized before parent
+    # health changed; enforce the same gate even with moderation disabled.
+    with server.db_lock:
+        filtered_rows = filter_rows_by_parent_health(server.db, rows)
+        filtered_stats: ModerationFilterStats | None = None
+        if apply_instance_filter or apply_channel_filter:
             filtered_rows, filtered_stats = filter_rows_by_moderation(
                 server.db,
-                rows,
+                filtered_rows,
                 apply_instance_filter=apply_instance_filter,
                 apply_channel_filter=apply_channel_filter,
             )
