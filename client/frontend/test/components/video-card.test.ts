@@ -41,8 +41,7 @@ describe("video card renderers", () => {
     expect(html).toContain('class="video-card"');
     expect(html).toContain('data-video-key="example.org::uuid-1"');
     expect(html).toContain("Example &lt;Video&gt;");
-    expect(html).toContain("/video-page.html?");
-    expect(html).toContain("api=http%3A%2F%2F127.0.0.1%3A7172");
+    expect(html).toContain("/video/example.org/uuid-1");
     expect(html).toContain("Example Channel");
     expect(html).toContain("1,234");
     expect(html).toContain("1:35");

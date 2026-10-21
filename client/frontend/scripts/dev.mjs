@@ -17,7 +17,7 @@ Defaults:
 Examples:
   npm run dev
   npm run dev -- --client-api-port 7172
-  npm run dev -- --client-api-base http://127.0.0.1:7072
+  npm run dev -- --client-api-base http://127.0.0.1:7172
 `.trim();
 
 /**

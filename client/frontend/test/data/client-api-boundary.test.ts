@@ -21,7 +21,7 @@ function files(dir: string): string[] {
     .flatMap((entry) => {
       const path = join(dir, entry);
       if (statSync(path).isDirectory()) return files(path);
-      return path.endsWith(".ts") ? [path] : [];
+      return path.endsWith(".ts") || path.endsWith(".vue") ? [path] : [];
     });
 }
 

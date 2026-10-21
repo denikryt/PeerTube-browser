@@ -62,6 +62,7 @@ function seedChannel(dbPath: string) {
       avatarUrl: null
     }
   ]);
+  channels.markInstanceDone("example.org");
   channels.close();
 }
 
@@ -188,6 +189,41 @@ test("VideoStore upserts videos and preserves tag/comment/error update effects",
       ),
       { invalid_reason: "not-public", last_error: "not-public", error_count: 1 }
     );
+    store.close();
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test("VideoStore refreshes thumbnail URLs without touching other crawl state", () => {
+  const temp = createTempDb("crawler-videos-thumbnails");
+  try {
+    seedChannel(temp.dbPath);
+    const store = new VideoStore({ dbPath: temp.dbPath });
+    store.upsertVideos([video]);
+
+    assert.deepEqual(store.listVideosForThumbnailRefresh(), [
+      {
+        videoId: "v1",
+        videoUuid: "uuid-1",
+        instanceDomain: "example.org"
+      }
+    ]);
+
+    store.updateVideoThumbnail("v1", "example.org", "https://example.org/new-thumb.jpg", 200);
+    assert.deepEqual(
+      getRow<{ thumbnail_url: string; last_checked_at: number }>(
+        temp.dbPath,
+        "SELECT thumbnail_url, last_checked_at FROM videos WHERE video_id = ? AND instance_domain = ?",
+        "v1",
+        "example.org"
+      ),
+      {
+        thumbnail_url: "https://example.org/new-thumb.jpg",
+        last_checked_at: 200
+      }
+    );
+
     store.close();
   } finally {
     temp.cleanup();

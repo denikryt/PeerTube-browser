@@ -8,11 +8,13 @@ import { VideoStore } from "./db/videos.js";
 import type {
   VideoChannelRow,
   VideoProgressRow,
+  VideoThumbnailRow,
   VideoTagRow,
   VideoUpsertRow
 } from "./db/types.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
 import { filterHosts, loadHostsFromFile } from "./host-filters.js";
+import { resolvePreferredThumbnailUrl } from "./video-media.js";
 
 const PAGE_SIZE = 50;
 const CHANNEL_CONCURRENCY = 2;
@@ -36,6 +38,7 @@ export interface VideoCrawlOptions {
   tagsOnly: boolean;
   updateTags: boolean;
   commentsOnly: boolean;
+  refreshThumbnails: boolean;
   hostDelayMs: number;
 }
 
@@ -64,12 +67,6 @@ interface PeerTubeVideoChannel {
   ownerAccount?: PeerTubeAccountRef;
 }
 
-interface PeerTubeAsset {
-  url?: string;
-  path?: string;
-  staticPath?: string;
-}
-
 interface PeerTubeCategory {
   id?: number | string;
   label?: string;
@@ -95,7 +92,7 @@ interface PeerTubeVideo {
   thumbnailUrl?: string;
   thumbnailPath?: string;
   thumbnail_path?: string;
-  thumbnail?: PeerTubeAsset | string;
+  thumbnail?: unknown;
   embedPath?: string;
   embed_path?: string;
   views?: number;
@@ -113,6 +110,14 @@ interface PeerTubeVideo {
 }
 
 interface PeerTubeVideoDetail {
+  thumbnailUrl?: string;
+  thumbnailPath?: string;
+  thumbnail_path?: string;
+  thumbnail?: unknown;
+  previewPath?: string;
+  preview_path?: string;
+  previewUrl?: string;
+  preview_url?: string;
   tags?: string[];
   comments?: number;
   commentsCount?: number;
@@ -139,6 +144,10 @@ export async function crawlVideos(options: VideoCrawlOptions) {
   }
   if (options.commentsOnly) {
     await crawlVideoComments(options);
+    return;
+  }
+  if (options.refreshThumbnails) {
+    await refreshVideoThumbnails(options);
     return;
   }
   const store = new VideoStore({ dbPath: options.dbPath });
@@ -658,11 +667,7 @@ function toVideoRow(
     toNullableString(channelRef?.url) ?? channel.channelUrl ?? null;
 
   const videoUrl = toNullableString(video.url);
-  const thumbnailUrl = resolveAssetUrl(
-    video.thumbnailUrl ?? video.thumbnailPath ?? video.thumbnail_path ?? video.thumbnail,
-    host,
-    protocol
-  );
+  const thumbnailUrl = resolvePreferredThumbnailUrl(video, host, protocol);
 
   return {
     videoId,
@@ -726,6 +731,19 @@ function groupByInstanceTags(items: VideoTagRow[]) {
  */
 function groupByInstanceComments(items: VideoTagRow[]) {
   const grouped = new Map<string, VideoTagRow[]>();
+  for (const item of items) {
+    const list = grouped.get(item.instanceDomain) ?? [];
+    list.push(item);
+    grouped.set(item.instanceDomain, list);
+  }
+  return grouped;
+}
+
+/**
+ * Handle group by instance for thumbnail refresh work.
+ */
+function groupByInstanceThumbnail(items: VideoThumbnailRow[]) {
+  const grouped = new Map<string, VideoThumbnailRow[]>();
   for (const item of items) {
     const list = grouped.get(item.instanceDomain) ?? [];
     list.push(item);
@@ -835,37 +853,6 @@ function extractCategory(value: PeerTubeVideo["category"]): string | null {
 }
 
 /**
- * Handle resolve asset url.
- */
-function resolveAssetUrl(value: unknown, host: string, protocol: string): string | null {
-  const candidate = extractAssetValue(value);
-  if (!candidate) return null;
-  if (candidate.startsWith("http://") || candidate.startsWith("https://")) {
-    return candidate;
-  }
-  if (candidate.startsWith("/")) {
-    return `${protocol}//${host}${candidate}`;
-  }
-  return `${protocol}//${host}/${candidate}`;
-}
-
-/**
- * Handle extract asset value.
- */
-function extractAssetValue(value: unknown): string | null {
-  if (typeof value === "string" && value.length > 0) return value;
-  if (value && typeof value === "object") {
-    const asset = value as PeerTubeAsset;
-    return (
-      toNullableString(asset.url) ??
-      toNullableString(asset.path) ??
-      toNullableString(asset.staticPath)
-    );
-  }
-  return null;
-}
-
-/**
  * Handle fetch video detail.
  */
 async function fetchVideoDetail(
@@ -873,20 +860,90 @@ async function fetchVideoDetail(
   videoUuid: string,
   options: VideoCrawlOptions,
   protocol: string
-) {
+): Promise<{ detail: PeerTubeVideoDetail; protocol: string }> {
   const primaryUrl = buildVideoDetailUrl(host, videoUuid, protocol);
   try {
-    return await fetchJsonWithRetry<PeerTubeVideoDetail>(primaryUrl, {
-      timeoutMs: options.timeoutMs,
-      maxRetries: options.maxRetries
-    });
+    return {
+      detail: await fetchJsonWithRetry<PeerTubeVideoDetail>(primaryUrl, {
+        timeoutMs: options.timeoutMs,
+        maxRetries: options.maxRetries
+      }),
+      protocol
+    };
   } catch {
     const fallbackProtocol = protocol === "https:" ? "http:" : "https:";
     const alternateUrl = buildVideoDetailUrl(host, videoUuid, fallbackProtocol);
-    return await fetchJsonWithRetry<PeerTubeVideoDetail>(alternateUrl, {
-      timeoutMs: options.timeoutMs,
-      maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
-    });
+    return {
+      detail: await fetchJsonWithRetry<PeerTubeVideoDetail>(alternateUrl, {
+        timeoutMs: options.timeoutMs,
+        maxRetries: Math.max(1, Math.floor(options.maxRetries / 2))
+      }),
+      protocol: fallbackProtocol
+    };
+  }
+}
+
+/**
+ * Handle refresh video thumbnails.
+ *
+ * This maintenance mode revisits live PeerTube video detail pages so stale
+ * feed thumbnails can be rewritten without replaying the full channel crawl.
+ */
+async function refreshVideoThumbnails(options: VideoCrawlOptions) {
+  const store = new VideoStore({ dbPath: options.dbPath });
+  const excludedHosts = loadHostsFromFile(options.excludeHostsFile);
+  const items = store.listVideosForThumbnailRefresh();
+  const grouped = groupByInstanceThumbnail(items);
+  const hosts = filterHosts(Array.from(grouped.keys()), excludedHosts);
+  const workerCount = Math.min(options.concurrency, Math.max(1, hosts.length));
+
+  console.log(
+    `[thumbnails] instances=${hosts.length} videos=${items.length} concurrency=${workerCount}`
+  );
+
+  try {
+    const queue = hosts.slice();
+    const workers = Array.from({ length: workerCount }, () =>
+      thumbnailWorkerLoop(queue, grouped, store, options)
+    );
+    await Promise.all(workers);
+    console.log("[thumbnails] finished");
+  } finally {
+    store.close();
+  }
+}
+
+/**
+ * Handle thumbnail refresh worker loop.
+ *
+ * One worker processes one host at a time so the crawler does not spray many
+ * detail requests across the same PeerTube instance concurrently.
+ */
+async function thumbnailWorkerLoop(
+  queue: string[],
+  grouped: Map<string, VideoThumbnailRow[]>,
+  store: VideoStore,
+  options: VideoCrawlOptions
+) {
+  while (true) {
+    const host = queue.shift();
+    if (!host) return;
+    const rows = grouped.get(host) ?? [];
+    for (const row of rows) {
+      try {
+        const { detail, protocol } = await fetchVideoDetail(host, row.videoUuid, options, "https:");
+        const thumbnailUrl = resolvePreferredThumbnailUrl(detail, host, protocol);
+        if (thumbnailUrl) {
+          store.updateVideoThumbnail(row.videoId, row.instanceDomain, thumbnailUrl, Date.now());
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        store.updateVideoError(row.videoId, row.instanceDomain, message);
+      }
+      if (options.hostDelayMs > 0) {
+        await sleep(options.hostDelayMs);
+      }
+    }
   }
 }
 
@@ -898,7 +955,7 @@ async function fetchVideoTags(
   videoUuid: string,
   options: VideoCrawlOptions
 ): Promise<string | null> {
-  const detail = await fetchVideoDetail(host, videoUuid, options, "https:");
+  const { detail } = await fetchVideoDetail(host, videoUuid, options, "https:");
   return toTagsJson(detail.tags);
 }
 
@@ -910,7 +967,7 @@ async function fetchVideoComments(
   videoUuid: string,
   options: VideoCrawlOptions
 ): Promise<number | null> {
-  const detail = await fetchVideoDetail(host, videoUuid, options, "https:");
+  const { detail } = await fetchVideoDetail(host, videoUuid, options, "https:");
   return toCommentsCount(detail.comments ?? detail.commentsCount ?? detail.comments_count);
 }
 

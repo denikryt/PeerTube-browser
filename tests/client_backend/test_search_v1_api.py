@@ -18,7 +18,7 @@ def test_video_search_returns_v1_envelope_and_forwards_to_engine(start_json_engi
     response = client.get("/api/v1/search/videos?q=linux&limit=5")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["items"] == [{"video_id": "v1", "instance_domain": "ex", "title": "Linux"}]
+    assert payload["items"] == [{"video_id": "v1", "instance_domain": "ex", "title": "Linux", "thumbnail_url": None}]
     assert payload["pagination"] == {"limit": 5, "next_cursor": None, "has_more": False}
     assert payload["meta"] == {"source": "search_videos", "query": "linux", "index": "sqlite_fts5_light"}
     assert engine.requests[0]["path"] == "/internal/search/videos"
@@ -64,3 +64,53 @@ def test_search_cursors_are_endpoint_scoped(start_json_engine, start_client_back
     assert cursor
     bad = client.get(f"/api/v1/search/videos?q=linux&cursor={cursor}")
     assert bad.status_code == 400
+
+
+def test_video_search_normalizes_thumbnail_from_relative_preview_path(start_json_engine, start_client_backend) -> None:
+    """Video search rows expose canonical browser image URLs through thumbnail_url."""
+    engine = start_json_engine(
+        {
+            ("GET", "/internal/search/videos"): lambda _record: (
+                200,
+                {
+                    "rows": [
+                        {
+                            "video_id": "v1",
+                            "video_uuid": "uuid-v1",
+                            "instance_domain": "video.blast-info.fr",
+                            "thumbnail_url": None,
+                            "preview_path": "/lazy-static/previews/v1.jpg",
+                        }
+                    ]
+                },
+            )
+        }
+    )
+    client = start_client_backend(f"http://127.0.0.1:{engine.server_port}")
+
+    response = client.get("/api/v1/search/videos?q=linux")
+
+    assert response.status_code == 200
+    row = response.json()["items"][0]
+    assert row["thumbnail_url"] == "https://video.blast-info.fr/lazy-static/previews/v1.jpg"
+    assert row["preview_path"] == "/lazy-static/previews/v1.jpg"
+
+
+def test_channel_search_does_not_add_video_thumbnail_fields(start_json_engine, start_client_backend) -> None:
+    """Channel search rows must not be passed through video row shaping."""
+    engine = start_json_engine(
+        {
+            ("GET", "/api/channels"): lambda _record: (
+                200,
+                {"rows": [{"channel_id": "c1", "channel_name": "linux", "instance_domain": "ex"}], "total": 1},
+            )
+        }
+    )
+    client = start_client_backend(f"http://127.0.0.1:{engine.server_port}")
+
+    response = client.get("/api/v1/search/channels?q=linux")
+
+    assert response.status_code == 200
+    row = response.json()["items"][0]
+    assert "thumbnail_url" not in row
+    assert row["channel_id"] == "c1"

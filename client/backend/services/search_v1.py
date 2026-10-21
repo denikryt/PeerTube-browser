@@ -12,6 +12,7 @@ from typing import Any
 
 from lib.engine_api_client import EngineApiError, fetch_engine_channel_search, fetch_engine_video_search
 from schemas import ServiceResult
+from services.video_rows import normalize_video_rows_for_browser
 
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 50
@@ -95,9 +96,20 @@ def _validate_params(params: dict[str, list[str]], kind: str) -> SearchRequest |
     return SearchRequest(query=query, limit=_parse_limit(_first(params, "limit")), offset=offset)
 
 
-def _envelope(items: list[dict[str, Any]], *, query: str, limit: int, offset: int, kind: str, source: str, index: str | None = None) -> dict[str, Any]:
+def _envelope(
+    items: list[dict[str, Any]],
+    *,
+    query: str,
+    limit: int,
+    offset: int,
+    kind: str,
+    source: str,
+    index: str | None = None,
+    normalize_video_items: bool = False,
+) -> dict[str, Any]:
     """Build the public v1 search envelope from one extra fetched row."""
-    page_items = items[:limit]
+    raw_page_items = items[:limit]
+    page_items = normalize_video_rows_for_browser(raw_page_items) if normalize_video_items else raw_page_items
     has_more = len(items) > limit
     meta: dict[str, Any] = {"source": source, "query": query}
     if index:
@@ -130,7 +142,19 @@ def handle_video_search(engine_base_url: str, params: dict[str, list[str]]) -> S
         payload = fetch_engine_video_search(engine_base_url, req.query, req.limit + 1, req.offset)
     except EngineApiError as exc:
         return error_result(502, f"Engine unavailable: {exc}", ERROR_ENGINE_UNAVAILABLE)
-    return ServiceResult(200, _envelope(_rows(payload), query=req.query, limit=req.limit, offset=req.offset, kind="search_videos", source="search_videos", index="sqlite_fts5_light"))
+    return ServiceResult(
+        200,
+        _envelope(
+            _rows(payload),
+            query=req.query,
+            limit=req.limit,
+            offset=req.offset,
+            kind="search_videos",
+            source="search_videos",
+            index="sqlite_fts5_light",
+            normalize_video_items=True,
+        ),
+    )
 
 
 def handle_channel_search(engine_base_url: str, params: dict[str, list[str]]) -> ServiceResult:

@@ -17,6 +17,7 @@ from lib.engine_api_client import (
 )
 from repositories.users import UsersRepository
 from schemas import ServiceResult
+from services.video_rows import normalize_video_row_for_browser, normalize_video_rows_for_browser
 
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 50
@@ -135,7 +136,8 @@ def build_list_envelope(
     seed: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build the public v1 list response envelope."""
-    items = rows[:limit]
+    raw_items = rows[:limit]
+    items = normalize_video_rows_for_browser(raw_items)
     has_more = len(rows) > limit
     next_cursor = encode_cursor(kind, offset + len(items), seed=seed) if has_more else None
     meta: dict[str, Any] = {"source": source, "fallback": bool(fallback)}
@@ -270,6 +272,7 @@ def handle_video(engine_base_url: str, video_ref: str, params: dict[str, list[st
     payload.setdefault("video_id", video_ref)
     payload.setdefault("video_uuid", payload.get("videoUuid"))
     payload.setdefault("instance_domain", host)
+    payload = normalize_video_row_for_browser(payload)
     return ServiceResult(200, payload)
 
 

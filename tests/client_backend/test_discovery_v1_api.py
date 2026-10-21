@@ -162,3 +162,93 @@ def test_v1_unknown_query_does_not_reach_engine(start_json_engine, start_client_
     assert response.status_code == 400
     assert response.json()["code"] == "V1_DISCOVERY_BAD_REQUEST"
     assert fake_engine.requests == []
+
+
+def test_v1_recommendations_normalizes_thumbnail_from_relative_preview_path(start_json_engine, start_client_backend) -> None:
+    """Recommendation rows expose a browser-ready thumbnail_url fallback."""
+    fake_engine = start_json_engine(
+        {
+            ("POST", "/recommendations"): lambda _record: (
+                200,
+                {
+                    "rows": [
+                        {
+                            "video_id": "rec-preview",
+                            "video_uuid": "uuid-rec-preview",
+                            "instance_domain": "video.blast-info.fr",
+                            "thumbnail_url": None,
+                            "preview_path": "/lazy-static/previews/rec-preview.jpg",
+                        },
+                        _row("extra"),
+                    ]
+                },
+            )
+        }
+    )
+    client = start_client_backend(f"http://127.0.0.1:{fake_engine.server_port}")
+
+    response = client.get("/api/v1/discovery/recommendations?limit=1&user_id=image-test")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"][0]["thumbnail_url"] == "https://video.blast-info.fr/lazy-static/previews/rec-preview.jpg"
+    assert body["items"][0]["preview_path"] == "/lazy-static/previews/rec-preview.jpg"
+    assert body["pagination"]["has_more"] is True
+
+
+def test_v1_video_detail_normalizes_thumbnail_from_relative_preview_path(start_json_engine, start_client_backend) -> None:
+    """Single video metadata responses use the same public thumbnail contract."""
+    fake_engine = start_json_engine(
+        {
+            ("GET", "/api/video"): lambda _record: (
+                200,
+                {
+                    "video_id": "v1",
+                    "video_uuid": "uuid-v1",
+                    "instance_domain": "video.blast-info.fr",
+                    "thumbnail_url": None,
+                    "preview_path": "/lazy-static/previews/v1.jpg",
+                },
+            )
+        }
+    )
+    client = start_client_backend(f"http://127.0.0.1:{fake_engine.server_port}")
+
+    response = client.get("/api/v1/videos/v1?host=video.blast-info.fr")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["thumbnail_url"] == "https://video.blast-info.fr/lazy-static/previews/v1.jpg"
+    assert body["preview_path"] == "/lazy-static/previews/v1.jpg"
+
+
+def test_v1_similar_normalizes_thumbnail_without_changing_pagination(start_json_engine, start_client_backend) -> None:
+    """Similar list normalization must not filter rows or alter cursor behavior."""
+    fake_engine = start_json_engine(
+        {
+            ("GET", "/videos/v1/similar"): lambda _record: (
+                200,
+                {
+                    "rows": [
+                        {
+                            "video_id": "s1",
+                            "video_uuid": "uuid-s1",
+                            "instance_domain": "video.blast-info.fr",
+                            "thumbnail_url": None,
+                            "preview_path": "/lazy-static/previews/s1.jpg",
+                        },
+                        _row("s2"),
+                    ]
+                },
+            )
+        }
+    )
+    client = start_client_backend(f"http://127.0.0.1:{fake_engine.server_port}")
+
+    response = client.get("/api/v1/videos/v1/similar?host=video.blast-info.fr&limit=1")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"][0]["thumbnail_url"] == "https://video.blast-info.fr/lazy-static/previews/s1.jpg"
+    assert body["pagination"]["has_more"] is True
+    assert isinstance(body["pagination"]["next_cursor"], str)
