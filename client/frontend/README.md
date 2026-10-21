@@ -51,3 +51,11 @@ npm run build
 # from repository root:
 make test-frontend
 ```
+
+## Discovery and Search state
+
+Home selection is represented by `mode=recommendations|fresh|popular|random` plus optional `language`, `category`, `tag`, and `instance` query parameters. Search uses the same filters alongside `q`. Control changes use Vue Router replacement, so direct URLs reconstruct the same selection without polluting browser history.
+
+`useFeed()`/`useSearch()` own request generations, cursors, duplicate guards, continuation errors, and retry behavior. Views own only their `IntersectionObserver` resources. Home is the only cached route: `<KeepAlive>` preserves loaded rows/Recommended buffer across video-detail Back navigation, and the observer is disconnected while Home is inactive.
+
+`/api/v1/video-facets` supplies global service-visible language/category/tag/instance options. Facet errors are shown separately from result errors and do not clear URL-owned filters.

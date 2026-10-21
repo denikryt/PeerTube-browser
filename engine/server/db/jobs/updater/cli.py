@@ -140,6 +140,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--python-bin", default=sys.executable, help="Python executable for DB jobs."
     )
     parser.add_argument("--concurrency", type=int, default=4, help="Crawler concurrency.")
+    parser.add_argument(
+        "--host-concurrency",
+        type=int,
+        default=2,
+        help="Maximum simultaneous crawler HTTP requests to one PeerTube host.",
+    )
+    parser.add_argument(
+        "--host-delay-ms",
+        type=int,
+        default=200,
+        help="Minimum delay between crawler HTTP request starts to one PeerTube host.",
+    )
     parser.add_argument("--timeout-ms", type=int, default=5000, help="HTTP timeout in ms.")
     parser.add_argument("--max-retries", type=int, default=3, help="HTTP retries.")
     parser.add_argument(
@@ -172,11 +184,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Whitelist URL for instances crawl.",
     )
     parser.add_argument(
+        "--hosts-file",
+        default=None,
+        help=(
+            "Optional host include file passed through every crawler stage so updater "
+            "runs only against the listed instances."
+        ),
+    )
+    parser.add_argument(
         "--sync-join-whitelist",
         action="store_true",
         help=(
             "Strict sync mode: reconcile prod hosts with JoinPeerTube and "
             "ingest only missing hosts."
+        ),
+    )
+    parser.add_argument(
+        "--retry-errors",
+        action="store_true",
+        help=(
+            "Retry only failed channel, video, and video-count records already "
+            "stored in a resumed staging DB, then stop before embeddings and merge."
+        ),
+    )
+    parser.add_argument(
+        "--host-pipeline",
+        action="store_true",
+        help=(
+            "Schedule hosts by global stage priority: channel lists, missing counts, "
+            "then videos; different hosts still run concurrently."
         ),
     )
     parser.add_argument(
@@ -239,6 +275,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.set_defaults(use_gpu=True)
     args = parser.parse_args(argv)
+    if args.retry_errors and not args.resume_staging:
+        parser.error("--retry-errors requires --resume-staging so recorded failures are preserved.")
+    if args.retry_errors and args.host_pipeline:
+        parser.error("--host-pipeline cannot be combined with --retry-errors.")
+    if args.host_concurrency < 1:
+        parser.error("--host-concurrency must be at least 1.")
+    if args.host_delay_ms < 0:
+        parser.error("--host-delay-ms must be non-negative.")
+    if args.hosts_file:
+        # Resolve the operator-supplied file against the updater invocation cwd
+        # before pipeline stages switch cwd to engine/crawler for Node CLIs.
+        args.hosts_file = str(Path(args.hosts_file).resolve())
     if not args.service_name:
         args.service_name = resolve_default_engine_service_name(args.mode)
     return args

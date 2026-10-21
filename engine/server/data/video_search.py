@@ -11,6 +11,9 @@ import re
 import sqlite3
 from typing import Any
 
+from data.serving_moderation import ServingVisibility, build_serving_visibility_sql
+from data.video_filters import VideoFilters, build_video_filter_sql
+
 TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
 
 
@@ -147,84 +150,63 @@ def search_videos(
     query: str,
     limit: int,
     offset: int,
+    filters: VideoFilters | None = None,
+    visibility: ServingVisibility | None = None,
 ) -> tuple[list[dict[str, Any]], int | None]:
-    """Search videos by lightweight indexed fields and return stable video rows."""
+    """Search eligible canonical rows, then apply page cut to the filtered result.
+
+    The FTS match supplies rank only.  Visibility and shared video filters are
+    evaluated on canonical rows before LIMIT/OFFSET so hidden/non-matching hits
+    cannot consume a public result slot.
+    """
     fts_query = normalize_fts_query(query)
     if not fts_query:
         return [], None
+    filters = filters or VideoFilters()
+    visibility = visibility or ServingVisibility()
+    visibility_sql, visibility_args = build_serving_visibility_sql("v", visibility)
+    filter_sql, filter_args = build_video_filter_sql("v", filters)
     fetch_limit = max(limit, 1) + 1
     safe_offset = max(offset, 0)
     rows = conn.execute(
-        """
+        f"""
         WITH matched AS (
           SELECT rowid AS doc_id, bm25(video_search_fts) AS rank
           FROM video_search_fts
           WHERE video_search_fts MATCH ?
-          ORDER BY rank ASC
-          LIMIT ? OFFSET ?
+        ), eligible AS (
+          SELECT
+            v.video_id, v.video_uuid, v.video_numeric_id, v.instance_domain,
+            v.channel_id, v.channel_name, v.channel_url,
+            c.display_name AS channel_display_name,
+            c.avatar_url AS channel_avatar_url,
+            v.account_name, v.account_url, v.title, v.published_at, v.video_url,
+            v.duration, v.thumbnail_url, v.embed_path, v.preview_path,
+            v.views, v.likes, v.dislikes, v.comments_count,
+            v.language, v.language_label, v.category, v.category_id,
+            matched.rank, COALESCE(v.popularity, 0) AS popularity_sort
+          FROM matched
+          JOIN video_search_docs d ON d.doc_id = matched.doc_id
+          JOIN videos v ON v.video_id = d.video_id AND v.instance_domain = d.instance_domain
+          LEFT JOIN channels c ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
+          WHERE {visibility_sql} {filter_sql}
         )
-        SELECT
-          v.video_id,
-          v.video_uuid,
-          v.video_numeric_id,
-          v.instance_domain,
-          v.channel_id,
-          v.channel_name,
-          v.channel_url,
-          c.display_name AS channel_display_name,
-          c.avatar_url AS channel_avatar_url,
-          v.account_name,
-          v.account_url,
-          v.title,
-          v.published_at,
-          v.video_url,
-          v.duration,
-          v.thumbnail_url,
-          v.embed_path,
-          v.preview_path,
-          v.views,
-          v.likes,
-          v.dislikes,
-          v.comments_count,
-          matched.rank
-        FROM matched
-        JOIN video_search_docs d ON d.doc_id = matched.doc_id
-        JOIN videos v ON v.video_id = d.video_id AND v.instance_domain = d.instance_domain
-        LEFT JOIN channels c ON c.channel_id = v.channel_id AND c.instance_domain = v.instance_domain
-        WHERE COALESCE(v.invalid_reason, '') = ''
-        ORDER BY matched.rank ASC,
-          COALESCE(v.popularity, 0) DESC,
-          COALESCE(v.published_at, 0) DESC,
-          v.video_id ASC
+        SELECT *
+        FROM eligible
+        ORDER BY rank ASC, popularity_sort DESC,
+          COALESCE(published_at, 0) DESC, instance_domain ASC, video_id ASC
+        LIMIT ? OFFSET ?
         """,
-        (fts_query, fetch_limit, safe_offset),
+        [fts_query, *visibility_args, *filter_args, fetch_limit, safe_offset],
     ).fetchall()
     items = rows[: max(limit, 1)]
     next_offset = safe_offset + len(items) if len(rows) > len(items) else None
-    return [
-        {
-            "video_id": row["video_id"],
-            "video_uuid": row["video_uuid"],
-            "video_numeric_id": row["video_numeric_id"],
-            "instance_domain": row["instance_domain"],
-            "channel_id": row["channel_id"],
-            "channel_name": row["channel_name"],
-            "channel_url": row["channel_url"],
-            "channel_display_name": row["channel_display_name"],
-            "channel_avatar_url": row["channel_avatar_url"],
-            "account_name": row["account_name"],
-            "account_url": row["account_url"],
-            "title": row["title"],
-            "published_at": row["published_at"],
-            "video_url": row["video_url"],
-            "duration": row["duration"],
-            "thumbnail_url": row["thumbnail_url"],
-            "embed_path": row["embed_path"],
-            "preview_path": row["preview_path"],
-            "views": row["views"],
-            "likes": row["likes"],
-            "dislikes": row["dislikes"],
-            "comments_count": row["comments_count"],
-        }
-        for row in items
-    ], next_offset
+    fields = (
+        "video_id", "video_uuid", "video_numeric_id", "instance_domain",
+        "channel_id", "channel_name", "channel_url", "channel_display_name",
+        "channel_avatar_url", "account_name", "account_url", "title",
+        "published_at", "video_url", "duration", "thumbnail_url", "embed_path",
+        "preview_path", "views", "likes", "dislikes", "comments_count",
+        "language", "language_label", "category", "category_id",
+    )
+    return [{field: row[field] for field in fields} for row in items], next_offset

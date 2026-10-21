@@ -18,12 +18,14 @@ export const router = createRouter({
   linkExactActiveClass: "active",
   routes: [
     { path: "/", name: "home", component: HomeView },
+    { path: "/categories", name: "categories", component: HomeView, props: { facet: "category" } },
+    { path: "/tags", name: "tags", component: HomeView, props: { facet: "tag" } },
     { path: "/search", name: "search", component: SearchView },
     { path: "/channels", name: "channels", component: ChannelsView },
     { path: "/video/:host/:id", name: "video-detail", component: VideoDetailView },
     { path: "/about", name: "about", component: AboutView }
   ],
-  scrollBehavior() {
-    return { top: 0 };
+  scrollBehavior(_to, _from, savedPosition) {
+    return savedPosition ?? { top: 0 };
   }
 });

@@ -43,6 +43,9 @@ def _db() -> sqlite3.Connection:
           description TEXT,
           tags_json TEXT,
           category TEXT,
+          category_id TEXT,
+          language TEXT,
+          language_label TEXT,
           published_at INTEGER,
           video_url TEXT,
           duration INTEGER,
@@ -56,8 +59,11 @@ def _db() -> sqlite3.Connection:
           preview_path TEXT,
           popularity REAL DEFAULT 0,
           invalid_reason TEXT,
+          error_count INTEGER,
           PRIMARY KEY(video_id, instance_domain)
         );
+        CREATE TABLE instance_denylist (host TEXT PRIMARY KEY, is_active INTEGER NOT NULL DEFAULT 1);
+        CREATE TABLE channel_moderation (channel_id TEXT, instance_domain TEXT, status TEXT, PRIMARY KEY(channel_id, instance_domain));
         """
     )
     conn.execute(
@@ -113,5 +119,41 @@ def test_malformed_query_is_safe() -> None:
     try:
         rebuild_video_search_index(conn)
         assert search_videos(conn, query='""():', limit=10, offset=0) == ([], None)
+    finally:
+        conn.close()
+
+
+def test_filter_and_visibility_apply_before_search_page_cut() -> None:
+    """A hidden/non-matching top hit cannot consume a filtered search page slot."""
+    from engine.server.data.video_filters import VideoFilters
+
+    conn = _db()
+    try:
+        conn.execute("UPDATE videos SET language = 'en' WHERE video_id = 'v1'")
+        conn.execute("UPDATE videos SET title = 'Linux second', language = 'uk', category_id = '3' WHERE video_id = 'v2'")
+        rebuild_video_search_index(conn)
+        rows, next_offset = search_videos(
+            conn,
+            query="linux",
+            limit=1,
+            offset=0,
+            filters=VideoFilters(language="uk"),
+        )
+        assert [row["video_id"] for row in rows] == ["v2"]
+        assert rows[0]["language"] == "uk"
+        assert rows[0]["category_id"] == "3"
+        assert next_offset is None
+    finally:
+        conn.close()
+
+
+def test_search_filter_no_match_is_empty_not_error() -> None:
+    """A valid but unmatched filter returns an ordinary terminal empty page."""
+    from engine.server.data.video_filters import VideoFilters
+
+    conn = _db()
+    try:
+        rebuild_video_search_index(conn)
+        assert search_videos(conn, query="linux", limit=5, offset=0, filters=VideoFilters(language="uk")) == ([], None)
     finally:
         conn.close()

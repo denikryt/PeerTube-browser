@@ -9,6 +9,12 @@ export interface SearchMeta {
   source: string;
   query: string;
   index?: string;
+  filters?: {
+    language: string | null;
+    category: string | null;
+    tag: string | null;
+    instance: string | null;
+  };
 }
 
 export interface VideoSearchPayload {

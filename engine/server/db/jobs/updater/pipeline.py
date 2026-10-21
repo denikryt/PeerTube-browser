@@ -34,9 +34,11 @@ from .commands import CommandRun, run_cmd, run_with_cpu_fallback, systemctl_cmd
 from .locks import single_run_lock
 from .paths import from_args, validate_required_files
 from .staging import (
+    assert_production_schema_compatible,
     count_staging_deltas,
     init_staging_db,
     inject_replace_embedding_for_test,
+    load_scoped_hosts_file,
     prune_staging_local_non_ok_instances,
     seed_staging_from_prod,
 )
@@ -76,12 +78,21 @@ def run_pipeline(
     logging.info("worker start prod_db=%s staging_db=%s", paths.prod_db, paths.staging_db)
     service_stopped = False
     pipeline_start = time.monotonic()
+    retry_errors = bool(getattr(args, "retry_errors", False))
+    host_pipeline = bool(getattr(args, "host_pipeline", False))
     if args.dry_run and not args.sync_join_whitelist:
         raise RuntimeError("--dry-run is supported only together with --sync-join-whitelist.")
+    if retry_errors and (not args.resume_staging or not paths.staging_db.exists()):
+        raise RuntimeError("--retry-errors requires an existing --resume-staging database.")
+    if retry_errors and host_pipeline:
+        raise RuntimeError("--host-pipeline cannot be combined with --retry-errors.")
 
     temp_files: list[Path] = []
     try:
         with single_run_lock(paths.lock_file):
+            # The updater must fail before any network request or production mutation
+            # when crawler-owned columns have not been migrated into whitelist.db.
+            assert_production_schema_compatible(paths.prod_db, paths.schema_path)
             denied_hosts = load_denied_hosts(paths.prod_db)
             logging.info("moderation deny_hosts_active=%d", len(denied_hosts))
 
@@ -155,30 +166,45 @@ def run_pipeline(
                 if whitelist_hosts_file is not None:
                     temp_files.append(whitelist_hosts_file)
 
-            run_crawl_stages = (not args.sync_join_whitelist) or bool(sync_new_hosts)
+            host_concurrency = int(getattr(args, "host_concurrency", 2))
+            host_delay_ms = int(getattr(args, "host_delay_ms", 200))
+            run_crawl_stages = retry_errors or (not args.sync_join_whitelist) or bool(sync_new_hosts)
             if run_crawl_stages:
-                instances_cmd = [
-                    args.node_bin,
-                    (paths.crawler_dist / "instances-cli.js").as_posix(),
-                    "--db",
-                    paths.staging_db.as_posix(),
-                    "--resume",
-                    "--max-instances",
-                    str(args.max_instances),
-                    "--concurrency",
-                    str(args.concurrency),
-                    "--timeout",
-                    str(args.timeout_ms),
-                    "--max-retries",
-                    str(args.max_retries),
-                ]
-                if whitelist_hosts_file is not None:
-                    instances_cmd.extend(["--whitelist-file", whitelist_hosts_file.as_posix()])
-                else:
-                    instances_cmd.extend(["--whitelist-url", args.whitelist_url])
-                if exclude_hosts_file is not None:
-                    instances_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
-                _run_cmd(instances_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                # Keep one host-scope file flowing through every crawler stage so a
+                # targeted updater run stays constrained after instances discovery.
+                host_scope_args: list[str] = []
+                if args.hosts_file:
+                    host_scope_args = ["--hosts-file", args.hosts_file]
+
+                # Registry discovery has no error-only selector. A retry run
+                # intentionally preserves the staging host set and revisits the
+                # three crawler stages that persist retryable record errors.
+                if not retry_errors:
+                    instances_cmd = [
+                        args.node_bin,
+                        (paths.crawler_dist / "instances-cli.js").as_posix(),
+                        "--db",
+                        paths.staging_db.as_posix(),
+                        "--resume",
+                        "--max-instances",
+                        str(args.max_instances),
+                        "--concurrency",
+                        str(args.concurrency),
+                        "--host-delay",
+                        str(host_delay_ms),
+                        "--timeout",
+                        str(args.timeout_ms),
+                        "--max-retries",
+                        str(args.max_retries),
+                        *host_scope_args,
+                    ]
+                    if whitelist_hosts_file is not None:
+                        instances_cmd.extend(["--whitelist-file", whitelist_hosts_file.as_posix()])
+                    else:
+                        instances_cmd.extend(["--whitelist-url", args.whitelist_url])
+                    if exclude_hosts_file is not None:
+                        instances_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
+                    _run_cmd(instances_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
                 if args.skip_local_dead:
                     prune_staging_local_non_ok_instances(
@@ -198,14 +224,20 @@ def run_pipeline(
                     str(args.max_channels),
                     "--concurrency",
                     str(args.concurrency),
+                    "--host-concurrency",
+                    str(host_concurrency),
+                    "--host-delay",
+                    str(host_delay_ms),
                     "--timeout",
                     str(args.timeout_ms),
                     "--max-retries",
                     str(args.max_retries),
+                    *host_scope_args,
                 ]
                 if exclude_hosts_file is not None:
                     channels_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
-                _run_cmd(channels_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                if retry_errors:
+                    channels_cmd.append("--errors")
 
                 videos_cmd = [
                     args.node_bin,
@@ -228,14 +260,20 @@ def run_pipeline(
                     str(args.videos_stop_after_full_pages),
                     "--concurrency",
                     str(args.concurrency),
+                    "--host-concurrency",
+                    str(host_concurrency),
+                    "--host-delay",
+                    str(host_delay_ms),
                     "--timeout",
                     str(args.timeout_ms),
                     "--max-retries",
                     str(args.max_retries),
+                    *host_scope_args,
                 ]
                 if exclude_hosts_file is not None:
                     videos_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
-                _run_cmd(videos_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                if retry_errors:
+                    videos_cmd.append("--errors")
 
                 counts_cmd = [
                     args.node_bin,
@@ -245,49 +283,127 @@ def run_pipeline(
                     "--resume",
                     "--concurrency",
                     str(args.concurrency),
+                    "--host-concurrency",
+                    str(host_concurrency),
+                    "--host-delay",
+                    str(host_delay_ms),
                     "--timeout",
                     str(args.timeout_ms),
                     "--max-retries",
                     str(args.max_retries),
+                    *host_scope_args,
                 ]
                 if exclude_hosts_file is not None:
                     counts_cmd.extend(["--exclude-hosts-file", exclude_hosts_file.as_posix()])
-                _run_cmd(counts_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                if retry_errors:
+                    counts_cmd.append("--errors")
 
-                embeddings_cmd = [
-                    args.python_bin,
-                    (paths.script_dir / "build-video-embeddings.py").as_posix(),
-                    "--db-path",
-                    paths.staging_db.as_posix(),
-                ]
-                if args.use_gpu:
-                    embeddings_cmd.append("--gpu")
+                if host_pipeline:
+                    # One process owns the shared SQLite scheduler. Within it,
+                    # hosts overlap but each host observes strict stage order.
+                    host_pipeline_cmd = [
+                        args.node_bin,
+                        (paths.crawler_dist / "host-pipeline-cli.js").as_posix(),
+                        "--db",
+                        paths.staging_db.as_posix(),
+                        "--existing-db",
+                        paths.prod_db.as_posix(),
+                        "--resume",
+                        "--sort",
+                        "-publishedAt",
+                        "--max-instances",
+                        str(args.max_instances),
+                        "--max-channels",
+                        str(args.max_channels),
+                        "--max-videos-pages",
+                        str(args.max_videos_pages),
+                        "--stop-after-full-pages",
+                        str(args.videos_stop_after_full_pages),
+                        "--concurrency",
+                        str(args.concurrency),
+                        "--host-concurrency",
+                        str(host_concurrency),
+                        "--host-delay",
+                        str(host_delay_ms),
+                        "--timeout",
+                        str(args.timeout_ms),
+                        "--max-retries",
+                        str(args.max_retries),
+                        *host_scope_args,
+                    ]
+                    if exclude_hosts_file is not None:
+                        host_pipeline_cmd.extend(
+                            ["--exclude-hosts-file", exclude_hosts_file.as_posix()]
+                        )
+                    _run_cmd(host_pipeline_cmd, cwd=paths.crawler_dir, runner=command_runner)
                 else:
-                    embeddings_cmd.append("--cpu")
-                _run_with_fallback(
-                    embeddings_cmd,
-                    stage="build-video-embeddings",
-                    cwd=paths.repo_root,
-                    runner=command_runner,
-                )
-                if args.inject_replace_embedding_for_test:
-                    inject_replace_embedding_for_test(
-                        prod_db=paths.prod_db, staging_db=paths.staging_db
-                    )
+                    _run_cmd(channels_cmd, cwd=paths.crawler_dir, runner=command_runner)
+                    # Resolve only missing counts before videos-cli selects rows
+                    # with videos_count > 0. Each successful channel write is its
+                    # own resume checkpoint inside the count worker.
+                    _run_cmd(counts_cmd, cwd=paths.crawler_dir, runner=command_runner)
 
-                deltas = count_staging_deltas(paths.prod_db, paths.staging_db)
-                logging.info(
-                    "staging delta instances=%d channels=%d videos=%d embeddings=%d",
-                    deltas["instances_new"],
-                    deltas["channels_new"],
-                    deltas["videos_new"],
-                    deltas["embeddings_new"],
-                )
+                    # Video progress stores the next page offset after every
+                    # successful page, so a resumed run continues within a channel.
+                    _run_cmd(videos_cmd, cwd=paths.crawler_dir, runner=command_runner)
+
+                if retry_errors:
+                    # Error retry is deliberately a staging-repair operation.
+                    # Keeping merge and derived builds for the following normal
+                    # resume run lets operators inspect remaining failures first.
+                    logging.info(
+                        "retry-errors finished crawler stages; staging retained without merge"
+                    )
+                    return
+
             else:
                 logging.info("sync-join ingest skipped: no new hosts after denylist filtering")
                 if not sync_stale_hosts:
                     logging.info("sync-join no changes detected; finishing early")
                     return
+
+            # Staging is disposable working state. Rebuild embeddings with the
+            # currently deployed recipe immediately before every production merge,
+            # including --resume-staging, so stale pre-deploy vectors can never leak
+            # back into production. A failed rebuild naturally aborts before merge.
+            embeddings_cmd = [
+                args.python_bin,
+                (paths.script_dir / "build-video-embeddings.py").as_posix(),
+                "--db-path",
+                paths.staging_db.as_posix(),
+                "--force",
+            ]
+            if args.use_gpu:
+                embeddings_cmd.append("--gpu")
+            else:
+                embeddings_cmd.append("--cpu")
+            _run_with_fallback(
+                embeddings_cmd,
+                stage="build-video-embeddings",
+                cwd=paths.repo_root,
+                runner=command_runner,
+            )
+            if args.inject_replace_embedding_for_test:
+                inject_replace_embedding_for_test(
+                    prod_db=paths.prod_db, staging_db=paths.staging_db
+                )
+
+            scoped_hosts = (
+                load_scoped_hosts_file(Path(args.hosts_file)) if args.hosts_file else set()
+            )
+            logging.info("staging delta summary start scoped_hosts=%d", len(scoped_hosts))
+            deltas = count_staging_deltas(
+                paths.prod_db,
+                paths.staging_db,
+                scoped_hosts=scoped_hosts,
+            )
+            logging.info(
+                "staging delta instances=%d channels=%d videos=%d embeddings=%d",
+                deltas["instances_new"],
+                deltas["channels_new"],
+                deltas["videos_new"],
+                deltas["embeddings_new"],
+            )
 
             if args.fail_before_merge:
                 raise RuntimeError("Injected failure: before merge stage")
@@ -389,9 +505,9 @@ def run_pipeline(
                     cwd=paths.repo_root,
                     runner=command_runner,
                 )
-                # The Engine can populate random cache at startup, but the updater owns
-                # production artifact refresh. Rebuilding here prevents stale rowid-era
-                # random artifacts from surviving a data update.
+                # Updater/data-build is the sole production writer of the Random
+                # artifact. Engine is stopped here, so copy-on-publish replacement is
+                # an offline operation and runtime never hot-reloads a new generation.
                 random_cache_cmd = [
                     args.python_bin,
                     (paths.script_dir / "precompute-random-index-ids.py").as_posix(),
@@ -401,7 +517,7 @@ def run_pipeline(
                     paths.random_cache_db.as_posix(),
                     "--size",
                     str(DEFAULT_RANDOM_CACHE_SIZE),
-                    "--reset",
+                    "--refresh",
                 ]
                 if DEFAULT_RANDOM_CACHE_FILTERED_MODE:
                     random_cache_cmd.extend(
@@ -434,7 +550,10 @@ def run_pipeline(
                     "16",
                     "--search-batch-size",
                     "1024",
-                    "--recreate-out-db",
+                    # Refresh mode must retain the existing source set: the
+                    # similarity job selects its work from similarity_sources.
+                    # Recreating the DB here would erase that set first and
+                    # silently turn every updater refresh into a no-op.
                     "--refresh-existing",
                 ]
                 if args.use_gpu:

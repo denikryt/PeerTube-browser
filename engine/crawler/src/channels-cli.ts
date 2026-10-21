@@ -11,16 +11,23 @@ const program = new Command();
 program
   .option("--db <path>", "SQLite DB path", "data/crawl.db")
   .option(
+    "--hosts-file <path>",
+    "Optional local file with included hosts (one per line)",
+    ""
+  )
+  .option(
     "--exclude-hosts-file <path>",
     "Optional local file with excluded hosts (one per line)",
     ""
   )
   .option("--concurrency <number>", "Concurrent instances", "4")
+  .option("--host-concurrency <number>", "Maximum simultaneous requests to one host", "2")
+  .option("--host-delay <ms>", "Minimum delay between request starts to one host", "200")
   .option("--timeout <ms>", "HTTP timeout in ms", "5000")
   .option("--max-retries <number>", "HTTP retry attempts", "3")
   .option(
     "--new-channels",
-    "Insert only channels that do not exist yet (skip updates for existing rows)",
+    "Insert only new channels; refresh only videos_count for existing rows",
     false
   )
   .option(
@@ -39,6 +46,7 @@ program
     false
   )
   .option("--resume", "Resume from existing progress", false);
+program.option("--errors", "Process only instances with recorded channel crawl errors", false);
 
 program.parse(process.argv);
 
@@ -48,14 +56,18 @@ try {
   const run = options.checkHealth ? checkChannelHealth : crawlChannels;
   await run({
     dbPath: options.db,
+    hostsFile: options.hostsFile || null,
     excludeHostsFile: options.excludeHostsFile || null,
     concurrency: Number(options.concurrency),
+    hostConcurrency: Number(options.hostConcurrency),
+    hostDelayMs: Number(options.hostDelay),
     timeoutMs: Number(options.timeout),
     maxRetries: Number(options.maxRetries),
     newOnly: Boolean(options.newChannels),
     maxInstances: Number(options.maxInstances),
     maxChannels: Number(options.maxChannels),
-    resume: Boolean(options.resume)
+    resume: Boolean(options.resume),
+    errorsOnly: Boolean(options.errors)
   });
 } catch (error) {
   if (isNoNetworkError(error)) {

@@ -22,11 +22,30 @@ export function loadHostsFromFile(filePath: string | null | undefined): Set<stri
 }
 
 /**
+ * Handle apply include hosts filter.
+ */
+export function includeHosts(hosts: string[], included: Set<string>): string[] {
+  if (included.size === 0) return hosts;
+  return hosts.filter((host) => included.has(host.toLowerCase()));
+}
+
+/**
  * Handle filter hosts.
  */
 export function filterHosts(hosts: string[], excluded: Set<string>): string[] {
   if (excluded.size === 0) return hosts;
   return hosts.filter((host) => !excluded.has(host.toLowerCase()));
+}
+
+/**
+ * Handle apply include and exclude host scoping together.
+ */
+export function scopeHosts(
+  hosts: string[],
+  included: Set<string>,
+  excluded: Set<string>
+): string[] {
+  return filterHosts(includeHosts(hosts, included), excluded);
 }
 
 /**

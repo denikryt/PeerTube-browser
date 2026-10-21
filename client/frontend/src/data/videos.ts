@@ -2,7 +2,7 @@
  * Module `client/frontend/src/data/videos.ts`: provide runtime functionality.
  */
 
-import type { DiscoveryListPayload, VideoRow, VideosPayload } from "../types/videos";
+import type { VideoRow, VideosPayload } from "../types/videos";
 import { fetchJsonWithCache } from "./cache";
 import { resolveClientApiBase } from "./api-base";
 
@@ -11,7 +11,6 @@ export interface SimilarQuery {
   host?: string | null;
   limit?: string | null;
   apiBase?: string | null;
-  random?: string | null;
   debug?: string | null;
   cursor?: string | null;
 }
@@ -27,7 +26,6 @@ export function parseSimilarQuery(params: URLSearchParams): SimilarQuery {
     host: params.get("host"),
     limit: params.get("limit"),
     apiBase: params.get("api"),
-    random: params.get("random"),
     debug: params.get("debug"),
     cursor: params.get("cursor")
   };
@@ -45,12 +43,11 @@ export function resolveApiBase(query: SimilarQuery) {
  */
 export function buildSimilarUrl(query: SimilarQuery) {
   const apiBase = resolveApiBase(query);
-  const path = query.id
-    ? `/api/v1/videos/${encodeURIComponent(query.id)}/similar`
-    : query.random
-      ? "/api/v1/discovery/random"
-      : "/api/v1/discovery/recommendations";
-  const url = new URL(path, apiBase);
+  const videoId = String(query.id ?? "").trim();
+  // Similar is a video-detail boundary. Home discovery owns its own transport and must not
+  // silently re-enter through this helper when a video identity is absent.
+  if (!videoId) throw new Error("Similar video id is required");
+  const url = new URL(`/api/v1/videos/${encodeURIComponent(videoId)}/similar`, apiBase);
   if (query.host) url.searchParams.set("host", query.host);
   if (query.limit) url.searchParams.set("limit", query.limit);
   if (query.cursor) url.searchParams.set("cursor", query.cursor);
@@ -79,15 +76,15 @@ export async function fetchStaticVideosPayload(options: { cacheTtlMs?: number } 
 /**
  * Handle fetch similar videos payload.
  */
-function normalizeVideosPayload(payload: VideosPayload | DiscoveryListPayload): VideosPayload & Partial<DiscoveryListPayload> {
-  if ("items" in payload && Array.isArray(payload.items)) {
-    return { ...payload, rows: payload.items };
-  }
+function normalizeVideosPayload(payload: VideosPayload): VideosPayload {
+  // Similar uses the Client list envelope but Video Detail historically consumes `rows`; keep
+  // that local shape adaptation without coupling this module back to Home Discovery.
+  if (Array.isArray(payload.items)) return { ...payload, rows: payload.items };
   return payload;
 }
 
 /**
- * Handle fetch similar/discovery videos payload through Client Discovery API v1.
+ * Fetch the video-detail Similar payload through the Client public API.
  */
 export async function fetchSimilarVideosPayload(query: SimilarQuery) {
   const url = buildSimilarUrl(query);
@@ -102,5 +99,5 @@ export async function fetchSimilarVideosPayload(query: SimilarQuery) {
     }
     throw new Error(message);
   }
-  return normalizeVideosPayload((await response.json()) as VideosPayload | DiscoveryListPayload);
+  return normalizeVideosPayload((await response.json()) as VideosPayload);
 }

@@ -95,4 +95,8 @@ Removal condition, if any: Complete in Stage 12.
 
 ## Internal Discovery Providers
 
-Engine may expose internal discovery provider routes such as `/internal/discovery/fresh` and `/internal/discovery/popular` for the Client backend. These are not browser-facing public API v1 routes; public discovery v1 lives in the Client backend.
+Engine exposes internal `/internal/discovery/fresh`, `/internal/discovery/popular`, and `/internal/discovery/random` providers plus `/internal/video-facets` for the Client backend. These are not browser-facing public API v1 routes; public Discovery/Search contracts live in the Client backend. Fresh/Popular/Random accept the shared `language/category/tag/instance` filters and apply serving eligibility before page cut.
+
+The existing `/recommendations` route remains the recommendation computation boundary and accepts optional Home video filters for the finite Discovery bridge. Filtering happens at the final resolved canonical-row boundary, so filtered Recommended may underfill rather than refilling the legacy candidate batch. Similar/up-next routes do not inherit Home filters.
+
+Random cursors are bound to the persisted artifact `build_id`. A replaced generation returns machine-readable `stale_cursor`; missing/incompatible random artifacts return `random_provider_unavailable` without runtime rebuilding or unstable random-pagination fallback.

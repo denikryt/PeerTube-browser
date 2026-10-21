@@ -18,6 +18,8 @@ export interface ChannelStoreOptions {
 
 export interface VideoStoreOptions {
   dbPath: string;
+  /** Metadata maintenance can opt out after an explicit current-schema check. */
+  initializeSchema?: boolean;
 }
 
 export type ChannelCrawlStatus = "pending" | "in_progress" | "done" | "error";
@@ -31,6 +33,10 @@ export interface ChannelUpsertRow {
   videosCount: number | null;
   followersCount: number | null;
   avatarUrl: string | null;
+  ownerAccountUsername?: string | null;
+  ownerAccountDisplayName?: string | null;
+  ownerAccountUrl?: string | null;
+  ownerAccountAvatarUrl?: string | null;
 }
 
 export interface ChannelRow {
@@ -104,16 +110,80 @@ export interface VideoUpsertRow {
   description: string | null;
   tagsJson: string | null;
   category: string | null;
+  categoryId?: string | null;
+  licenceId?: string | null;
+  licence?: string | null;
+  language?: string | null;
+  languageLabel?: string | null;
   publishedAt: number | null;
+  originallyPublishedAt?: number | null;
+  updatedAt?: number | null;
   videoUrl: string | null;
   duration: number | null;
   thumbnailUrl: string | null;
+  thumbnailWidth?: number | null;
+  thumbnailHeight?: number | null;
   embedPath: string | null;
   views: number | null;
   likes: number | null;
   dislikes: number | null;
   commentsCount: number | null;
   nsfw: number | null;
+  sensitiveSummary?: string | null;
+  isLive?: number | null;
+  permanentLive?: number | null;
+  liveSaveReplay?: number | null;
+  aspectRatio?: number | null;
+  support?: string | null;
+  accountUsername?: string | null;
+  accountAvatarUrl?: string | null;
+  metadataVersion?: number;
   previewPath: string | null;
   lastCheckedAt: number;
+}
+
+/**
+ * Metadata that may be applied only after a successful per-video detail read.
+ * Optional live keys distinguish an absent remote field from an explicit false.
+ */
+export interface VideoDetailMetadataPatch {
+  categoryId: string | null;
+  category: string | null;
+  licenceId: string | null;
+  licence: string | null;
+  language: string | null;
+  languageLabel: string | null;
+  sensitiveSummary: string | null;
+  originallyPublishedAt: number | null;
+  updatedAt: number | null;
+  aspectRatio: number | null;
+  support: string | null;
+  accountUsername: string | null;
+  accountAvatarUrl: string | null;
+  permanentLive?: number | null;
+  liveSaveReplay?: number | null;
+}
+
+/** Public ActivityPub live fields fetched independently from REST detail. */
+export interface VideoActivityPubMetadataPatch {
+  permanentLive?: number;
+  liveSaveReplay?: number;
+}
+
+/**
+ * Existing-row refresh separates always-refreshable base data from successful
+ * enrichment sources so persistence never has to infer provenance from flags.
+ */
+export interface ExistingVideoRefresh {
+  base: VideoUpsertRow;
+  detail?: VideoDetailMetadataPatch;
+  activityPub?: VideoActivityPubMetadataPatch;
+}
+
+export interface VideoMetadataWorkRow {
+  videoId: string;
+  videoUuid: string;
+  instanceDomain: string;
+  metadataVersion?: number;
+  videoUrl: string | null;
 }

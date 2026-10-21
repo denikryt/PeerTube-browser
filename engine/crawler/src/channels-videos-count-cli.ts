@@ -11,11 +11,18 @@ const program = new Command();
 program
   .option("--db <path>", "SQLite DB path", "data/crawl.db")
   .option(
+    "--hosts-file <path>",
+    "Optional local file with included hosts (one per line)",
+    ""
+  )
+  .option(
     "--exclude-hosts-file <path>",
     "Optional local file with excluded hosts (one per line)",
     ""
   )
   .option("--concurrency <number>", "Concurrent instances", "4")
+  .option("--host-concurrency <number>", "Maximum simultaneous requests to one host", "2")
+  .option("--host-delay <ms>", "Minimum delay between request starts to one host", "200")
   .option("--timeout <ms>", "HTTP timeout in ms", "5000")
   .option("--max-retries <number>", "HTTP retry attempts", "3")
   .option("--resume", "Skip channels with existing counts or errors", false)
@@ -28,8 +35,11 @@ const options = program.opts();
 try {
   await crawlChannelVideosCount({
     dbPath: options.db,
+    hostsFile: options.hostsFile || null,
     excludeHostsFile: options.excludeHostsFile || null,
     concurrency: Number(options.concurrency),
+    hostConcurrency: Number(options.hostConcurrency),
+    hostDelayMs: Number(options.hostDelay),
     timeoutMs: Number(options.timeout),
     maxRetries: Number(options.maxRetries),
     resume: Boolean(options.resume),

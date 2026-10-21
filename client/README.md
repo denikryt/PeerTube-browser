@@ -64,4 +64,8 @@ CLIENT_PUBLISH_MODE=bridge ./venv/bin/python3 client/backend/server.py \
 
 ## Discovery API v1
 
-The Client backend exposes browser-facing discovery routes under `/api/v1/discovery/...` and `/api/v1/videos/...`. Recommendations are public `GET` requests; the Client backend reads local likes and calls Engine internally.
+The Client backend exposes browser-facing Discovery v1 routes for `recommendations`, `fresh`, `popular`, and `random`, plus `/api/v1/search/videos`, `/api/v1/search/channels`, `/api/v1/video-facets`, and `/api/v1/videos/...`. Browser code never calls Engine `/internal/...` routes directly.
+
+`language`, `category`, `tag`, and `instance` are one shared video-filter contract for Discovery and video Search. Fresh/Popular/Random continuation cursors are opaque Client-owned wrappers around Engine provider cursors and are bound to source + filters. Recommended is intentionally a finite legacy computation in this milestone: the Client returns the same envelope with terminal pagination (`next_cursor=null`, `has_more=false`). Similar-video routes keep their existing independent behavior.
+
+The Client owns public validation/error codes and user-like lookup. Engine owns filter semantics, provider ordering, serving eligibility, recommendation computation, facets, and canonical video metadata.

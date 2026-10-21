@@ -98,6 +98,62 @@ def test_sync_retires_missing_embedding_and_reactivates_same_index_id() -> None:
     assert restored["retired_reason"] is None
 
 
+def test_embedding_rowid_can_change_without_changing_stable_index_id() -> None:
+    """Replacing an embedding may change SQLite rowid but must not change index_id."""
+    job = _load_job()
+    conn = _db()
+    _add_video(conn, "v1")
+    _add_embedding(conn, "v1")
+    job.sync_video_index_ids(conn)
+    stable_id = conn.execute(
+        "SELECT index_id FROM video_index_ids WHERE video_id = 'v1'"
+    ).fetchone()[0]
+    old_rowid = conn.execute(
+        "SELECT rowid FROM video_embeddings WHERE video_id = 'v1'"
+    ).fetchone()[0]
+
+    # Keep a higher rowid occupied so reinserting v1 cannot reuse its old rowid.
+    _add_video(conn, "v2")
+    _add_embedding(conn, "v2")
+    conn.execute("DELETE FROM video_embeddings WHERE video_id = 'v1'")
+    _add_embedding(conn, "v1")
+    new_rowid = conn.execute(
+        "SELECT rowid FROM video_embeddings WHERE video_id = 'v1'"
+    ).fetchone()[0]
+    assert new_rowid != old_rowid
+
+    job.sync_video_index_ids(conn)
+
+    current_id = conn.execute(
+        "SELECT index_id FROM video_index_ids WHERE video_id = 'v1'"
+    ).fetchone()[0]
+    assert current_id == stable_id
+
+
+def test_repeat_sync_does_not_consume_new_index_ids_for_existing_videos() -> None:
+    """Repeated syncs must not advance AUTOINCREMENT for identities already mapped."""
+    job = _load_job()
+    conn = _db()
+    _add_video(conn, "v1")
+    _add_embedding(conn, "v1")
+    job.sync_video_index_ids(conn)
+
+    # A no-op synchronization should not reserve ids for rows rejected by the
+    # canonical identity UNIQUE constraint. Otherwise sparse ids grow on every
+    # updater run even when the dataset did not change.
+    for _ in range(3):
+        job.sync_video_index_ids(conn)
+
+    _add_video(conn, "v2")
+    _add_embedding(conn, "v2")
+    job.sync_video_index_ids(conn)
+
+    rows = conn.execute(
+        "SELECT video_id, index_id FROM video_index_ids ORDER BY index_id"
+    ).fetchall()
+    assert [(row["video_id"], row["index_id"]) for row in rows] == [("v1", 1), ("v2", 2)]
+
+
 def test_sync_retires_missing_video() -> None:
     """A mapping remains historical when its content metadata row disappears."""
     job = _load_job()

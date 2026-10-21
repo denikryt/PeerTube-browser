@@ -27,6 +27,34 @@ const DEPRECATED_CHANNEL_COLUMNS = new Set([
   "videos_count_error_at"
 ]);
 
+export const CHANNEL_METADATA_V1_COLUMNS = [
+  ["owner_account_username", "TEXT"],
+  ["owner_account_display_name", "TEXT"],
+  ["owner_account_url", "TEXT"],
+  ["owner_account_avatar_url", "TEXT"]
+] as const;
+
+export const VIDEO_METADATA_V1_COLUMNS = [
+  ["metadata_version", "INTEGER NOT NULL DEFAULT 0"],
+  ["language", "TEXT"],
+  ["language_label", "TEXT"],
+  ["category_id", "TEXT"],
+  ["licence_id", "TEXT"],
+  ["licence", "TEXT"],
+  ["sensitive_summary", "TEXT"],
+  ["originally_published_at", "INTEGER"],
+  ["updated_at", "INTEGER"],
+  ["is_live", "INTEGER"],
+  ["permanent_live", "INTEGER"],
+  ["live_save_replay", "INTEGER"],
+  ["aspect_ratio", "REAL"],
+  ["support", "TEXT"],
+  ["account_username", "TEXT"],
+  ["account_avatar_url", "TEXT"],
+  ["thumbnail_width", "INTEGER"],
+  ["thumbnail_height", "INTEGER"]
+] as const;
+
 /**
  * Handle get columns.
  */
@@ -55,6 +83,7 @@ export function applyBaseSchema(db: Database.Database) {
   migrateInstances(db);
   migrateChannels(db);
   migrateVideos(db);
+  addMetadataV1Columns(db);
   db.exec(schemaSql);
 }
 
@@ -384,4 +413,75 @@ function migrateVideos(db: Database.Database) {
     DROP TABLE videos;
     ALTER TABLE videos_new RENAME TO videos;
   `);
+}
+
+
+/**
+ * Add metadata-v1 columns after legacy layout rebuilds. These ALTERs are
+ * intentionally additive so existing crawler data is preserved verbatim.
+ */
+function addMetadataV1Columns(db: Database.Database) {
+  addMissingColumns(db, "channels", CHANNEL_METADATA_V1_COLUMNS);
+  addMissingColumns(db, "videos", VIDEO_METADATA_V1_COLUMNS);
+}
+
+/**
+ * Validate metadata-maintenance schema without applying crawler migrations.
+ * Production callers must run migrate-whitelist.py before this data operation.
+ */
+export function assertMetadataMaintenanceSchema(dbPath: string) {
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    assertRequiredColumns(db, "videos", [
+      "video_id",
+      "video_uuid",
+      "instance_domain",
+      ...VIDEO_METADATA_V1_COLUMNS.map(([name]) => name)
+    ]);
+    assertRequiredColumns(db, "channels", [
+      "channel_id",
+      "instance_domain",
+      ...CHANNEL_METADATA_V1_COLUMNS.map(([name]) => name)
+    ]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${message} Run engine/server/db/jobs/migrate-whitelist.py before metadata backfill.`
+    );
+  } finally {
+    db.close();
+  }
+}
+
+/** Assert one table contains current metadata-maintenance columns and key fields. */
+function assertRequiredColumns(db: Database.Database, table: string, required: readonly string[]) {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string; pk: number }>;
+  if (rows.length === 0) throw new Error(`Missing required table ${table}.`);
+  const columns = new Set(rows.map((row) => row.name));
+  const missing = required.filter((column) => !columns.has(column));
+  if (missing.length > 0) {
+    throw new Error(`Metadata schema for ${table} is missing: ${missing.join(", ")}.`);
+  }
+  const keyColumns = rows.filter((row) => row.pk > 0).map((row) => row.name);
+  const expectedKeys = table === "videos"
+    ? ["video_id", "instance_domain"]
+    : ["channel_id", "instance_domain"];
+  if (expectedKeys.some((key) => !keyColumns.includes(key))) {
+    throw new Error(`Metadata schema for ${table} has incompatible primary key.`);
+  }
+}
+
+/** Add only known columns that are absent from an existing current-shape table. */
+function addMissingColumns(
+  db: Database.Database,
+  table: string,
+  columns: ReadonlyArray<readonly [string, string]>
+) {
+  if (!tableExists(db, table)) return;
+  const existing = new Set(getColumns(db, table));
+  for (const [name, ddl] of columns) {
+    if (existing.has(name)) continue;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${ddl}`);
+    existing.add(name);
+  }
 }

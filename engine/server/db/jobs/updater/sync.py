@@ -61,6 +61,9 @@ def load_denied_hosts(db_path: Path) -> set[str]:
     """Load active moderation denylist hosts from the prod DB."""
 
     with sqlite3.connect(db_path) as conn:
+        # Moderation helpers access result columns by name, so the updater-owned
+        # connection must preserve the same sqlite3.Row contract as Engine reads.
+        conn.row_factory = sqlite3.Row
         bootstrap_engine_moderation_db(conn)
         return set(list_active_denied_hosts(conn))
 
@@ -95,6 +98,9 @@ def purge_hosts(
                 aggregate[key] = aggregate.get(key, 0) + int(value)
     if similarity_db is not None:
         with sqlite3.connect(similarity_db) as sim_conn:
+            # Moderation similarity helpers read aggregate rows by column name,
+            # so updater-owned SQLite connections must preserve sqlite3.Row.
+            sim_conn.row_factory = sqlite3.Row
             for host in sorted(hosts):
                 result = purge_similarity_for_host(sim_conn, host, dry_run=dry_run)
                 for key, value in result.items():
@@ -105,22 +111,18 @@ def purge_hosts(
 
 
 def purge_hosts_from_staging(staging_db: Path, hosts: set[str]) -> dict[str, int]:
-    """Delete denylisted hosts from staging tables with current table assumptions."""
+    """Delete denylisted host data from staging through the canonical schema-aware helper."""
 
     if not hosts:
         return {}
-    placeholders = ",".join("?" for _ in hosts)
-    params = sorted(hosts)
+
     deleted: dict[str, int] = {}
     with sqlite3.connect(staging_db) as conn:
-        for table, column in (
-            ("videos", "host"),
-            ("channels", "host"),
-            ("instances", "host"),
-        ):
-            cur = conn.execute(
-                f"DELETE FROM {table} WHERE lower({column}) IN ({placeholders})", params
-            )
-            deleted[table] = cur.rowcount
-        conn.commit()
+        # Staging is produced from the crawler schema, where host identity uses
+        # different columns across tables. Reuse the moderation purge contract
+        # instead of duplicating schema assumptions in the updater pipeline.
+        for host in sorted(hosts):
+            result = purge_host_data(conn, host, dry_run=False)
+            for table, count in result.items():
+                deleted[table] = deleted.get(table, 0) + int(count)
     return deleted

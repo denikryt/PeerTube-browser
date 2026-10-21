@@ -5,6 +5,7 @@
 import { Command } from "commander";
 import { crawl } from "./crawler.js";
 import { isNoNetworkError } from "./http.js";
+import { DEFAULT_JOINPEERTUBE_WHITELIST_URL } from "./instance-registry.js";
 
 const program = new Command();
 
@@ -12,7 +13,7 @@ program
   .option(
     "--whitelist-url <url>",
     "Whitelist JSON URL",
-    "https://instances.joinpeertube.org/api/v1/instances/hosts?count=5000&healthy=true"
+    DEFAULT_JOINPEERTUBE_WHITELIST_URL
   )
   .option("--db <path>", "SQLite DB path", "data/crawl.db")
   .option(
@@ -21,11 +22,17 @@ program
     ""
   )
   .option(
+    "--hosts-file <path>",
+    "Optional local file with included hosts (one per line)",
+    ""
+  )
+  .option(
     "--exclude-hosts-file <path>",
     "Optional local file with excluded hosts (one per line)",
     ""
   )
   .option("--concurrency <number>", "Concurrent workers", "4")
+  .option("--host-delay <ms>", "Minimum delay between request starts to one host", "200")
   .option("--timeout <ms>", "HTTP timeout in ms", "5000")
   .option("--max-retries <number>", "HTTP retry attempts", "3")
   .option("--max-errors <number>", "Retries per host", "3")
@@ -46,9 +53,11 @@ try {
   await crawl({
     whitelistUrl: options.whitelistUrl,
     whitelistFile: options.whitelistFile || null,
+    hostsFile: options.hostsFile || null,
     excludeHostsFile: options.excludeHostsFile || null,
     dbPath: options.db,
     concurrency: Number(options.concurrency),
+    hostDelayMs: Number(options.hostDelay),
     timeoutMs: Number(options.timeout),
     resume: Boolean(options.resume),
     maxRetries: Number(options.maxRetries),

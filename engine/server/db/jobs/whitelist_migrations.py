@@ -5,6 +5,35 @@ from __future__ import annotations
 import sqlite3
 
 
+VIDEO_METADATA_V1_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("metadata_version", "INTEGER NOT NULL DEFAULT 0"),
+    ("language", "TEXT"),
+    ("language_label", "TEXT"),
+    ("category_id", "TEXT"),
+    ("licence_id", "TEXT"),
+    ("licence", "TEXT"),
+    ("sensitive_summary", "TEXT"),
+    ("originally_published_at", "INTEGER"),
+    ("updated_at", "INTEGER"),
+    ("is_live", "INTEGER"),
+    ("permanent_live", "INTEGER"),
+    ("live_save_replay", "INTEGER"),
+    ("aspect_ratio", "REAL"),
+    ("support", "TEXT"),
+    ("account_username", "TEXT"),
+    ("account_avatar_url", "TEXT"),
+    ("thumbnail_width", "INTEGER"),
+    ("thumbnail_height", "INTEGER"),
+)
+
+CHANNEL_METADATA_V1_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("owner_account_username", "TEXT"),
+    ("owner_account_display_name", "TEXT"),
+    ("owner_account_url", "TEXT"),
+    ("owner_account_avatar_url", "TEXT"),
+)
+
+
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     """Handle table exists."""
     row = conn.execute(
@@ -360,8 +389,33 @@ def migrate_videos_schema(conn: sqlite3.Connection) -> None:
     )
 
 
+
+def _add_missing_columns(
+    conn: sqlite3.Connection,
+    table: str,
+    columns: tuple[tuple[str, str], ...],
+) -> None:
+    """Add only metadata columns missing from an existing current-shape table."""
+    if not _table_exists(conn, table):
+        return
+    existing = set(_columns(conn, table))
+    for name, ddl in columns:
+        if name in existing:
+            continue
+        # Column names/DDL are internal constants, never user input. Additive
+        # ALTERs preserve production-only columns and derived tables.
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+        existing.add(name)
+
+
+def add_metadata_v1_columns(conn: sqlite3.Connection) -> None:
+    """Add the ActivityPub-aligned metadata columns without rebuilding content."""
+    _add_missing_columns(conn, "channels", CHANNEL_METADATA_V1_COLUMNS)
+    _add_missing_columns(conn, "videos", VIDEO_METADATA_V1_COLUMNS)
+
 def migrate_whitelist_schema(conn: sqlite3.Connection, table_name: str) -> None:
     """Handle migrate whitelist schema."""
     migrate_instances_schema(conn, table_name)
     migrate_channels_schema(conn)
     migrate_videos_schema(conn)
+    add_metadata_v1_columns(conn)

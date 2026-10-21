@@ -22,9 +22,12 @@ You can run the same build/update flow automatically with the updater worker:
 
 - Worker entrypoint: `engine/server/db/jobs/updater-worker.py`
 - Internal updater modules: `engine/server/db/jobs/updater/`
-- It runs: crawl to staging -> embeddings -> merge to prod -> popularity -> index-id sync -> ANN rebuild -> random cache rebuild -> similarity precompute.
+- It runs: instances/channels -> missing video counts -> video metadata to staging -> embeddings -> merge to prod -> popularity -> index-id sync -> ANN rebuild -> random cache rebuild -> similarity precompute.
 - Systemd installation: `install-service.sh --with-updater-timer`
 - Timer runs daily (`OnUnitInactiveSec=1d`).
+- Optional `--host-pipeline` mode overlaps different hosts and reselects queued
+  work after every stage with global priority `channel lists -> NULL counts ->
+  videos`; in-flight work is allowed to finish.
 
 Detailed behavior, flags, lock/resume logic, and systemd notes are documented in:
 
@@ -95,12 +98,20 @@ Useful flags:
 Data source and limits:
 - Uses `GET /api/v1/video-channels?start=<offset>&count=50`.
 - Only channels hosted on the instance itself are stored.
+- `--new-channels` leaves existing metadata unchanged but refreshes the listed
+  `videos_count`; an omitted count becomes `NULL` for the following count stage.
 
 ### Channel video counts
 ```bash
 cd engine/crawler
 npm run crawl:channels:videos-count
 ```
+
+The updater runs this after channel discovery. Counts already supplied by
+`GET /api/v1/video-channels` are kept; only rows with `videos_count IS NULL`
+need a per-channel request. Successful counts are committed immediately, so
+`--resume` skips them after an interruption. Recorded errors are left for an
+explicit `--errors` repair pass.
 
 Useful flags:
 - `--resume` skips channels with existing counts or errors.
@@ -120,6 +131,11 @@ Useful flags:
 
 Data source and limits:
 - Uses `GET /api/v1/video-channels/<channel>/videos?start=<offset>&count=50`.
+- Selects only channels with `videos_count > 0`; zero-count and unresolved
+  channels do not cause metadata requests.
+- Each successful page stores its next offset in `video_crawl_progress`, so
+  `--resume` continues an interrupted channel from that page. Returned IDs are
+  filtered against staging and production before insertion.
 - Default host concurrency is limited to avoid rate limiting.
 
 ### Tags and comments enrichment
@@ -159,6 +175,44 @@ python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whiteli
 
 Schema ownership is documented in `docs/SCHEMA_OWNERSHIP.md`.
 
+
+### Metadata-v1 ingestion and historical backfill
+
+Normal `crawl:videos` ingestion now persists detail metadata needed by the browser and by a future ActivityPub adapter: language/category/licence identifiers, source timestamps, sensitive summary, live flags, support/aspect ratio, account identity, and canonical thumbnail dimensions. Fresh rows also persist detail tags.
+
+Historical rows must be migrated before the metadata maintenance command is used:
+
+```bash
+python3 engine/server/db/jobs/migrate-whitelist.py --db engine/server/db/whitelist.db
+cd engine/crawler
+npm run crawl:videos:metadata -- --db ../server/db/whitelist.db
+```
+
+The metadata command is a data-only operation. It validates the current metadata schema read-only and does not run crawler schema migrations against `whitelist.db`. `--update-metadata` explicitly revisits rows that already completed the current metadata version.
+
+Existing embedding-source fields are protected during ordinary repeat crawl and metadata backfill: `title`, `description`, `tags_json`, `category`, and `channel_name`. Intentionally changing any of those fields after embeddings exist requires a full embedding/artifact rebuild. The legacy tags maintenance commands remain embedding-affecting for existing rows. `comments_count` is dynamic metadata and is **not** an embedding input.
+
+### Embedding recipe migration barrier
+
+The semantic embedding recipe is `title + description + tags + category + channel name`; it no longer includes `comments_count`. Existing production embeddings created by the old recipe must be rebuilt as one isolated maintenance operation. Do not allow updater merges or Engine serving while the production embedding/ANN/similarity set is partially rebuilt.
+
+Operational barrier:
+
+```text
+1. disable/prevent updater-worker/timer and verify no updater run is active
+2. stop peertube-browser Engine
+3. deploy/activate the code with the new embedding recipe
+4. build-video-embeddings.py --force (using the deployment's normal CPU/GPU flags)
+5. sync-video-index-ids.py
+6. build-ann-index.py (using the deployment's normal output/CPU/GPU flags)
+7. precompute-similar-ann.py --reset (using the deployment's normal paths/flags)
+8. validate DB integrity/counts, stable IDs, FAISS metadata/ntotal, similarity cache
+9. start peertube-browser Engine
+10. re-enable updater execution
+```
+
+If any rebuild/validation step fails, keep Engine stopped and updater disabled until the reconstructible derived artifacts are rebuilt successfully. A normal updater merge independently force-rebuilds all staging embeddings with the currently deployed recipe immediately before delta calculation/merge, including `--resume-staging`; therefore an old resumed staging DB cannot reintroduce vectors from the previous recipe.
+
 ## 3) Build embeddings
 Embeddings use SentenceTransformers. The text payload is built from:
 - `title`
@@ -166,7 +220,6 @@ Embeddings use SentenceTransformers. The text payload is built from:
 - `tags_json`
 - `category`
 - `channel_name`
-- `comments_count`
 
 Default model is `all-MiniLM-L6-v2`.
 ```bash
@@ -215,9 +268,14 @@ python3 engine/server/db/jobs/precompute-random-index-ids.py \
   --filtered \
   --max-per-author 100 \
   --max-per-instance 0 \
-  --reset
+  --refresh
 ```
 
+
+
+The builder owns the artifact lifecycle: it writes a sibling temporary DB, validates the completed generation, then publishes with `os.replace()`. `--refresh` forces a new generation; without it a valid sufficiently sized artifact may be reused. `--reset` is intentionally unsupported.
+
+When `--out` is the configured production runtime path, publication is an offline operation: stop Engine before rebuilding and restart it afterward. Engine does not hot-reload the replaced file.
 
 ## 7) Precompute similarity cache (optional)
 This speeds up similar video fetches for the video page.
@@ -231,12 +289,14 @@ python3 engine/server/db/jobs/precompute-similar-ann.py \
   --reset
 ```
 
-## 8) Recompute popularity (one-time after dataset build)
-Materialize a `videos.popularity` score for fast popular queries.
+## 8) Recompute Trending (one-time after dataset build)
+Materialize `videos.popularity` for fast Trending queries. The score is
+`(views + 10 * likes) / (1 + age_hours)`, so a newer video that gains more
+views and likes ranks higher; the one-hour floor protects newly published rows.
 ```bash
 python3 engine/server/db/jobs/recompute-popularity.py \
   --db engine/server/db/whitelist.db \
-  --like-weight 2.0 \
+  --like-weight 10.0 \
   --reset
 ```
 

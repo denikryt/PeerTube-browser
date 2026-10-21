@@ -54,7 +54,7 @@ def test_random_cache_writes_and_reads_index_ids_only() -> None:
     cache.row_factory = sqlite3.Row
     bootstrap_engine_random_cache_db(cache)
 
-    count = populate_random_cache(src, cache, 10, refresh=True)
+    count = populate_random_cache(src, cache, 10)
     ids = sorted(fetch_random_index_ids(cache, 10))
     tables = {row[0] for row in cache.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 

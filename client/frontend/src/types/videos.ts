@@ -24,6 +24,11 @@ export interface VideoRow {
   likes?: number | null;
   dislikes?: number | null;
   comments_count?: number | null;
+  language?: string | null;
+  language_label?: string | null;
+  category?: string | null;
+  category_id?: string | null;
+  tags_json?: string | null;
   embed_path?: string | null;
   description?: string | null;
   videoUrl?: string | null;
@@ -41,6 +46,8 @@ export interface VideoRow {
   likes_count?: number | null;
   dislikes_count?: number | null;
   commentsCount?: number | null;
+  languageLabel?: string | null;
+  categoryId?: string | null;
   embedPath?: string | null;
   published_at?: number | null;
   publishedAt?: number | null;
@@ -78,6 +85,12 @@ export interface DiscoveryMeta {
   source: string;
   fallback?: boolean;
   fallback_reason?: string | null;
+  filters?: {
+    language: string | null;
+    category: string | null;
+    tag: string | null;
+    instance: string | null;
+  };
 }
 
 export interface DiscoveryListPayload {

@@ -38,8 +38,6 @@ def build_text(row: sqlite3.Row) -> str | None:
     description = (row["description"] or "").strip()
     category = (row["category"] or "").strip()
     channel_name = (row["channel_name"] or "").strip()
-    comments_count = row["comments_count"]
-
     if title:
         parts.append(title)
     if description:
@@ -52,9 +50,6 @@ def build_text(row: sqlite3.Row) -> str | None:
         parts.append(f"category: {category}")
     if channel_name:
         parts.append(f"channel: {channel_name}")
-    if comments_count is not None:
-        parts.append(f"comments_count: {comments_count}")
-
     text = "\n".join(parts).strip()
     return text if text else None
 
@@ -84,7 +79,7 @@ def main() -> None:
         description=(
             "Build sentence embeddings for videos and store them in video_embeddings. "
             "The script reads videos from the selected database, builds a text payload "
-            "from title/description/tags/category/channel/comments, and stores a "
+            "from title/description/tags/category/channel, and stores a "
             "normalized embedding vector per (video_id, instance_domain)."
         ),
         formatter_class=CompactHelpFormatter,
@@ -178,8 +173,7 @@ def main() -> None:
               v.description,
               v.tags_json,
               v.category,
-              v.channel_name,
-              v.comments_count
+              v.channel_name
             FROM videos v
             """
         )
@@ -194,8 +188,7 @@ def main() -> None:
               v.description,
               v.tags_json,
               v.category,
-              v.channel_name,
-              v.comments_count
+              v.channel_name
             FROM videos v
             LEFT JOIN video_embeddings e
               ON e.video_id = v.video_id AND e.instance_domain = v.instance_domain

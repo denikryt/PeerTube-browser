@@ -71,6 +71,7 @@ def required_runtime_files(paths: ResolvedUpdaterPaths) -> tuple[Path, ...]:
         paths.crawler_dist / "channels-cli.js",
         paths.crawler_dist / "videos-cli.js",
         paths.crawler_dist / "channels-videos-count-cli.js",
+        paths.crawler_dist / "host-pipeline-cli.js",
         paths.script_dir / "merge-staging-db.py",
         paths.script_dir / "build-video-embeddings.py",
         paths.script_dir / "recompute-popularity.py",

@@ -23,6 +23,31 @@ export function resolveVideoKey(row: VideoRow | null) {
   return `${host}::${id}`;
 }
 
+/** Return the stable feed/search row identity used by duplicate guards and Vue keys. */
+export function videoRowKey(row: VideoRow | null) {
+  const host = resolveInstanceDomain(row);
+  const id = resolveVideoId(row) || (row?.video_numeric_id != null ? String(row.video_numeric_id) : "");
+  return `${host}::${id}`;
+}
+
+/** Return the first occurrence of each stable video-row identity. */
+export function dedupeVideoRows(rows: VideoRow[]) {
+  const result: VideoRow[] = [];
+  appendUniqueVideoRows(result, rows);
+  return result;
+}
+
+/** Append only rows whose stable identity is not already present in the target. */
+export function appendUniqueVideoRows(target: VideoRow[], rows: VideoRow[]) {
+  const seen = new Set(target.map(videoRowKey));
+  for (const row of rows) {
+    const key = videoRowKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    target.push(row);
+  }
+}
+
 /** Resolve the canonical Client API thumbnail aliases used by feed cards. */
 export function thumbnailUrl(row: VideoRow) {
   return row.thumbnail_url ?? row.thumbnailUrl ?? null;

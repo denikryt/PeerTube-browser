@@ -387,19 +387,21 @@ tests/db/test_cache_migrations.py
 Owner:
 
 ```text
-Engine random-cache job/runtime
+Engine data-build jobs/updater (writes and publication)
+Engine runtime (read-only consumption)
 ```
 
-Current source:
+Build/publication source:
 
 ```text
-engine/server/data/random_cache.py::ensure_random_cache_schema
-```
-
-Current runtime bootstrap source:
-
-```text
+engine/server/data/random_cache.py::rebuild_random_cache
 engine/server/db/bootstrap.py::bootstrap_engine_random_cache_db
+```
+
+Runtime open/validation source:
+
+```text
+engine/server/data/random_cache.py::open_random_provider_readonly
 ```
 
 Stage 6 migration source:
@@ -420,6 +422,7 @@ engine/server/db/jobs/precompute-random-index-ids.py
 Tables/indexes:
 
 ```text
+random_cache_meta
 random_index_ids
 ```
 
@@ -432,8 +435,10 @@ engine/server/data/random_cache.py::ensure_random_cache_schema
 Current behavior:
 
 ```text
-Random cache stores `random_index_ids.index_id`, not SQLite rowids.
-Old `random_rowids` artifacts are incompatible and must be rebuilt.
+Random cache stores only generation metadata plus ordered `random_index_ids(position,index_id)`; it does not duplicate mutable video metadata.
+Each executed rebuild gets a fresh UUID build_id. Builders create and validate a sibling temporary DB, then publish with atomic replace.
+Engine runtime opens the artifact and canonical DB read-only and never migrates/rebuilds the cache. Missing/incompatible artifacts make Random unavailable; a valid zero-row generation is a normal empty provider.
+Old schemas/artifacts are incompatible and must be rebuilt by the data-build owner. Production-path publication is offline; runtime does not hot-reload a replaced file.
 ```
 
 Deferred changes:
@@ -446,6 +451,8 @@ Tests:
 
 ```text
 tests/db/test_cache_migrations.py
+tests/engine_data/test_random_cache_runtime.py
+tests/architecture/test_random_provider_ownership.py
 ```
 
 ## Engine stable ANN index identity
@@ -602,3 +609,14 @@ Future migration-policy stage
 ```
 
 The deferred items above are not Stage 6 gaps. Stage 6 established ownership and current-shape migration resources; later bootstrap cleanup moved production callers to explicit bootstrap entrypoints, and the legacy ensure-wrapper cleanup removed the transitional schema wrappers.
+
+
+## Metadata-v1 crawler / whitelist ownership
+
+The crawler owns the canonical producer columns added for PeerTube REST / ActivityPub-aligned metadata. `engine/crawler/schema.sql` defines the crawler current shape; `engine/crawler/src/db/schema.ts` may add those known columns to crawler databases. Production `whitelist.db` migration remains owned by `engine/server/db/jobs/migrate-whitelist.py` / `whitelist_migrations.py`; crawler maintenance commands must not mutate production schema.
+
+Crawler-owned video metadata-v1 includes `metadata_version`, language/category/licence identifiers and labels, source timestamps, sensitive summary, live metadata, aspect ratio/support, account username/avatar, and thumbnail dimensions. Channel metadata-v1 includes owner-account identity fields. Historical rows start at `metadata_version=0`; completion is monotonic and failed enrichment preserves last-known-good enrichment values.
+
+Schema compatibility is directional: crawler-owned columns must be present in whitelist production, while Engine-owned destination columns such as `videos.popularity` are allowed. The merge boundary rejects staging-only columns before DML.
+
+Embedding-source fields are intentionally protected on existing rows: `title`, `description`, `tags_json`, `category`, and `channel_name`. `comments_count` is refreshable product metadata and is not part of the semantic embedding recipe. `category/category_id` and the video channel tuple have conditional persistence rules so identifiers cannot contradict protected labels.

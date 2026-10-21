@@ -3,12 +3,13 @@
  * Shared YouTube-style video card for Home and Search result grids.
  *
  * This component intentionally owns the feed/search card structure. Similar
- * videos on the detail page use a separate compact component, while Home and
- * Search share the same lightweight reaction-count footer.
+ * videos on the detail page use a separate compact component. Home and Search
+ * preserve the familiar thumbnail/avatar/title/channel/meta hierarchy and
+ * expose only the positive reaction count in the dense feed context.
  */
 import { computed, ref } from "vue";
 import type { VideoRow } from "../types/videos";
-import { iconThumbDown, iconThumbUp } from "./icons";
+import { iconThumbUp } from "./icons";
 import { formatDuration, formatStatValue, formatTimeAgo, normalizeStatValue } from "../utils/format";
 import { channelAvatarUrl, channelInitials, channelName, channelUrl, hasServerStats, publishedAtMs, thumbnailUrl, videoPageUrl } from "../utils/video-fields";
 
@@ -22,6 +23,8 @@ const channelHref = computed(() => channelUrl(props.row));
 const avatar = computed(() => channelAvatarUrl(props.row));
 const initials = computed(() => channelInitials(props.row));
 const detailUrl = computed(() => videoPageUrl(props.row));
+
+const instanceLabel = computed(() => props.row.instance_domain ?? props.row.instanceDomain ?? "");
 const published = computed(() => {
   const value = publishedAtMs(props.row);
   return value ? formatTimeAgo(value) : "";
@@ -31,7 +34,6 @@ const views = computed(() => {
   return normalizeStatValue(props.row.views ?? props.row.viewsCount);
 });
 const likes = computed(() => normalizeStatValue(props.row.likes ?? props.row.likes_count));
-const dislikes = computed(() => normalizeStatValue(props.row.dislikes ?? props.row.dislikes_count));
 const metaLine = computed(() => {
   const parts = [`${formatStatValue(views.value)} views`];
   if (published.value) parts.push(published.value);
@@ -61,10 +63,10 @@ const metaLine = computed(() => {
         <a class="channel-link" :href="channelHref" target="_blank" rel="noreferrer">
           {{ channelLabel }}
         </a>
-        <div class="video-meta">{{ metaLine }}</div>
-        <div class="video-card-stats" aria-label="Video reactions">
-          <span class="stat likes"><span v-html="iconThumbUp()"></span><span data-stat="likes">{{ formatStatValue(likes) }}</span></span>
-          <span class="stat dislikes"><span v-html="iconThumbDown()"></span><span data-stat="dislikes">{{ formatStatValue(dislikes) }}</span></span>
+        <div class="video-meta">
+          <span>{{ metaLine }}</span>
+          <span v-if="instanceLabel"> · {{ instanceLabel }}</span>
+          <span class="video-card-like" aria-label="Likes"><span v-html="iconThumbUp()"></span><span data-stat="likes">{{ formatStatValue(likes) }}</span></span>
         </div>
       </div>
       <button class="video-card-menu" type="button" aria-label="More options" title="More options">

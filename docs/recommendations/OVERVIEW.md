@@ -24,7 +24,7 @@ where only `random/popular/fresh` are active.
 
 ## 2) Data Preparation: Embeddings, Index, Cache
 1. **Video embeddings**
-   Built offline from video text: title, description, tags, category, channel name, comments_count.
+   Built offline from video text: title, description, tags, category, and channel name.
    Text is turned into a vector (SentenceTransformer), normalized, and stored in `video_embeddings`.
 2. **ANN index**
    Built from embeddings for fast similarity search.

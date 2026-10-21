@@ -2,7 +2,7 @@
 
 This file tracks tasks discovered during planning that are intentionally out of scope for the current implementation plan. Add items here when they are real follow-up work, not vague ideas.
 
-## Cleanup workflow for inactive `video_index_ids`
+## 1. Cleanup workflow for inactive `video_index_ids`
 
 ### Source
 
@@ -28,7 +28,7 @@ The future design must define:
 
 Milestone 0 must only soft-retire inactive mappings with `is_active = 0`, `retired_at`, and `retired_reason`. It must not hard-delete mappings.
 
-## Public API identity cleanup for Discovery API v1
+## 2. Public API identity cleanup for Discovery API v1
 
 ### Source
 
@@ -56,7 +56,7 @@ Define and implement the public API identity contract for videos:
 
 Milestone 0 must not expose `index_id`, rename API response fields, change frontend URL identity, or redesign public Discovery API routes.
 
-## Evaluate uuid-first video identity model
+## 3. Evaluate uuid-first video identity model
 
 ### Source
 
@@ -74,7 +74,7 @@ Evaluate a uuid-first identity model across `videos`, `video_embeddings`, `video
 
 Discovery API v1 must not replace the current canonical internal `video_id + instance_domain` model.
 
-## Design seek-based cursors for large discovery feeds
+## 4. Design seek-based cursors for large discovery feeds
 
 ### Source
 
@@ -92,7 +92,7 @@ Design feed-specific seek cursors for large/dynamic feeds, especially `fresh`, `
 
 Discovery API v1 must keep cursors opaque and route-bound, but it does not need full seek-pagination semantics for every feed.
 
-## Optimize recommendation mix pool latency
+## 5. Optimize recommendation mix pool latency
 
 ### Source
 
@@ -121,7 +121,7 @@ Profile and optimize the recommendation mix layers that are still expensive:
 ### Not In Current Scope
 
 The cache seed lookup and cached similarity correctness fixes must not be expanded into recommendation algorithm redesign. This task is a separate performance optimization milestone after the index-migration regressions are resolved.
-## Search v1 follow-up work
+## 6. Search v1 follow-up work
 
 ### Source
 
@@ -142,3 +142,23 @@ Evaluate and design the deferred search capabilities:
 ### Not In Current Scope
 
 Search v1 must not add description indexing, semantic/embedding search, external search services, or incremental FTS synchronization.
+
+## 7. Live thumbnail smoke operational follow-up
+
+### Source
+
+`plans/17_live_peertube_thumbnail_smoke.md`
+
+### Reason
+
+The crawler now has an opt-in `test:live:thumbnails` command that selects usable hosts from JoinPeerTube, runs the production crawler stages against isolated temporary SQLite databases, validates every persisted thumbnail with a bounded real `GET`, and diagnoses failed stored URLs against current PeerTube detail media fields.
+
+### Future Work
+
+- decide whether to schedule `test:live:thumbnails` as a non-blocking periodic CI job;
+- define alerting and retention policy for JSON reports from scheduled runs;
+- maintain the candidate/registry policy if JoinPeerTube payloads or availability behavior change.
+
+### Not In Current Scope
+
+The live smoke remains optional and network-dependent. It must not replace deterministic crawler tests or become a required per-commit check without an explicit CI reliability decision.

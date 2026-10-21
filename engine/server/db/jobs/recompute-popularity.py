@@ -28,7 +28,7 @@ def ensure_popularity_schema(conn: sqlite3.Connection) -> None:
 def main() -> None:
     """Handle main."""
     parser = argparse.ArgumentParser(
-        description="Recompute popularity for all videos.",
+        description="Recompute views/likes-per-hour Trending scores for all videos.",
         formatter_class=CompactHelpFormatter,
     )
     repo_root = script_dir.parents[3]
@@ -50,7 +50,7 @@ def main() -> None:
         type=float,
         default=float(DEFAULT_POPULARITY_LIKE_WEIGHT),
         metavar="N",
-        help=f"Like multiplier in popularity formula (default: {DEFAULT_POPULARITY_LIKE_WEIGHT}).",
+        help=f"Like-to-view multiplier in the Trending formula (default: {DEFAULT_POPULARITY_LIKE_WEIGHT}).",
     )
     parser.add_argument(
         "--reset",

@@ -15,7 +15,7 @@ similarity-based recommendations.
 3) Embeddings are built from video metadata (title, description, tags, channel, etc.).
 4) ANN index (FAISS) is created for fast similarity lookups.
 5) Server serves recommendations and metadata from the local DB/index.
-6) Client renders the feed and video pages.
+6) Client renders four-mode Discovery, filtered Search, and video pages through the Client backend.
 
 ## Data build
 See `docs/DATA_BUILD.md` for the end-to-end steps to build the SQLite dataset and ANN index.
@@ -60,7 +60,7 @@ This is not a heavy ML system; it is a transparent, controllable pipeline.
 |---|---|---|---|
 | Public read API (`/recommendations`, `/videos/{id}/similar`, `/videos/similar`, `/api/video`, `/api/health`) | Engine | Exposed by Engine HTTP API only. | Client backend importing Engine modules or reading Engine DB files directly. |
 | Browser-facing write/profile API (`/api/user-action`, `/api/user-profile/*`) | Client backend | Exposed by Client backend only. | Moving write/profile ownership into Engine handlers. |
-| Browser-facing read gateway (`/recommendations`, `/videos/similar`, `/api/video`, `/api/channels`) | Client backend | Frontend reads use Client API base and gateway routes only. | Direct frontend Engine API base usage. |
+| Browser-facing read gateway (`/api/v1/discovery/*`, `/api/v1/search/*`, `/api/v1/video-facets`, `/api/v1/videos/*`, plus legacy gateway routes) | Client backend | Frontend reads use Client API base only. | Direct frontend Engine API base/internal route usage. |
 | Internal Client->Engine read contract (`/internal/videos/resolve`, `/internal/videos/metadata`) | Engine (provider), Client backend (consumer) | Client backend consumes these internal endpoints over HTTP. | Direct DB coupling instead of HTTP contract. |
 | Temporary bridge ingest (`/internal/events/ingest`) | Engine (ingest), Client backend (publisher) | Client backend publishes normalized events to Engine ingest endpoint. | Frontend direct ingest calls or bypassing Client normalization path. |
 

@@ -17,6 +17,8 @@ script_dir = Path(__file__).resolve().parent
 server_dir = script_dir.parents[1]
 if str(server_dir) not in sys.path:
     sys.path.insert(0, str(server_dir))
+if str(script_dir) not in sys.path:
+    sys.path.insert(0, str(script_dir))
 api_dir = server_dir / "api"
 if str(api_dir) not in sys.path:
     sys.path.insert(0, str(api_dir))
@@ -28,6 +30,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - script import fallback.
     from db.bootstrap import bootstrap_engine_moderation_db
 from data.moderation import list_active_denied_hosts
+from whitelist_migrations import add_metadata_v1_columns
 
 DEFAULT_URL = (
     "https://instances.joinpeertube.org/api/v1/instances/hosts?count=5000&healthy=true"
@@ -45,31 +48,19 @@ EXCLUDED_INSTANCE_COLUMNS: set[str] = set()
 
 
 def _load_schema_columns(schema_path: Path, table: str) -> list[str]:
-    """Handle load schema columns."""
-    sql = schema_path.read_text(encoding="utf-8")
-    marker = f"CREATE TABLE IF NOT EXISTS {table}"
-    start = sql.find(marker)
-    if start == -1:
+    """Read ordered crawler-owned columns by applying schema.sql in SQLite.
+
+    Let SQLite parse composite keys and constraints instead of maintaining a
+    fragile text parser that can mistake the second key column for a field.
+    """
+
+    schema_sql = schema_path.read_text(encoding="utf-8")
+    with sqlite3.connect(":memory:") as schema_conn:
+        schema_conn.executescript(schema_sql)
+        rows = schema_conn.execute(f"PRAGMA table_info({table})").fetchall()
+    if not rows:
         raise ValueError(f"Missing {table} definition in {schema_path}")
-    open_paren = sql.find("(", start)
-    if open_paren == -1:
-        raise ValueError(f"Missing columns for {table} in {schema_path}")
-    close_paren = sql.find(");", open_paren)
-    if close_paren == -1:
-        raise ValueError(f"Missing end of {table} definition in {schema_path}")
-    body = sql[open_paren + 1 : close_paren]
-    columns: list[str] = []
-    for chunk in body.split(","):
-        item = chunk.strip()
-        if not item:
-            continue
-        token = item.split()[0].strip("`\"")
-        if token.upper() in {"PRIMARY", "FOREIGN", "UNIQUE", "CHECK", "CONSTRAINT"}:
-            continue
-        columns.append(token)
-    if not columns:
-        raise ValueError(f"No columns parsed for {table} from {schema_path}")
-    return columns
+    return [str(row[1]) for row in rows]
 
 
 def _schema_columns(schema_path: Path, table: str, exclude: set[str]) -> list[str]:
@@ -167,9 +158,9 @@ def _assert_columns_superset(
 def ensure_schema_compatibility(conn: sqlite3.Connection) -> None:
     """Handle ensure schema compatibility."""
     try:
-        _assert_columns_exact(conn, TABLE_NAME, INSTANCE_COLUMNS)
-        _assert_columns_exact(conn, "channels", CHANNEL_COLUMNS)
-        _assert_columns_exact(conn, "videos", VIDEO_COLUMNS)
+        _assert_columns_superset(conn, TABLE_NAME, INSTANCE_COLUMNS)
+        _assert_columns_superset(conn, "channels", CHANNEL_COLUMNS)
+        _assert_columns_superset(conn, "videos", VIDEO_COLUMNS)
         _assert_columns_exact(conn, "video_embeddings", EMBEDDING_COLUMNS)
     except RuntimeError as exc:
         raise RuntimeError(
@@ -325,6 +316,9 @@ def ensure_content_schema(conn: sqlite3.Connection) -> None:
           ON channels (instance_domain);
         """
     )
+    # Keep fresh production bootstrap on the same additive metadata contract
+    # as the in-place whitelist migration.
+    add_metadata_v1_columns(conn)
 
 
 def sync_hosts(conn: sqlite3.Connection, hosts: set[str]) -> tuple[int, int]:

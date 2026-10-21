@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 
 from engine.server.db.jobs.updater import sync
 
@@ -68,3 +69,135 @@ def test_purge_hosts_aggregates_results(monkeypatch, tmp_path) -> None:
         "videos": 2,
         "similarity_rows": 4,
     }
+
+
+def test_purge_hosts_sets_named_row_contract_for_similarity_helpers(tmp_path) -> None:
+    """Updater similarity purge uses sqlite Row because moderation helpers read named columns."""
+
+    prod = tmp_path / "prod.db"
+    sim = tmp_path / "sim.db"
+    with sqlite3.connect(prod) as conn:
+        sync.bootstrap_engine_moderation_db(conn)
+        conn.commit()
+    with sqlite3.connect(sim) as conn:
+        conn.execute(
+            """
+            CREATE TABLE similarity_items(
+              source_instance_domain TEXT,
+              similar_instance_domain TEXT
+            )
+            """
+        )
+        conn.execute("CREATE TABLE similarity_sources(instance_domain TEXT)")
+        conn.execute(
+            "INSERT INTO similarity_items(source_instance_domain, similar_instance_domain) VALUES (?, ?)",
+            ("target.example", "other.example"),
+        )
+        conn.execute(
+            "INSERT INTO similarity_sources(instance_domain) VALUES (?)",
+            ("target.example",),
+        )
+        conn.commit()
+
+    result = sync.purge_hosts(
+        prod_db=prod,
+        similarity_db=sim,
+        hosts={"target.example"},
+        dry_run=True,
+    )
+
+    assert result["similarity_similarity_items"] == 1
+    assert result["similarity_similarity_sources"] == 1
+
+
+def test_load_denied_hosts_reads_named_rows_from_plain_sqlite_connection(tmp_path) -> None:
+    """Updater denylist loading works with the connection it opens itself."""
+
+    db = tmp_path / "prod.db"
+    with sqlite3.connect(db) as conn:
+        sync.bootstrap_engine_moderation_db(conn)
+        conn.execute(
+            """
+            INSERT INTO instance_denylist(host, reason, note, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, 1, ?, ?)
+            """,
+            ("Blocked.EX", "test", "test", 1, 1),
+        )
+        conn.execute(
+            """
+            INSERT INTO instance_denylist(host, reason, note, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, 0, ?, ?)
+            """,
+            ("inactive.ex", "test", "test", 1, 1),
+        )
+        conn.commit()
+
+    assert sync.load_denied_hosts(db) == {"blocked.ex"}
+
+
+def test_purge_hosts_from_staging_uses_real_crawler_schema(tmp_path) -> None:
+    """Denylisted hosts are removed through the real crawler schema columns."""
+
+    db = tmp_path / "staging.db"
+    schema_path = Path(__file__).resolve().parents[2] / "engine" / "crawler" / "schema.sql"
+    with sqlite3.connect(db) as conn:
+        conn.executescript(schema_path.read_text(encoding="utf-8"))
+        conn.execute("INSERT INTO instances(host) VALUES (?)", ("blocked.example",))
+        conn.execute(
+            """
+            INSERT INTO channels(channel_id, channel_name, instance_domain)
+            VALUES (?, ?, ?)
+            """,
+            ("channel-1", "Blocked channel", "blocked.example"),
+        )
+        conn.execute(
+            """
+            INSERT INTO videos(video_id, video_uuid, instance_domain, last_checked_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            ("video-1", "uuid-1", "blocked.example", 1),
+        )
+        conn.execute(
+            """
+            INSERT INTO instance_crawl_progress(host, status, updated_at)
+            VALUES (?, ?, ?)
+            """,
+            ("blocked.example", "done", 1),
+        )
+        conn.execute(
+            """
+            INSERT INTO channel_crawl_progress(instance_domain, status, updated_at)
+            VALUES (?, ?, ?)
+            """,
+            ("blocked.example", "done", 1),
+        )
+        conn.execute(
+            """
+            INSERT INTO video_crawl_progress(
+                instance_domain, channel_id, status, updated_at
+            ) VALUES (?, ?, ?, ?)
+            """,
+            ("blocked.example", "channel-1", "done", 1),
+        )
+        conn.commit()
+
+    result = sync.purge_hosts_from_staging(db, {"BLOCKED.EXAMPLE"})
+
+    assert result == {
+        "videos": 1,
+        "channels": 1,
+        "instances": 1,
+        "video_crawl_progress": 1,
+        "channel_crawl_progress": 1,
+        "instance_crawl_progress": 1,
+    }
+    with sqlite3.connect(db) as conn:
+        for table in (
+            "videos",
+            "channels",
+            "instances",
+            "video_crawl_progress",
+            "channel_crawl_progress",
+            "instance_crawl_progress",
+        ):
+            assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0

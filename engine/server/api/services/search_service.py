@@ -12,6 +12,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from route_results import RouteResult
+from data.serving_moderation import serving_visibility_from_server
+try:
+    from engine.server.api.services.video_filter_service import allowed_with_filters, parse_video_filters
+except ModuleNotFoundError:  # pragma: no cover - direct server.py execution path
+    from services.video_filter_service import allowed_with_filters, parse_video_filters
 
 try:
     from data.video_search import normalize_fts_query, search_videos
@@ -31,6 +36,7 @@ class SearchPage:
     query: str
     limit: int
     offset: int
+    filters: Any
 
 
 def _first(params: dict[str, list[str]], key: str) -> str | None:
@@ -67,24 +73,33 @@ def decode_cursor(value: str | None) -> int:
         payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
     except Exception as exc:  # noqa: BLE001 - malformed cursors share one HTTP error.
         raise ValueError("Invalid cursor") from exc
-    if not isinstance(payload, dict) or payload.get("v") != 1 or payload.get("kind") != KIND:
+    if (
+        not isinstance(payload, dict)
+        or type(payload.get("v")) is not int
+        or payload.get("v") != 1
+        or payload.get("kind") != KIND
+    ):
         raise ValueError("Invalid cursor")
     offset = payload.get("offset")
-    if not isinstance(offset, int) or offset < 0:
+    if type(offset) is not int or offset < 0:
         raise ValueError("Invalid cursor")
     return offset
 
 
 def parse_video_search_params(params: dict[str, list[str]]) -> SearchPage | RouteResult:
     """Validate provider route params before touching the FTS index."""
+    for key in params:
+        if key not in allowed_with_filters("q", "limit", "cursor"):
+            return RouteResult(400, {"error": f"Unknown query parameter: {key}"})
     query = (_first(params, "q") or "").strip()
     if not query or not normalize_fts_query(query):
         return RouteResult(400, {"error": "Missing or invalid q"})
     try:
         offset = decode_cursor(_first(params, "cursor"))
+        filters = parse_video_filters(params)
     except ValueError as exc:
         return RouteResult(400, {"error": str(exc)})
-    return SearchPage(query=query, limit=_parse_limit(_first(params, "limit")), offset=offset)
+    return SearchPage(query=query, limit=_parse_limit(_first(params, "limit")), offset=offset, filters=filters)
 
 
 def handle_internal_video_search(server: Any, params: dict[str, list[str]]) -> RouteResult:
@@ -94,7 +109,14 @@ def handle_internal_video_search(server: Any, params: dict[str, list[str]]) -> R
         return page
     try:
         with server.db_lock:
-            rows, next_offset = search_videos(server.db, query=page.query, limit=page.limit, offset=page.offset)
+            rows, next_offset = search_videos(
+                server.db,
+                query=page.query,
+                limit=page.limit,
+                offset=page.offset,
+                filters=page.filters,
+                visibility=serving_visibility_from_server(server),
+            )
     except sqlite3.OperationalError as exc:
         # Missing FTS tables should be a controlled deploy/index-state response,
         # not an uncaught traceback in the provider route.
