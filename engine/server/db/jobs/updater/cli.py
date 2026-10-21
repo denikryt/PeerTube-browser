@@ -103,6 +103,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "with fresh health checks (except explicit count/video --retry-errors)."
         ),
     )
+    parser.add_argument(
+        "--resume-crawl", action="store_true",
+        help="Continue saved crawler work in staging; replay unfinished channel hosts from page zero.",
+    )
     parser.add_argument("--index-path", default=str(default_index), help="Path to ANN index file.")
     parser.add_argument(
         "--index-meta-path", default=str(default_index_meta), help="Path to ANN metadata json file."
@@ -293,6 +297,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.set_defaults(use_gpu=True)
     args = parser.parse_args(argv)
+    if args.resume_crawl:
+        args.resume_staging = True
+        if (args.retry_errors or args.host_pipeline or args.sync_join_whitelist
+            or args.check_existing_video_availability or args.apply_existing_video_availability
+            or args.max_channels):
+            parser.error("--resume-crawl requires ordinary unbounded crawler mode")
     if args.retry_errors and not args.resume_staging:
         parser.error("--retry-errors requires --resume-staging so recorded failures are preserved.")
     if args.retry_errors and args.host_pipeline:

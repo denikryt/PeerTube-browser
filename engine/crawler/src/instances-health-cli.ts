@@ -28,6 +28,8 @@ export interface InstanceHealthOptions {
   hostsFile: string | null;
   host: string | null;
   errorsOnly: boolean;
+  /** Retain completed probes from the same initialized crawler run. */
+  skipObserved?: boolean;
 }
 
 interface HealthPage {
@@ -52,6 +54,7 @@ program
   .option("--max-retries <number>", "HTTP retry attempts", "3")
   .option("--host <host>", "Check only a single instance host")
   .option("--errors-only", "Check only instances with health_status=error", false)
+  .option("--skip-observed", "Continue an initialized probe without rechecking saved results", false)
   .option(
     "--min-age-days <number>",
     "Only check instances last health checked at least this many days ago"
@@ -81,7 +84,8 @@ try {
     minAgeSec: parseOptionalNumber(options.minAgeSec),
     hostsFile: typeof options.hostsFile === "string" && options.hostsFile.trim() ? options.hostsFile : null,
     host: parseOptionalHost(options.host),
-    errorsOnly: Boolean(options.errorsOnly)
+    errorsOnly: Boolean(options.errorsOnly),
+    skipObserved: Boolean(options.skipObserved)
   });
 } catch (error) {
   if (isNoNetworkError(error)) {
@@ -107,6 +111,8 @@ export async function checkInstancesHealth(options: InstanceHealthOptions) {
   const minAgeMs = computeMinAgeMs(options);
   const allHosts = options.host
     ? [options.host]
+    : options.skipObserved
+      ? store.listUnobservedInstancesForHealth()
     : options.errorsOnly
       ? store.listErrorInstancesNeedingHealth(minAgeMs)
       : store.listInstancesNeedingHealth(minAgeMs);

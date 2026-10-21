@@ -173,10 +173,16 @@ async function fetchViaCurl(url: string, options: HttpOptions): Promise<Response
     }
     return new Response(body, { status });
   } catch (error) {
-    const err = error as { stderr?: string; message?: string };
+    const err = error as { code?: unknown; stderr?: string; message?: string };
     const stderr = typeof err.stderr === "string" ? err.stderr.trim() : "";
     const message = stderr || err.message || "curl failed";
-    throw new Error(`curl: ${message}`);
+    const curlError = new Error(`curl: ${message}`) as Error & { curlExitCode?: number };
+    // execFile carries curl's numeric exit status. Preserve it separately from
+    // diagnostic text so the shared retry policy can recognize a refused connect.
+    if (typeof err.code === "number" && Number.isInteger(err.code) && err.code > 0) {
+      curlError.curlExitCode = err.code;
+    }
+    throw curlError;
   }
 }
 

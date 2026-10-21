@@ -86,7 +86,7 @@ video_corpus_role            = updater_staging_delta
 
 Resume, error retry, and merge require this exact generation and role. Legacy, roleless, or malformed staging is rejected rather than converted.
 
-Resume an interrupted current-generation crawl:
+Restart parent observations on retained staging:
 
 ```bash
 ./venv/bin/python3 engine/server/db/jobs/updater-worker.py \
@@ -94,7 +94,38 @@ Resume an interrupted current-generation crawl:
   --gpu
 ```
 
-Resume behavior is status-aware:
+For an interrupted ordinary, unbounded crawler run, continue saved parent work:
+
+```bash
+./venv/bin/python3 engine/server/db/jobs/updater-worker.py \
+  --resume-crawl \
+  --gpu
+```
+
+Use the same database, staging, lock, index, and sidecar paths as the original
+invocation. `--resume-crawl` implies staging reuse and requires the same host
+selection and crawler work limits. It skips registry discovery and the parent
+reset once the selected host checkpoint exists. Instance probes with a saved
+result and completed channel listings are skipped. An unfinished channel host
+is read again from page zero; channel health checks only unresolved rows, and
+count/video workers use their existing SQLite progress. If the original run
+stopped before the checkpoint was written, discovery and parent initialization
+restart. Staging created before this checkpoint existed also restarts those
+stages. Recorded `error` rows remain terminal for the current run; use
+`--resume-staging` to make fresh parent observations. The mode is available
+only for the ordinary crawler path with
+`--max-channels 0`; host-pipeline, strict sync, availability sweep, and
+`--retry-errors` use their existing paths. Once crawling completes, the mode
+rejects further use instead of replaying downstream publication.
+
+After three consecutive channel-health transport failures for one host, the
+crawler probes that host's channel-list endpoint. If the probe fails, it records
+parent health as error and stops requesting its remaining channels; other hosts
+continue. A successful probe allows channel checks to continue. curl connection
+exit 7 follows the configured bounded retry policy before it becomes a stored
+host-local failure.
+
+`--resume-staging` behavior is status-aware:
 
 - channel enumeration resets to page zero for every newly selected normal/resumed run; stale `done`/offsets cannot authorize children;
 - persisted channel video counts are skipped;

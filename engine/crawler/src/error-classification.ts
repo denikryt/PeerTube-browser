@@ -62,6 +62,13 @@ export function classifyCrawlError(error: unknown): CrawlErrorClassification {
     };
   }
 
+  // curl exit 7 means the selected target refused or could not accept this
+  // connection. It is host-local transport evidence, eligible for bounded retry.
+  if (typeof error === "object" && error !== null &&
+      "curlExitCode" in error && error.curlExitCode === 7) {
+    return { kind: "network", retryable: true, tryAlternateProtocol: true, httpStatus: null };
+  }
+
   if (name === "AbortError" || lower.includes("timeout") || code.includes("TIMEOUT")) {
     return { kind: "timeout", retryable: true, tryAlternateProtocol: true, httpStatus: null };
   }

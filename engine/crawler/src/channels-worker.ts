@@ -6,7 +6,7 @@ import { ChannelStore } from "./db/channels.js";
 import { checkInstancesHealth } from "./instances-health-cli.js";
 import type { ChannelProgressRow, ChannelUpsertRow } from "./db/types.js";
 import { fetchJsonWithRetry, isNoNetworkError } from "./http.js";
-import { formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
+import { classifyCrawlError, formatCrawlError, shouldTryAlternateProtocol } from "./error-classification.js";
 import { createRequestLimiter, type RequestLimiter } from "./request-limiter.js";
 import { loadHostsFromFile, loadIncludedHostsFromFile, scopeHosts } from "./host-filters.js";
 import { formatMetricLog } from "./log-format.js";
@@ -348,6 +348,9 @@ async function processHealthInstance(
   );
 
   let hadError = false;
+  let transportFailures = 0;
+  let hostUnavailable = false;
+  let probe: Promise<void> | null = null;
   const totalChannels = channels.length;
   let processedChannels = 0;
   /**
@@ -359,6 +362,13 @@ async function processHealthInstance(
   };
   await mapWithConcurrency(channels, options.hostConcurrency, async (channel) => {
     assertWorkActive(cancellation);
+    // A failed parent probe stops this host only; sibling hosts still run.
+    if (hostUnavailable) return;
+    if (probe) {
+      await probe;
+      if (!hostUnavailable) probe = null;
+    }
+    if (hostUnavailable) return;
     if (!channel.channel_name) return;
     const current = nextProcessed();
     console.log(
@@ -367,6 +377,7 @@ async function processHealthInstance(
     try {
       const count = await fetchChannelHealth(normalizedHost, channel.channel_name, options, requestLimiter);
       store.updateChannelHealthOk(channel.channel_id, normalizedHost);
+      transportFailures = 0;
       if (count !== null) store.updateChannelVideosCount(channel.channel_id, normalizedHost, count);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -379,6 +390,38 @@ async function processHealthInstance(
       }
       hadError = true;
       store.updateChannelHealthError(channel.channel_id, normalizedHost, message);
+      const kind = classifyCrawlError(error).kind;
+      if (kind === "network" || kind === "timeout") {
+        transportFailures += 1;
+        if (transportFailures >= 3 && !probe) {
+          // Three consecutive transport failures may mean the instance died
+          // after its initial probe. Confirm once before skipping its backlog.
+          probe = (async () => {
+            try {
+              const result = await fetchPage(normalizedHost, 0, options, "https:", requestLimiter);
+              if (!result.page || !Array.isArray(result.page.data) ||
+                  result.page.data.length > PAGE_SIZE ||
+                  (result.page.total !== undefined &&
+                    (!Number.isSafeInteger(result.page.total) || result.page.total < 0 ||
+                      result.page.data.length !== Math.min(PAGE_SIZE, result.page.total)))) {
+                throw new Error("Invalid instance-health page");
+              }
+              transportFailures = 0;
+            } catch (probeError) {
+              if (isNoNetworkError(probeError)) throw probeError;
+              hostUnavailable = true;
+              store.markInstanceHealthError(normalizedHost, formatCrawlError(probeError));
+              console.warn(`[channels-health] parent unavailable ${normalizedHost}`);
+            }
+          })();
+        }
+        if (probe) {
+          await probe;
+          if (!hostUnavailable) probe = null;
+        }
+      } else {
+        transportFailures = 0;
+      }
       console.warn(
         `[channels-health] error ${normalizedHost}/${channel.channel_name}: ${message}`
       );

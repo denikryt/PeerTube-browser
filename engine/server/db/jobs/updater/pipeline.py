@@ -46,8 +46,12 @@ from .staging import (
     assert_production_schema_compatible,
     assert_video_availability_staging_semantics,
     count_staging_deltas,
+    clear_crawler_run,
     init_staging_db,
+    finish_crawler_run,
     list_staging_hosts,
+    load_crawler_run,
+    save_crawler_run,
     assert_retry_parent_provenance,
     inject_replace_embedding_for_test,
     load_scoped_hosts_file,
@@ -109,6 +113,9 @@ def run_pipeline(
     pipeline_start = time.monotonic()
     retry_errors = bool(getattr(args, "retry_errors", False))
     host_pipeline = bool(getattr(args, "host_pipeline", False))
+    resume_crawl = bool(getattr(args, "resume_crawl", False))
+    if resume_crawl and (retry_errors or host_pipeline or args.sync_join_whitelist or availability or args.max_channels):
+        raise RuntimeError("--resume-crawl requires ordinary unbounded crawler mode")
     if args.dry_run and not args.sync_join_whitelist:
         raise RuntimeError("--dry-run is supported only together with --sync-join-whitelist.")
     if retry_errors and (not args.resume_staging or not paths.staging_db.exists()):
@@ -122,10 +129,32 @@ def run_pipeline(
             # The updater must fail before any network request or production mutation
             # when crawler-owned columns have not been migrated into whitelist.db.
             assert_production_schema_compatible(paths.prod_db, paths.schema_path)
-            if args.resume_staging and paths.staging_db.exists():
+            if (args.resume_staging or resume_crawl) and paths.staging_db.exists():
                 assert_video_availability_staging_semantics(paths.staging_db)
             denied_hosts = load_denied_hosts(paths.prod_db)
             logging.info("moderation deny_hosts_active=%d", len(denied_hosts))
+            run_options = {
+                "version": 1,
+                "prod_db": str(paths.prod_db.resolve()),
+                "requested_hosts": sorted(requested_hosts) if requested_hosts is not None else None,
+                "denied_hosts": sorted(denied_hosts),
+                "max_instances": args.max_instances,
+                "max_channels": args.max_channels,
+                "max_videos_pages": args.max_videos_pages,
+                "videos_stop_after_full_pages": args.videos_stop_after_full_pages,
+            }
+            if resume_crawl and not paths.staging_db.exists():
+                raise RuntimeError("No staging database to resume; start a fresh updater run")
+            saved_crawl = load_crawler_run(paths.staging_db) if resume_crawl else None
+            if resume_crawl:
+                if saved_crawl is None:
+                    # A stop during registry discovery or parent initialization
+                    # has no safe per-host checkpoint yet; restart that phase.
+                    logging.info("crawler checkpoint absent; restarting parent discovery and initialization")
+                elif saved_crawl.get("complete"):
+                    raise RuntimeError("Crawler already completed; --resume-crawl only applies during crawler stages")
+                elif any(saved_crawl.get(key) != value for key, value in run_options.items()):
+                    raise RuntimeError("Crawler resume scope or options changed; use --resume-staging for a fresh crawl")
 
             requested_file = None
             if requested_hosts is not None:
@@ -177,7 +206,7 @@ def run_pipeline(
                         "Refusing sync stale-host purge without --yes. "
                         "Re-run with --yes or use --dry-run to inspect."
                     )
-            if args.resume_staging and paths.staging_db.exists():
+            if (args.resume_staging or resume_crawl) and paths.staging_db.exists():
                 logging.info("staging reused from previous run: %s", paths.staging_db)
             else:
                 init_staging_db(paths.staging_db, paths.schema_path)
@@ -185,6 +214,10 @@ def run_pipeline(
                 if not args.sync_join_whitelist:
                     seed_staging_from_prod(paths.prod_db, paths.staging_db)
                     logging.info("staging seeded from prod (instances + channels)")
+            if not resume_crawl:
+                # A new invocation owns a new parent generation. A stop before
+                # its initialization cannot reuse an older run's checkpoint.
+                clear_crawler_run(paths.staging_db)
 
             if existing_sweep_hosts:
                 # Strict sync availability reads old production videos, not new
@@ -228,7 +261,7 @@ def run_pipeline(
                 # Registry discovery has no error-only selector. A retry run
                 # intentionally preserves the staging host set and revisits the
                 # three crawler stages that persist retryable record errors.
-                if (not retry_errors and requested_hosts != set()
+                if (not retry_errors and saved_crawl is None and requested_hosts != set()
                     and (not args.sync_join_whitelist or bool(sync_new_hosts))):
                     instances_cmd = [
                         args.node_bin,
@@ -275,7 +308,16 @@ def run_pipeline(
                 if args.max_instances > 0:
                     combined = combined[:args.max_instances]
                 allowed = set(combined)
-                ingest_scope = candidate_ingest & allowed
+                if saved_crawl is not None:
+                    saved_hosts = saved_crawl.get("ingest_hosts")
+                    if (not isinstance(saved_hosts, list)
+                        or any(not isinstance(host, str) for host in saved_hosts)
+                        or saved_hosts != sorted(set(saved_hosts))
+                        or set(saved_hosts) != candidate_ingest & allowed):
+                        raise RuntimeError("Crawler resume host scope differs from staging; use --resume-staging")
+                    ingest_scope = set(saved_hosts)
+                else:
+                    ingest_scope = candidate_ingest & allowed
                 existing_scope = candidate_existing & allowed
                 parent_scope = ingest_scope | existing_scope
                 parent_scope_file = write_hosts_file(
@@ -289,6 +331,11 @@ def run_pipeline(
                     raise RuntimeError("Failed to freeze new-ingest host scope")
                 temp_files.append(ingest_file)
                 host_scope_args = ["--hosts-file", ingest_file.as_posix()]
+                if (not ingest_scope and not retry_errors and not args.sync_join_whitelist
+                    and not availability and saved_crawl is None):
+                    save_crawler_run(paths.staging_db, {
+                        **run_options, "ingest_hosts": [], "complete": False
+                    })
                 if retry_errors:
                     assert_retry_parent_provenance(paths.staging_db, ingest_scope)
 
@@ -416,7 +463,7 @@ def run_pipeline(
                         )
                     run_cmd(host_pipeline_cmd, cwd=paths.crawler_dir, runner=command_runner)
                 elif ingest_scope:
-                    if not retry_errors:
+                    if not retry_errors and saved_crawl is None:
                         # Sequential updater is the sole initialization owner.
                         # Reset before probe; never reset after fresh health.
                         run_cmd([
@@ -425,6 +472,13 @@ def run_pipeline(
                             "--db", paths.staging_db.as_posix(),
                             "--initialize-only", *host_scope_args,
                         ], cwd=paths.crawler_dir, runner=command_runner)
+                        # A completed initialization is the durable resume
+                        # boundary. A crash before this write safely repeats it.
+                        if not args.sync_join_whitelist and not availability:
+                            save_crawler_run(paths.staging_db, {
+                                **run_options, "ingest_hosts": sorted(ingest_scope), "complete": False
+                            })
+                    if not retry_errors:
                         run_cmd([
                             args.node_bin,
                             (paths.crawler_dist / "instances-health-cli.js").as_posix(),
@@ -433,6 +487,7 @@ def run_pipeline(
                             "--host-delay", str(host_delay_ms),
                             "--timeout", str(args.timeout_ms),
                             "--max-retries", str(args.max_retries),
+                            *(["--skip-observed"] if saved_crawl is not None else []),
                             *host_scope_args,
                         ], cwd=paths.crawler_dir, runner=command_runner)
                         run_cmd(channels_cmd + ["--already-initialized"],
@@ -491,6 +546,11 @@ def run_pipeline(
                         "retry-errors finished crawler stages; staging retained without merge"
                     )
                     return
+
+                if not args.sync_join_whitelist and not availability and not host_pipeline:
+                    # Close the crawler-only recovery window before embeddings
+                    # and publication, including the empty selected-host case.
+                    finish_crawler_run(paths.staging_db)
 
             else:
                 logging.info("sync-join ingest skipped: no new hosts after denylist filtering")

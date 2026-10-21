@@ -623,3 +623,125 @@ def test_frozen_child_scope_transport_failure_does_not_start_child_work(
         ))
         for cmd in commands
     )
+
+
+def test_resume_crawl_keeps_initialized_parent_work_and_frozen_scope(monkeypatch, tmp_path) -> None:
+    """A stopped listing resumes without rediscovery or clearing saved parent observations."""
+    _patch_lightweight(monkeypatch)
+    args = _args(tmp_path, skip_systemctl=True)
+    _stamp_current_stage(Path(args.staging_db))
+    first: list[list[str]] = []
+
+    def interrupt_listing(cmd, cwd):
+        """Stop after the real orchestration has initialized and saved its scope."""
+        first.append(list(cmd))
+        if cmd[1].endswith("channels-cli.js") and "--already-initialized" in cmd:
+            raise RuntimeError("interrupted listing")
+
+    with pytest.raises(RuntimeError, match="interrupted listing"):
+        pipeline.run_pipeline(args, command_runner=interrupt_listing, validate_files=False)
+    assert any("--initialize-only" in cmd for cmd in first)
+
+    resumed = _args(tmp_path, resume_crawl=True, skip_systemctl=True)
+    seen: list[list[str]] = []
+    pipeline.run_pipeline(
+        resumed, command_runner=lambda cmd, cwd: seen.append(list(cmd)), validate_files=False
+    )
+    crawler = [cmd for cmd in seen if cmd[0] == "node"]
+    assert not any("instances-cli.js" in cmd[1] or "--initialize-only" in cmd for cmd in crawler)
+    probe = next(cmd for cmd in crawler if "instances-health-cli.js" in cmd[1])
+    assert "--skip-observed" in probe
+    listing = next(cmd for cmd in crawler if "channels-cli.js" in cmd[1] and "--check-health" not in cmd)
+    assert "--already-initialized" in listing
+
+
+def test_resume_crawl_rejects_changed_scope_before_network(monkeypatch, tmp_path) -> None:
+    """Resuming with different host selection cannot silently broaden publication."""
+    _patch_lightweight(monkeypatch)
+    args = _args(tmp_path, skip_systemctl=True)
+    _stamp_current_stage(Path(args.staging_db))
+
+    def interrupt_listing(cmd, cwd):
+        """Leave a real saved crawl marker after initialization."""
+        if cmd[1].endswith("channels-cli.js") and "--already-initialized" in cmd:
+            raise RuntimeError("interrupted listing")
+
+    with pytest.raises(RuntimeError, match="interrupted listing"):
+        pipeline.run_pipeline(args, command_runner=interrupt_listing, validate_files=False)
+    seen: list[list[str]] = []
+    with pytest.raises(RuntimeError, match="scope|options"):
+        pipeline.run_pipeline(
+            _args(tmp_path, resume_crawl=True, max_instances=1),
+            command_runner=lambda cmd, cwd: seen.append(list(cmd)), validate_files=False
+        )
+    assert seen == []
+
+
+def test_resume_crawl_before_parent_checkpoint_restarts_discovery(monkeypatch, tmp_path) -> None:
+    """An interruption during discovery still has a safe page-zero recovery path."""
+    _patch_lightweight(monkeypatch)
+    args = _args(tmp_path, resume_crawl=True, skip_systemctl=True)
+    _stamp_current_stage(Path(args.staging_db))
+    seen: list[list[str]] = []
+
+    def interrupt_probe(cmd, cwd):
+        """Observe real stage ordering then stop before downstream jobs."""
+        seen.append(list(cmd))
+        if cmd[1].endswith("instances-health-cli.js"):
+            raise RuntimeError("probe stopped")
+
+    with pytest.raises(RuntimeError, match="probe stopped"):
+        pipeline.run_pipeline(args, command_runner=interrupt_probe, validate_files=False)
+    assert "instances-cli.js" in seen[0][1]
+    assert "--initialize-only" in seen[1]
+    assert "--skip-observed" not in seen[2]
+
+
+def test_completed_crawler_checkpoint_cannot_resume_after_publication(monkeypatch, tmp_path) -> None:
+    """Crawler resume does not silently replay an Updater that reached merge."""
+    _patch_lightweight(monkeypatch)
+    args = _args(tmp_path, skip_systemctl=True)
+    _stamp_current_stage(Path(args.staging_db))
+    pipeline.run_pipeline(args, command_runner=lambda cmd, cwd: None, validate_files=False)
+    seen: list[list[str]] = []
+    with pytest.raises(RuntimeError, match="already completed"):
+        pipeline.run_pipeline(
+            _args(tmp_path, resume_crawl=True, skip_systemctl=True),
+            command_runner=lambda cmd, cwd: seen.append(list(cmd)), validate_files=False
+        )
+    assert seen == []
+
+
+def test_empty_crawler_scope_is_completed_before_downstream_work(monkeypatch, tmp_path) -> None:
+    """An empty selected scope cannot leave a reusable pre-publication checkpoint."""
+    _patch_lightweight(monkeypatch)
+    monkeypatch.setattr(pipeline, "list_staging_hosts", lambda staging_db: set())
+    args = _args(tmp_path, skip_systemctl=True)
+    _stamp_current_stage(Path(args.staging_db))
+    pipeline.run_pipeline(args, command_runner=lambda cmd, cwd: None, validate_files=False)
+    from engine.server.db.jobs.updater.staging import load_crawler_run
+
+    checkpoint = load_crawler_run(Path(args.staging_db))
+    assert checkpoint is not None
+    assert checkpoint["ingest_hosts"] == []
+    assert checkpoint["complete"] is True
+
+
+def test_new_crawl_invalidates_previous_checkpoint_before_discovery(monkeypatch, tmp_path) -> None:
+    """A stop in a new discovery cannot revive the prior run's completed hosts."""
+    _patch_lightweight(monkeypatch)
+    args = _args(tmp_path, skip_systemctl=True)
+    stage_path = Path(args.staging_db)
+    _stamp_current_stage(stage_path)
+    from engine.server.db.jobs.updater.staging import load_crawler_run, save_crawler_run
+
+    save_crawler_run(stage_path, {"version": 1, "ingest_hosts": ["old.example"], "complete": False})
+
+    def interrupt_discovery(cmd, cwd):
+        """Stop before the new scope has been initialized."""
+        if cmd[1].endswith("instances-cli.js"):
+            raise RuntimeError("discovery stopped")
+
+    with pytest.raises(RuntimeError, match="discovery stopped"):
+        pipeline.run_pipeline(args, command_runner=interrupt_discovery, validate_files=False)
+    assert load_crawler_run(stage_path) is None

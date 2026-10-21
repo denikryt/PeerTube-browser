@@ -86,3 +86,22 @@ test("JSON decoder syntax errors cannot synthesize HTTP absence from diagnostic 
   const actualHttp = Object.assign(new Error("HTTP 404 for https://example.test"), { status: 404 });
   assert.equal(classifyCrawlError(actualHttp).httpStatus, 404);
 });
+
+test("structured curl connect refusal is retryable without reclassifying other curl failures", () => {
+  const refused = Object.assign(new Error("curl: connection refused"), { curlExitCode: 7 });
+  assert.deepEqual(classifyCrawlError(refused), {
+    kind: "network",
+    retryable: true,
+    tryAlternateProtocol: true,
+    httpStatus: null
+  });
+  assert.equal(formatCrawlError(refused), "[network] curl: connection refused");
+
+  const unrelated = Object.assign(new Error("curl: unexpected failure"), { curlExitCode: 23 });
+  assert.equal(classifyCrawlError(unrelated).retryable, false);
+  assert.equal(classifyCrawlError(unrelated).kind, "unknown");
+
+  // An actual HTTP response remains authoritative over a transport diagnostic.
+  const response = Object.assign(new Error("HTTP 404"), { status: 404, curlExitCode: 7 });
+  assert.equal(classifyCrawlError(response).kind, "http_404");
+});

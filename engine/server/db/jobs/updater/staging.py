@@ -21,6 +21,57 @@ AVAILABILITY_SEMANTICS_KEY = "video_availability_semantics"
 AVAILABILITY_SEMANTICS_VALUE = "canonical_absence_atomic_ingest_v2"
 VIDEO_CORPUS_ROLE_KEY = "video_corpus_role"
 UPDATER_STAGING_ROLE = "updater_staging_delta"
+CRAWLER_RUN_KEY = "updater_crawler_run_v1"
+
+
+def clear_crawler_run(staging_db: Path) -> None:
+    """Invalidate an older checkpoint before a new crawler generation starts."""
+    if not staging_db.exists():
+        return
+    with closing(sqlite3.connect(staging_db)) as conn, conn:
+        try:
+            conn.execute("DELETE FROM crawl_state WHERE key=?", (CRAWLER_RUN_KEY,))
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc):
+                raise
+
+
+def save_crawler_run(staging_db: Path, details: dict) -> None:
+    """Commit the selected crawler scope after parent initialization succeeds."""
+    with closing(sqlite3.connect(staging_db)) as conn, conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS crawl_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+        conn.execute(
+            "INSERT OR REPLACE INTO crawl_state(key,value) VALUES (?,?)",
+            (CRAWLER_RUN_KEY, json.dumps(details, sort_keys=True)),
+        )
+
+
+def load_crawler_run(staging_db: Path) -> dict | None:
+    """Read the last initialized crawler scope; old staging has no checkpoint."""
+    with closing(sqlite3.connect(staging_db)) as conn:
+        row = conn.execute(
+            "SELECT value FROM crawl_state WHERE key=?", (CRAWLER_RUN_KEY,)
+        ).fetchone()
+    if row is None:
+        return None
+    value = json.loads(row[0])
+    if not isinstance(value, dict) or value.get("version") != 1:
+        raise RuntimeError("Unsupported crawler resume checkpoint")
+    return value
+
+
+def finish_crawler_run(staging_db: Path) -> None:
+    """Close the crawler-only resume window before downstream publication starts."""
+    with closing(sqlite3.connect(staging_db)) as conn, conn:
+        row = conn.execute("SELECT value FROM crawl_state WHERE key=?", (CRAWLER_RUN_KEY,)).fetchone()
+        if row is None:
+            return
+        details = json.loads(row[0])
+        details["complete"] = True
+        conn.execute(
+            "UPDATE crawl_state SET value=? WHERE key=?",
+            (json.dumps(details, sort_keys=True), CRAWLER_RUN_KEY),
+        )
 
 
 def remove_db_with_sidecars(db_path: Path) -> None:

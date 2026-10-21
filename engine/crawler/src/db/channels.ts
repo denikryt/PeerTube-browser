@@ -174,6 +174,14 @@ export class ChannelStore {
     return rows.map((row) => row.host);
   }
 
+  /** Resume an initialized probe without refreshing observations already saved. */
+  listUnobservedInstancesForHealth(): string[] {
+    const rows = this.db.prepare(
+      `SELECT host FROM instances WHERE health_checked_at IS NULL ORDER BY host ASC`
+    ).all() as { host: string }[];
+    return rows.map(row => row.host);
+  }
+
   /**
    * Handle list error instances needing health.
    */

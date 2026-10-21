@@ -186,7 +186,11 @@ test("eligible fallback exhaustion returns one unknown without a caller retry lo
         code: "ERR_SSL_WRONG_VERSION_NUMBER"
       });
     }
-    throw Object.assign(new Error("host unreachable"), { code: "EHOSTUNREACH" });
+    // This terminal TLS failure does not invoke native-fetch-to-curl or retry.
+    // The test isolates one exhausted HTTPS-to-HTTP protocol fallback.
+    throw Object.assign(new Error("certificate mismatch"), {
+      code: "ERR_TLS_CERT_ALTNAME_INVALID"
+    });
   }, async () => {
     const result = await fetchVideoDetailResult<Record<string, unknown>>(
       "example.org",
